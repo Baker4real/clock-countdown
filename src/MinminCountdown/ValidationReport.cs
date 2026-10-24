@@ -1775,11 +1775,6 @@ internal static class ValidationReport
                 noteEmptyStateContrast.TextContrast));
         var noteVisualTokenGateIsolationBehavior =
             ValidationExercises.RunNoteVisualTokenGateIsolationBehavior();
-        var countdownReminderTransactionBehavior =
-            ValidationExercises.RunCountdownReminderTransactionBehavior();
-        var desktopWorkspaceInterfaceBehavior =
-            ValidationExercises.RunDesktopWorkspaceInterfaceBehavior() &&
-            countdownReminderTransactionBehavior;
         var reminderEditingInterfaceBehavior =
             ValidationExercises.RunReminderEditingInterfaceBehavior();
         var calendarReminderBehavior =
@@ -1798,13 +1793,8 @@ internal static class ValidationReport
 
         var report = new ValidationReportProjection
         {
-            ["DesktopWorkspaceModuleDeep"] = Must(desktopWorkspaceInterfaceBehavior, "兼容字段由桌面工作区真实 interface 行为计算"),
             ["StartupAcceptanceProtocolModuleDeep"] = Must(startupAcceptanceProtocolInterfaceBehavior, "兼容字段由启动验收真实 interface 行为计算"),
             ["WorkdayCalendarModuleDeep"] = Must(holidayCalendarInterfaceBehavior, "兼容字段由工作日历真实 interface 行为计算"),
-            ["DesktopWorkspaceInterfaceBehavior"] = Must(desktopWorkspaceInterfaceBehavior, "桌面工作区 interface 统一持久化、状态变更与筛选行为"),
-            ["CountdownReminderTransactionBehavior"] = Must(
-                countdownReminderTransactionBehavior,
-                "倒计时规则/目标重算事务：相对 occurrence 按 target-offset 生成、目标移动清理未送达旧 occurrence 并保留 rule ID 与新 occurrence key、过去派生拒绝原子保留内存与磁盘、确认送达后删除规则/倒计时不残留状态（#140）"),
             ["ReminderEditingInterfaceBehavior"] = Must(reminderEditingInterfaceBehavior, "提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为"),
             ["CalendarReminderBehavior"] = Must(calendarReminderBehavior, "日历提醒覆盖类型化规则、北京时间 occurrence、错过合并与 Ical.Net 失败闭锁"),
             ["StartupAcceptanceProtocolInterfaceBehavior"] = Must(
@@ -4379,13 +4369,13 @@ internal static class ValidationReport
             File.WriteAllText(holidayPath, JsonSerializer.Serialize(new { days }));
 
             var referenceClock = new MutableValidationClock(referenceUtc);
-            var referenceSession = ApplicationSession.Load(
+            var referenceWorkspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: referenceClock));
             using var referenceCalendar = new HolidayCalendar(temporaryRoot);
             referenceCalendar.RefreshAsync(referenceUtc, CancellationToken.None).GetAwaiter().GetResult();
             referenceWindow = new FloatingWindow(
-                new DesktopWorkspace(referenceSession),
+                referenceWorkspace,
                 referenceCalendar,
                 manager,
                 assetRoot)
@@ -4414,8 +4404,8 @@ internal static class ValidationReport
             VerifyWorkdayPrimaryTitleAndBadge(rows);
             VerifyFloatingZeroDayBlocks(referenceWindow);
             var incomePrivacyBehavior = VerifyFloatingIncomePrivacy(
-                referenceWindow, referenceSession, referenceCalendar, manager, assetRoot, settingsPath, referenceClock);
-            var completionResult = VerifyWorkdayCompletion(referenceWindow, referenceSession, referenceClock, settingsPath);
+                referenceWindow, referenceWorkspace, referenceCalendar, manager, assetRoot, settingsPath, referenceClock);
+            var completionResult = VerifyWorkdayCompletion(referenceWindow, referenceWorkspace, referenceClock, settingsPath);
             var actualWidth = root.ActualWidth;
             var actualHeight = root.ActualHeight;
             var actualBackdrop = Normalize(BoundsIn(backdrop, root), actualWidth, actualHeight);
@@ -4561,7 +4551,7 @@ internal static class ValidationReport
                     rows,
                     panel)
             };
-            var referencePreferences = referenceSession.Current.Preferences;
+            var referencePreferences = referenceWorkspace.Snapshot.Settings.Preferences;
             var precisionPreferencesSaved = true;
             var precisionCases = new (string Precision, string ExpectedText)[]
             {
@@ -4572,12 +4562,11 @@ internal static class ValidationReport
             };
             foreach (var precisionCase in precisionCases)
             {
-                var preferenceSaved = referenceSession.TrySavePreferences(
+                var preferenceSaved = referenceWorkspace.Apply(new SavePreferencesChange(
                     precisionCase.Precision,
                     referencePreferences.MonthlySalary,
                     referencePreferences.WorkStart,
-                    referencePreferences.WorkEnd,
-                    out _);
+                    referencePreferences.WorkEnd)).Succeeded;
                 precisionPreferencesSaved &= preferenceSaved;
                 referenceWindow.UpdateTime(referenceUtc);
                 WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
@@ -4593,12 +4582,11 @@ internal static class ValidationReport
                     preferenceSaved));
             }
 
-            var longSecondaryAdded = referenceSession.TrySaveCountdown(
+            var longSecondaryAdded = referenceWorkspace.Apply(new SaveCountdownChange(
                 "reference-long-secondary",
                 "长周期次级倒计时",
                 referenceUtc.AddDays(2_000_000),
-                Array.Empty<string>(),
-                out _);
+                Array.Empty<string>())).Succeeded;
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 3);
             const string longSecondaryExpected = "2000000 天 00 小时 00 分钟 00 秒";
@@ -4632,9 +4620,8 @@ internal static class ValidationReport
                         longSecondaryMeasurement.ColumnIs194Pixels &&
                         longSecondaryMeasurement.IsFullyVisible &&
                         longSecondaryMeasurement.FontSize is >= 12 and < 20));
-            var longSecondaryDeleted = referenceSession.TryDeleteCountdown(
-                "reference-long-secondary",
-                out _);
+            var longSecondaryDeleted = referenceWorkspace.Apply(new DeleteCountdownChange(
+                "reference-long-secondary")).Succeeded;
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             secondaryRemainingTextFullyVisible =
@@ -4643,12 +4630,11 @@ internal static class ValidationReport
                 longSecondaryMeasurement.IsFullyVisible;
             // 月薪 0/非 0 底部文案切换：参考会话日历已就绪，月薪清零后必须显示手写体鼓励文案。
             var referenceSalary = referencePreferences.MonthlySalary;
-            var zeroSalaryApplied = referenceSession.TrySavePreferences(
+            var zeroSalaryApplied = referenceWorkspace.Apply(new SavePreferencesChange(
                 "Second",
                 0m,
                 referencePreferences.WorkStart,
-                referencePreferences.WorkEnd,
-                out _);
+                referencePreferences.WorkEnd)).Succeeded;
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var incomeTextProbe = Required<TextBlock>(referenceWindow, "FloatingIncome");
@@ -4666,12 +4652,11 @@ internal static class ValidationReport
                 ReferenceEquals(incomeTextProbe.FontFamily, expectedDecoFont) &&
                 expectedDecoBrush is not null &&
                 ReferenceEquals(incomeTextProbe.Foreground, expectedDecoBrush);
-            var salaryRestored = referenceSession.TrySavePreferences(
+            var salaryRestored = referenceWorkspace.Apply(new SavePreferencesChange(
                 "Second",
                 referenceSalary,
                 referencePreferences.WorkStart,
-                referencePreferences.WorkEnd,
-                out _);
+                referencePreferences.WorkEnd)).Succeeded;
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var incomeRestoredAfterEncouragement =
@@ -4695,9 +4680,8 @@ internal static class ValidationReport
                 CaptureFloatingViewportState("two-countdowns", referenceWindow, root, rows)
             };
 
-            var userCountdownDeleted = referenceSession.TryDeleteCountdown(
-                "reference-july",
-                out _);
+            var userCountdownDeleted = referenceWorkspace.Apply(new DeleteCountdownChange(
+                "reference-july")).Succeeded;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             viewportStates.Add(
                 CaptureFloatingViewportState("one-countdown", referenceWindow, root, rows));
@@ -4714,12 +4698,11 @@ internal static class ValidationReport
                 .AddHours(13)
                 .AddMinutes(18)
                 .AddSeconds(59);
-            var ordinaryPrimaryAdded = referenceSession.TrySaveCountdown(
+            var ordinaryPrimaryAdded = referenceWorkspace.Apply(new SaveCountdownChange(
                 "reference-ordinary-primary",
                 "普通主项单行倒计时",
                 ordinaryPrimaryTargetUtc,
-                Array.Empty<string>(),
-                out _);
+                Array.Empty<string>())).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var ordinaryPrimaryRemainingTextFullyVisible =
@@ -4732,20 +4715,19 @@ internal static class ValidationReport
             // 徽章排他性：主项由普通倒计时承担时不得出现「超期待！」徽章。
             var ordinaryPrimaryBadgeAbsent = !Descendants<TextBlock>(rows)
                 .Any(text => string.Equals(text.Text, "超期待！", StringComparison.Ordinal));
-            var ordinaryPrimaryDeleted = referenceSession.TryDeleteCountdown(
-                "reference-ordinary-primary",
-                out _);
+            var ordinaryPrimaryDeleted = referenceWorkspace.Apply(new DeleteCountdownChange(
+                "reference-ordinary-primary")).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
 
-            var tripleDigitAdded = referenceSession.TrySaveCountdown(
+            var tripleDigitAdded = referenceWorkspace.Apply(new SaveCountdownChange(
                 "reference-999-primary", "999 天主项", nonWorkdayUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59),
-                Array.Empty<string>(), out _);
+                Array.Empty<string>())).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var tripleDigitMeasurement = CaptureFloatingPrimaryCountdownContrast(referenceWindow, rows, panel, "999Days");
             primaryCountdownContrastMeasurements.Add(tripleDigitMeasurement);
-            var tripleDigitDeleted = referenceSession.TryDeleteCountdown("reference-999-primary", out _);
+            var tripleDigitDeleted = referenceWorkspace.Apply(new DeleteCountdownChange("reference-999-primary")).Succeeded;
             if (!tripleDigitAdded || !tripleDigitDeleted)
             {
                 throw new InvalidOperationException("999 天悬浮主项夹具未能完整保存和恢复。");
@@ -4762,12 +4744,11 @@ internal static class ValidationReport
                             measurement.AccentDiffersFromPlushGlow)));
 
             var extremePrimaryUtc = referenceUtc.AddDays(2_000_000);
-            var extremePrimaryAdded = referenceSession.TrySaveCountdown(
+            var extremePrimaryAdded = referenceWorkspace.Apply(new SaveCountdownChange(
                 "reference-extreme-primary",
                 "极端长剩余时间",
                 extremePrimaryUtc,
-                Array.Empty<string>(),
-                out _);
+                Array.Empty<string>())).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var extremePrimaryCluster = FindFloatingRemainingCluster(rows, "极端长剩余时间");
@@ -4795,9 +4776,8 @@ internal static class ValidationReport
                     StringComparison.Ordinal) &&
                 RemainingClusterIsSingleLine(extremePrimaryCluster) &&
                 FitsInsideFloatingViewport(extremePrimaryCluster, referenceWindow);
-            var extremePrimaryDeleted = referenceSession.TryDeleteCountdown(
-                "reference-extreme-primary",
-                out _);
+            var extremePrimaryDeleted = referenceWorkspace.Apply(new DeleteCountdownChange(
+                "reference-extreme-primary")).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             primaryExtremeRemainingShrinks &= extremePrimaryDeleted;
@@ -4811,12 +4791,11 @@ internal static class ValidationReport
                 59,
                 0,
                 TimeSpan.FromHours(8)).ToUniversalTime();
-            var primaryDeadlineAdded = referenceSession.TrySaveCountdown(
+            var primaryDeadlineAdded = referenceWorkspace.Apply(new SaveCountdownChange(
                 "reference-primary-deadline",
                 "最长日期倒计时",
                 primaryDeadlineUtc,
-                Array.Empty<string>(),
-                out _);
+                Array.Empty<string>())).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 1);
             var primaryDeadlineWithoutScrollbar = CaptureFloatingViewportState(
@@ -4836,12 +4815,11 @@ internal static class ValidationReport
             var primaryDeadlineOverflowAdded = true;
             for (var index = 0; index < primaryDeadlineOverflowIds.Length; index++)
             {
-                primaryDeadlineOverflowAdded &= referenceSession.TrySaveCountdown(
+                primaryDeadlineOverflowAdded &= referenceWorkspace.Apply(new SaveCountdownChange(
                     primaryDeadlineOverflowIds[index],
                     $"最长日期滚动倒计时 {index + 1}",
                     primaryDeadlineUtc.AddDays(index + 1),
-                    Array.Empty<string>(),
-                    out _);
+                    Array.Empty<string>())).Succeeded;
             }
 
             referenceWindow.UpdateTime(nonWorkdayUtc);
@@ -4860,12 +4838,11 @@ internal static class ValidationReport
             var primaryDeadlineOverflowDeleted = true;
             foreach (var id in primaryDeadlineOverflowIds)
             {
-                primaryDeadlineOverflowDeleted &= referenceSession.TryDeleteCountdown(id, out _);
+                primaryDeadlineOverflowDeleted &= referenceWorkspace.Apply(new DeleteCountdownChange(id)).Succeeded;
             }
 
-            var primaryDeadlineDeleted = referenceSession.TryDeleteCountdown(
-                "reference-primary-deadline",
-                out _);
+            var primaryDeadlineDeleted = referenceWorkspace.Apply(new DeleteCountdownChange(
+                "reference-primary-deadline")).Succeeded;
             referenceWindow.UpdateTime(nonWorkdayUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 0);
             var primaryDeadlineTextFullyVisible =
@@ -4885,12 +4862,11 @@ internal static class ValidationReport
             var overflowCountdownsAdded = true;
             for (var index = 0; index < overflowCountdownIds.Length; index++)
             {
-                overflowCountdownsAdded &= referenceSession.TrySaveCountdown(
+                overflowCountdownsAdded &= referenceWorkspace.Apply(new SaveCountdownChange(
                     overflowCountdownIds[index],
                     $"滚动倒计时 {index + 1}",
                     referenceUtc.AddDays(index + 1),
-                    Array.Empty<string>(),
-                    out _);
+                    Array.Empty<string>())).Succeeded;
             }
 
             referenceWindow.UpdateTime(referenceUtc);
@@ -4917,7 +4893,7 @@ internal static class ValidationReport
             var overflowCountdownsDeleted = true;
             foreach (var id in overflowCountdownIds)
             {
-                overflowCountdownsDeleted &= referenceSession.TryDeleteCountdown(id, out _);
+                overflowCountdownsDeleted &= referenceWorkspace.Apply(new DeleteCountdownChange(id)).Succeeded;
             }
             countdownScroller.ScrollToTop();
             PumpDispatcher();
@@ -5000,14 +4976,13 @@ internal static class ValidationReport
             var datedStampTexts = CalendarIndexStampTexts(datedCard);
             var datedStampSemanticsMatch =
                 datedStampTexts.SequenceEqual(new[] { "7 月", "15", "周一" });
-            var undatedNoteSaved = referenceSession.TrySaveNote(
+            var undatedNoteSaved = referenceWorkspace.Apply(new SaveNoteChange(
                 "reference-undated",
                 "无日期历史便签",
                 null,
                 false,
                 Array.Empty<string>(),
-                NoReminder.Instance,
-                out _);
+                NoReminder.Instance)).Succeeded;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 7);
             var undatedCard = rows.Children
                 .OfType<Border>()
@@ -5019,7 +4994,7 @@ internal static class ValidationReport
             var undatedStampTexts = CalendarIndexStampTexts(undatedCard);
             var undatedStampSemanticsMatch =
                 undatedStampTexts.SequenceEqual(new[] { "无日期", "--", " " });
-            var undatedNoteDeleted = referenceSession.TryDeleteNote("reference-undated", out _);
+            var undatedNoteDeleted = referenceWorkspace.Apply(new DeleteNoteChange("reference-undated")).Succeeded;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
 
             var noteFailureAppearsInSourceCard = false;
@@ -5057,7 +5032,7 @@ internal static class ValidationReport
                         AutomationProperties.GetHelpText(completion),
                         localError.Text,
                         StringComparison.Ordinal) &&
-                    referenceSession.Current.Notes.All(note => !note.IsCompleted);
+                    referenceWorkspace.Snapshot.Settings.Notes.All(note => !note.IsCompleted);
             }
             finally
             {
@@ -5069,15 +5044,13 @@ internal static class ValidationReport
 
             if (!string.IsNullOrWhiteSpace(failedNoteId))
             {
-                var noteCompleted = referenceSession.TrySetNoteCompletion(
+                var noteCompleted = referenceWorkspace.Apply(new SetNoteCompletionChange(
                     failedNoteId,
-                    true,
-                    out _);
+                    true)).Succeeded;
                 WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 5);
-                var noteRestored = referenceSession.TrySetNoteCompletion(
+                var noteRestored = referenceWorkspace.Apply(new SetNoteCompletionChange(
                     failedNoteId,
-                    false,
-                    out _);
+                    false)).Succeeded;
                 WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
                 var restoredCard = rows.Children
                     .OfType<Border>()
@@ -7417,25 +7390,23 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(settingsPath, new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "重复提醒真实渲染探针",
                     new DateTime(2031, 4, 7),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateRepeating(firstDueUtc, 30),
-                    out _))
+                    ReminderSchedule.CreateRepeating(firstDueUtc, 30))).Succeeded)
             {
                 return RepeatingReminderDeliveryExerciseResult.Failed;
             }
 
-            var repeatingId = session.Current.Notes.Single().Id;
-            var rule = session.Current.Notes.Single().ReminderRules.Single();
-            var workspace = new DesktopWorkspace(session);
+            var repeatingId = workspace.Snapshot.Settings.Notes.Single().Id;
+            var rule = workspace.Snapshot.Settings.Notes.Single().ReminderRules.Single();
             coordinator = new ReminderDeliveryCoordinator(workspace, logger: null);
             clock.UtcNow = firstDueUtc;
-            var dueBeforeShow = session.Reminders.GetDue(session.Current, firstDueUtc)
+            var dueBeforeShow = workspace.GetDueReminders(firstDueUtc)
                 .Any(note => note.Id == repeatingId);
             coordinator.Tick(firstDueUtc);
             var window = coordinator.ActiveWindow;
@@ -7445,7 +7416,7 @@ internal static class ValidationReport
             var contentRendered =
                 coordinator.ActiveOccurrenceRendered &&
                 coordinator.ActiveOccurrenceConfirmed &&
-                session.Reminders.GetDueOccurrences(session.Current, firstDueUtc)
+                workspace.GetDueReminderOccurrences(firstDueUtc)
                     .SingleOrDefault() is { } unresolvedOccurrence &&
                 unresolvedOccurrence.Note.Id == repeatingId &&
                 unresolvedOccurrence.Rule.Id == rule.Id &&
@@ -7467,7 +7438,7 @@ internal static class ValidationReport
                 Application.Current.Windows
                     .OfType<ReminderCenterWindow>()
                     .Count(candidate => candidate.IsVisible) == 1;
-            var unresolvedDue = session.Reminders.GetDueOccurrences(session.Current, nextDueUtc);
+            var unresolvedDue = workspace.GetDueReminderOccurrences(nextDueUtc);
             singleUnresolvedOccurrenceWorks &=
                 unresolvedDue.Count == 1 &&
                 unresolvedDue[0].ScheduledUtc == firstDueUtc;
@@ -7491,15 +7462,15 @@ internal static class ValidationReport
                 secondWindow.EntryCount == 1 &&
                 secondWindow.RenderedEntryCount == 1 &&
                 secondWindow.OrderedKeys.SequenceEqual([secondKey]) &&
-                session.Current.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
                     secondOccurrenceKey;
             var secondAcknowledged = secondWindow?.RequestAcknowledgement(secondKey) == true;
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var acknowledgementAdvancedToSecond =
-                session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
                     secondOccurrenceKey;
             var staleFirstAcknowledgement = workspace.AcknowledgeReminder(
-                session.Current.Notes.Single(note => note.Id == repeatingId),
+                workspace.Snapshot.Settings.Notes.Single(note => note.Id == repeatingId),
                 rule.Id,
                 firstDueUtc);
             var persistedAfterReverseAcknowledgement = new SettingsStore(clock: clock)
@@ -7511,7 +7482,7 @@ internal static class ValidationReport
                 secondAcknowledged &&
                 acknowledgementAdvancedToSecond &&
                 staleFirstAcknowledgement.Succeeded &&
-                session.Current.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[rule.Id].LastDispositionOccurrenceKey ==
                     secondOccurrenceKey &&
                 persistedAfterReverseAcknowledgement.LastDispositionOccurrenceKey ==
                     secondOccurrenceKey;
@@ -7521,45 +7492,43 @@ internal static class ValidationReport
                 secondCycleOpenedAfterDisposition &&
                 coordinator.ActiveWindowCount == 0 &&
                 coordinator.ActiveEntryCount == 0 &&
-                session.Reminders.GetDueOccurrences(session.Current, nextDueUtc).Count == 0;
+                workspace.GetDueReminderOccurrences(nextDueUtc).Count == 0;
 
             coordinator.Dispose();
             coordinator = null;
             var latestMissedUtc = firstDueUtc.AddHours(2).AddMinutes(5);
             clock.UtcNow = latestMissedUtc;
-            var restarted = ApplicationSession.Load(
+            var restarted = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            var latestDue = restarted.Reminders.GetDue(restarted.Current, latestMissedUtc);
+            var latestDue = restarted.GetDueReminders(latestMissedUtc);
             var latestNote = latestDue.SingleOrDefault();
             var latestRule = latestNote?.ReminderRules.SingleOrDefault();
             var latestScheduledUtc = latestRule is null
                 ? DateTimeOffset.MinValue
                 : ReminderSchedule.GetScheduledUtc(latestRule, latestMissedUtc);
-            var beforeFailure = restarted.SerializeCurrent();
+            var beforeFailure = SettingsContract.SerializeCanonical(restarted.Snapshot.Settings);
             Directory.CreateDirectory(settingsPath + ".tmp");
             var failedLatestConfirmation = latestNote is null
                 ? new DesktopWorkspaceChangeResult(false, "没有最新 occurrence。")
-                : new DesktopWorkspace(restarted).ConfirmReminderDisplayed(
+                : restarted.ConfirmReminderDisplayed(
                     latestNote,
                     latestMissedUtc);
             var failureStayedAtomic =
                 !failedLatestConfirmation.Succeeded &&
-                string.Equals(beforeFailure, restarted.SerializeCurrent(), StringComparison.Ordinal) &&
-                restarted.Reminders.GetDue(restarted.Current, latestMissedUtc).Count == 1;
+                string.Equals(beforeFailure, SettingsContract.SerializeCanonical(restarted.Snapshot.Settings), StringComparison.Ordinal) &&
+                restarted.GetDueReminders(latestMissedUtc).Count == 1;
             Directory.Delete(settingsPath + ".tmp");
             var crossedRetryUtc = latestMissedUtc.AddMinutes(31);
             var successfulLatestConfirmation = latestNote is null
                 ? new DesktopWorkspaceChangeResult(false, "没有最新 occurrence。")
-                : new DesktopWorkspace(restarted).ConfirmReminderDisplayed(
+                : restarted.ConfirmReminderDisplayed(
                     latestNote,
                     latestRule!.Id,
                     latestScheduledUtc);
-            var unresolvedAtConfirmation = restarted.Reminders
-                .GetDueOccurrences(restarted.Current, latestMissedUtc)
+            var unresolvedAtConfirmation = restarted.GetDueReminderOccurrences(latestMissedUtc)
                 .SingleOrDefault();
-            var unresolvedAfterLaterCycles = restarted.Reminders
-                .GetDueOccurrences(restarted.Current, crossedRetryUtc)
+            var unresolvedAfterLaterCycles = restarted.GetDueReminderOccurrences(crossedRetryUtc)
                 .SingleOrDefault();
             var latestOnlyAcrossRestart =
                 latestDue.Count == 1 &&
@@ -7569,7 +7538,7 @@ internal static class ValidationReport
                 unresolvedAtConfirmation?.ScheduledUtc == latestScheduledUtc &&
                 unresolvedAfterLaterCycles?.ScheduledUtc == latestScheduledUtc &&
                 latestRule is not null &&
-                restarted.Current.ReminderStates[latestRule.Id].LastDeliveredOccurrenceKey ==
+                restarted.Snapshot.Settings.ReminderStates[latestRule.Id].LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(
                         latestRule,
                         latestScheduledUtc).ToString();
@@ -7604,14 +7573,14 @@ internal static class ValidationReport
                 }
                 """,
                 new UTF8Encoding(false));
-            var migrated = ApplicationSession.Load(
+            var migrated = DesktopWorkspace.Load(
                 migrationPath,
                 new SettingsStore(clock: clock));
-            var migrationRule = migrated.Current.Notes.Single().ReminderRules.Single();
+            var migrationRule = migrated.Snapshot.Settings.Notes.Single().ReminderRules.Single();
             var migrationDoesNotRevive =
-                migrated.SettingsWereMigrated &&
-                migrated.Reminders.GetDue(migrated.Current, latestMissedUtc).Count == 0 &&
-                migrated.Current.ReminderStates[migrationRule.Id].HandledThroughUtc ==
+                migrated.Snapshot.SettingsWereMigrated &&
+                migrated.GetDueReminders(latestMissedUtc).Count == 0 &&
+                migrated.Snapshot.Settings.ReminderStates[migrationRule.Id].HandledThroughUtc ==
                     firstDueUtc.AddHours(2);
             var retryKeepsCapturedOccurrence =
                 ValidateRepeatingReminderRetryKeepsCapturedOccurrence();
@@ -7655,25 +7624,23 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "跨周期持久化重试 occurrence 探针",
                     new DateTime(2031, 4, 8),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateRepeating(firstDueUtc, 1),
-                    out _))
+                    ReminderSchedule.CreateRepeating(firstDueUtc, 1))).Succeeded)
             {
                 return false;
             }
 
-            var note = session.Current.Notes.Single();
+            var note = workspace.Snapshot.Settings.Notes.Single();
             var rule = (FixedIntervalReminderRule)note.ReminderRules.Single();
             Directory.CreateDirectory(blockedTemporaryPath);
-            var workspace = new DesktopWorkspace(session);
             coordinator = new ReminderDeliveryCoordinator(
                 workspace,
                 new DiagnosticLogger(diagnosticPath));
@@ -7688,7 +7655,7 @@ internal static class ValidationReport
                 !coordinator.ActiveOccurrenceConfirmed &&
                 coordinator.PersistenceFailureCount == 1 &&
                 coordinator.NextPersistenceRetryUtc == firstDueUtc.AddSeconds(5) &&
-                !session.Current.ReminderStates.ContainsKey(rule.Id);
+                !workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id);
 
             clock.UtcNow = nextDueUtc;
             coordinator.Tick(nextDueUtc);
@@ -7705,12 +7672,12 @@ internal static class ValidationReport
                     new ActiveReminderOccurrenceKey(rule.Id, firstDueUtc)
                 ]) &&
                 failureEventsBeforeBarrierRemoved == 2 &&
-                !session.Current.ReminderStates.ContainsKey(rule.Id);
+                !workspace.Snapshot.Settings.ReminderStates.ContainsKey(rule.Id);
 
             Directory.Delete(blockedTemporaryPath);
             clock.UtcNow = staleRetryUtc;
             coordinator.Tick(staleRetryUtc);
-            var stateAfterStaleRetry = session.Current.ReminderStates.GetValueOrDefault(rule.Id);
+            var stateAfterStaleRetry = workspace.Snapshot.Settings.ReminderStates.GetValueOrDefault(rule.Id);
             var persistedAfterStaleRetry = new SettingsStore(clock: clock)
                 .Load(settingsPath)
                 .Settings
@@ -7725,7 +7692,7 @@ internal static class ValidationReport
                 persistedAfterStaleRetry.LastDeliveredOccurrenceKey == firstOccurrenceKey &&
                 firstWindow?.PersistenceFailureVisible == false &&
                 coordinator.ActiveEntryCount == 1 &&
-                session.Reminders.GetDueOccurrences(session.Current, staleRetryUtc)
+                workspace.GetDueReminderOccurrences(staleRetryUtc)
                     .SingleOrDefault() is { } unresolvedOccurrence &&
                 unresolvedOccurrence.Note.Id == note.Id &&
                 unresolvedOccurrence.Rule.Id == rule.Id &&
@@ -7749,7 +7716,7 @@ internal static class ValidationReport
                 secondWindow.OrderedKeys.SequenceEqual([
                     new ActiveReminderOccurrenceKey(rule.Id, nextDueUtc)
                 ]) &&
-                session.Current.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[rule.Id].LastDeliveredOccurrenceKey ==
                     nextOccurrenceKey;
             var nextAcknowledged = secondWindow?.RequestAcknowledgement(
                 new ActiveReminderOccurrenceKey(rule.Id, nextDueUtc)) == true;
@@ -7759,7 +7726,7 @@ internal static class ValidationReport
                 nextAcknowledged &&
                 coordinator.ActiveWindowCount == 0 &&
                 coordinator.ActiveEntryCount == 0 &&
-                !session.Reminders.GetDue(session.Current, staleRetryUtc)
+                !workspace.GetDueReminders(staleRetryUtc)
                     .Any(candidate => candidate.Id == note.Id);
             return
                 capturedOccurrenceFailed &&
@@ -7796,27 +7763,26 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "退出时强制关闭持久化失败提醒探针",
                     new DateTime(2031, 4, 7),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(firstDueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(firstDueUtc))).Succeeded)
             {
                 return false;
             }
 
-            var noteId = session.Current.Notes.Single().Id;
-            var noteRule = session.Current.Notes.Single().ReminderRules.Single();
-            var beforeFailure = session.SerializeCurrent();
+            var noteId = workspace.Snapshot.Settings.Notes.Single().Id;
+            var noteRule = workspace.Snapshot.Settings.Notes.Single().ReminderRules.Single();
+            var beforeFailure = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
             Directory.CreateDirectory(blockedTemporaryPath);
             coordinator = new ReminderDeliveryCoordinator(
-                new DesktopWorkspace(session),
+                workspace,
                 new DiagnosticLogger(diagnosticPath));
             clock.UtcNow = firstDueUtc;
             coordinator.Tick(firstDueUtc);
@@ -7837,8 +7803,8 @@ internal static class ValidationReport
             var failureEvents = File.ReadLines(diagnosticPath).Count(line =>
                 line.Contains("OneTimeReminderDeliveryPersistFailed", StringComparison.Ordinal));
             var stillPending = ReminderRuleCompatibility.ToLegacy(
-                session.Current,
-                session.Current.Notes.Single(note => note.Id == noteId)) is
+                workspace.Snapshot.Settings,
+                workspace.Snapshot.Settings.Notes.Single(note => note.Id == noteId)) is
                 OnceReminder { Delivery: OnceDeliveryState.Pending };
             Directory.Delete(blockedTemporaryPath);
             var restarted = DesktopWorkspace.Load(
@@ -7857,7 +7823,7 @@ internal static class ValidationReport
                 coordinator.ActiveWindowCount == 0 &&
                 failureEvents >= 1 &&
                 stillPending &&
-                string.Equals(beforeFailure, session.SerializeCurrent(), StringComparison.Ordinal) &&
+                string.Equals(beforeFailure, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), StringComparison.Ordinal) &&
                 sameOccurrenceRestarts;
             return disposeBehavior;
         }
@@ -7888,25 +7854,24 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "先到提醒追加探针",
                     new DateTime(2031, 5, 5),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(firstDueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(firstDueUtc))).Succeeded)
             {
                 return false;
             }
 
-            var firstNote = session.Current.Notes.Single();
+            var firstNote = workspace.Snapshot.Settings.Notes.Single();
             var firstRule = firstNote.ReminderRules.Single();
             var firstKey = new ActiveReminderOccurrenceKey(firstRule.Id, firstDueUtc);
-            coordinator = new ReminderDeliveryCoordinator(new DesktopWorkspace(session), null);
+            coordinator = new ReminderDeliveryCoordinator(workspace, null);
             clock.UtcNow = firstDueUtc;
             coordinator.Tick(clock.UtcNow);
             var center = coordinator.ActiveWindow;
@@ -7917,19 +7882,18 @@ internal static class ValidationReport
                 center.RenderedEntryCount == 1 &&
                 center.OrderedKeys.SequenceEqual([firstKey]);
 
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "后到提醒追加探针",
                     new DateTime(2031, 5, 5),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(secondDueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(secondDueUtc))).Succeeded)
             {
                 return false;
             }
 
-            var secondNote = session.Current.Notes.Single(note =>
+            var secondNote = workspace.Snapshot.Settings.Notes.Single(note =>
                 string.Equals(note.Text, "后到提醒追加探针", StringComparison.Ordinal));
             var secondRule = secondNote.ReminderRules.Single();
             var secondKey = new ActiveReminderOccurrenceKey(secondRule.Id, secondDueUtc);
@@ -7946,9 +7910,9 @@ internal static class ValidationReport
                 sameCenter.EntryCount == 2 &&
                 sameCenter.RenderedEntryCount == 2 &&
                 sameCenter.OrderedKeys.SequenceEqual([firstKey, secondKey]) &&
-                session.Current.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(firstRule, firstDueUtc).ToString() &&
-                session.Current.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(secondRule, secondDueUtc).ToString();
         }
         finally
@@ -7975,36 +7939,33 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(dueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "批量提醒甲",
                     new DateTime(2031, 5, 6),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(dueUtc),
-                    out _) ||
-                !session.TrySaveNote(
+                    ReminderSchedule.CreateOnce(dueUtc))).Succeeded ||
+                !workspace.Apply(new SaveNoteChange(
                     null,
                     "批量提醒乙",
                     new DateTime(2031, 5, 6),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(dueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(dueUtc))).Succeeded)
             {
                 return ReminderCenterExerciseResult.Failed;
             }
 
-            var firstNote = session.Current.Notes[0];
-            var secondNote = session.Current.Notes[1];
+            var firstNote = workspace.Snapshot.Settings.Notes[0];
+            var secondNote = workspace.Snapshot.Settings.Notes[1];
             var firstRule = firstNote.ReminderRules.Single();
             var secondRule = secondNote.ReminderRules.Single();
             var firstKey = new ActiveReminderOccurrenceKey(firstRule.Id, dueUtc);
             var secondKey = new ActiveReminderOccurrenceKey(secondRule.Id, dueUtc);
-            var workspace = new DesktopWorkspace(session);
             workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with
             {
                 NoteSearch = "不会命中任何便签的筛选"
@@ -8061,17 +8022,17 @@ internal static class ValidationReport
             var sameTickBatch =
                 center?.EntryCount == 2 &&
                 center.RenderedEntryCount == 0 &&
-                session.Current.ReminderStates.Count == 0;
+                workspace.Snapshot.Settings.ReminderStates.Count == 0;
             var stableOrdering = center?.OrderedKeys.SequenceEqual([firstKey, secondKey]) == true;
             PumpDispatcher();
             var entriesRendered =
                 center?.RenderedEntryCount == 2 &&
-                session.Current.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[firstRule.Id].LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(firstRule, dueUtc).ToString() &&
-                session.Current.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
+                workspace.Snapshot.Settings.ReminderStates[secondRule.Id].LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(secondRule, dueUtc).ToString();
             var acknowledgementDistinctFromDelivery =
-                session.Current.ReminderStates.Values.All(state =>
+                workspace.Snapshot.Settings.ReminderStates.Values.All(state =>
                     state.LastDeliveredOccurrenceKey is not null &&
                     state.LastAcknowledgedOccurrenceKey is null) &&
                 center?.EntryCount == 2;
@@ -8111,14 +8072,14 @@ internal static class ValidationReport
                 Descendants<ScrollViewer>(center).All(scroller =>
                     !string.IsNullOrWhiteSpace(AutomationProperties.GetName(scroller)));
 
-            var beforeOpenSource = session.SerializeCurrent();
+            var beforeOpenSource = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
             var filterBeforeOpen = workspace.Snapshot.Filter;
             var openSourceRaised = center?.RequestOpenSource(firstKey) == true;
             PumpDispatcher();
             var filterAfterOpen = workspace.Snapshot.Filter;
             var openSourcePreservesState =
                 openSourceRaised &&
-                string.Equals(beforeOpenSource, session.SerializeCurrent(), StringComparison.Ordinal) &&
+                string.Equals(beforeOpenSource, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), StringComparison.Ordinal) &&
                 FiltersEqual(filterBeforeOpen, filterAfterOpen) &&
                 string.Equals(draftText.Text, "必须保留的便签草稿", StringComparison.Ordinal) &&
                 draftDate.SelectedDate == new DateTime(2031, 5, 9) &&
@@ -8147,7 +8108,7 @@ internal static class ValidationReport
                         StringComparison.Ordinal));
 
             Directory.CreateDirectory(blockedTemporaryPath);
-            var beforeAcknowledgementFailure = session.SerializeCurrent();
+            var beforeAcknowledgementFailure = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
             var acknowledgementRequested = center?.RequestAcknowledgement(firstKey) == true;
             var acknowledgementFailureRetainsEntry =
                 acknowledgementRequested &&
@@ -8155,11 +8116,11 @@ internal static class ValidationReport
                 center.IsFailureVisible(firstKey) &&
                 !center.IsAcknowledgeEnabled(firstKey) &&
                 center.RequestOpenSource(firstKey) &&
-                session.Current.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey is null;
+                workspace.Snapshot.Settings.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey is null;
             var acknowledgementFailureIsAtomic =
                 string.Equals(
                     beforeAcknowledgementFailure,
-                    session.SerializeCurrent(),
+                    SettingsContract.SerializeCanonical(workspace.Snapshot.Settings),
                     StringComparison.Ordinal);
 
             Directory.Delete(blockedTemporaryPath);
@@ -8177,7 +8138,7 @@ internal static class ValidationReport
                 center?.EntryCount == 1 &&
                 !center.OrderedKeys.Contains(firstKey) &&
                 center.OrderedKeys.Contains(secondKey) &&
-                session.Current.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey == firstOccurrenceKey &&
+                workspace.Snapshot.Settings.ReminderStates[firstRule.Id].LastAcknowledgedOccurrenceKey == firstOccurrenceKey &&
                 persistedAfterRetry.LastAcknowledgedOccurrenceKey == firstOccurrenceKey;
 
             var secondAcknowledged = center?.RequestAcknowledgement(secondKey) == true;
@@ -8189,14 +8150,13 @@ internal static class ValidationReport
                 coordinator.ActiveEntryCount == 0;
 
             var reopenedDueUtc = dueUtc.AddMinutes(1);
-            var reopenedSaved = session.TrySaveNote(
+            var reopenedSaved = workspace.Apply(new SaveNoteChange(
                 null,
                 "中心关闭后重新提醒",
                 new DateTime(2031, 5, 6),
                 false,
                 Array.Empty<string>(),
-                ReminderSchedule.CreateOnce(reopenedDueUtc),
-                out _);
+                ReminderSchedule.CreateOnce(reopenedDueUtc))).Succeeded;
             clock.UtcNow = reopenedDueUtc;
             coordinator.Tick(reopenedDueUtc);
             var reopenedCenter = coordinator.ActiveWindow;
@@ -8324,24 +8284,23 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(dueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     "验证点击添加便签",
                     new DateTime(2026, 9, 10),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(dueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(dueUtc))).Succeeded)
             {
                 return ReminderCenterCaptureValidation.Failed;
             }
 
             clock.UtcNow = dueUtc;
             coordinator = new ReminderDeliveryCoordinator(
-                new DesktopWorkspace(session),
+                workspace,
                 logger: null);
             coordinator.Tick(dueUtc);
             var center = coordinator.ActiveWindow;
@@ -8350,7 +8309,7 @@ internal static class ValidationReport
                 return ReminderCenterCaptureValidation.Failed;
             }
 
-            var rule = session.Current.Notes.Single().ReminderRules.Single();
+            var rule = workspace.Snapshot.Settings.Notes.Single().ReminderRules.Single();
             var key = new ActiveReminderOccurrenceKey(rule.Id, dueUtc);
             for (var attempt = 0; attempt < 40 && !center.IsAcknowledgeEnabled(key); attempt++)
             {
@@ -8491,27 +8450,25 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(firstDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            var workspace = new DesktopWorkspace(session);
 
             bool TryCreateDueNote(string text, DateTimeOffset dueUtc, out NoteRecord note)
             {
-                if (!session.TrySaveNote(
+                if (!workspace.Apply(new SaveNoteChange(
                         null,
                         text,
                         new DateTime(2031, 6, 1),
                         false,
                         Array.Empty<string>(),
-                        ReminderSchedule.CreateOnce(dueUtc),
-                        out _))
+                        ReminderSchedule.CreateOnce(dueUtc))).Succeeded)
                 {
                     note = null!;
                     return false;
                 }
 
-                note = session.Current.Notes.Single(candidate =>
+                note = workspace.Snapshot.Settings.Notes.Single(candidate =>
                     string.Equals(candidate.Text, text, StringComparison.Ordinal));
                 return true;
             }
@@ -8537,7 +8494,7 @@ internal static class ValidationReport
                 deletedWindow?.IsVisible == true &&
                 deletedWindow.IsFailureVisible(deletedKey);
             Directory.Delete(blockedTemporaryPath);
-            var sourceDeleted = session.TryDeleteNote(deletedNote.Id, out _);
+            var sourceDeleted = workspace.Apply(new DeleteNoteChange(deletedNote.Id)).Succeeded;
             clock.UtcNow = firstDueUtc.AddSeconds(1);
             coordinator.Tick(clock.UtcNow);
             PumpDispatcher();
@@ -8562,14 +8519,13 @@ internal static class ValidationReport
             coordinator.Tick(clock.UtcNow);
             PumpDispatcher();
             var disabledWindow = coordinator.ActiveWindow;
-            var sourceDisabled = session.TrySaveNote(
+            var sourceDisabled = workspace.Apply(new SaveNoteChange(
                 disabledNote.Id,
                 disabledNote.Text,
                 new DateTime(2031, 6, 1),
                 false,
                 disabledNote.TagIds,
-                NoReminder.Instance,
-                out _);
+                NoReminder.Instance)).Succeeded;
             clock.UtcNow = disabledDueUtc.AddSeconds(1);
             coordinator.Tick(clock.UtcNow);
             PumpDispatcher();
@@ -8591,7 +8547,7 @@ internal static class ValidationReport
             coordinator.Tick(clock.UtcNow);
             PumpDispatcher();
             var completedWindow = coordinator.ActiveWindow;
-            var sourceCompleted = session.TrySetNoteCompletion(completedNote.Id, true, out _);
+            var sourceCompleted = workspace.Apply(new SetNoteCompletionChange(completedNote.Id, true)).Succeeded;
             clock.UtcNow = completedDueUtc.AddSeconds(1);
             coordinator.Tick(clock.UtcNow);
             PumpDispatcher();
@@ -8654,37 +8610,34 @@ internal static class ValidationReport
         try
         {
             var clock = new MutableValidationClock(repeatingDueUtc.AddSeconds(-1));
-            var session = ApplicationSession.Load(
+            var workspace = DesktopWorkspace.Load(
                 settingsPath,
                 new SettingsStore(clock: clock));
-            if (!session.TrySaveNote(
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     reminderText,
                     new DateTime(2031, 4, 7),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateOnce(firstDueUtc),
-                    out _))
+                    ReminderSchedule.CreateOnce(firstDueUtc))).Succeeded)
             {
                 return ReminderDeliveryExerciseResult.Failed;
             }
 
-            var onceId = session.Current.Notes.Single().Id;
-            if (!session.TrySaveNote(
+            var onceId = workspace.Snapshot.Settings.Notes.Single().Id;
+            if (!workspace.Apply(new SaveNoteChange(
                     null,
                     repeatingReminderText,
                     new DateTime(2031, 4, 7),
                     false,
                     Array.Empty<string>(),
-                    ReminderSchedule.CreateRepeating(repeatingDueUtc, 60),
-                    out _))
+                    ReminderSchedule.CreateRepeating(repeatingDueUtc, 60))).Succeeded)
             {
                 return ReminderDeliveryExerciseResult.Failed;
             }
 
-            var repeatingId = session.Current.Notes.Single(note =>
+            var repeatingId = workspace.Snapshot.Settings.Notes.Single(note =>
                 string.Equals(note.Text, repeatingReminderText, StringComparison.Ordinal)).Id;
-            var workspace = new DesktopWorkspace(session);
             coordinator = new ReminderDeliveryCoordinator(
                 workspace,
                 new DiagnosticLogger(diagnosticPath));
@@ -8695,10 +8648,10 @@ internal static class ValidationReport
                 .FirstOrDefault(window => Descendants<TextBlock>(window).Any(text =>
                     string.Equals(text.Text, repeatingReminderText, StringComparison.Ordinal)));
             PumpDispatcher();
-            var repeatingNote = session.Current.Notes.Single(note => note.Id == repeatingId);
+            var repeatingNote = workspace.Snapshot.Settings.Notes.Single(note => note.Id == repeatingId);
             var repeatingRule = repeatingNote.ReminderRules.Single();
             var repeatingStatePersisted =
-                session.Current.ReminderStates.TryGetValue(repeatingRule.Id, out var repeatingState) &&
+                workspace.Snapshot.Settings.ReminderStates.TryGetValue(repeatingRule.Id, out var repeatingState) &&
                 repeatingState.HandledThroughUtc == repeatingDueUtc &&
                 repeatingState.LastDeliveredOccurrenceKey ==
                     MinminCountdown.Core.ReminderOccurrenceKey.Create(
@@ -8714,12 +8667,12 @@ internal static class ValidationReport
             var repeatingKey = new ActiveReminderOccurrenceKey(repeatingRule.Id, repeatingDueUtc);
             var repeatingAcknowledged = repeatingWindow?.RequestAcknowledgement(repeatingKey) == true;
             PumpDispatcher();
-            var beforeFailure = session.SerializeCurrent();
+            var beforeFailure = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
             Directory.CreateDirectory(blockedTemporaryPath);
             clock.UtcNow = firstDueUtc;
             coordinator.Tick(firstDueUtc);
             var onceWindow = coordinator.ActiveWindow;
-            var onceRule = session.Current.Notes
+            var onceRule = workspace.Snapshot.Settings.Notes
                 .Single(note => note.Id == onceId)
                 .ReminderRules.Single();
             var onceKey = new ActiveReminderOccurrenceKey(onceRule.Id, firstDueUtc);
@@ -8730,8 +8683,8 @@ internal static class ValidationReport
                     onceEntryRendered |= args.Key == onceKey;
             }
             var pendingBeforeRender = ReminderRuleCompatibility.ToLegacy(
-                session.Current,
-                session.Current.Notes.Single(note => note.Id == onceId)) is OnceReminder
+                workspace.Snapshot.Settings,
+                workspace.Snapshot.Settings.Notes.Single(note => note.Id == onceId)) is OnceReminder
             {
                 Delivery: OnceDeliveryState.Pending
             };
@@ -8745,7 +8698,7 @@ internal static class ValidationReport
                 onceWindow?.IsVisible == true &&
                 !ReferenceEquals(onceWindow, repeatingWindow) &&
                 onceEntryRendered &&
-                !session.Reminders.GetDue(session.Current, firstDueUtc)
+                !workspace.GetDueReminders(firstDueUtc)
                     .Any(note => note.Id == repeatingId);
             var dismiss = onceWindow is null
                 ? null
@@ -8782,7 +8735,7 @@ internal static class ValidationReport
                 coordinator.PersistenceFailureCount == 1 &&
                 coordinator.HasPendingPersistenceRetry &&
                 firstRetryUtc == firstDueUtc.AddSeconds(5) &&
-                string.Equals(beforeFailure, session.SerializeCurrent(), StringComparison.Ordinal);
+                string.Equals(beforeFailure, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), StringComparison.Ordinal);
 
             coordinator.Tick(firstDueUtc.AddSeconds(4));
             var noEarlyRetry = coordinator.PersistenceFailureCount == 1 &&
@@ -8814,8 +8767,8 @@ internal static class ValidationReport
             Directory.Delete(blockedTemporaryPath);
             coordinator.Tick(firstDueUtc.AddSeconds(95));
             var delivered = ReminderRuleCompatibility.ToLegacy(
-                session.Current,
-                session.Current.Notes.Single(note => note.Id == onceId)) is OnceReminder
+                workspace.Snapshot.Settings,
+                workspace.Snapshot.Settings.Notes.Single(note => note.Id == onceId)) is OnceReminder
             {
                 Delivery: OnceDeliveryState.Delivered
             };
@@ -13303,12 +13256,12 @@ internal static class ValidationReport
     }
 
     private static (bool Passed, FloatingReferenceActualCapture Capture) VerifyWorkdayCompletion(
-        FloatingWindow window, ApplicationSession session, MutableValidationClock clock, string settingsPath)
+        FloatingWindow window, DesktopWorkspace workspace, MutableValidationClock clock, string settingsPath)
     {
         var original = clock.UtcNow;
         var savedBytes = File.ReadAllBytes(settingsPath);
-        var savedSettings = SettingsContract.SerializeCanonical(session.Current);
-        var preferences = session.Current.Preferences;
+        var savedSettings = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
+        var preferences = workspace.Snapshot.Settings.Preferences;
         var root = Required<Grid>(window, "TaskWrap");
         var rows = Required<StackPanel>(window, "FloatingRows");
         var income = Required<TextBlock>(window, "FloatingIncome");
@@ -13349,7 +13302,7 @@ internal static class ValidationReport
         Require(window.FloatingCountdownCount == 1 && window.FloatingCountdownTexts.Count == 1 &&
             AutomationProperties.GetName((DependencyObject)secondary.Child).StartsWith("倒计时 七月倒计时", StringComparison.Ordinal),
             "系统收尾必须排除用户计数且普通首行仍为次项。");
-        var due = session.Reminders.GetDueOccurrences(session.Current, end);
+        var due = workspace.GetDueReminderOccurrences(end);
         Require(due.Count == 1 && due[0].Source is NoteReminderSource { Id: "reference-note-1" },
             "下班系统行不能增加提醒 occurrence。");
         Require(Descendants<TextBlock>(card).All(text => text.FontSize >= 12 && SingleLineTextFits(text)) &&
@@ -13391,19 +13344,19 @@ internal static class ValidationReport
         Require(Descendants<TextBlock>(rows).Count(text => text.Text == "今日已赚 ¥••••") == 1 &&
             income.Text == "今日已赚 ¥••••", "切页后收尾遮罩丢失。");
         ToggleIncome();
-        session.Filter.UntaggedOnly = true;
+        workspace.ApplyFilter(workspace.Snapshot.Filter with { UntaggedOnly = true });
         At(end);
         Require(!HasCompletion() && window.FloatingCountdownCount == 1, "激活筛选后收尾应退出且用户记录保留。");
-        session.Filter.UntaggedOnly = false;
+        workspace.ApplyFilter(workspace.Snapshot.Filter with { UntaggedOnly = false });
         At(end);
         Require(HasCompletion(), "清除筛选后应恢复收尾。");
-        Require(session.TrySavePreferences(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd, out _),
+        Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd)).Succeeded,
             "零薪资夹具失败。");
         At(end);
         Require(HasCompletion() && !Descendants<TextBlock>(rows).Any(text => text.Text.Contains("今日已赚", StringComparison.Ordinal)),
             "零薪资收尾不能伪造金额。");
-        Require(session.TrySavePreferences(preferences.DisplayPrecision, preferences.MonthlySalary,
-            preferences.WorkStart, preferences.WorkEnd, out _), "薪资恢复夹具失败。");
+        Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, preferences.MonthlySalary,
+            preferences.WorkStart, preferences.WorkEnd)).Succeeded, "薪资恢复夹具失败。");
         At(end.AddHours(6).AddSeconds(-1));
         Require(HasCompletion(), "北京时间午夜前应保留当日收尾。");
         At(end.AddHours(6));
@@ -13417,20 +13370,20 @@ internal static class ValidationReport
             income.Text == "今日已赚 ￥0.00", "下一工作日零点必须显示新日倒计时及归零金额。");
         At(end.AddYears(1));
         Require(!HasCompletion(), "日历不覆盖的年份不能使用旧年收尾事实。");
-        Require(SettingsContract.SerializeCanonical(session.Current) == savedSettings &&
+        Require(SettingsContract.SerializeCanonical(workspace.Snapshot.Settings) == savedSettings &&
             File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes), "收尾状态改变了持久记录或规则。");
         At(original);
         return (true, capture);
     }
 
     private static bool VerifyFloatingIncomePrivacy(
-        FloatingWindow window, ApplicationSession session, HolidayCalendar calendar, MainWindow manager,
+        FloatingWindow window, DesktopWorkspace workspace, HolidayCalendar calendar, MainWindow manager,
         string assetRoot, string settingsPath, MutableValidationClock clock)
     {
         var income = Required<TextBlock>(window, "FloatingIncome");
         var originalTime = clock.UtcNow;
         var savedBytes = File.ReadAllBytes(settingsPath);
-        var savedSettings = SettingsContract.SerializeCanonical(session.Current);
+        var savedSettings = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
         static void Require(bool condition, string message)
         {
             if (!condition) throw new InvalidOperationException("#229 金额隐私：" + message);
@@ -13508,13 +13461,13 @@ internal static class ValidationReport
         window.UpdateTime(clock.UtcNow);
         RequireHidden();
         Require(File.ReadAllBytes(settingsPath).SequenceEqual(savedBytes) &&
-            SettingsContract.SerializeCanonical(session.Current) == savedSettings, "切换、tick 或切页写入设置。");
+            SettingsContract.SerializeCanonical(workspace.Snapshot.Settings) == savedSettings, "切换、tick 或切页写入设置。");
 
         FloatingWindow? restarted = null;
         try
         {
-            restarted = new FloatingWindow(new DesktopWorkspace(ApplicationSession.Load(settingsPath,
-                new SettingsStore(clock: clock))), calendar, manager, assetRoot)
+            restarted = new FloatingWindow(DesktopWorkspace.Load(settingsPath,
+                new SettingsStore(clock: clock)), calendar, manager, assetRoot)
             { ShowActivated = false, ShowInTaskbar = false, Left = -20000, Top = -20000, Opacity = 0.01 };
             restarted.Show();
             restarted.UpdateTime(clock.UtcNow);
@@ -13531,13 +13484,13 @@ internal static class ValidationReport
         Require(income.Text == "今日已赚 ￥59.97", "Invoke 后未显示最新金额。");
         WindowValidationInput.RaiseKey(income, Key.Enter);
         RequireHidden();
-        var preferences = session.Current.Preferences;
-        Require(session.TrySavePreferences(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd, out _), "零薪资夹具失败。");
+        var preferences = workspace.Snapshot.Settings.Preferences;
+        Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd)).Succeeded, "零薪资夹具失败。");
         window.UpdateTime(clock.UtcNow);
         Require(income.Text == FloatingBottomStatus.CountdownEncouragementText &&
             UIElementAutomationPeer.CreatePeerForElement(income) is null, "鼓励语合同改变。");
-        Require(session.TrySavePreferences(preferences.DisplayPrecision, preferences.MonthlySalary,
-            preferences.WorkStart, preferences.WorkEnd, out _), "薪资恢复夹具失败。");
+        Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, preferences.MonthlySalary,
+            preferences.WorkStart, preferences.WorkEnd)).Succeeded, "薪资恢复夹具失败。");
         window.UpdateTime(clock.UtcNow);
         RequireHidden();
         WindowValidationInput.RaiseKey(income, Key.Space);

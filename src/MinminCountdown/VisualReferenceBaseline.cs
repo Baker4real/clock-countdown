@@ -13,7 +13,7 @@ namespace MinminCountdown;
 internal static class VisualReferenceBaseline
 {
     // 主窗与悬浮窗共用一个版本号；编号跨分支全局分配，换号用 tools/Set-CountdownBaselineVersion.ps1。
-    public const string Version = "2026-10-21-v59";
+    public const string Version = "2026-10-24-v60";
 
     private const string SourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
     private const string SourceAggregateAlgorithm =
@@ -56,15 +56,15 @@ internal static class VisualReferenceBaseline
             "assets/main-decorations/main-countdown-scene-day.png",
             "assets/main-decorations/main-notes-scene-day.png",
             "src/MinminCountdown.Core/DateDisplay.cs",
+            "src/MinminCountdown.Core/DesktopWorkspace.Transactions.cs",
+            "src/MinminCountdown.Core/DesktopWorkspace.cs",
+            "src/MinminCountdown.Core/DomainLogic.cs",
             "src/MinminCountdown.Core/NoteOrdering.cs",
             "src/MinminCountdown.Core/SettingsContract.cs",
             "src/MinminCountdown.Core/SettingsModels.cs",
             "src/MinminCountdown/App.xaml",
-            "src/MinminCountdown/ApplicationSession.cs",
             "src/MinminCountdown/ApplicationTheme.cs",
-            "src/MinminCountdown/DesktopWorkspace.cs",
             "src/MinminCountdown/DeleteUndoOffer.cs",
-            "src/MinminCountdown/DomainLogic.cs",
             "src/MinminCountdown/MainWindow.xaml",
             "src/MinminCountdown/MainWindow.xaml.cs",
             "src/MinminCountdown/MinminCountdown.csproj",
@@ -917,13 +917,13 @@ internal static class VisualReferenceBaseline
             "assets/floating-plush/floating-plush-kuromi-reference.png",
             "assets/floating-plush/floating-plush-mymelody-reference.png",
             "src/MinminCountdown.Core/DateDisplay.cs",
+            "src/MinminCountdown.Core/DesktopWorkspace.Transactions.cs",
+            "src/MinminCountdown.Core/DesktopWorkspace.cs",
+            "src/MinminCountdown.Core/DomainLogic.cs",
             "src/MinminCountdown.Core/NoteOrdering.cs",
             "src/MinminCountdown/App.xaml",
-            "src/MinminCountdown/ApplicationSession.cs",
             "src/MinminCountdown/ApplicationTheme.cs",
-            "src/MinminCountdown/DesktopWorkspace.cs",
             "src/MinminCountdown/DeleteUndoOffer.cs",
-            "src/MinminCountdown/DomainLogic.cs",
             "src/MinminCountdown/FloatingBottomStatus.cs",
             "src/MinminCountdown/FloatingWindow.Countdowns.cs",
             "src/MinminCountdown/FloatingWindow.Notes.cs",

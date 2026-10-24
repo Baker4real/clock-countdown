@@ -13,7 +13,7 @@ Countdown.Validation.psm1 的 Get-CountdownVisualBaseline 读取它。本工具�
 基线目录和现役版本的编号。作废且没留下目录的编号只记在 DESIGN.md，需人工核对。-WhatIf 只列出将改的文件。
 
 .EXAMPLE
-pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-10-21-v59 -WhatIf
+pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-10-24-v60 -WhatIf
 
 -Version 换成重拍当天的日期和下一个未用编号。与现役版本相同或编号不够大时工具拒绝执行，后者会报出下一个可用编号。
 #>

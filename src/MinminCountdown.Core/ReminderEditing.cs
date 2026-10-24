@@ -1,9 +1,8 @@
 using System.Globalization;
-using MinminCountdown.Core;
 
-namespace MinminCountdown;
+namespace MinminCountdown.Core;
 
-internal enum ReminderEditingMode
+public enum ReminderEditingMode
 {
     None,
     Once,
@@ -12,7 +11,7 @@ internal enum ReminderEditingMode
     Calendar
 }
 
-internal enum ReminderIntervalSelection
+public enum ReminderIntervalSelection
 {
     FifteenMinutes,
     ThirtyMinutes,
@@ -20,7 +19,7 @@ internal enum ReminderIntervalSelection
     Custom
 }
 
-internal sealed record ReminderEditingRequest(
+public sealed record ReminderEditingRequest(
     ReminderEditingMode Mode,
     DateTime? FirstDueDate,
     int FirstDueHour,
@@ -31,17 +30,17 @@ internal sealed record ReminderEditingRequest(
     NoteReminder? ExistingReminder,
     bool ScheduleDirty);
 
-internal sealed record ReminderEditingResult(
+public sealed record ReminderEditingResult(
     bool Succeeded,
     NoteReminder Reminder,
     string Error);
 
-internal sealed record ReminderEditingDefaultResult(
+public sealed record ReminderEditingDefaultResult(
     bool Succeeded,
     DateTimeOffset? FirstDueBeijing,
     string Error);
 
-internal sealed record ReminderRuleEditingRequest(
+public sealed record ReminderRuleEditingRequest(
     string? ExistingRuleId,
     ReminderEditingMode Mode,
     DateTime? FirstDueDate,
@@ -59,7 +58,7 @@ internal sealed record ReminderRuleEditingRequest(
     string CalendarMonth = "1",
     bool CalendarLastDay = false);
 
-internal enum ReminderRuleEditingErrorTarget
+public enum ReminderRuleEditingErrorTarget
 {
     None,
     Mode,
@@ -71,13 +70,13 @@ internal enum ReminderRuleEditingErrorTarget
     Collection
 }
 
-internal sealed record ReminderRuleEditingResult(
+public sealed record ReminderRuleEditingResult(
     bool Succeeded,
     IReadOnlyList<ReminderRule> Rules,
     string Error,
     ReminderRuleEditingErrorTarget ErrorTarget);
 
-internal sealed class ReminderEditing
+public sealed class ReminderEditing
 {
     private const string InvalidIntervalError = "自定义提醒必须是 1 到 1440 分钟。";
 
@@ -203,7 +202,7 @@ internal sealed class ReminderEditing
         new(false, NoReminder.Instance, error);
 }
 
-internal sealed class ReminderRuleEditing
+public sealed class ReminderRuleEditing
 {
     private const string PastFirstDueError = "首次提醒时间必须晚于当前北京时间。";
     private readonly IGuidSource _guidSource;

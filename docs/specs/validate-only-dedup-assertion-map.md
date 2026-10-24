@@ -13,7 +13,7 @@ intent: 逐条映射六阶段套件内 13 次 C# 完整 validate-only 与 Exerci
 
 本表为只读调查产物，不改任何代码。行号锚点以 2026-09-14 工作树为准（与 #124 给出的锚点一致）；工作树含未提交的 v22 视觉改动，行号随后续编辑漂移时以符号名复核。
 
-> 2026-10-24 后续：C2 段对 `$adapterValidation` 的无条件 `Assert-Equal $true` 布尔断言、字面量字段循环、字段数与 `name:type` 形状 SHA 钉值已移入 C# 验证事实（`ValidationReport` 的 `Must(值, 含义)`，由 `Seal` 校验并派生 `Valid`），见 `docs/架构与语言迁移.md`。本表其余映射与行号仍是 2026-09-14 的调查快照。
+> 2026-10-24 后续：C2 段对 `$adapterValidation` 的无条件 `Assert-Equal $true` 布尔断言、字面量字段循环、字段数与 `name:type` 形状 SHA 钉值已移入 C# 验证事实（`ValidationReport` 的 `Must(值, 含义)`，由 `Seal` 校验并派生 `Valid`），见 `docs/架构与语言迁移.md`。桌面工作区移入 `MinminCountdown.Core` 后，C2 的 DesktopWorkspace interface 行为与 `DesktopWorkspaceModuleDeep` 兼容字段退出报告，改由 `MinminCountdown.Verification` 进程内 runner 验证。本表其余映射与行号仍是 2026-09-14 的调查快照。
 
 ## 调查口径
 

@@ -1,138 +1,23 @@
 using System.Globalization;
-using MinminCountdown.Core;
 
-namespace MinminCountdown;
+namespace MinminCountdown.Core;
 
-internal sealed class ApplicationSession
+// 工作区的提交事务：候选设置先经规范化与原子落盘，成功后才替换内存状态并同步提醒 cursor。
+public sealed partial class DesktopWorkspace
 {
-    private readonly SettingsStore _store;
-
-    private ApplicationSession(
-        string settingsPath,
-        SettingsStore store,
-        CountdownSettings settings,
-        int sourceSchemaVersion,
-        bool migrated)
-    {
-        SettingsPath = Path.GetFullPath(settingsPath);
-        _store = store;
-        Current = store.Copy(settings);
-        SourceSchemaVersion = sourceSchemaVersion;
-        SettingsWereMigrated = migrated;
-        Reminders.Initialize(Current, store.Clock.UtcNow);
-    }
-
-    public event EventHandler? StateChanged;
-
-    public string SettingsPath { get; }
-
-    public CountdownSettings Current { get; private set; }
-
-    public int SourceSchemaVersion { get; }
-
-    public bool SettingsWereMigrated { get; private set; }
-
-    public SettingsRecoveryOutcome Recovery { get; private init; }
-
-    public WorkspaceFilter Filter { get; } = new();
-
-    public ReminderScheduler Reminders { get; } = new();
-
-    public DateTimeOffset BeijingNow => _store.GetCurrentBeijingTime();
-
-    public DateTimeOffset UtcNow => _store.Clock.UtcNow;
-
-    internal IClock Clock => _store.Clock;
-
-    public static ApplicationSession Load(
-        string settingsPath,
-        SettingsStore? store = null,
-        Func<SettingsRecoveryPrompt, SettingsRecoveryDecision>? chooseRecovery = null,
-        bool recoveryAllowed = true,
-        DateTimeOffset? migrationUtc = null)
-    {
-        var actualStore = store ?? new SettingsStore();
-        var result = actualStore.LoadForStartup(
-            settingsPath,
-            chooseRecovery ?? (_ => SettingsRecoveryDecision.Exit),
-            recoveryAllowed,
-            migrationUtc);
-        return new ApplicationSession(
-            settingsPath,
-            actualStore,
-            result.Settings,
-            result.SourceSchemaVersion,
-            result.Migrated)
-        {
-            Recovery = result.Recovery
-        };
-    }
-
-    public void PersistMigrationIfNeeded()
-    {
-        if (!SettingsWereMigrated)
-        {
-            return;
-        }
-
-        _store.Save(SettingsPath, Current);
-        SettingsWereMigrated = false;
-    }
-
-    public IReadOnlyList<CountdownRecord> GetSortedCountdowns(bool applyFilter = true) =>
-        GetSortedCountdowns(UtcNow, applyFilter);
-
-    internal IReadOnlyList<CountdownRecord> GetSortedCountdowns(
-        DateTimeOffset nowUtc,
-        bool applyFilter = true)
-    {
-        return Current.Countdowns
-            .Where(record => !applyFilter || Filter.Matches(record, nowUtc))
+    private IReadOnlyList<CountdownRecord> GetSortedCountdowns(DateTimeOffset nowUtc, bool applyFilter) =>
+        _current.Countdowns
+            .Where(record => !applyFilter || _filter.Matches(record, nowUtc))
             .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
             .ThenBy(record => record.TargetUtc)
             .ToArray();
-    }
 
-    public IReadOnlyList<NoteRecord> GetSortedNotes(bool applyFilter = true)
-    {
-        return NoteOrdering.Sort(Current.Notes)
-            .Where(note => !applyFilter || Filter.Matches(note))
+    private IReadOnlyList<NoteRecord> GetSortedNotes(bool applyFilter) =>
+        NoteOrdering.Sort(_current.Notes)
+            .Where(note => !applyFilter || _filter.Matches(note))
             .ToArray();
-    }
 
-    public bool TrySaveCountdown(
-        string? existingId,
-        string name,
-        DateTimeOffset targetUtc,
-        IReadOnlyList<string> tagIds,
-        out string error) =>
-        TrySaveCountdownCore(
-            existingId,
-            name,
-            targetUtc,
-            tagIds,
-            reminderRules: null,
-            out error,
-            out _);
-
-    public bool TrySaveCountdown(
-        string? existingId,
-        string name,
-        DateTimeOffset targetUtc,
-        IReadOnlyList<string> tagIds,
-        IReadOnlyList<ReminderRule> reminderRules,
-        out string error,
-        out ReminderRuleEditingErrorTarget errorTarget) =>
-        TrySaveCountdownCore(
-            existingId,
-            name,
-            targetUtc,
-            tagIds,
-            reminderRules,
-            out error,
-            out errorTarget);
-
-    private bool TrySaveCountdownCore(
+    private bool TrySaveCountdown(
         string? existingId,
         string name,
         DateTimeOffset targetUtc,
@@ -141,14 +26,14 @@ internal sealed class ApplicationSession
         out string error,
         out ReminderRuleEditingErrorTarget errorTarget)
     {
-        var records = Current.Countdowns.ToList();
+        var records = _current.Countdowns.ToList();
         var normalizedId = string.IsNullOrWhiteSpace(existingId) ? Guid.NewGuid().ToString("N") : existingId;
         var index = records.FindIndex(item => string.Equals(item.Id, normalizedId, StringComparison.OrdinalIgnoreCase));
         var existing = index >= 0 ? records[index] : null;
         var candidateRules = reminderRules?.ToArray() ??
             existing?.ReminderRules.ToArray() ??
             Array.Empty<ReminderRule>();
-        var commitNow = UtcNow;
+        var commitNow = _store.Clock.UtcNow;
         var scheduleValidation = ReminderRuleEditing.ValidateCountdownRules(
             existing?.ReminderRules ?? Array.Empty<ReminderRule>(),
             candidateRules,
@@ -177,81 +62,40 @@ internal sealed class ApplicationSession
         }
 
         var states = RebuildStatesAfterRuleEdit(
-            Current.ReminderStates,
+            _current.ReminderStates,
             existing?.ReminderRules,
             candidateRules,
             commitNow);
         errorTarget = ReminderRuleEditingErrorTarget.None;
         return TryCommit(
-            Current with { Countdowns = records, ReminderStates = states },
+            _current with { Countdowns = records, ReminderStates = states },
             commitNow,
             out error);
     }
 
-    public bool TryDeleteCountdown(string id, out string error)
+    private bool TryDeleteCountdown(string id, out string error)
     {
-        var records = Current.Countdowns
+        var records = _current.Countdowns
             .Where(record => !string.Equals(record.Id, id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (records.Length == Current.Countdowns.Count)
+        if (records.Length == _current.Countdowns.Count)
         {
             error = "未找到倒计时。";
             return false;
         }
 
-        var removedRuleIds = Current.Countdowns
+        var removedRuleIds = _current.Countdowns
             .Where(record => string.Equals(record.Id, id, StringComparison.OrdinalIgnoreCase))
             .SelectMany(static record => record.ReminderRules)
             .Select(static rule => rule.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var states = Current.ReminderStates
+        var states = _current.ReminderStates
             .Where(pair => !removedRuleIds.Contains(pair.Key))
             .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        return TryCommit(Current with { Countdowns = records, ReminderStates = states }, out error);
+        return TryCommit(_current with { Countdowns = records, ReminderStates = states }, out error);
     }
 
-    public bool TrySaveNote(
-        string? existingId,
-        string text,
-        DateTime? date,
-        bool isCompleted,
-        IReadOnlyList<string> tagIds,
-        int? reminderIntervalMinutes,
-        DateTimeOffset? firstReminderUtc,
-        out string error)
-    {
-        var existing = string.IsNullOrWhiteSpace(existingId)
-            ? null
-            : Current.Notes.FirstOrDefault(
-                note => string.Equals(note.Id, existingId, StringComparison.OrdinalIgnoreCase));
-        if (HasSharedOnlyReminderRule(existing))
-        {
-            error = "包含日历规则的便签不能通过兼容提醒编辑器修改提醒。";
-            return false;
-        }
-
-        NoteReminder reminder = reminderIntervalMinutes is null
-            ? NoReminder.Instance
-            : firstReminderUtc is not null
-                ? ReminderSchedule.CreateRepeating(firstReminderUtc.Value, reminderIntervalMinutes.Value)
-            : existing is not null &&
-              ReminderRuleCompatibility.ToLegacy(Current, existing) is RepeatingReminder repeating &&
-              repeating.Interval.Minutes == reminderIntervalMinutes.Value
-                ? repeating
-                : ReminderSchedule.CreateRepeating(
-                    UtcNow.AddMinutes(reminderIntervalMinutes.Value),
-                    reminderIntervalMinutes.Value);
-        if (existing?.IsCompleted == true && !isCompleted && reminderIntervalMinutes is not null)
-        {
-            reminder = ReminderSchedule.CreateRepeating(
-                UtcNow.AddMinutes(reminderIntervalMinutes.Value),
-                reminderIntervalMinutes.Value);
-        }
-
-        return TrySaveNote(existingId, text, date, isCompleted, tagIds, reminder, out error);
-    }
-
-    public bool TrySaveNote(
+    private bool TrySaveNote(
         string? existingId,
         string text,
         DateTime? date,
@@ -261,7 +105,7 @@ internal sealed class ApplicationSession
         out string error)
     {
         var normalizedId = string.IsNullOrWhiteSpace(existingId) ? Guid.NewGuid().ToString("N") : existingId;
-        var existing = Current.Notes.FirstOrDefault(item =>
+        var existing = _current.Notes.FirstOrDefault(item =>
             string.Equals(item.Id, normalizedId, StringComparison.OrdinalIgnoreCase));
         if (HasSharedOnlyReminderRule(existing))
         {
@@ -292,32 +136,15 @@ internal sealed class ApplicationSession
             isCompleted,
             tagIds,
             reminderRules,
-            out error);
+            out error,
+            out _);
     }
 
     private static bool HasSharedOnlyReminderRule(NoteRecord? note) =>
         note?.ReminderRules.Any(static rule =>
             rule is not (AbsoluteOnceReminderRule or FixedIntervalReminderRule)) == true;
 
-    public bool TrySaveNote(
-        string? existingId,
-        string text,
-        DateTime? date,
-        bool isCompleted,
-        IReadOnlyList<string> tagIds,
-        IReadOnlyList<ReminderRule> reminderRules,
-        out string error) =>
-        TrySaveNote(
-            existingId,
-            text,
-            date,
-            isCompleted,
-            tagIds,
-            reminderRules,
-            out error,
-            out _);
-
-    public bool TrySaveNote(
+    private bool TrySaveNote(
         string? existingId,
         string text,
         DateTime? date,
@@ -328,13 +155,13 @@ internal sealed class ApplicationSession
         out ReminderRuleEditingErrorTarget errorTarget)
     {
         ArgumentNullException.ThrowIfNull(reminderRules);
-        var records = Current.Notes.ToList();
+        var records = _current.Notes.ToList();
         var normalizedId = string.IsNullOrWhiteSpace(existingId) ? Guid.NewGuid().ToString("N") : existingId;
         var index = records.FindIndex(item =>
             string.Equals(item.Id, normalizedId, StringComparison.OrdinalIgnoreCase));
         var existing = index >= 0 ? records[index] : null;
         var candidateRules = reminderRules.ToArray();
-        var commitNow = UtcNow;
+        var commitNow = _store.Clock.UtcNow;
         var scheduleValidation = ReminderRuleEditing.ValidateChangedSchedules(
             existing?.ReminderRules ?? Array.Empty<ReminderRule>(),
             candidateRules,
@@ -363,60 +190,42 @@ internal sealed class ApplicationSession
         }
 
         var states = RebuildStatesAfterRuleEdit(
-            Current.ReminderStates,
+            _current.ReminderStates,
             existing?.ReminderRules,
             candidateRules,
             commitNow);
         errorTarget = ReminderRuleEditingErrorTarget.None;
-        return TryCommit(Current with { Notes = records, ReminderStates = states }, commitNow, out error);
+        return TryCommit(_current with { Notes = records, ReminderStates = states }, commitNow, out error);
     }
 
-    public bool TrySaveNote(
-        string? existingId,
-        string text,
-        DateTime? date,
-        bool isCompleted,
-        IReadOnlyList<string> tagIds,
-        int? reminderIntervalMinutes,
-        out string error) =>
-        TrySaveNote(
-            existingId,
-            text,
-            date,
-            isCompleted,
-            tagIds,
-            reminderIntervalMinutes,
-            (DateTimeOffset?)null,
-            out error);
-
-    public bool TrySetNoteCompletion(string id, bool completed, out string error)
+    private bool TrySetNoteCompletion(string id, bool completed, out string error)
         => TrySetNotesCompletion(new[] { id }, completed, out error);
 
-    public bool TrySetNotesCompletion(IReadOnlyList<string> ids, bool completed, out string error)
+    private bool TrySetNotesCompletion(IReadOnlyList<string> ids, bool completed, out string error)
     {
         if (!TryResolveNotes(ids, out var selected, out error)) return false;
         var transitionUtc = _store.Clock.UtcNow;
-        var records = Current.Notes
+        var records = _current.Notes
             .Select(item => selected.Contains(item.Id)
                 ? item with { IsCompleted = completed }
                 : item)
             .ToArray();
-        var states = Current.ReminderStates.ToDictionary(
+        var states = _current.ReminderStates.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
-        foreach (var note in Current.Notes.Where(note => selected.Contains(note.Id) && note.IsCompleted != completed))
+        foreach (var note in _current.Notes.Where(note => selected.Contains(note.Id) && note.IsCompleted != completed))
         {
             AdvanceNoteRulesThroughTransition(note, transitionUtc, states);
         }
 
-        return TryCommit(Current with { Notes = records, ReminderStates = states }, transitionUtc, out error);
+        return TryCommit(_current with { Notes = records, ReminderStates = states }, transitionUtc, out error);
     }
 
     private bool TryResolveNotes(IReadOnlyList<string> ids, out HashSet<string> selected, out string error)
     {
         selected = ids.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var available = Current.Notes.Select(note => note.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var available = _current.Notes.Select(note => note.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         error = selected.Count == 0 || !selected.IsSubsetOf(available) ? "未找到所选便签，请重新选择。" : string.Empty;
         return error.Length == 0;
     }
@@ -439,11 +248,11 @@ internal sealed class ApplicationSession
             }
 
             var dispositionKey = existing?.LastDispositionOccurrenceKey;
-            if (MinminCountdown.Core.ReminderOccurrenceKey.TryParse(
+            if (ReminderOccurrenceKey.TryParse(
                 existing?.LastDeliveredOccurrenceKey,
                     out var delivered) &&
                 delivered.ScheduledUtc <= normalizedTransitionUtc &&
-                (!MinminCountdown.Core.ReminderOccurrenceKey.TryParse(dispositionKey, out var disposition) ||
+                (!ReminderOccurrenceKey.TryParse(dispositionKey, out var disposition) ||
                  disposition.ScheduledUtc < delivered.ScheduledUtc))
             {
                 dispositionKey = existing!.LastDeliveredOccurrenceKey;
@@ -480,45 +289,7 @@ internal sealed class ApplicationSession
             _ => throw new SettingsValidationException("当前调度器不支持该提醒规则。")
         };
 
-    public bool TryMarkOnceReminderDelivered(
-        string id,
-        DateTimeOffset expectedFirstDueUtc,
-        out string error)
-    {
-        var note = Current.Notes.FirstOrDefault(
-            item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (note is null || ReminderRuleCompatibility.ToLegacy(Current, note) is not OnceReminder
-            {
-                Delivery: OnceDeliveryState.Pending
-            } once || once.FirstDueUtc != expectedFirstDueUtc.ToUniversalTime())
-        {
-            error = "一次性提醒已变化或已送达。";
-            return false;
-        }
-
-        var rule = note.ReminderRules.Single() as AbsoluteOnceReminderRule;
-        if (rule is null)
-        {
-            error = "一次性提醒规则无效。";
-            return false;
-        }
-
-        return TryMarkReminderDelivered(id, rule.Id, rule.ScheduledUtc, out error);
-    }
-
-    public bool TryMarkReminderDelivered(
-        string noteId,
-        string ruleId,
-        DateTimeOffset scheduledUtc,
-        out string error) =>
-        TryMarkReminderDelivered(
-            ReminderSourceKind.Note,
-            noteId,
-            ruleId,
-            scheduledUtc,
-            out error);
-
-    public bool TryMarkReminderDelivered(
+    private bool TryMarkReminderDelivered(
         ReminderSourceKind sourceKind,
         string sourceId,
         string ruleId,
@@ -526,7 +297,7 @@ internal sealed class ApplicationSession
         out string error)
     {
         var rule = FindReminderRule(sourceKind, sourceId, ruleId, out var countdownTargetUtc);
-        Current.ReminderStates.TryGetValue(ruleId, out var existingState);
+        _current.ReminderStates.TryGetValue(ruleId, out var existingState);
         if (rule is null ||
             (!ReminderSchedule.IsOccurrence(rule, scheduledUtc, countdownTargetUtc) &&
              !IsHistoricalRelativeDelivery(rule, scheduledUtc, existingState)))
@@ -536,7 +307,7 @@ internal sealed class ApplicationSession
         }
 
         var normalizedScheduledUtc = scheduledUtc.ToUniversalTime();
-        var occurrence = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+        var occurrence = ReminderOccurrenceKey.Create(
             rule,
             normalizedScheduledUtc);
         if (existingState?.HandledThroughUtc is { } handledThroughUtc)
@@ -558,7 +329,7 @@ internal sealed class ApplicationSession
             }
         }
 
-        var states = Current.ReminderStates.ToDictionary(
+        var states = _current.ReminderStates.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
@@ -567,22 +338,10 @@ internal sealed class ApplicationSession
             normalizedScheduledUtc,
             occurrence.ToString(),
             existingState?.LastDispositionOccurrenceKey);
-        return TryCommit(Current with { ReminderStates = states }, out error);
+        return TryCommit(_current with { ReminderStates = states }, out error);
     }
 
-    public bool TryAcknowledgeReminder(
-        string noteId,
-        string ruleId,
-        DateTimeOffset scheduledUtc,
-        out string error) =>
-        TryAcknowledgeReminder(
-            ReminderSourceKind.Note,
-            noteId,
-            ruleId,
-            scheduledUtc,
-            out error);
-
-    public bool TryAcknowledgeReminder(
+    private bool TryAcknowledgeReminder(
         ReminderSourceKind sourceKind,
         string sourceId,
         string ruleId,
@@ -590,7 +349,7 @@ internal sealed class ApplicationSession
         out string error)
     {
         var rule = FindReminderRule(sourceKind, sourceId, ruleId, out var countdownTargetUtc);
-        Current.ReminderStates.TryGetValue(ruleId, out var knownState);
+        _current.ReminderStates.TryGetValue(ruleId, out var knownState);
         if (rule is null ||
             (!ReminderSchedule.IsOccurrence(rule, scheduledUtc, countdownTargetUtc) &&
              !IsHistoricalRelativeDelivery(rule, scheduledUtc, knownState)))
@@ -599,11 +358,11 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        var occurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+        var occurrenceKey = ReminderOccurrenceKey.Create(
             rule,
             scheduledUtc).ToString();
         var normalizedScheduledUtc = scheduledUtc.ToUniversalTime();
-        if (!Current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
+        if (!_current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
             existingState.HandledThroughUtc is not { } handledThroughUtc ||
             handledThroughUtc < normalizedScheduledUtc ||
             existingState.LastDeliveredOccurrenceKey is null)
@@ -612,7 +371,7 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        if (MinminCountdown.Core.ReminderOccurrenceKey.TryParse(
+        if (ReminderOccurrenceKey.TryParse(
                 existingState.LastDispositionOccurrenceKey,
                 out var lastDispositionOccurrence) &&
             string.Equals(
@@ -625,7 +384,7 @@ internal sealed class ApplicationSession
             return true;
         }
 
-        var states = Current.ReminderStates.ToDictionary(
+        var states = _current.ReminderStates.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
@@ -634,10 +393,10 @@ internal sealed class ApplicationSession
             LastDispositionOccurrenceKey = occurrenceKey,
             ActiveSnooze = null
         };
-        return TryCommit(Current with { ReminderStates = states }, out error);
+        return TryCommit(_current with { ReminderStates = states }, out error);
     }
 
-    public bool TryAcknowledgeReminders(
+    private bool TryAcknowledgeReminders(
         IReadOnlyList<ReminderAcknowledgementRequest> requests,
         out string error)
     {
@@ -647,7 +406,7 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        var states = Current.ReminderStates.ToDictionary(
+        var states = _current.ReminderStates.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
@@ -659,7 +418,7 @@ internal sealed class ApplicationSession
                 request.SourceId,
                 request.RuleId,
                 out var countdownTargetUtc);
-            Current.ReminderStates.TryGetValue(request.RuleId, out var knownState);
+            _current.ReminderStates.TryGetValue(request.RuleId, out var knownState);
             if (rule is null ||
                 (!ReminderSchedule.IsOccurrence(rule, request.ScheduledUtc, countdownTargetUtc) &&
                  !IsHistoricalRelativeDelivery(rule, request.ScheduledUtc, knownState)))
@@ -668,11 +427,11 @@ internal sealed class ApplicationSession
                 return false;
             }
 
-            var occurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+            var occurrenceKey = ReminderOccurrenceKey.Create(
                 rule,
                 request.ScheduledUtc).ToString();
             var normalizedScheduledUtc = request.ScheduledUtc.ToUniversalTime();
-            if (!Current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
+            if (!_current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
                 existingState.HandledThroughUtc is not { } handledThroughUtc ||
                 handledThroughUtc < normalizedScheduledUtc ||
                 existingState.LastDeliveredOccurrenceKey is null)
@@ -681,7 +440,7 @@ internal sealed class ApplicationSession
                 return false;
             }
 
-            if (MinminCountdown.Core.ReminderOccurrenceKey.TryParse(
+            if (ReminderOccurrenceKey.TryParse(
                     existingState.LastDispositionOccurrenceKey,
                     out var lastDispositionOccurrence) &&
                 string.Equals(
@@ -707,28 +466,10 @@ internal sealed class ApplicationSession
             return true;
         }
 
-        return TryCommit(Current with { ReminderStates = states }, out error);
+        return TryCommit(_current with { ReminderStates = states }, out error);
     }
 
-    public bool TrySnoozeReminder(
-        string noteId,
-        string ruleId,
-        DateTimeOffset scheduledUtc,
-        ReminderSnoozeOption option,
-        DateTimeOffset? customBeijing,
-        out string error,
-        out ReminderSnoozeErrorCode errorCode) =>
-        TrySnoozeReminder(
-            ReminderSourceKind.Note,
-            noteId,
-            ruleId,
-            scheduledUtc,
-            option,
-            customBeijing,
-            out error,
-            out errorCode);
-
-    public bool TrySnoozeReminder(
+    private bool TrySnoozeReminder(
         ReminderSourceKind sourceKind,
         string sourceId,
         string ruleId,
@@ -740,7 +481,7 @@ internal sealed class ApplicationSession
     {
         errorCode = ReminderSnoozeErrorCode.None;
         var rule = FindReminderRule(sourceKind, sourceId, ruleId, out var countdownTargetUtc);
-        Current.ReminderStates.TryGetValue(ruleId, out var knownState);
+        _current.ReminderStates.TryGetValue(ruleId, out var knownState);
         if (rule is null ||
             (!ReminderSchedule.IsOccurrence(rule, scheduledUtc, countdownTargetUtc) &&
              !IsHistoricalRelativeDelivery(rule, scheduledUtc, knownState)))
@@ -750,12 +491,12 @@ internal sealed class ApplicationSession
         }
 
         var normalizedScheduledUtc = scheduledUtc.ToUniversalTime();
-        var occurrenceKey = MinminCountdown.Core.ReminderOccurrenceKey.Create(
+        var occurrenceKey = ReminderOccurrenceKey.Create(
             rule,
             normalizedScheduledUtc).ToString();
-        if (!Current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
+        if (!_current.ReminderStates.TryGetValue(rule.Id, out var existingState) ||
             !string.Equals(existingState.LastDeliveredOccurrenceKey, occurrenceKey, StringComparison.Ordinal) ||
-            (MinminCountdown.Core.ReminderOccurrenceKey.TryParse(
+            (ReminderOccurrenceKey.TryParse(
                  existingState.LastDispositionOccurrenceKey,
                  out var disposition) &&
              disposition.ScheduledUtc >= normalizedScheduledUtc))
@@ -783,7 +524,7 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        var states = Current.ReminderStates.ToDictionary(
+        var states = _current.ReminderStates.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
@@ -794,7 +535,7 @@ internal sealed class ApplicationSession
                 normalizedScheduledUtc,
                 snoozeUntilUtc)
         };
-        return TryCommit(Current with { ReminderStates = states }, out error);
+        return TryCommit(_current with { ReminderStates = states }, out error);
     }
 
     private static DateTimeOffset GetTomorrowAtNineUtc(DateTimeOffset actionUtc)
@@ -803,79 +544,79 @@ internal sealed class ApplicationSession
         return CountdownFormatting.ToUtc(tomorrow, 9, 0, 0);
     }
 
-    public bool TryDeleteNote(string id, out string error)
+    private bool TryDeleteNote(string id, out string error)
         => TryDeleteNotes(new[] { id }, out error);
 
-    public bool TryDeleteNotes(IReadOnlyList<string> ids, out string error)
+    private bool TryDeleteNotes(IReadOnlyList<string> ids, out string error)
     {
         if (!TryResolveNotes(ids, out var selected, out error)) return false;
-        var records = Current.Notes
+        var records = _current.Notes
             .Where(note => !selected.Contains(note.Id))
             .ToArray();
 
-        var removedRuleIds = Current.Notes
+        var removedRuleIds = _current.Notes
             .Where(note => selected.Contains(note.Id))
             .SelectMany(static note => note.ReminderRules)
             .Select(static rule => rule.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var states = Current.ReminderStates
+        var states = _current.ReminderStates
             .Where(pair => !removedRuleIds.Contains(pair.Key))
             .ToDictionary(static pair => pair.Key, static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        return TryCommit(Current with { Notes = records, ReminderStates = states }, out error);
+        return TryCommit(_current with { Notes = records, ReminderStates = states }, out error);
     }
 
     // #155：撤销删除——记录与规则提醒状态在同一事务恢复；仅当同 ID 记录不存在时执行，
     // 已被占用的规则状态不覆盖，避免回写比删除后更新的提醒状态。
-    public bool TryRestoreCountdown(
+    private bool TryRestoreCountdown(
         CountdownRecord record,
         IReadOnlyDictionary<string, ReminderRuleState> reminderStates,
         out string error)
     {
-        if (Current.Countdowns.Any(item =>
+        if (_current.Countdowns.Any(item =>
                 string.Equals(item.Id, record.Id, StringComparison.OrdinalIgnoreCase)))
         {
             error = "倒计时已存在，无法撤销删除。";
             return false;
         }
 
-        var states = MergeRestoredReminderStates(Current.ReminderStates, reminderStates);
+        var states = MergeRestoredReminderStates(_current.ReminderStates, reminderStates);
         return TryCommit(
-            Current with { Countdowns = Current.Countdowns.Append(record).ToArray(), ReminderStates = states },
+            _current with { Countdowns = _current.Countdowns.Append(record).ToArray(), ReminderStates = states },
             out error);
     }
 
-    public bool TryRestoreNote(
+    private bool TryRestoreNote(
         NoteRecord record,
         IReadOnlyDictionary<string, ReminderRuleState> reminderStates,
         out string error)
     {
-        if (Current.Notes.Any(item =>
+        if (_current.Notes.Any(item =>
                 string.Equals(item.Id, record.Id, StringComparison.OrdinalIgnoreCase)))
         {
             error = "便签已存在，无法撤销删除。";
             return false;
         }
 
-        var states = MergeRestoredReminderStates(Current.ReminderStates, reminderStates);
+        var states = MergeRestoredReminderStates(_current.ReminderStates, reminderStates);
         return TryCommit(
-            Current with { Notes = Current.Notes.Append(record).ToArray(), ReminderStates = states },
+            _current with { Notes = _current.Notes.Append(record).ToArray(), ReminderStates = states },
             out error);
     }
 
-    public bool TryRestoreNotes(IReadOnlyList<DeletedNoteEntry> records,
+    private bool TryRestoreNotes(IReadOnlyList<DeletedNoteEntry> records,
         IReadOnlyDictionary<string, ReminderRuleState> reminderStates, out string error)
     {
         var ids = records.Select(entry => entry.Record.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (records.Count == 0 || ids.Count != records.Count || Current.Notes.Any(note => ids.Contains(note.Id)))
+        if (records.Count == 0 || ids.Count != records.Count || _current.Notes.Any(note => ids.Contains(note.Id)))
         {
             error = "便签已存在或撤销载荷无效，无法撤销删除。";
             return false;
         }
-        var restored = Current.Notes.ToList();
+        var restored = _current.Notes.ToList();
         foreach (var entry in records.OrderBy(entry => entry.Index))
             restored.Insert(Math.Clamp(entry.Index, 0, restored.Count), entry.Record);
-        return TryCommit(Current with { Notes = restored.ToArray(),
-            ReminderStates = MergeRestoredReminderStates(Current.ReminderStates, reminderStates) }, out error);
+        return TryCommit(_current with { Notes = restored.ToArray(),
+            ReminderStates = MergeRestoredReminderStates(_current.ReminderStates, reminderStates) }, out error);
     }
 
     private static IReadOnlyDictionary<string, ReminderRuleState> MergeRestoredReminderStates(
@@ -894,13 +635,13 @@ internal sealed class ApplicationSession
         return states;
     }
 
-    public bool TryCreateTag(string name, string? color, out TagRecord? tag, out string error)
+    private bool TryCreateTag(string name, string? color, out TagRecord? tag, out string error)
     {
         tag = new TagRecord(Guid.NewGuid().ToString("N"), name, color);
         var createdId = tag.Id;
-        if (TryCommit(Current with { Tags = Current.Tags.Append(tag).ToArray() }, out error))
+        if (TryCommit(_current with { Tags = _current.Tags.Append(tag).ToArray() }, out error))
         {
-            tag = Current.Tags.First(item => string.Equals(item.Id, createdId, StringComparison.OrdinalIgnoreCase));
+            tag = _current.Tags.First(item => string.Equals(item.Id, createdId, StringComparison.OrdinalIgnoreCase));
             return true;
         }
 
@@ -908,10 +649,10 @@ internal sealed class ApplicationSession
         return false;
     }
 
-    public bool TryRenameTag(string id, string name, string? color, out string error)
+    private bool TryRenameTag(string id, string name, string? color, out string error)
     {
         var found = false;
-        var tags = Current.Tags.Select(tag =>
+        var tags = _current.Tags.Select(tag =>
         {
             if (!string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase))
             {
@@ -927,45 +668,50 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        return TryCommit(Current with { Tags = tags }, out error);
+        return TryCommit(_current with { Tags = tags }, out error);
     }
 
-    public bool TryDeleteTag(string id, out string error)
+    private bool TryDeleteTag(string id, out string error)
     {
-        var tags = Current.Tags
+        var tags = _current.Tags
             .Where(tag => !string.Equals(tag.Id, id, StringComparison.OrdinalIgnoreCase))
             .ToArray();
-        if (tags.Length == Current.Tags.Count)
+        if (tags.Length == _current.Tags.Count)
         {
             error = "未找到标签。";
             return false;
         }
 
-        var countdowns = Current.Countdowns
+        var countdowns = _current.Countdowns
             .Select(record => record with
             {
                 TagIds = record.TagIds.Where(
                     tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase)).ToArray()
             })
             .ToArray();
-        var notes = Current.Notes
+        var notes = _current.Notes
             .Select(note => note with
             {
                 TagIds = note.TagIds.Where(
                     tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase)).ToArray()
             })
             .ToArray();
-        var candidate = Current with { Tags = tags, Countdowns = countdowns, Notes = notes };
+        var candidate = _current with { Tags = tags, Countdowns = countdowns, Notes = notes };
         if (!TryCommit(candidate, out error))
         {
             return false;
         }
 
-        Filter.SelectedTagIds.Remove(id);
+        _filter = _filter with
+        {
+            SelectedTagIds = Array.AsReadOnly(_filter.SelectedTagIds
+                .Where(tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase))
+                .ToArray())
+        };
         return true;
     }
 
-    public bool TrySavePreferences(
+    private bool TrySavePreferences(
         string displayPrecision,
         decimal monthlySalary,
         TimeSpan workStart,
@@ -977,8 +723,8 @@ internal sealed class ApplicationSession
             monthlySalary,
             workStart,
             workEnd,
-            Current.Preferences.ThemePreference);
-        return TryCommit(Current with { Preferences = preferences }, out error);
+            _current.Preferences.ThemePreference);
+        return TryCommit(_current with { Preferences = preferences }, out error);
     }
 
     private static bool StateSurvivesRuleEdit(
@@ -1042,14 +788,14 @@ internal sealed class ApplicationSession
         IReadOnlyList<ReminderRule>? rules;
         if (sourceKind == ReminderSourceKind.Countdown)
         {
-            var countdown = Current.Countdowns.FirstOrDefault(item =>
+            var countdown = _current.Countdowns.FirstOrDefault(item =>
                 string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase));
             countdownTargetUtc = countdown?.TargetUtc;
             rules = countdown?.ReminderRules;
         }
         else
         {
-            rules = Current.Notes.FirstOrDefault(item =>
+            rules = _current.Notes.FirstOrDefault(item =>
                 string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase))?.ReminderRules;
         }
 
@@ -1096,7 +842,7 @@ internal sealed class ApplicationSession
         };
     }
 
-    public bool TryCommit(CountdownSettings candidate, out string error) =>
+    private bool TryCommit(CountdownSettings candidate, out string error) =>
         TryCommit(candidate, null, out error);
 
     private bool TryCommit(
@@ -1108,9 +854,9 @@ internal sealed class ApplicationSession
         CountdownSettings canonical;
         try
         {
-            previous = Current;
+            previous = _current;
             canonical = _store.Copy(candidate);
-            _store.Save(SettingsPath, canonical);
+            _store.Save(_settingsPath, canonical);
         }
         catch (Exception exception) when (
             exception is SettingsValidationException or IOException or UnauthorizedAccessException or TimeoutException)
@@ -1119,18 +865,10 @@ internal sealed class ApplicationSession
             return false;
         }
 
-        Current = canonical;
-        Reminders.Synchronize(previous, canonical, commitNow ?? _store.Clock.UtcNow);
+        _current = canonical;
+        _reminders.Synchronize(previous, canonical, commitNow ?? _store.Clock.UtcNow);
         error = string.Empty;
         StateChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
-
-    public string SerializeCurrent() => _store.Serialize(Current);
 }
-
-internal sealed record ReminderAcknowledgementRequest(
-    ReminderSourceKind SourceKind,
-    string SourceId,
-    string RuleId,
-    DateTimeOffset ScheduledUtc);

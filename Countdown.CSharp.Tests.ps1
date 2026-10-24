@@ -5417,7 +5417,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $describeUnsavedExitWorkBody -match '_editingCountdownId is not null' -and
         $describeUnsavedExitWorkBody -match '_editingNoteId is not null \|\| _noteDateDirty \|\| !string\.IsNullOrEmpty\(NoteText\.Text\)') '退出脏描述覆盖显示设置、倒计时编辑器与便签编辑器（#155 源码契约）'
     $reminderRuleEditingSource = Get-Content -LiteralPath (
-        Join-Path $PSScriptRoot 'src\MinminCountdown\ReminderEditing.cs') -Raw -Encoding UTF8
+        Join-Path $PSScriptRoot 'src\MinminCountdown.Core\ReminderEditing.cs') -Raw -Encoding UTF8
     Assert-Equal $true (
         $reminderRuleEditingSource -match 'else if \(existingRules\.Count >= 8\)' -and
         $reminderRuleEditingSource -match '每条记录最多只能包含 8 条提醒规则。') '共享提醒规则编辑器在已有 8 条时拒绝新增第 9 条并归位 Collection 错误（#140 规则 0–8 边界源码契约）'

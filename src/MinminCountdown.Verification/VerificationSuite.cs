@@ -65,6 +65,14 @@ internal static class VerificationSuite
         Run(results, "failed-write-preserves-existing-settings", VerifyFailedWritePreservesExistingSettings);
         Run(results, "replacement-failure-preserves-existing-settings", VerifyReplacementFailurePreservesExistingSettings);
         Run(results, "settings-mutex-name-matches-powershell-contract", VerifySettingsMutexName);
+        Run(results, "desktop-workspace-snapshot-is-frozen-and-filter-raises-one-change", VerifyDesktopWorkspaceSnapshotAndFilter);
+        Run(results, "desktop-workspace-filter-is-one-normalized-immutable-value", VerifyDesktopWorkspaceFilterIsOneNormalizedValue);
+        Run(results, "desktop-workspace-failed-commit-changes-neither-memory-nor-disk", VerifyDesktopWorkspaceFailedCommitChangesNothing);
+        Run(results, "desktop-workspace-observer-failure-surfaces-after-commit", VerifyDesktopWorkspaceObserverFailureSurfacesAfterCommit);
+        Run(results, "desktop-workspace-compatible-once-edit-keeps-rule-id-and-delivery", VerifyDesktopWorkspaceCompatibleOnceEditKeepsRuleId);
+        Run(results, "desktop-workspace-multi-rule-note-keeps-rules-and-states", VerifyDesktopWorkspaceMultiRuleNoteKeepsRulesAndStates);
+        Run(results, "desktop-workspace-note-due-rules-stay-independent", VerifyDesktopWorkspaceNoteDueRulesStayIndependent);
+        Run(results, "desktop-workspace-countdown-relative-reminders-follow-target", VerifyDesktopWorkspaceCountdownRelativeReminders);
         if (externalSettingsPath is not null)
         {
             Run(
@@ -2160,6 +2168,434 @@ internal static class VerificationSuite
         Equal(expected, SettingsMutex.GetWriteMutexName(settingsPath), "设置写入互斥锁名称");
     }
 
+    private static void VerifyDesktopWorkspaceSnapshotAndFilter()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var clock = new CountingClock(nowUtc);
+            var store = new SettingsStore(clock: clock);
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            var stateChangedCount = 0;
+            object? stateChangedSender = null;
+            workspace.StateChanged += (sender, _) =>
+            {
+                stateChangedCount++;
+                stateChangedSender = sender;
+            };
+            Applied(workspace, new SaveCountdownChange(null, "工作区未到期倒计时", nowUtc.AddDays(2), []), "保存未到期倒计时");
+            Applied(workspace, new SaveCountdownChange(null, "工作区已到期倒计时", nowUtc.AddDays(-2), []), "保存已到期倒计时");
+
+            var readsBeforeSnapshot = clock.ReadCount;
+            var unfiltered = workspace.Snapshot;
+            Equal(1, clock.ReadCount - readsBeforeSnapshot, "一次快照读取业务时钟次数");
+            RejectsWrite(
+                () => ((IList<CountdownRecord>)unfiltered.Settings.Countdowns).Clear(),
+                "快照外层倒计时集合");
+            RejectsWrite(
+                () => ((IList<string>)unfiltered.Settings.Countdowns[0].TagIds).Add("绕过写入"),
+                "快照嵌套标签 ID 集合");
+
+            var eventsBeforeFilter = stateChangedCount;
+            workspace.ApplyFilter(unfiltered.Filter with { CountdownStatus = CountdownStatusFilter.Active });
+            Equal(eventsBeforeFilter + 1, stateChangedCount, "换筛选值的状态变更次数");
+            Equal(true, ReferenceEquals(workspace, stateChangedSender), "状态变更事件发送者是工作区");
+            var filtered = workspace.Snapshot;
+            Equal(2, unfiltered.AllCountdowns.Count, "筛选前全部倒计时数");
+            SequenceEqual(
+                new[] { "工作区未到期倒计时" },
+                filtered.VisibleCountdowns.Select(record => record.Name).ToArray(),
+                "只看进行中时的可见倒计时");
+            Equal(2, filtered.AllCountdowns.Count, "筛选后全部倒计时数");
+            Equal(1, filtered.AppliedFilterCount, "已应用筛选数");
+
+            var reloaded = DesktopWorkspace.Load(settingsPath, store).Snapshot;
+            Equal(2, reloaded.Settings.Countdowns.Count, "重新加载后的倒计时数");
+            Equal(nowUtc, reloaded.UtcNow, "快照 UTC 时刻");
+            Equal(TimeSpan.FromHours(8), reloaded.BeijingNow.Offset, "快照北京时间偏移");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceFilterIsOneNormalizedValue()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var store = new SettingsStore(clock: new FixedClock(new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero)));
+            store.Save(
+                settingsPath,
+                CountdownSettings.Empty with
+                {
+                    Tags =
+                    [
+                        new TagRecord("tag-first", "第一标签", null),
+                        new TagRecord("tag-second", "第二标签", null)
+                    ]
+                });
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            var stateChangedCount = 0;
+            workspace.StateChanged += (_, _) => stateChangedCount++;
+
+            // 标签 ID 按序号忽略大小写比较：重复项只留首次出现的写法，顺序不变。
+            var callerTagIds = new[] { "tag-second", "TAG-FIRST", "TAG-SECOND", "tag-first" };
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with
+            {
+                SelectedTagIds = callerTagIds,
+                NoteDate = "2034-05-06",
+                UndatedNotesOnly = true
+            });
+            var stored = workspace.Snapshot.Filter;
+            SequenceEqual(new[] { "tag-second", "TAG-FIRST" }, stored.SelectedTagIds, "去重后的筛选标签 ID");
+            Equal(null, stored.NoteDate, "只看无日期时的具体日期");
+            RejectsWrite(() => ((IList<string>)stored.SelectedTagIds)[0] = "绕过写入", "已存筛选标签 ID 集合");
+            callerTagIds[0] = "调用方改写";
+            SequenceEqual(
+                new[] { "tag-second", "TAG-FIRST" },
+                workspace.Snapshot.Filter.SelectedTagIds,
+                "调用方改写数组后的筛选标签 ID");
+
+            Applied(workspace, new DeleteTagChange("TAG-SECOND"), "删除筛选中的标签");
+            Equal(2, stateChangedCount, "换筛选值与删除标签的状态变更次数");
+            SequenceEqual(new[] { "TAG-FIRST" }, workspace.Snapshot.Filter.SelectedTagIds, "删除标签后的筛选标签 ID");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceFailedCommitChangesNothing()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: new FixedClock(nowUtc)));
+            Applied(workspace, new SaveCountdownChange(null, "已落盘倒计时", nowUtc.AddDays(2), []), "保存首个倒计时");
+            var stateChangedCount = 0;
+            workspace.StateChanged += (_, _) => stateChangedCount++;
+            var memoryBefore = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
+            var diskBefore = File.ReadAllBytes(settingsPath);
+            Directory.CreateDirectory(settingsPath + ".tmp");
+
+            var failed = workspace.Apply(
+                new SaveCountdownChange(null, "不应污染工作区状态的倒计时", nowUtc.AddDays(3), []));
+
+            Equal(false, failed.Succeeded, "落盘失败的提交结果");
+            Equal(0, stateChangedCount, "落盘失败的状态变更次数");
+            Equal(memoryBefore, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), "落盘失败后的内存设置");
+            Equal(true, diskBefore.AsSpan().SequenceEqual(File.ReadAllBytes(settingsPath)), "落盘失败后的设置文件字节");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceObserverFailureSurfacesAfterCommit()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var store = new SettingsStore(clock: new FixedClock(nowUtc));
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            workspace.StateChanged += (_, _) => throw new IOException("observer failure");
+
+            var propagated = false;
+            try
+            {
+                workspace.Apply(new SaveCountdownChange(null, "observer 异常前已落盘", nowUtc.AddDays(3), []));
+            }
+            catch (IOException exception) when (exception.Message == "observer failure")
+            {
+                propagated = true;
+            }
+
+            Equal(true, propagated, "观察者异常传给调用方");
+            Equal(
+                1,
+                workspace.Snapshot.Settings.Countdowns.Count(record => record.Name == "observer 异常前已落盘"),
+                "观察者异常后内存中的倒计时数");
+            Equal(
+                1,
+                DesktopWorkspace.Load(settingsPath, store).Snapshot.Settings.Countdowns
+                    .Count(record => record.Name == "observer 异常前已落盘"),
+                "观察者异常后磁盘上的倒计时数");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceCompatibleOnceEditKeepsRuleId()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var store = new SettingsStore(clock: new FixedClock(nowUtc));
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            var onceDueUtc = nowUtc.AddMinutes(1);
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    null,
+                    "工作区一次性提醒事务",
+                    new DateTime(2034, 5, 6),
+                    false,
+                    [],
+                    ReminderSchedule.CreateOnce(onceDueUtc)),
+                "保存一次性提醒便签");
+            var saved = workspace.Snapshot.Settings.Notes.Single();
+            var ruleId = saved.ReminderRules.Single().Id;
+
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    saved.Id,
+                    "工作区一次性提醒事务（已编辑正文）",
+                    new DateTime(2034, 5, 6),
+                    false,
+                    [],
+                    ReminderRuleCompatibility.ToLegacy(workspace.Snapshot.Settings, saved)),
+                "按兼容提醒编辑正文");
+            Equal(ruleId, workspace.Snapshot.Settings.Notes.Single().ReminderRules.Single().Id, "兼容编辑后的规则 ID");
+
+            var due = workspace.GetDueReminders(nowUtc.AddMinutes(2)).Single(note => note.Id == saved.Id);
+            Equal(true, workspace.ConfirmReminderDisplayed(due, nowUtc.AddMinutes(2)).Succeeded, "确认一次性提醒已显示");
+
+            var reloaded = DesktopWorkspace.Load(settingsPath, store);
+            var settings = reloaded.Snapshot.Settings;
+            var delivered = ReminderRuleCompatibility.ToLegacy(settings, settings.Notes.Single()) as OnceReminder;
+            Equal<OnceDeliveryState?>(OnceDeliveryState.Delivered, delivered?.Delivery, "重新加载后的一次性提醒送达状态");
+            var state = settings.ReminderStates[ruleId];
+            Equal<DateTimeOffset?>(onceDueUtc, state.HandledThroughUtc, "一次性提醒处理到的时刻");
+            Equal(
+                $"{ruleId}|2034-05-06T01:03:03.0000000+00:00",
+                state.LastDeliveredOccurrenceKey,
+                "一次性提醒送达的 occurrence key");
+            Equal(0, reloaded.GetDueReminders(nowUtc).Count, "送达后仍到期的提醒数");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceMultiRuleNoteKeepsRulesAndStates()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var store = new SettingsStore(clock: new FixedClock(nowUtc));
+            var once = new AbsoluteOnceReminderRule("multi-once", nowUtc.AddHours(1));
+            var repeat = new FixedIntervalReminderRule("multi-repeat", nowUtc.AddHours(2), new ReminderInterval(30));
+            var rules = new ReminderRule[] { once, repeat };
+            var onceState = new ReminderRuleState(
+                once.Id,
+                once.ScheduledUtc,
+                ReminderOccurrenceKey.Create(once, once.ScheduledUtc).ToString());
+            var repeatState = new ReminderRuleState(repeat.Id, repeat.FirstDueUtc, null);
+            store.Save(
+                settingsPath,
+                CountdownSettings.Empty with
+                {
+                    Notes = [new NoteRecord("multi-note", "多规则便签", "2034-05-06", false, ["multi-original-tag"], rules)],
+                    Tags =
+                    [
+                        new TagRecord("multi-original-tag", "多规则原标签", null),
+                        new TagRecord("multi-edited-tag", "多规则新标签", null)
+                    ],
+                    ReminderStates = new Dictionary<string, ReminderRuleState>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        [once.Id] = onceState,
+                        [repeat.Id] = repeatState
+                    }
+                });
+            var workspace = DesktopWorkspace.Load(settingsPath, store);
+            NoteRecord Note() => workspace.Snapshot.Settings.Notes.Single();
+            ReminderRuleState? State(string ruleId) =>
+                workspace.Snapshot.Settings.ReminderStates.GetValueOrDefault(ruleId);
+
+            Applied(
+                workspace,
+                new SaveNoteChange("multi-note", "多规则便签（仅正文编辑）", new DateTime(2034, 5, 7), false, ["multi-edited-tag"], rules),
+                "只改正文、日期与标签");
+            Equal("多规则便签（仅正文编辑）", Note().Text, "编辑后的正文");
+            Equal("2034-05-07", Note().Date, "编辑后的日期");
+            SequenceEqual(new[] { "multi-edited-tag" }, Note().TagIds, "编辑后的标签");
+            SequenceEqual(rules, Note().ReminderRules, "编辑后的提醒规则");
+            Equal(onceState, State(once.Id), "编辑后的一次规则状态");
+            Equal(repeatState, State(repeat.Id), "编辑后的重复规则状态");
+
+            Applied(workspace, new SetNoteCompletionChange("multi-note", true), "完成多规则便签");
+            Applied(workspace, new SetNoteCompletionChange("multi-note", false), "重新打开多规则便签");
+            Equal(false, Note().IsCompleted, "重新打开后的完成状态");
+            SequenceEqual(rules, Note().ReminderRules, "完成再打开后的提醒规则");
+            Equal(onceState, State(once.Id), "完成再打开后的一次规则状态");
+            Equal(repeatState, State(repeat.Id), "完成再打开后的重复规则状态");
+
+            // 单提醒兼容编辑会压掉界面看不到的其余规则，必须整条拒绝。
+            var beforeLegacyEdit = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
+            var legacyEdit = workspace.Apply(new SaveNoteChange(
+                "multi-note",
+                "不得压掉隐藏规则",
+                new DateTime(2034, 5, 7),
+                false,
+                [],
+                ReminderSchedule.CreateRepeating(nowUtc.AddHours(3), 45)));
+            Equal(false, legacyEdit.Succeeded, "单提醒兼容编辑覆盖多条规则的结果");
+            Equal(beforeLegacyEdit, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), "拒绝兼容编辑后的内存设置");
+
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    "multi-note",
+                    "多规则便签（删除一次规则）",
+                    new DateTime(2034, 5, 7),
+                    false,
+                    ["multi-edited-tag"],
+                    new ReminderRule[] { repeat }),
+                "删除一次规则");
+            SequenceEqual(new ReminderRule[] { repeat }, Note().ReminderRules, "删除一次规则后的提醒规则");
+            Equal(null, State(once.Id), "删除一次规则后的该规则状态");
+            Equal(repeatState, State(repeat.Id), "删除一次规则后的重复规则状态");
+
+            var failedRules = new ReminderRule[]
+            {
+                repeat,
+                new AbsoluteOnceReminderRule("multi-failed-rule", nowUtc.AddHours(4))
+            };
+            var memoryBeforeFailure = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
+            var diskBeforeFailure = File.ReadAllBytes(settingsPath);
+            Directory.CreateDirectory(settingsPath + ".tmp");
+            var failedSave = workspace.Apply(new SaveNoteChange(
+                "multi-note",
+                "不应提交的规则集合",
+                new DateTime(2034, 5, 8),
+                false,
+                [],
+                failedRules));
+            Directory.Delete(settingsPath + ".tmp");
+            Equal(false, failedSave.Succeeded, "落盘失败的规则保存结果");
+            Equal(memoryBeforeFailure, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), "规则保存落盘失败后的内存设置");
+            Equal(true, diskBeforeFailure.AsSpan().SequenceEqual(File.ReadAllBytes(settingsPath)), "规则保存落盘失败后的设置文件字节");
+            SequenceEqual(
+                new[] { "multi-repeat", "multi-failed-rule" },
+                failedRules.Select(rule => rule.Id).ToArray(),
+                "调用方的候选规则数组");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceNoteDueRulesStayIndependent()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: new FixedClock(nowUtc)));
+            var ruleA = new AbsoluteOnceReminderRule("multi-due-a", nowUtc.AddMinutes(5));
+            var ruleB = new AbsoluteOnceReminderRule("multi-due-b", nowUtc.AddMinutes(6));
+            var dueUtc = nowUtc.AddMinutes(7);
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    null,
+                    "同一便签的两条到期规则",
+                    new DateTime(2034, 5, 6),
+                    false,
+                    [],
+                    new ReminderRule[] { ruleA, ruleB }),
+                "保存两条到期规则");
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            SequenceEqual(
+                new[] { "multi-due-a", "multi-due-b" },
+                workspace.GetDueReminderOccurrences(dueUtc).Select(occurrence => occurrence.Rule.Id).ToArray(),
+                "确认前的到期规则");
+
+            Equal(true, workspace.ConfirmReminderDisplayed(note, ruleA.Id, ruleA.ScheduledUtc).Succeeded, "确认第一条规则已显示");
+            var afterConfirmation = workspace.GetDueReminderOccurrences(dueUtc);
+            SequenceEqual(
+                new[] { "multi-due-a", "multi-due-b" },
+                afterConfirmation.Select(occurrence => occurrence.Rule.Id).ToArray(),
+                "确认第一条后的到期规则");
+            Equal(ruleA.ScheduledUtc, afterConfirmation[0].ScheduledUtc, "第一条规则的 occurrence 时刻");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceCountdownRelativeReminders()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var nowUtc = new DateTimeOffset(2037, 6, 1, 2, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(nowUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var relative = new CountdownRelativeReminderRule("countdown-relative-rule", 60);
+            var initialTargetUtc = nowUtc.AddHours(2);
+            Applied(
+                workspace,
+                new SaveCountdownChange(null, "相对提醒事务探针", initialTargetUtc, [], [relative]),
+                "保存带相对提醒的倒计时");
+            var countdown = workspace.Snapshot.Settings.Countdowns.Single();
+            clock.UtcNow = nowUtc.AddHours(1);
+            var initialDue = workspace.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Equal(ReminderSourceKind.Countdown, initialDue.SourceKind, "相对 occurrence 来源类型");
+            Equal(countdown.Id, initialDue.SourceId, "相对 occurrence 来源 ID");
+            Equal(nowUtc.AddHours(1), initialDue.ScheduledUtc, "目标减提前量的 occurrence 时刻");
+
+            var laterTargetUtc = initialTargetUtc.AddHours(1);
+            Applied(
+                workspace,
+                new SaveCountdownChange(countdown.Id, countdown.Name, laterTargetUtc, countdown.TagIds, countdown.ReminderRules),
+                "目标后移");
+            Equal(0, workspace.GetDueReminderOccurrences(clock.UtcNow).Count, "目标后移后仍到期的旧 occurrence 数");
+            clock.UtcNow = laterTargetUtc.AddMinutes(-60);
+            var laterDue = workspace.GetDueReminderOccurrences(clock.UtcNow).Single();
+            Equal(relative.Id, laterDue.Rule.Id, "目标后移后的规则 ID");
+            Equal(laterTargetUtc.AddMinutes(-60), laterDue.ScheduledUtc, "目标后移后的 occurrence 时刻");
+
+            var earlierTargetUtc = clock.UtcNow.AddMinutes(90);
+            Applied(
+                workspace,
+                new SaveCountdownChange(countdown.Id, countdown.Name, earlierTargetUtc, countdown.TagIds, countdown.ReminderRules),
+                "目标前移");
+            var earlierScheduledUtc = clock.UtcNow.AddMinutes(30);
+            clock.UtcNow = earlierScheduledUtc;
+            Equal(
+                earlierScheduledUtc,
+                workspace.GetDueReminderOccurrences(clock.UtcNow).Single().ScheduledUtc,
+                "目标前移后重算的 occurrence 时刻");
+
+            var memoryBeforeRejection = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
+            var diskBeforeRejection = File.ReadAllBytes(settingsPath);
+            var rejected = workspace.Apply(new SaveCountdownChange(
+                countdown.Id,
+                countdown.Name,
+                clock.UtcNow.AddMinutes(60),
+                countdown.TagIds,
+                countdown.ReminderRules));
+            Equal(false, rejected.Succeeded, "派生时刻已过去的目标保存结果");
+            Equal(ReminderRuleEditingErrorTarget.RelativeOffset, rejected.ReminderRuleErrorTarget, "派生时刻已过去的错误位置");
+            Equal(memoryBeforeRejection, SettingsContract.SerializeCanonical(workspace.Snapshot.Settings), "拒绝后的内存设置");
+            Equal(true, diskBeforeRejection.AsSpan().SequenceEqual(File.ReadAllBytes(settingsPath)), "拒绝后的设置文件字节");
+
+            var current = workspace.Snapshot.Settings.Countdowns.Single();
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Countdown, current.Id, relative.Id, earlierScheduledUtc).Succeeded,
+                "确认倒计时相对 occurrence 已显示");
+            Applied(
+                workspace,
+                new SaveCountdownChange(current.Id, current.Name, current.TargetUtc, current.TagIds, []),
+                "删除倒计时的提醒规则");
+            Equal(false, workspace.Snapshot.Settings.ReminderStates.ContainsKey(relative.Id), "删除规则后残留该规则状态");
+
+            var replacement = new CountdownRelativeReminderRule("countdown-relative-delete", 0);
+            var replacementTargetUtc = clock.UtcNow.AddMinutes(10);
+            Applied(
+                workspace,
+                new SaveCountdownChange(current.Id, current.Name, replacementTargetUtc, current.TagIds, [replacement]),
+                "换上到点提醒规则");
+            clock.UtcNow = replacementTargetUtc;
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Countdown, current.Id, replacement.Id, replacementTargetUtc).Succeeded,
+                "确认到点提醒已显示");
+            Applied(workspace, new DeleteCountdownChange(current.Id), "删除倒计时");
+            Equal(0, workspace.Snapshot.Settings.Countdowns.Count, "删除后的倒计时数");
+            Equal(false, workspace.Snapshot.Settings.ReminderStates.ContainsKey(replacement.Id), "删除倒计时后残留其规则状态");
+        });
+    }
+
     private static void VerifyExternalSettingsFixture(string settingsPath)
     {
         var fullPath = Path.GetFullPath(settingsPath);
@@ -2282,6 +2718,34 @@ internal static class VerificationSuite
         throw new VerificationException($"{subject} 未触发预期失败。");
     }
 
+    private static DesktopWorkspaceChangeResult Applied(
+        DesktopWorkspace workspace,
+        DesktopWorkspaceChange change,
+        string subject)
+    {
+        var result = workspace.Apply(change);
+        if (!result.Succeeded)
+        {
+            throw new VerificationException($"{subject}失败：{result.Error}");
+        }
+
+        return result;
+    }
+
+    private static void RejectsWrite(Action write, string subject)
+    {
+        try
+        {
+            write();
+        }
+        catch (NotSupportedException)
+        {
+            return;
+        }
+
+        throw new VerificationException($"{subject}允许写入。");
+    }
+
     private static string Format<T>(T value)
     {
         return value?.ToString() ?? "<null>";
@@ -2343,6 +2807,16 @@ internal sealed class CountingClock : IClock
             return _utcNow;
         }
     }
+}
+
+internal sealed class SettableClock : IClock
+{
+    public SettableClock(DateTimeOffset utcNow)
+    {
+        UtcNow = utcNow;
+    }
+
+    public DateTimeOffset UtcNow { get; set; }
 }
 
 internal sealed class ReadbackFailingSettingsFileOperations : ISettingsFileOperations

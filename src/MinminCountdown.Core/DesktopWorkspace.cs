@@ -1,57 +1,75 @@
-using MinminCountdown.Core;
+namespace MinminCountdown.Core;
 
-namespace MinminCountdown;
-
-internal sealed class DesktopWorkspace
+// 桌面工作区：管理窗口与悬浮窗共用的一个 module。调用方只读不可变快照、提交变更、换筛选值、处置提醒；
+// 提交事务、规则提醒状态与重复提醒 cursor 是它的 implementation（DesktopWorkspace.Transactions.cs）。
+public sealed partial class DesktopWorkspace
 {
-    private readonly ApplicationSession _session;
+    private readonly SettingsStore _store;
+    private readonly string _settingsPath;
+    private readonly ReminderScheduler _reminders = new();
+    private CountdownSettings _current;
+    private DesktopWorkspaceFilter _filter = DesktopWorkspaceFilter.Empty;
+    private bool _settingsWereMigrated;
 
-    public DesktopWorkspace(ApplicationSession session)
+    private DesktopWorkspace(
+        string settingsPath,
+        SettingsStore store,
+        CountdownSettings settings,
+        bool migrated,
+        SettingsRecoveryOutcome recovery)
     {
-        _session = session;
-        _session.StateChanged += OnSessionStateChanged;
+        _settingsPath = Path.GetFullPath(settingsPath);
+        _store = store;
+        _current = store.Copy(settings);
+        _settingsWereMigrated = migrated;
+        Recovery = recovery;
+        _reminders.Initialize(_current, store.Clock.UtcNow);
     }
 
     public event EventHandler? StateChanged;
 
-    internal IClock Clock => _session.Clock;
+    public IClock Clock => _store.Clock;
 
-    public SettingsRecoveryOutcome Recovery => _session.Recovery;
+    public SettingsRecoveryOutcome Recovery { get; }
 
     public static DesktopWorkspace Load(
         string settingsPath,
         SettingsStore? store = null,
         Func<SettingsRecoveryPrompt, SettingsRecoveryDecision>? chooseRecovery = null,
         bool recoveryAllowed = true,
-        DateTimeOffset? migrationUtc = null) =>
-        new(ApplicationSession.Load(settingsPath, store, chooseRecovery, recoveryAllowed, migrationUtc));
+        DateTimeOffset? migrationUtc = null)
+    {
+        var actualStore = store ?? new SettingsStore();
+        var result = actualStore.LoadForStartup(
+            settingsPath,
+            chooseRecovery ?? (_ => SettingsRecoveryDecision.Exit),
+            recoveryAllowed,
+            migrationUtc);
+        return new DesktopWorkspace(
+            settingsPath,
+            actualStore,
+            result.Settings,
+            result.Migrated,
+            result.Recovery);
+    }
 
     public DesktopWorkspaceSnapshot Snapshot
     {
         get
         {
-            var nowUtc = _session.UtcNow;
-            var filter = new DesktopWorkspaceFilter(
-                FreezeStrings(_session.Filter.SelectedTagIds),
-                _session.Filter.MatchMode,
-                _session.Filter.UntaggedOnly,
-                _session.Filter.CountdownStatus,
-                _session.Filter.NoteStatus,
-                _session.Filter.NoteSearch,
-                _session.Filter.NoteDate,
-                _session.Filter.UndatedNotesOnly);
+            var nowUtc = _store.Clock.UtcNow;
             return new DesktopWorkspaceSnapshot(
-                FreezeSettings(_session.Current),
-                _session.SettingsPath,
-                _session.SettingsWereMigrated,
+                FreezeSettings(_current),
+                _settingsPath,
+                _settingsWereMigrated,
                 nowUtc,
                 ChinaStandardTime.ToBeijingTime(nowUtc),
-                filter,
-                FreezeCountdowns(_session.GetSortedCountdowns(nowUtc)),
-                FreezeCountdowns(_session.GetSortedCountdowns(nowUtc, applyFilter: false)),
-                FreezeNotes(_session.GetSortedNotes()),
-                FreezeNotes(_session.GetSortedNotes(applyFilter: false)),
-                FreezeNotes(_session.GetSortedNotes().Where(note => !note.IsCompleted)));
+                _filter,
+                FreezeCountdowns(GetSortedCountdowns(nowUtc, applyFilter: true)),
+                FreezeCountdowns(GetSortedCountdowns(nowUtc, applyFilter: false)),
+                FreezeNotes(GetSortedNotes(applyFilter: true)),
+                FreezeNotes(GetSortedNotes(applyFilter: false)),
+                FreezeNotes(GetSortedNotes(applyFilter: true).Where(note => !note.IsCompleted)));
         }
     }
 
@@ -59,48 +77,48 @@ internal sealed class DesktopWorkspace
     {
         SaveCountdownChange saveCountdown => ApplySaveCountdown(saveCountdown),
         DeleteCountdownChange deleteCountdown => Result(
-            _session.TryDeleteCountdown(deleteCountdown.Id, out var error),
+            TryDeleteCountdown(deleteCountdown.Id, out var error),
             error),
         RestoreDeletedCountdownChange restoreCountdown => Result(
-            _session.TryRestoreCountdown(
+            TryRestoreCountdown(
                 restoreCountdown.Record,
                 restoreCountdown.ReminderStates,
                 out var restoreCountdownError),
             restoreCountdownError),
         RestoreDeletedNoteChange restoreNote => Result(
-            _session.TryRestoreNote(
+            TryRestoreNote(
                 restoreNote.Record,
                 restoreNote.ReminderStates,
                 out var restoreNoteError),
             restoreNoteError),
         SaveNoteChange saveNote => ApplySaveNote(saveNote),
         SetNoteCompletionChange completion => Result(
-            _session.TrySetNoteCompletion(completion.Id, completion.Completed, out var error),
+            TrySetNoteCompletion(completion.Id, completion.Completed, out var error),
             error),
         SetNotesCompletionChange completion => Result(
-            _session.TrySetNotesCompletion(completion.Ids, completion.Completed, out var error), error),
+            TrySetNotesCompletion(completion.Ids, completion.Completed, out var error), error),
         DeleteNoteChange deleteNote => Result(
-            _session.TryDeleteNote(deleteNote.Id, out var error),
+            TryDeleteNote(deleteNote.Id, out var error),
             error),
-        DeleteNotesChange deleteNotes => Result(_session.TryDeleteNotes(deleteNotes.Ids, out var error), error),
+        DeleteNotesChange deleteNotes => Result(TryDeleteNotes(deleteNotes.Ids, out var error), error),
         RestoreDeletedNotesChange restoreNotes => Result(
-            _session.TryRestoreNotes(restoreNotes.Records, restoreNotes.ReminderStates, out var error), error),
+            TryRestoreNotes(restoreNotes.Records, restoreNotes.ReminderStates, out var error), error),
         CreateTagChange createTag => ApplyCreateTag(createTag),
         RenameTagChange renameTag => Result(
-            _session.TryRenameTag(renameTag.Id, renameTag.Name, renameTag.Color, out var error),
+            TryRenameTag(renameTag.Id, renameTag.Name, renameTag.Color, out var error),
             error),
         DeleteTagChange deleteTag => Result(
-            _session.TryDeleteTag(deleteTag.Id, out var error),
+            TryDeleteTag(deleteTag.Id, out var error),
             error),
         SavePreferencesChange savePreferences => ApplySavePreferences(savePreferences),
         _ => throw new ArgumentOutOfRangeException(nameof(change))
     };
 
     public IReadOnlyList<NoteRecord> GetDueReminders(DateTimeOffset nowUtc) =>
-        FreezeNotes(_session.Reminders.GetDue(_session.Current, nowUtc));
+        FreezeNotes(_reminders.GetDue(_current, nowUtc));
 
     public IReadOnlyList<DueReminderOccurrence> GetDueReminderOccurrences(DateTimeOffset nowUtc) =>
-        Array.AsReadOnly(_session.Reminders.GetDueOccurrences(_session.Current, nowUtc)
+        Array.AsReadOnly(_reminders.GetDueOccurrences(_current, nowUtc)
             .Select(occurrence => new DueReminderOccurrence(
                 FreezeReminderSource(occurrence.Source),
                 FreezeRule(occurrence.Rule),
@@ -128,14 +146,15 @@ internal sealed class DesktopWorkspace
         string ruleId,
         DateTimeOffset scheduledUtc)
     {
-        var succeeded = _session.TryMarkReminderDelivered(
+        var succeeded = TryMarkReminderDelivered(
+            ReminderSourceKind.Note,
             note.Id,
             ruleId,
             scheduledUtc,
             out var error);
         if (succeeded)
         {
-            _session.Reminders.ConfirmDisplayed(note, ruleId, scheduledUtc);
+            _reminders.ConfirmDisplayed(note, ruleId, scheduledUtc);
         }
 
         return Result(succeeded, error);
@@ -147,7 +166,7 @@ internal sealed class DesktopWorkspace
         string ruleId,
         DateTimeOffset scheduledUtc)
     {
-        var succeeded = _session.TryMarkReminderDelivered(
+        var succeeded = TryMarkReminderDelivered(
             sourceKind,
             sourceId,
             ruleId,
@@ -155,14 +174,14 @@ internal sealed class DesktopWorkspace
             out var error);
         if (succeeded)
         {
-            var occurrence = _session.Reminders.GetDueOccurrences(_session.Current, scheduledUtc)
+            var occurrence = _reminders.GetDueOccurrences(_current, scheduledUtc)
                 .FirstOrDefault(candidate =>
                     candidate.Source.Kind == sourceKind &&
                     string.Equals(candidate.Source.Id, sourceId, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(candidate.Rule.Id, ruleId, StringComparison.OrdinalIgnoreCase));
             if (occurrence is not null)
             {
-                _session.Reminders.ConfirmDisplayed(occurrence.Source, ruleId, scheduledUtc);
+                _reminders.ConfirmDisplayed(occurrence.Source, ruleId, scheduledUtc);
             }
         }
 
@@ -185,7 +204,7 @@ internal sealed class DesktopWorkspace
         string ruleId,
         DateTimeOffset scheduledUtc) =>
         Result(
-            _session.TryAcknowledgeReminder(
+            TryAcknowledgeReminder(
                 sourceKind,
                 sourceId,
                 ruleId,
@@ -196,7 +215,7 @@ internal sealed class DesktopWorkspace
     public DesktopWorkspaceChangeResult AcknowledgeReminders(
         IReadOnlyList<ReminderAcknowledgementRequest> requests) =>
         Result(
-            _session.TryAcknowledgeReminders(requests, out var error),
+            TryAcknowledgeReminders(requests, out var error),
             error);
 
     public DesktopWorkspaceChangeResult SnoozeReminder(
@@ -221,7 +240,7 @@ internal sealed class DesktopWorkspace
         ReminderSnoozeOption option,
         DateTimeOffset? customBeijing) =>
         Result(
-            _session.TrySnoozeReminder(
+            TrySnoozeReminder(
                 sourceKind,
                 sourceId,
                 ruleId,
@@ -233,41 +252,33 @@ internal sealed class DesktopWorkspace
             error,
             errorCode);
 
-    public void PersistMigrationIfNeeded() => _session.PersistMigrationIfNeeded();
-
-    public void ApplyFilter(DesktopWorkspaceFilter filter)
+    public void PersistMigrationIfNeeded()
     {
-        _session.Filter.SelectedTagIds.Clear();
-        foreach (var tagId in filter.SelectedTagIds)
+        if (!_settingsWereMigrated)
         {
-            _session.Filter.SelectedTagIds.Add(tagId);
+            return;
         }
 
-        _session.Filter.MatchMode = filter.MatchMode;
-        _session.Filter.UntaggedOnly = filter.UntaggedOnly;
-        _session.Filter.CountdownStatus = filter.CountdownStatus;
-        _session.Filter.NoteStatus = filter.NoteStatus;
-        _session.Filter.NoteSearch = filter.NoteSearch;
-        _session.Filter.NoteDate = filter.UndatedNotesOnly ? null : filter.NoteDate;
-        _session.Filter.UndatedNotesOnly = filter.UndatedNotesOnly;
+        _store.Save(_settingsPath, _current);
+        _settingsWereMigrated = false;
+    }
+
+    // 筛选只存一个不可变值：标签 ID 按序号忽略大小写去重并保留首次出现的顺序，只看无日期时清掉具体日期。
+    public void ApplyFilter(DesktopWorkspaceFilter filter)
+    {
+        _filter = filter with
+        {
+            SelectedTagIds = Array.AsReadOnly(filter.SelectedTagIds
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()),
+            NoteDate = filter.UndatedNotesOnly ? null : filter.NoteDate
+        };
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private DesktopWorkspaceChangeResult ApplySaveCountdown(SaveCountdownChange change)
     {
-        if (change.ReminderRules is null)
-        {
-            return Result(
-                _session.TrySaveCountdown(
-                    change.ExistingId,
-                    change.Name,
-                    change.TargetUtc,
-                    change.TagIds,
-                    out var compatibleError),
-                compatibleError);
-        }
-
-        var succeeded = _session.TrySaveCountdown(
+        var succeeded = TrySaveCountdown(
             change.ExistingId,
             change.Name,
             change.TargetUtc,
@@ -275,17 +286,19 @@ internal sealed class DesktopWorkspace
             change.ReminderRules,
             out var error,
             out var errorTarget);
-        return new DesktopWorkspaceChangeResult(
-            succeeded,
-            error,
-            ReminderRuleErrorTarget: errorTarget);
+        return change.ReminderRules is null
+            ? Result(succeeded, error)
+            : new DesktopWorkspaceChangeResult(
+                succeeded,
+                error,
+                ReminderRuleErrorTarget: errorTarget);
     }
 
     private DesktopWorkspaceChangeResult ApplySaveNote(SaveNoteChange change)
     {
         if (change.ReminderRules is { } reminderRules)
         {
-            var succeeded = _session.TrySaveNote(
+            var succeeded = TrySaveNote(
                 change.ExistingId,
                 change.Text,
                 change.Date,
@@ -301,7 +314,7 @@ internal sealed class DesktopWorkspace
         }
 
         return Result(
-            _session.TrySaveNote(
+            TrySaveNote(
                 change.ExistingId,
                 change.Text,
                 change.Date,
@@ -314,12 +327,12 @@ internal sealed class DesktopWorkspace
 
     private DesktopWorkspaceChangeResult ApplyCreateTag(CreateTagChange change)
     {
-        var succeeded = _session.TryCreateTag(change.Name, change.Color, out var tag, out var error);
+        var succeeded = TryCreateTag(change.Name, change.Color, out var tag, out var error);
         return new DesktopWorkspaceChangeResult(succeeded, error, tag);
     }
 
     private DesktopWorkspaceChangeResult ApplySavePreferences(SavePreferencesChange change) => Result(
-        _session.TrySavePreferences(
+        TrySavePreferences(
             change.DisplayPrecision,
             change.MonthlySalary,
             change.WorkStart,
@@ -335,9 +348,6 @@ internal sealed class DesktopWorkspace
         string error,
         ReminderSnoozeErrorCode snoozeErrorCode) =>
         new(succeeded, error, SnoozeErrorCode: snoozeErrorCode);
-
-    private void OnSessionStateChanged(object? sender, EventArgs eventArgs) =>
-        StateChanged?.Invoke(this, EventArgs.Empty);
 
     private static CountdownSettings FreezeSettings(CountdownSettings settings) =>
         new(
@@ -412,21 +422,20 @@ internal sealed class DesktopWorkspace
         NoteReminderSource note => new NoteReminderSource(FreezeNote(note.Note)),
         _ => throw new ArgumentOutOfRangeException(nameof(source))
     };
-
 }
 
-internal abstract record DesktopWorkspaceChange;
+public abstract record DesktopWorkspaceChange;
 
-internal sealed record SaveCountdownChange(
+public sealed record SaveCountdownChange(
     string? ExistingId,
     string Name,
     DateTimeOffset TargetUtc,
     IReadOnlyList<string> TagIds,
     IReadOnlyList<ReminderRule>? ReminderRules = null) : DesktopWorkspaceChange;
 
-internal sealed record DeleteCountdownChange(string Id) : DesktopWorkspaceChange;
+public sealed record DeleteCountdownChange(string Id) : DesktopWorkspaceChange;
 
-internal sealed record SaveNoteChange : DesktopWorkspaceChange
+public sealed record SaveNoteChange : DesktopWorkspaceChange
 {
     public SaveNoteChange(
         string? existingId,
@@ -475,16 +484,16 @@ internal sealed record SaveNoteChange : DesktopWorkspaceChange
     public IReadOnlyList<ReminderRule>? ReminderRules { get; }
 }
 
-internal sealed record SetNoteCompletionChange(string Id, bool Completed) : DesktopWorkspaceChange;
-internal sealed record SetNotesCompletionChange(IReadOnlyList<string> Ids, bool Completed) : DesktopWorkspaceChange;
+public sealed record SetNoteCompletionChange(string Id, bool Completed) : DesktopWorkspaceChange;
+public sealed record SetNotesCompletionChange(IReadOnlyList<string> Ids, bool Completed) : DesktopWorkspaceChange;
 
-internal sealed record DeleteNoteChange(string Id) : DesktopWorkspaceChange;
-internal sealed record DeleteNotesChange(IReadOnlyList<string> Ids) : DesktopWorkspaceChange;
-internal sealed record DeletedNoteEntry(NoteRecord Record, int Index);
-internal sealed record RestoreDeletedNotesChange(IReadOnlyList<DeletedNoteEntry> Records,
+public sealed record DeleteNoteChange(string Id) : DesktopWorkspaceChange;
+public sealed record DeleteNotesChange(IReadOnlyList<string> Ids) : DesktopWorkspaceChange;
+public sealed record DeletedNoteEntry(NoteRecord Record, int Index);
+public sealed record RestoreDeletedNotesChange(IReadOnlyList<DeletedNoteEntry> Records,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
-internal sealed record DeletedNotesUndo(IReadOnlyList<DeletedNoteEntry> Records,
+public sealed record DeletedNotesUndo(IReadOnlyList<DeletedNoteEntry> Records,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : WorkspaceUndo($"{Records.Count} 条便签")
 {
     public override DesktopWorkspaceChange ToChange() => new RestoreDeletedNotesChange(Records, ReminderStates);
@@ -495,16 +504,16 @@ internal sealed record DeletedNotesUndo(IReadOnlyList<DeletedNoteEntry> Records,
 
 // #155/#214：撤销删除的恢复事务——被删记录与其规则提醒状态在同一事务原样恢复；
 // 不引入通用撤销栈。撤销载荷只保留最近一次删除，由发起删除的窗口呈现。
-internal sealed record RestoreDeletedCountdownChange(
+public sealed record RestoreDeletedCountdownChange(
     CountdownRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
-internal sealed record RestoreDeletedNoteChange(
+public sealed record RestoreDeletedNoteChange(
     NoteRecord Record,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates) : DesktopWorkspaceChange;
 
 // #214/#233：唯一最近操作槽的载荷与反馈。Description 为来源名称或便签正文。
-internal abstract record WorkspaceUndo(string Description)
+public abstract record WorkspaceUndo(string Description)
 {
     public abstract DesktopWorkspaceChange ToChange();
     public abstract string OfferedMessage { get; }
@@ -513,7 +522,7 @@ internal abstract record WorkspaceUndo(string Description)
 }
 
 // #233：完成撤销只重新打开同一便签，不回写旧cursor或已处置的提醒状态。
-internal sealed record CompletedNoteUndo(string Id, string Description) : WorkspaceUndo(Description)
+public sealed record CompletedNoteUndo(string Id, string Description) : WorkspaceUndo(Description)
 {
     public override DesktopWorkspaceChange ToChange() => new SetNoteCompletionChange(Id, false);
     public override string OfferedMessage => $"已完成「{Description}」·";
@@ -521,7 +530,7 @@ internal sealed record CompletedNoteUndo(string Id, string Description) : Worksp
     public override string RestoredMessage => $"已撤销完成便签「{Description}」。";
 }
 
-internal sealed record CompletedNotesUndo(IReadOnlyList<string> Ids) : WorkspaceUndo($"{Ids.Count} 条便签")
+public sealed record CompletedNotesUndo(IReadOnlyList<string> Ids) : WorkspaceUndo($"{Ids.Count} 条便签")
 {
     public override DesktopWorkspaceChange ToChange() => new SetNotesCompletionChange(Ids, false);
     public override string OfferedMessage => $"已完成 {Ids.Count} 条便签 ·";
@@ -530,7 +539,7 @@ internal sealed record CompletedNotesUndo(IReadOnlyList<string> Ids) : Workspace
 }
 
 // #155/#214：删除前捕获记录与规则状态，撤销删除时原样恢复。
-internal sealed record DeletedRecordUndo(
+public sealed record DeletedRecordUndo(
     CountdownRecord? Countdown,
     NoteRecord? Note,
     IReadOnlyDictionary<string, ReminderRuleState> ReminderStates,
@@ -572,26 +581,26 @@ internal sealed record DeletedRecordUndo(
                 StringComparer.OrdinalIgnoreCase);
 }
 
-internal sealed record CreateTagChange(string Name, string? Color) : DesktopWorkspaceChange;
+public sealed record CreateTagChange(string Name, string? Color) : DesktopWorkspaceChange;
 
-internal sealed record RenameTagChange(string Id, string Name, string? Color) : DesktopWorkspaceChange;
+public sealed record RenameTagChange(string Id, string Name, string? Color) : DesktopWorkspaceChange;
 
-internal sealed record DeleteTagChange(string Id) : DesktopWorkspaceChange;
+public sealed record DeleteTagChange(string Id) : DesktopWorkspaceChange;
 
-internal sealed record SavePreferencesChange(
+public sealed record SavePreferencesChange(
     string DisplayPrecision,
     decimal MonthlySalary,
     TimeSpan WorkStart,
     TimeSpan WorkEnd) : DesktopWorkspaceChange;
 
-internal sealed record DesktopWorkspaceChangeResult(
+public sealed record DesktopWorkspaceChangeResult(
     bool Succeeded,
     string Error,
     TagRecord? CreatedTag = null,
     ReminderRuleEditingErrorTarget ReminderRuleErrorTarget = ReminderRuleEditingErrorTarget.None,
     ReminderSnoozeErrorCode SnoozeErrorCode = ReminderSnoozeErrorCode.None);
 
-internal sealed record DesktopWorkspaceFilter(
+public sealed record DesktopWorkspaceFilter(
     IReadOnlyList<string> SelectedTagIds,
     TagMatchMode MatchMode,
     bool UntaggedOnly,
@@ -627,6 +636,62 @@ internal sealed record DesktopWorkspaceFilter(
         (NoteStatus != NoteStatusFilter.All ? 1 : 0) +
         (!string.IsNullOrWhiteSpace(NoteSearch) ? 1 : 0) +
         (NoteDate is not null || UndatedNotesOnly ? 1 : 0);
+
+    public bool Matches(CountdownRecord record, DateTimeOffset nowUtc)
+    {
+        var active = record.TargetUtc > nowUtc;
+        if (CountdownStatus == CountdownStatusFilter.Active && !active ||
+            CountdownStatus == CountdownStatusFilter.Expired && active)
+        {
+            return false;
+        }
+
+        return MatchesTags(record.TagIds);
+    }
+
+    public bool Matches(NoteRecord record)
+    {
+        if (NoteStatus == NoteStatusFilter.Active && record.IsCompleted ||
+            NoteStatus == NoteStatusFilter.Completed && !record.IsCompleted)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(NoteSearch) &&
+            !record.Text.Contains(NoteSearch.Trim(), StringComparison.CurrentCultureIgnoreCase))
+        {
+            return false;
+        }
+
+        if (UndatedNotesOnly && record.Date is not null)
+        {
+            return false;
+        }
+
+        if (NoteDate is not null && !string.Equals(NoteDate, record.Date, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return MatchesTags(record.TagIds);
+    }
+
+    private bool MatchesTags(IReadOnlyList<string> recordTagIds)
+    {
+        if (UntaggedOnly)
+        {
+            return recordTagIds.Count == 0;
+        }
+
+        if (SelectedTagIds.Count == 0)
+        {
+            return true;
+        }
+
+        return MatchMode == TagMatchMode.All
+            ? SelectedTagIds.All(selected => recordTagIds.Contains(selected, StringComparer.OrdinalIgnoreCase))
+            : SelectedTagIds.Any(selected => recordTagIds.Contains(selected, StringComparer.OrdinalIgnoreCase));
+    }
 
     // record 默认相等对 IReadOnlyList 退化为引用相等；激活状态前后两次快照的标签序列
     // 是不同实例，必须按序号逐元素比较（与应用内标签 ID 语义一致的序号忽略大小写）。
@@ -671,7 +736,7 @@ internal sealed record DesktopWorkspaceFilter(
     }
 }
 
-internal sealed record DesktopWorkspaceSnapshot(
+public sealed record DesktopWorkspaceSnapshot(
     CountdownSettings Settings,
     string SettingsPath,
     bool SettingsWereMigrated,
@@ -688,3 +753,9 @@ internal sealed record DesktopWorkspaceSnapshot(
 
     public int AppliedFilterCount => Filter.AppliedCount;
 }
+
+public sealed record ReminderAcknowledgementRequest(
+    ReminderSourceKind SourceKind,
+    string SourceId,
+    string RuleId,
+    DateTimeOffset ScheduledUtc);

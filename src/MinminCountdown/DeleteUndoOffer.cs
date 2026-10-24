@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
+using MinminCountdown.Core;
 
 namespace MinminCountdown;
 

@@ -1,119 +1,34 @@
 using System.Globalization;
-using MinminCountdown.Core;
 
-namespace MinminCountdown;
+namespace MinminCountdown.Core;
 
-internal enum WorkspaceKind
+public enum WorkspaceKind
 {
     Countdowns,
     Notes
 }
 
-internal enum TagMatchMode
+public enum TagMatchMode
 {
     Any,
     All
 }
 
-internal enum CountdownStatusFilter
+public enum CountdownStatusFilter
 {
     All,
     Active,
     Expired
 }
 
-internal enum NoteStatusFilter
+public enum NoteStatusFilter
 {
     All,
     Active,
     Completed
 }
 
-internal sealed class WorkspaceFilter
-{
-    public HashSet<string> SelectedTagIds { get; } = new(StringComparer.OrdinalIgnoreCase);
-
-    public TagMatchMode MatchMode { get; set; } = TagMatchMode.Any;
-
-    public bool UntaggedOnly { get; set; }
-
-    public CountdownStatusFilter CountdownStatus { get; set; } = CountdownStatusFilter.All;
-
-    public NoteStatusFilter NoteStatus { get; set; } = NoteStatusFilter.All;
-
-    public string NoteSearch { get; set; } = string.Empty;
-
-    public string? NoteDate { get; set; }
-
-    public bool UndatedNotesOnly { get; set; }
-
-    public bool HasConstraints =>
-        SelectedTagIds.Count > 0 ||
-        UntaggedOnly ||
-        CountdownStatus != CountdownStatusFilter.All ||
-        NoteStatus != NoteStatusFilter.All ||
-        !string.IsNullOrWhiteSpace(NoteSearch) ||
-        NoteDate is not null ||
-        UndatedNotesOnly;
-
-    public bool Matches(CountdownRecord record, DateTimeOffset nowUtc)
-    {
-        var active = record.TargetUtc > nowUtc;
-        if (CountdownStatus == CountdownStatusFilter.Active && !active ||
-            CountdownStatus == CountdownStatusFilter.Expired && active)
-        {
-            return false;
-        }
-
-        return MatchesTags(record.TagIds);
-    }
-
-    public bool Matches(NoteRecord record)
-    {
-        if (NoteStatus == NoteStatusFilter.Active && record.IsCompleted ||
-            NoteStatus == NoteStatusFilter.Completed && !record.IsCompleted)
-        {
-            return false;
-        }
-
-        if (!string.IsNullOrWhiteSpace(NoteSearch) &&
-            !record.Text.Contains(NoteSearch.Trim(), StringComparison.CurrentCultureIgnoreCase))
-        {
-            return false;
-        }
-
-        if (UndatedNotesOnly && record.Date is not null)
-        {
-            return false;
-        }
-
-        if (NoteDate is not null && !string.Equals(NoteDate, record.Date, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return MatchesTags(record.TagIds);
-    }
-
-    private bool MatchesTags(IReadOnlyList<string> recordTagIds)
-    {
-        if (UntaggedOnly)
-        {
-            return recordTagIds.Count == 0;
-        }
-
-        if (SelectedTagIds.Count == 0)
-        {
-            return true;
-        }
-
-        return MatchMode == TagMatchMode.All
-            ? SelectedTagIds.All(selected => recordTagIds.Contains(selected, StringComparer.OrdinalIgnoreCase))
-            : SelectedTagIds.Any(selected => recordTagIds.Contains(selected, StringComparer.OrdinalIgnoreCase));
-    }
-}
-
-internal static class CountdownFormatting
+public static class CountdownFormatting
 {
     private static readonly TimeZoneInfo BeijingZone =
         TimeZoneInfo.FindSystemTimeZoneById(SettingsSchema.ChinaStandardTimeZoneId);
@@ -148,7 +63,7 @@ internal static class CountdownFormatting
         string.Create(CultureInfo.InvariantCulture, $"{value.Hours:D2}:{value.Minutes:D2}");
 }
 
-internal static class ReminderSchedule
+public static class ReminderSchedule
 {
     public static bool TryCreateFirstDueUtc(
         DateTime? date,
@@ -341,7 +256,7 @@ internal static class ReminderSchedule
     }
 }
 
-internal sealed class ReminderScheduler
+public sealed class ReminderScheduler
 {
     private readonly Dictionary<string, long> _lastRepeatCycles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<CalendarReminderRule, DateTimeOffset?, DateTimeOffset, DateTimeOffset?>
@@ -352,7 +267,7 @@ internal sealed class ReminderScheduler
     {
     }
 
-    internal ReminderScheduler(
+    public ReminderScheduler(
         Func<CalendarReminderRule, DateTimeOffset?, DateTimeOffset, DateTimeOffset?>
             getLatestCalendarOccurrenceUtc)
     {
@@ -678,13 +593,13 @@ internal sealed class ReminderScheduler
     }
 }
 
-internal enum ReminderSourceKind
+public enum ReminderSourceKind
 {
     Countdown,
     Note
 }
 
-internal abstract record ReminderSource
+public abstract record ReminderSource
 {
     public abstract ReminderSourceKind Kind { get; }
     public abstract string Id { get; }
@@ -693,7 +608,7 @@ internal abstract record ReminderSource
     public virtual DateTimeOffset? CountdownTargetUtc => null;
 }
 
-internal sealed record CountdownReminderSource(CountdownRecord Countdown) : ReminderSource
+public sealed record CountdownReminderSource(CountdownRecord Countdown) : ReminderSource
 {
     public override ReminderSourceKind Kind => ReminderSourceKind.Countdown;
     public override string Id => Countdown.Id;
@@ -702,7 +617,7 @@ internal sealed record CountdownReminderSource(CountdownRecord Countdown) : Remi
     public override DateTimeOffset? CountdownTargetUtc => Countdown.TargetUtc;
 }
 
-internal sealed record NoteReminderSource(NoteRecord Note) : ReminderSource
+public sealed record NoteReminderSource(NoteRecord Note) : ReminderSource
 {
     public override ReminderSourceKind Kind => ReminderSourceKind.Note;
     public override string Id => Note.Id;
@@ -710,7 +625,7 @@ internal sealed record NoteReminderSource(NoteRecord Note) : ReminderSource
     public override IReadOnlyList<ReminderRule> ReminderRules => Note.ReminderRules;
 }
 
-internal sealed record DueReminderOccurrence(
+public sealed record DueReminderOccurrence(
     ReminderSource Source,
     ReminderRule Rule,
     DateTimeOffset ScheduledUtc)
@@ -725,7 +640,7 @@ internal sealed record DueReminderOccurrence(
     public NoteRecord Note => ((NoteReminderSource)Source).Note;
 }
 
-internal enum ReminderSnoozeOption
+public enum ReminderSnoozeOption
 {
     TenMinutes,
     ThirtyMinutes,
@@ -734,7 +649,7 @@ internal enum ReminderSnoozeOption
     Custom
 }
 
-internal enum ReminderSnoozeErrorCode
+public enum ReminderSnoozeErrorCode
 {
     None,
     CustomSnoozeNotInFuture

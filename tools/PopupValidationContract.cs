@@ -127,11 +127,10 @@ public static class PopupValidationContractHarness
             "logs", "memory-fixtures", Guid.NewGuid().ToString("N"), "settings.json");
         // The in-memory constructor neither loads nor saves settings. Never use
         // DesktopWorkspace.Load here: this test must not access user data.
-        var session = Activator.CreateInstance(AppType("ApplicationSession"),
+        var workspace = Activator.CreateInstance(CoreType("DesktopWorkspace"),
             BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] {
-                fixturePath, store, settings,
-                CoreType("SettingsSchema").GetField("CurrentVersion").GetValue(null), false }, null);
-        var workspace = Activator.CreateInstance(AppType("DesktopWorkspace"), new[] { session });
+                fixturePath, store, settings, false,
+                Enum.Parse(CoreType("SettingsRecoveryOutcome"), "None") }, null);
         var calendar = (IDisposable)Activator.CreateInstance(AppType("HolidayCalendar"), new object[] { root });
         var windowType = AppType("FloatingWindow");
         var window = (Window)Activator.CreateInstance(windowType,

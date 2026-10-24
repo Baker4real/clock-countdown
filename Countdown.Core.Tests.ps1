@@ -5785,6 +5785,69 @@ try {
     $candidateLauncherSourcePath = Join-Path $transactionTestRoot 'candidate-launcher.exe'
     [System.IO.File]::WriteAllText($candidateLauncherSourcePath, 'new launcher', (New-Object System.Text.UTF8Encoding($false)))
     $candidateLauncherHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateLauncherSourcePath).Hash
+
+    # journal 更新的改名一步失败时，旧 journal 必须原样保留：恢复会跳过没有 journal.json 的事务目录。
+    # 故障注入：只共享读地持有事务目录句柄，同目录的新建与删除照常，改名进该目录在释放前报共享冲突。
+    if (-not ('CountdownTestDirectoryHold' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
+
+public static class CountdownTestDirectoryHold
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafeFileHandle CreateFileW(
+        string fileName, uint desiredAccess, uint shareMode, IntPtr securityAttributes,
+        uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    public static SafeFileHandle Open(string path)
+    {
+        const uint GenericRead = 0x80000000;
+        const uint ShareRead = 0x00000001;
+        const uint OpenExisting = 3;
+        const uint BackupSemantics = 0x02000000;
+        var handle = CreateFileW(path, GenericRead, ShareRead, IntPtr.Zero, OpenExisting, BackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        return handle;
+    }
+
+    public static Task ReleaseAfter(SafeFileHandle handle, int milliseconds)
+    {
+        return Task.Delay(milliseconds).ContinueWith(_ => handle.Dispose(), TaskScheduler.Default);
+    }
+}
+'@
+    }
+    $rollbackJournalPath = Join-Path $rollbackTransaction.transactionPath 'journal.json'
+    $journalBeforeStuckUpdate = [System.IO.File]::ReadAllText($rollbackJournalPath, [System.Text.Encoding]::UTF8)
+    $stuckJournalError = $null
+    $stuckJournalHold = [CountdownTestDirectoryHold]::Open($rollbackTransaction.transactionPath)
+    try {
+        Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $rollbackTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Test $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Test $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath | Out-Null
+    }
+    catch { $stuckJournalError = $_.Exception.Message }
+    finally { $stuckJournalHold.Dispose() }
+    $journalAfterStuckUpdate = if (Test-Path -LiteralPath $rollbackJournalPath -PathType Leaf) { [System.IO.File]::ReadAllText($rollbackJournalPath, [System.Text.Encoding]::UTF8) } else { $null }
+    Assert-Equal $true ([string] $stuckJournalError).Contains($rollbackJournalPath) 'Journal update that cannot be renamed fails with the journal path'
+    Assert-Equal $journalBeforeStuckUpdate $journalAfterStuckUpdate 'Journal update that cannot be renamed keeps the previous journal for recovery'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $rollbackTransaction.transactionPath -Filter 'journal.json.*.tmp').Count 'Journal update leaves no temporary file after giving up'
+
+    $briefJournalError = $null
+    $briefJournalRelease = [CountdownTestDirectoryHold]::ReleaseAfter([CountdownTestDirectoryHold]::Open($rollbackTransaction.transactionPath), 500)
+    try {
+        Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $rollbackTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Test $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Test $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath | Out-Null
+    }
+    catch { $briefJournalError = $_.Exception.Message }
+    finally { $briefJournalRelease.Wait() }
+    Assert-Equal $null $briefJournalError 'Journal update waits out a transient rename hold instead of failing'
+    Assert-Equal 'launcher-candidate-staged' ([string] ((Get-Content -LiteralPath $rollbackJournalPath -Raw -Encoding UTF8 | ConvertFrom-Json).phase)) 'Journal update persists after a transient rename hold'
+
     $rollbackTransaction = Set-CountdownInstallTransactionCandidateLauncherHash -TransactionPath $rollbackTransaction.transactionPath -CandidateLauncherSha256 $candidateLauncherHash -ExpectedInstallPath $transactionInstallPath -ExpectedTaskName "Minmin Countdown Test $transactionSuffix" -ExpectedLegacyTaskName "敏敏子倒计时 Test $transactionSuffix" -ExpectedLauncherPath $transactionLauncherPath -ExpectedLegacyLauncherPath $transactionLegacyLauncherPath -ExpectedLauncherTempPath $transactionLauncherTempPath
     Assert-Equal 'launcher-candidate-staged' $rollbackTransaction.phase 'Transaction persists candidate launcher identity before replacement'
     [System.IO.File]::WriteAllText((Join-Path $transactionInstallPath 'settings.json'), '{"after":true}', (New-Object System.Text.UTF8Encoding($false)))

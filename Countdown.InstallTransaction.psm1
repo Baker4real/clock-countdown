@@ -318,7 +318,32 @@ function Write-CountdownInstallJsonAtomically {
     $temporaryPath = "$resolvedPath.$([guid]::NewGuid().ToString('N')).tmp"
     try {
         [System.IO.File]::WriteAllText($temporaryPath, ($Value | ConvertTo-Json -Depth 8), (New-Object System.Text.UTF8Encoding($false)))
-        Move-Item -LiteralPath $temporaryPath -Destination $resolvedPath -Force
+        # Move-Item -Force 第一次改名失败后会先删目标再改名：扫描占住刚写的临时文件时旧 journal 已被删掉，
+        # 新内容又被下面的 finally 清掉，恢复会跳过没有 journal.json 的事务目录。File.Move 覆盖是一次改名，
+        # 失败时旧文件原样保留；瞬时占用按运行状态文件的同一预算退避约 2 秒，仍失败才带路径抛出。
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                [System.IO.File]::Move($temporaryPath, $resolvedPath, $true)
+                break
+            }
+            catch [System.UnauthorizedAccessException], [System.IO.IOException] {
+                $failure = $_.Exception
+                $transient = $failure -is [System.UnauthorizedAccessException] -or $failure.HResult -in @(0x80070020, 0x80070021)
+                if (-not $transient -or $clock.Elapsed -ge [TimeSpan]::FromSeconds(2)) {
+                    $message = "安装事务文件替换失败：$resolvedPath（尝试 $attempt 次，历时 $($clock.ElapsedMilliseconds) ms）。$($failure.Message)"
+                    $wrapped = if ($failure -is [System.UnauthorizedAccessException]) {
+                        [System.UnauthorizedAccessException]::new($message, $failure)
+                    }
+                    else {
+                        [System.IO.IOException]::new($message, $failure)
+                    }
+                    $wrapped.HResult = $failure.HResult
+                    throw $wrapped
+                }
+                Start-Sleep -Milliseconds ([Math]::Min(20 * $attempt, 200))
+            }
+        }
     }
     finally {
         Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue

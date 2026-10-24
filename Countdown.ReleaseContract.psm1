@@ -163,7 +163,7 @@ $script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-ic
 # 发布包只装办公室安装路径会加载或安装的文件，静态钉值也只覆盖这些文件。C# 源码、测试、构建与验证工具、
 # DESIGN.md 留在仓库：正式部署在构建前按提交 blob 身份核对构建输入（BuildInputFiles），不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
-    'Countdown.InstallTransaction.psm1' = 'B89E634CE9A67183084931C3F9864E27E03C2C6D4CF9BABC3EA5B924262FA08F'
+    'Countdown.InstallTransaction.psm1' = 'E35959D08BA359435BCDEF8BFEACB4518704B924512DE8069F4767F2D649A353'
     'Countdown.InstallLifecycle.psm1' = '87304F33DF58FBD358362DDFC9711756041C606271BC665B0ACA1A80B37212BD'
     'Countdown.RemoteDeployment.psm1' = 'F11A927F40AFFCF933670C609223EE6B2B4C56B2EC576732690F7D39703AF30B'
     'Countdown.TransferLedger.psm1' = 'B3051D0F5AF1F7E0351A9637B076E0402DCC9500A21CC41C02594EC9012D88B8'

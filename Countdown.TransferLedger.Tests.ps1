@@ -595,6 +595,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
     Assert-Equal ([int] $childProcess.ProcessId) ([int] ([string] $childProcess.StandardOutput).Trim()) '受管 command runner 捕获新进程的精确 stdout'
 
     Import-Module (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
     $expectedBindingHash = 'A' * 64
     $mismatchedBindingJson = [pscustomobject][ordered]@{
         SchemaVersion = 1
@@ -826,6 +827,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
             -ExpectedExecutableSha256 $behaviorExecutableHash `
             -ExpectedRemoteHost 'office-host' `
             -ExpectedRemoteUser 'replicator' `
+            -InstallLayout (Get-CountdownInstallLayout) `
             -Adapter $failureAdapter `
             -StopwatchFactory $behaviorStopwatchFactory | Out-Null
     }
@@ -904,6 +906,7 @@ Export-ModuleMember -Function Invoke-CountdownRecordedSshRead, Invoke-CountdownS
         -ExpectedExecutableSha256 $behaviorExecutableHash `
         -ExpectedRemoteHost 'office-host' `
         -ExpectedRemoteUser 'replicator' `
+        -InstallLayout (Get-CountdownInstallLayout) `
         -Adapter $productionAdapter `
         -StopwatchFactory $behaviorStopwatchFactory | Out-Null
     $successLedger = [System.IO.File]::ReadAllText($ledgerPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json

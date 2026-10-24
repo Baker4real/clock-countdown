@@ -979,9 +979,9 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
     if (-not $taskArgumentsMatch) { throw '独立回读计划任务未使用受管 pwsh.exe -STA 薄 adapter 参数。' }
     if (-not $taskWorkingDirectoryMatch) { throw '独立回读计划任务工作目录不一致。' }
 
-    $startup = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'startup-request.json')
-    $runtime = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'runtime-status.json')
-    $acceptance = Read-CountdownRemoteDeploymentReadbackJsonObject -Path (Join-Path ([string] $Expected.InstallPath) 'acceptance-status.json')
+    $startup = Read-CountdownRemoteDeploymentReadbackJsonObject -Path ([string] $Expected.StartupRequestPath)
+    $runtime = Read-CountdownRemoteDeploymentReadbackJsonObject -Path ([string] $Expected.RuntimeStatusPath)
+    $acceptance = Read-CountdownRemoteDeploymentReadbackJsonObject -Path ([string] $Expected.AcceptanceStatusPath)
     $binding = Read-CountdownRemoteDeploymentReadbackJsonObject -Path ([string] $Expected.DeploymentBindingPath)
     Assert-CountdownRemoteDeploymentReadbackJsonShape -Value $startup -Name 'startup-request.json' -ExpectedNames @(
         'schemaVersion', 'launchToken', 'requestedAtUtc', 'acceptanceReadOnly',
@@ -1091,7 +1091,7 @@ function Invoke-CountdownRemoteDeploymentReadbackProbe {
     $executableHashMatch = [string]::Equals($executableSha256, [string] $Expected.ExpectedExecutableSha256, [System.StringComparison]::OrdinalIgnoreCase)
     if (-not $executableHashMatch) { throw '独立回读运行 EXE 哈希与发布合同不一致。' }
 
-    $settingsPath = Join-Path ([string] $Expected.InstallPath) 'settings.json'
+    $settingsPath = [string] $Expected.SettingsPath
     $settingsSha256 = ''
     $settingsLength = 0L
     $settingsMtimeUtc = ''
@@ -1148,6 +1148,7 @@ function New-CountdownRemoteDeploymentIndependentReadbackScript {
         [Parameter(Mandatory)] [string] $ExpectedTokenSha256,
         [Parameter(Mandatory)] [string] $ExpectedDeploymentBindingSha256,
         [Parameter(Mandatory)] [string] $DeploymentBindingPath,
+        [Parameter(Mandatory)] [object] $InstallLayout,
         [AllowEmptyString()] [string] $ExpectedSettingsSha256 = '',
         [long] $ExpectedSettingsLength = 0,
         [AllowEmptyString()] [string] $ExpectedSettingsMtimeUtc = '',
@@ -1166,11 +1167,15 @@ function New-CountdownRemoteDeploymentIndependentReadbackScript {
         ExpectedSettingsLength = $ExpectedSettingsLength
         ExpectedSettingsMtimeUtc = $ExpectedSettingsMtimeUtc
         ExpectedSettingsUnchanged = [bool] $ExpectedSettingsUnchanged
-        InstallPath = 'D:\敏敏子倒计时'
-        TaskName = 'Minmin Countdown'
-        ApplicationPath = 'D:\敏敏子倒计时\敏敏子倒计时.ps1'
-        ExecutablePath = 'D:\敏敏子倒计时\app\MinminCountdown.exe'
-        TaskArguments = '-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File "D:\敏敏子倒计时\敏敏子倒计时.ps1"'
+        InstallPath = [string] $InstallLayout.InstallPath
+        TaskName = [string] $InstallLayout.TaskName
+        ApplicationPath = [string] $InstallLayout.ApplicationPath
+        ExecutablePath = [string] $InstallLayout.ExecutablePath
+        TaskArguments = [string] $InstallLayout.TaskArguments
+        SettingsPath = [string] $InstallLayout.SettingsPath
+        StartupRequestPath = [string] $InstallLayout.StartupRequestPath
+        RuntimeStatusPath = [string] $InstallLayout.RuntimeStatusPath
+        AcceptanceStatusPath = [string] $InstallLayout.AcceptanceStatusPath
     }
     $parameterJson = $parameters | ConvertTo-Json -Compress
     $parameterBase64 = [Convert]::ToBase64String([System.Text.UTF8Encoding]::new($false).GetBytes($parameterJson))
@@ -1402,6 +1407,7 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
         [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
         [Parameter(Mandatory)] [string] $ExpectedRemoteHost,
         [Parameter(Mandatory)] [string] $ExpectedRemoteUser,
+        [Parameter(Mandatory)] [object] $InstallLayout,
         [Parameter(Mandatory)] [object] $Adapter,
         [scriptblock] $StopwatchFactory
     )
@@ -1467,6 +1473,7 @@ function Invoke-CountdownRemoteDeploymentIndependentReadback {
             -ExpectedTokenSha256 ([string] $deploymentBinding.TokenSha256) `
             -ExpectedDeploymentBindingSha256 $DeploymentBindingSha256 `
             -DeploymentBindingPath $RemoteDeploymentBindingPath `
+            -InstallLayout $InstallLayout `
             -ExpectedSettingsSha256 $settingsHashAfter `
             -ExpectedSettingsLength $settingsLengthAfter `
             -ExpectedSettingsMtimeUtc $settingsMtimeUtcAfter `
@@ -1950,12 +1957,14 @@ function Write-CountdownPreRollbackDiagnostics {
         $expectedSession = if ($sessionValue -is [int] -or $sessionValue -is [long]) { [int] $sessionValue } else { 0 }
         $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
         $token = [string] (Get-CountdownPreRollbackValue $state 'LaunchToken')
+        # Begin 取得安装布局前失败时没有 Layout；诊断回退到 Context 的安装目录，不依赖安装事务 module。
+        $layout = Get-CountdownPreRollbackValue $state 'Layout'
         $statusPaths = [ordered]@{}
         foreach ($definition in @(
                 @('startup', 'StartupRequestPath', 'startup-request.json'),
                 @('runtime', 'RuntimeStatusPath', 'runtime-status.json'),
                 @('acceptance', 'AcceptanceStatusPath', 'acceptance-status.json'))) {
-            $statusPath = [string] (Get-CountdownPreRollbackValue $state $definition[1])
+            $statusPath = [string] (Get-CountdownPreRollbackValue $layout $definition[1])
             if ([string]::IsNullOrWhiteSpace($statusPath)) { $statusPath = Join-Path $Context.InstallPath $definition[2] }
             $statusPaths[$definition[0]] = $statusPath
         }
@@ -2197,14 +2206,7 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
         Stage = '初始化'
         RollbackTransactionPath = $null
         InteractiveContext = $null
-        LauncherPath = $null
-        LegacyLauncherPath = $null
-        LauncherTempPath = $null
-        SettingsSnapshotPath = $null
-        SettingsPath = $null
-        StartupRequestPath = $null
-        RuntimeStatusPath = $null
-        AcceptanceStatusPath = $null
+        Layout = $null
         LaunchToken = $null
         ExpectedProcessId = 0
         ExpectedScheduledTaskIdentity = $null
@@ -2259,17 +2261,15 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             # 办公室端只安装、不运行任何测试或窗口验证：验收已在发起端本机跑完，
             # Deploy-OfficeCountdown.ps1 上传前核对同一提交的本机套件证据。
             $interactiveContext = Get-CountdownInteractiveDesktopContext
-            $launcherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.exe'
-            $legacyLauncherPath = Join-Path ([string] $interactiveContext.Desktop) '敏敏子倒计时.cmd'
-            $launcherTempPath = "$launcherPath.new"
             $AdapterState.InteractiveContext = $interactiveContext
-            $AdapterState.LauncherPath = $launcherPath
-            $AdapterState.LegacyLauncherPath = $legacyLauncherPath
-            $AdapterState.LauncherTempPath = $launcherTempPath
+            $AdapterState.Layout = Get-CountdownInstallLayout `
+                -InstallPath $Context.InstallPath `
+                -TaskName $Context.TaskName `
+                -LegacyTaskName $Context.LegacyTaskName `
+                -Desktop ([string] $interactiveContext.Desktop)
             $AdapterState.Stage = '取得安装事务锁'
             $AdapterState.InstallMutex = Enter-CountdownInstallTransactionMutex -TimeoutSeconds 120
 
-            $settingsPath = Join-Path $Context.InstallPath 'settings.json'
             $installerArguments = @{
                 DeferCommit = $true
                 DeferredReceiptPath = $Context.DeferredReceiptPath
@@ -2356,24 +2356,22 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             Invoke-CountdownRemoteDeploymentTrustedFile `
                 -Context $Context `
                 -Location Source `
-                -RelativePath 'Countdown.TransactionAcceptance.psm1' `
-                -Stage '加载事务验收模块' `
+                -RelativePath 'Countdown.InstallLifecycle.psm1' `
+                -Stage '加载安装生命周期模块' `
                 -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
 
-            $applicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
             $AdapterState.Stage = '等待窗口就绪回执'
-            $runtimeStatusPath = Join-Path $Context.InstallPath 'runtime-status.json'
             $runtimeStatus = Wait-CountdownWindowReady `
-                -Path $runtimeStatusPath `
+                -Path $AdapterState.Layout.RuntimeStatusPath `
                 -LaunchToken ([string] $receipt.launchToken) `
                 -ExpectedSessionId ([int] $receipt.interactiveSessionId) `
-                -ExpectedApplicationPath $applicationPath `
+                -ExpectedApplicationPath $AdapterState.Layout.ApplicationPath `
                 -TimeoutSeconds 5 `
                 -PollMilliseconds 250
             $readyDeadline = [datetime]::UtcNow.AddSeconds(5)
             do {
-                $task = Get-ScheduledTask -TaskName $Context.TaskName -ErrorAction Stop
-                $taskInfo = Get-ScheduledTaskInfo -TaskName $Context.TaskName -ErrorAction Stop
+                $task = Get-ScheduledTask -TaskName $AdapterState.Layout.TaskName -ErrorAction Stop
+                $taskInfo = Get-ScheduledTaskInfo -TaskName $AdapterState.Layout.TaskName -ErrorAction Stop
                 if ([string] $task.State -eq 'Ready' -and [long] $taskInfo.LastTaskResult -eq 0) {
                     break
                 }
@@ -2390,11 +2388,6 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
                 throw '计划任务未使用当前 PowerShell 7。'
             }
 
-            $AdapterState.SettingsSnapshotPath = Join-Path ([string] $receipt.transactionPath) 'install-backup\settings.json'
-            $AdapterState.SettingsPath = $settingsPath
-            $AdapterState.StartupRequestPath = Join-Path $Context.InstallPath 'startup-request.json'
-            $AdapterState.RuntimeStatusPath = $runtimeStatusPath
-            $AdapterState.AcceptanceStatusPath = Join-Path $Context.InstallPath 'acceptance-status.json'
             $AdapterState.LaunchToken = [string] $receipt.launchToken
             $AdapterState.ExpectedProcessId = [int] $runtimeStatus.processId
             $AdapterState.ExpectedScheduledTaskIdentity = [string] (Export-ScheduledTask -InputObject $task -ErrorAction Stop)
@@ -2429,73 +2422,20 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             Invoke-CountdownRemoteDeploymentTrustedFile `
                 -Context $Context `
                 -Location Source `
-                -RelativePath 'Countdown.TransactionAcceptance.psm1' `
+                -RelativePath 'Countdown.InstallLifecycle.psm1' `
                 -Stage '准备事务验收' `
                 -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
-            $getInteractiveContext = { Get-CountdownInteractiveDesktopContext }
-            $getScheduledTask = {
-                param([string] $ExpectedTaskName)
-                Get-ScheduledTask -TaskName $ExpectedTaskName -ErrorAction Stop
-            }
-            $getScheduledTaskIdentity = {
-                param([object] $ScheduledTask)
-                [string] (Export-ScheduledTask -InputObject $ScheduledTask -ErrorAction Stop)
-            }
-            $getScheduledTaskInfo = {
-                param([string] $ExpectedTaskName)
-                Get-ScheduledTaskInfo -TaskName $ExpectedTaskName -ErrorAction Stop
-            }
-            $completeTransaction = {
-                $AdapterState.Stage = '提交安装事务'
-                Complete-CountdownInstallTransaction `
-                    -TransactionPath $AdapterState.RollbackTransactionPath `
-                    -ExpectedInstallPath $Context.InstallPath `
-                    -ExpectedTaskName $Context.TaskName `
-                    -ExpectedLegacyTaskName $Context.LegacyTaskName `
-                    -ExpectedLauncherPath $AdapterState.LauncherPath `
-                    -ExpectedLegacyLauncherPath $AdapterState.LegacyLauncherPath `
-                    -ExpectedLauncherTempPath $AdapterState.LauncherTempPath
-            }
-            $removeCommittedTransaction = {
-                $AdapterState.Stage = '清理已提交事务'
-                $moveCommittedTransaction = {
-                    param([string] $Source, [string] $Destination)
-                    # InstallTransaction 只在 journal 写入 committed 后调用此动作；移动失败也已不可回滚。
-                    $AdapterState.Committed = $true
-                    Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
-                }
-                Remove-CountdownCommittedInstallTransaction `
-                    -TransactionPath $AdapterState.RollbackTransactionPath `
-                    -ExpectedInstallPath $Context.InstallPath `
-                    -ExpectedTaskName $Context.TaskName `
-                    -ExpectedLegacyTaskName $Context.LegacyTaskName `
-                    -ExpectedLauncherPath $AdapterState.LauncherPath `
-                    -ExpectedLegacyLauncherPath $AdapterState.LegacyLauncherPath `
-                    -ExpectedLauncherTempPath $AdapterState.LauncherTempPath `
-                    -MoveAction $moveCommittedTransaction
-            }
-            $acceptanceArguments = @{
-                StartupRequestPath = $AdapterState.StartupRequestPath
-                RuntimeStatusPath = $AdapterState.RuntimeStatusPath
-                AcceptanceStatusPath = $AdapterState.AcceptanceStatusPath
-                LaunchToken = $AdapterState.LaunchToken
-                ExpectedInteractiveContext = $AdapterState.InteractiveContext
-                ExpectedProcessId = $AdapterState.ExpectedProcessId
-                ExpectedSessionId = [int] $AdapterState.InteractiveContext.SessionId
-                ExpectedApplicationPath = Join-Path $Context.InstallPath '敏敏子倒计时.ps1'
-                TaskName = $Context.TaskName
-                ExpectedScheduledTaskIdentity = $AdapterState.ExpectedScheduledTaskIdentity
-                SettingsSnapshotPath = $AdapterState.SettingsSnapshotPath
-                SettingsPath = $AdapterState.SettingsPath
-                GetInteractiveContext = $getInteractiveContext
-                GetScheduledTask = $getScheduledTask
-                GetScheduledTaskIdentity = $getScheduledTaskIdentity
-                GetScheduledTaskInfo = $getScheduledTaskInfo
-                CompleteTransaction = $completeTransaction
-                RemoveCommittedTransaction = $removeCommittedTransaction
-            }
             $AdapterState.Stage = '执行事务验收'
-            Invoke-CountdownTransactionAcceptance @acceptanceArguments
+            # 生命周期在 journal 写入 committed 后才回调 OnCommitted；此后移动失败也已不可回滚。
+            Complete-CountdownInstallation `
+                -Layout $AdapterState.Layout `
+                -TransactionPath $AdapterState.RollbackTransactionPath `
+                -InteractiveContext $AdapterState.InteractiveContext `
+                -LaunchToken $AdapterState.LaunchToken `
+                -ExpectedProcessId $AdapterState.ExpectedProcessId `
+                -ExpectedScheduledTaskIdentity $AdapterState.ExpectedScheduledTaskIdentity `
+                -OnStage { param([string] $Stage) $AdapterState.Stage = $Stage } `
+                -OnCommitted { $AdapterState.Committed = $true }
         }
         Rollback = {
             param($AdapterState, $Context, $Candidate)
@@ -2518,43 +2458,38 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
 
             $preservedUnmanagedLaunchers = $false
             $unresolvedCommittedTransaction = $false
-            $rollbackResult = $null
             if ([string]::IsNullOrWhiteSpace([string] $AdapterState.RollbackTransactionPath)) {
                 $receipt = Read-CountdownDeferredInstallReceipt -Path $Context.DeferredReceiptPath
                 if ($null -ne $receipt) {
                     $AdapterState.RollbackTransactionPath = [string] $receipt.transactionPath
                 }
             }
-            if (-not [string]::IsNullOrWhiteSpace([string] $AdapterState.RollbackTransactionPath)) {
+            $transactionKnown = -not [string]::IsNullOrWhiteSpace([string] $AdapterState.RollbackTransactionPath)
+            if ($transactionKnown) {
                 $journalPath = Join-Path $AdapterState.RollbackTransactionPath 'journal.json'
                 if (-not (Test-Path -LiteralPath $journalPath -PathType Leaf)) {
                     throw '无法验证待回滚事务的 journal；拒绝声称已回滚。'
                 }
-                $rollbackResult = Undo-CountdownInstallTransaction `
+            }
+            Invoke-CountdownRemoteDeploymentTrustedFile `
+                -Context $Context `
+                -Location Source `
+                -RelativePath 'Countdown.InstallLifecycle.psm1' `
+                -Stage '回滚安装事务' `
+                -Action { param($lockedPath) Import-Module $lockedPath -Force | Out-Null }
+            if ($transactionKnown) {
+                $rollbackResult = Undo-CountdownInstallation `
+                    -Layout $AdapterState.Layout `
                     -TransactionPath $AdapterState.RollbackTransactionPath `
-                    -PowerShell7Path $Context.PowerShell7Path `
-                    -ExpectedInstallPath $Context.InstallPath `
-                    -ExpectedTaskName $Context.TaskName `
-                    -ExpectedLegacyTaskName $Context.LegacyTaskName `
-                    -ExpectedLauncherPath $AdapterState.LauncherPath `
-                    -ExpectedLegacyLauncherPath $AdapterState.LegacyLauncherPath `
-                    -ExpectedLauncherTempPath $AdapterState.LauncherTempPath `
-                    -PreserveUnmanagedLaunchers
+                    -PowerShell7Path $Context.PowerShell7Path
+                $preservedUnmanagedLaunchers = [bool] $rollbackResult.PreservedUnmanagedLaunchers
             }
             else {
-                $recovery = Recover-CountdownInstallTransactions `
-                    -InstallPath $Context.InstallPath `
-                    -PowerShell7Path $Context.PowerShell7Path `
-                    -ExpectedTaskName $Context.TaskName `
-                    -ExpectedLegacyTaskName $Context.LegacyTaskName `
-                    -ExpectedLauncherPath $AdapterState.LauncherPath `
-                    -ExpectedLegacyLauncherPath $AdapterState.LegacyLauncherPath `
-                    -ExpectedLauncherTempPath $AdapterState.LauncherTempPath
+                $recovery = Restore-CountdownInterruptedInstallation `
+                    -Layout $AdapterState.Layout `
+                    -PowerShell7Path $Context.PowerShell7Path
                 $preservedUnmanagedLaunchers = @($recovery.UnresolvedLauncherOwnershipConflicts).Count -gt 0
                 $unresolvedCommittedTransaction = @($recovery.UnresolvedCommittedTransactions).Count -gt 0
-            }
-            if ($null -ne $rollbackResult -and [bool] $rollbackResult.PreservedUnmanagedLaunchers) {
-                $preservedUnmanagedLaunchers = $true
             }
             [pscustomobject]@{
                 PreservedUnmanagedLaunchers = $preservedUnmanagedLaunchers
@@ -2633,7 +2568,7 @@ function Invoke-CountdownRemoteDeployment {
                 'Countdown.InstallTransaction.psm1',
                 'Countdown.Runtime.psm1',
                 'Countdown.Settings.psm1',
-                'Countdown.TransactionAcceptance.psm1',
+                'Countdown.InstallLifecycle.psm1',
                 'Install-Countdown.ps1',
                 '敏敏子倒计时.ps1')) {
             if (-not $expectedManifest.Contains($requiredPath)) {

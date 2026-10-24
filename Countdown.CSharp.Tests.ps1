@@ -2639,38 +2639,40 @@ function Test-DesktopLauncherByteSequenceContains {
 }
 
 function Assert-DesktopLauncherSourceLocks {
+    # 桌面启动器落点与任务参数由安装布局定义；载荷复制、启动器替换与任务注册在安装事务生命周期内。
     $launcherSourcePath = Join-Path $PSScriptRoot 'CountdownLauncher.cs'
-    $installerSourcePath = Join-Path $PSScriptRoot 'Install-Countdown.ps1'
-    if (-not (Test-Path -LiteralPath $launcherSourcePath -PathType Leaf)) {
-        throw "未找到启动器源码：$launcherSourcePath"
-    }
-    if (-not (Test-Path -LiteralPath $installerSourcePath -PathType Leaf)) {
-        throw "未找到安装脚本：$installerSourcePath"
+    $layoutSourcePath = Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1'
+    $lifecycleSourcePath = Join-Path $PSScriptRoot 'Countdown.InstallLifecycle.psm1'
+    foreach ($sourcePath in @($launcherSourcePath, $layoutSourcePath, $lifecycleSourcePath)) {
+        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
+            throw "未找到启动器或安装源码：$sourcePath"
+        }
     }
 
     $launcherSource = [System.IO.File]::ReadAllText($launcherSourcePath)
-    $installerSource = [System.IO.File]::ReadAllText($installerSourcePath)
+    $layoutSource = [System.IO.File]::ReadAllText($layoutSourcePath)
+    $lifecycleSource = [System.IO.File]::ReadAllText($lifecycleSourcePath)
 
     Assert-Equal $false $launcherSource.Contains('schtasks', [System.StringComparison]::OrdinalIgnoreCase) `
         'CountdownLauncher.cs 不再包含 schtasks'
     Assert-Equal $true $launcherSource.Contains('D:\敏敏子倒计时\app\MinminCountdown.exe') `
         'CountdownLauncher.cs 仍包含正式安装宿主回退路径'
 
-    $desktopLauncherPathIndex = $installerSource.IndexOf("`$launcherPath = Join-Path `$desktop '敏敏子倒计时.exe'")
-    $payloadDestinationIndex = $installerSource.IndexOf('(Join-Path $install $file)')
-    $payloadCopyIndex = $installerSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force')
-    $launcherMoveIndex = $installerSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
+    $desktopLauncherPathIndex = $layoutSource.IndexOf("`$launcherPath = Join-Path `$desktopPath '敏敏子倒计时.exe'")
+    $payloadDestinationIndex = $lifecycleSource.IndexOf('(Join-Path $install $file)')
+    $payloadCopyIndex = $lifecycleSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force')
+    $launcherMoveIndex = $lifecycleSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
 
-    Assert-Equal $true ($desktopLauncherPathIndex -ge 0) '安装脚本仍把启动器目标定为桌面 敏敏子倒计时.exe'
-    Assert-Equal $true ($payloadDestinationIndex -ge 0) '安装脚本仍把 payload 写到安装根'
-    Assert-Equal $true ($payloadCopyIndex -ge 0) '安装脚本仍复制 payload 到安装根目标'
+    Assert-Equal $true ($desktopLauncherPathIndex -ge 0) '安装布局仍把启动器目标定为桌面 敏敏子倒计时.exe'
+    Assert-Equal $true ($payloadDestinationIndex -ge 0) '安装生命周期仍把 payload 写到安装根'
+    Assert-Equal $true ($payloadCopyIndex -ge 0) '安装生命周期仍复制 payload 到安装根目标'
     Assert-Equal $true (
         $launcherMoveIndex -gt $payloadCopyIndex -and
         $payloadCopyIndex -gt $payloadDestinationIndex
-    ) '安装脚本先写安装根 payload，再把启动器搬到桌面'
+    ) '安装生命周期先写安装根 payload，再把启动器搬到桌面'
     Assert-Equal $true (
-        $installerSource.Contains('-STA -File `"$appPath`"') -and
-        $installerSource.Contains('New-ScheduledTaskAction -Execute $powerShellEngine -Argument $arguments')
+        $layoutSource.Contains('-STA -File `"$applicationPath`"') -and
+        $lifecycleSource.Contains('New-ScheduledTaskAction -Execute $PowerShell7Path -Argument $Layout.TaskArguments')
     ) '登录任务仍用 pwsh 执行 adapter，而不是桌面启动器'
 }
 

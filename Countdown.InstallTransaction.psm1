@@ -4,11 +4,54 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:CountdownInstallMutexName = 'Global\MinminCountdownInstallTransaction-v1'
+# 安装布局只在这里定义：本机安装器、安装事务生命周期、办公室部署 adapter 与远端独立回读都从
+# Get-CountdownInstallLayout 取安装目标、计划任务名、桌面启动器和运行时回执的位置。
+$script:CountdownDefaultInstallPath = 'D:\敏敏子倒计时'
+$script:CountdownTaskName = 'Minmin Countdown'
+$script:CountdownLegacyTaskName = '敏敏子倒计时'
 
 function ConvertTo-CountdownInstallFullPath {
     param([Parameter(Mandatory)] [string] $Path)
 
     [System.IO.Path]::GetFullPath($Path)
+}
+
+function Get-CountdownInstallLayout {
+    param(
+        [string] $InstallPath = $script:CountdownDefaultInstallPath,
+        [string] $TaskName = $script:CountdownTaskName,
+        [string] $LegacyTaskName = $script:CountdownLegacyTaskName,
+        [string] $Desktop
+    )
+
+    $install = ConvertTo-CountdownInstallFullPath -Path $InstallPath
+    $applicationPath = Join-Path $install '敏敏子倒计时.ps1'
+    $launcherPath = $null
+    $legacyLauncherPath = $null
+    $launcherTempPath = $null
+    if (-not [string]::IsNullOrWhiteSpace($Desktop)) {
+        $desktopPath = ConvertTo-CountdownInstallFullPath -Path $Desktop
+        $launcherPath = Join-Path $desktopPath '敏敏子倒计时.exe'
+        $legacyLauncherPath = Join-Path $desktopPath '敏敏子倒计时.cmd'
+        $launcherTempPath = "$launcherPath.new"
+    }
+    [pscustomobject]@{
+        InstallPath = $install
+        TaskName = $TaskName
+        LegacyTaskName = $LegacyTaskName
+        ApplicationPath = $applicationPath
+        ExecutablePath = Join-Path $install 'app\MinminCountdown.exe'
+        TaskArguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$applicationPath`""
+        InstalledLauncherPath = Join-Path $install 'CountdownLauncher.exe'
+        LauncherStatePath = Join-Path $install 'launcher-state.json'
+        SettingsPath = Join-Path $install 'settings.json'
+        StartupRequestPath = Join-Path $install 'startup-request.json'
+        RuntimeStatusPath = Join-Path $install 'runtime-status.json'
+        AcceptanceStatusPath = Join-Path $install 'acceptance-status.json'
+        LauncherPath = $launcherPath
+        LegacyLauncherPath = $legacyLauncherPath
+        LauncherTempPath = $launcherTempPath
+    }
 }
 
 function Assert-CountdownInstallPathOnDDrive {
@@ -1023,7 +1066,7 @@ function Get-CountdownManagedApplicationProcesses {
     )
 
     $resolvedPath = ConvertTo-CountdownInstallFullPath -Path $ApplicationPath
-    $managedExecutablePath = Join-Path (Split-Path -Parent $resolvedPath) 'app\MinminCountdown.exe'
+    $managedExecutablePath = (Get-CountdownInstallLayout -InstallPath (Split-Path -Parent $resolvedPath)).ExecutablePath
     @(
         & $ProcessQueryAction |
             Where-Object {
@@ -1081,7 +1124,7 @@ function Stop-CountdownManagedApplication {
     )
 
     $install = Assert-CountdownInstallPathOnDDrive -Path $InstallPath
-    $applicationPath = Join-Path $install '敏敏子倒计时.ps1'
+    $applicationPath = (Get-CountdownInstallLayout -InstallPath $install).ApplicationPath
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
         foreach ($name in @($TaskName, $LegacyTaskName)) {
@@ -1565,6 +1608,7 @@ function Recover-CountdownInstallTransactions {
         [string] $ExpectedLauncherPath,
         [string] $ExpectedLegacyLauncherPath,
         [string] $ExpectedLauncherTempPath,
+        [scriptblock] $RestoreWindowsTimeAction,
         [scriptblock] $CommittedCleanupAction = { param([string] $Path) Remove-CountdownTransactionDirectorySafely -Path $Path }
     )
 
@@ -1611,7 +1655,7 @@ function Recover-CountdownInstallTransactions {
                     continue
                 }
             }
-            Undo-CountdownInstallTransaction -TransactionPath $directory.FullName -PowerShell7Path $PowerShell7Path -ExpectedInstallPath $install -ExpectedTaskName $ExpectedTaskName -ExpectedLegacyTaskName $ExpectedLegacyTaskName -ExpectedLauncherPath $ExpectedLauncherPath -ExpectedLegacyLauncherPath $ExpectedLegacyLauncherPath -ExpectedLauncherTempPath $ExpectedLauncherTempPath
+            Undo-CountdownInstallTransaction -TransactionPath $directory.FullName -PowerShell7Path $PowerShell7Path -RestoreWindowsTimeAction $RestoreWindowsTimeAction -ExpectedInstallPath $install -ExpectedTaskName $ExpectedTaskName -ExpectedLegacyTaskName $ExpectedLegacyTaskName -ExpectedLauncherPath $ExpectedLauncherPath -ExpectedLegacyLauncherPath $ExpectedLegacyLauncherPath -ExpectedLauncherTempPath $ExpectedLauncherTempPath
             [void] $recovered.Add($directory.FullName)
         }
         foreach ($markerFile in @(Get-ChildItem -LiteralPath $basePath -File -Filter '*.committed-*.marker.json' -Force)) {
@@ -1661,4 +1705,4 @@ function Recover-CountdownInstallTransactions {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownInstallPathOnDDrive, Assert-CountdownInstallTreeHasNoReparsePoints, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Write-CountdownInstallFailureReceipt, ConvertFrom-CountdownInstallFailureReceiptBytes, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped, Remove-CountdownScheduledTaskIfPresent
+Export-ModuleMember -Function Get-CountdownInstallLayout, Assert-CountdownInstallPathOnDDrive, Assert-CountdownInstallTreeHasNoReparsePoints, Enter-CountdownInstallTransactionMutex, Exit-CountdownInstallTransactionMutex, Get-CountdownInteractiveDesktopContext, Write-CountdownDeferredInstallReceipt, Write-CountdownInstallFailureReceipt, ConvertFrom-CountdownInstallFailureReceiptBytes, Read-CountdownDeferredInstallReceipt, Start-CountdownInstallTransaction, Capture-CountdownInstallPayloadSnapshot, Set-CountdownInstallTransactionCandidateLauncherHash, Complete-CountdownInstallTransaction, Remove-CountdownCommittedInstallTransaction, Undo-CountdownInstallTransaction, Recover-CountdownInstallTransactions, Stop-CountdownManagedApplication, Test-CountdownManagedApplicationStopped, Remove-CountdownScheduledTaskIfPresent

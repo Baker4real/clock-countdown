@@ -1321,7 +1321,7 @@ $gitPath = (Get-Command git.exe -CommandType Application -ErrorAction Stop |
     Select-Object -First 1 -ExpandProperty Source)
 $statusCommit = Get-CountdownDeploymentGitScalar -GitPath $gitPath -RepositoryRoot $repoRoot -Arguments @('rev-parse','--verify','HEAD')
 $statusIdentities = New-CountdownDeploymentCommitIdentityManifest -GitPath $gitPath -RepositoryRoot $repoRoot -Commit $statusCommit `
-    -RelativePaths @('Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1')
+    -RelativePaths @('Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1','Countdown.InstallTransaction.psm1')
 Invoke-CountdownDeploymentLockedCommitFile -GitPath $gitPath -RepositoryRoot $repoRoot -Root $repoRoot `
     -RelativePath 'Countdown.TransferLedger.psm1' -ExpectedIdentity $statusIdentities['Countdown.TransferLedger.psm1'] `
     -Stage '状态查询依赖校验' -Action {
@@ -1369,6 +1369,9 @@ if ($RecheckLatest -or ($null -ne $deploymentStatus.LatestComplete -and -not $Re
     # against the freshly generated reader before execution. No remote writes or installs.
     $existingReader = Join-Path $remoteRoot 'post-deployment-independent-readback.ps1'
     $adapter.UploadIndependentReadbackScript = { param($Context) $existingReader }.GetNewClosure()
+    Invoke-CountdownDeploymentLockedCommitFile -GitPath $gitPath -RepositoryRoot $repoRoot -Root $repoRoot `
+        -RelativePath 'Countdown.InstallTransaction.psm1' -ExpectedIdentity $statusIdentities['Countdown.InstallTransaction.psm1'] `
+        -Stage '复核安装布局校验' -Action { param($lockedPath,$sha256) Import-Module $lockedPath -Force -Global -DisableNameChecking | Out-Null }
     try {
         [void] (Invoke-CountdownRemoteDeploymentIndependentReadback `
             -LedgerPath (Join-Path $checkRoot 'transfer-attempts.json') `
@@ -1377,7 +1380,7 @@ if ($RecheckLatest -or ($null -ne $deploymentStatus.LatestComplete -and -not $Re
             -RemoteDeploymentBindingPath (Join-Path $remoteRoot 'deployment-binding.json') `
             -DeploymentBindingSha256 $completed.Binding.DeploymentBindingSha256 -SuccessReceipt $completed.SuccessReceipt `
             -ExpectedExecutableSha256 $completed.ExecutableSha256 -ExpectedRemoteHost $destination.Substring($separator+1) `
-            -ExpectedRemoteUser $destination.Substring(0,$separator) -Adapter $adapter)
+            -ExpectedRemoteUser $destination.Substring(0,$separator) -InstallLayout (Get-CountdownInstallLayout) -Adapter $adapter)
     }
     catch { throw "历史部署当前复核失败；未安装、未回滚。证据：$checkRoot；$($_.Exception.Message)" }
     Write-OfficeDeploymentProgress '只读复核完成；沿用已部署版本'
@@ -1640,6 +1643,7 @@ Invoke-CountdownDeploymentLockedCommitFile `
     -ExpectedIdentity $executionIdentityManifest['Countdown.InstallTransaction.psm1'] `
     -Stage '安装事务模块导入' `
     -Action { param($lockedPath, $sha256) Import-Module $lockedPath -Force -DisableNameChecking | Out-Null }
+$installLayout = Get-CountdownInstallLayout
 Assert-CountdownDeploymentFileManifest -Root $extractRoot -Manifest $packageManifest -Stage '部署模块加载后'
 $remoteRoot = "D:\Codex\deploy\clock-countdown-$shortCommit-$runId"
 $remoteBytesProbe = {
@@ -1718,11 +1722,11 @@ Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.TransferLedger.
 Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.RemoteDeployment.psm1') -ExpectedSha256 '$remoteDeploymentSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
 `$deploymentArguments = @{
   SourceRoot = `$source
-  InstallPath = 'D:\敏敏子倒计时'
+  InstallPath = '$($installLayout.InstallPath)'
   PowerShell7Path = `$powerShell7
   DeferredReceiptPath = Join-Path '$remoteRoot' 'deferred-install-receipt.json'
-  TaskName = 'Minmin Countdown'
-  LegacyTaskName = '敏敏子倒计时'
+  TaskName = '$($installLayout.TaskName)'
+  LegacyTaskName = '$($installLayout.LegacyTaskName)'
   DeploymentBindingPath = Join-Path '$remoteRoot' 'deployment-binding.json'
   DeploymentBindingSha256 = '$deploymentBindingSha256'
   ExpectedFileSha256 = `$expectedFileSha256
@@ -1884,6 +1888,7 @@ $postDeploymentReadbackAdapter = New-CountdownRemoteDeploymentReadbackSshAdapter
         -ExpectedExecutableSha256 $expectedExecutableSha256 `
         -ExpectedRemoteHost $officeHost `
         -ExpectedRemoteUser $officeUser `
+        -InstallLayout $installLayout `
         -Adapter $postDeploymentReadbackAdapter)
 Write-OfficeDeploymentProgress '部署及独立回读全部完成'
 $successReceipt | ConvertTo-Json -Compress -Depth 4

@@ -61,8 +61,8 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
 - `Countdown.Runtime.psm1`：每次启动的令牌、窗口首帧就绪回执、有界等待与滚动诊断日志
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
-- `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执
-- `Countdown.TransactionAcceptance.psm1`：安装与办公室部署共用的事务验收状态机
+- `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态，并为办公室验收原子写出独立回执；`Get-CountdownInstallLayout` 是安装布局的唯一定义
+- `Countdown.InstallLifecycle.psm1`：安装事务生命周期；本机安装器与办公室部署 adapter 共用的装入候选、事务验收与回滚，计划任务、时间服务、进程与桌面图标经 port 注入（生产用 Windows port）
 - `Countdown.Validation.psm1`：本机正式安装运行的 Core、C#、兼容 UI 与应用 validate-only 验证 module；安装器只在本机直接安装时从仓库加载，办公室延迟提交路径不调用，也不进办公室发布包
 - `Countdown.RemoteDeployment.psm1`：办公室候选安装（不跑测试）、事务验收、回滚、提交后收尾，以及成功/失败回执、部署 binding、独立回读与回滚前诊断的严格契约 module
 - `Countdown.TransferLedger.psm1`：办公室全部 SCP 与 SSH 证据回读共用的计时、吞吐和失败尝试账本 module
@@ -76,7 +76,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `assets/main-decorations/*.png`：主窗口暖色日间装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
 - `assets/ui-references/`：用户生成的页面与悬浮窗参考图及机器可读 `manifest.json` 的固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - [DESIGN.md](DESIGN.md)：主窗口两页、悬浮窗两工作区与提醒中心的「暖粉日间」现役视觉、交互和单一日间主题合同
-- `Install-Countdown.ps1`：办公室 Windows 设备安装与更新脚本
+- `Install-Countdown.ps1`：安装与更新入口；只做发布包校验、预检、本机直接安装时的验证套件与结果输出，安装本身交给安装事务生命周期
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑；含 `-ReleaseContractOnly` 时会嵌套验证套件窗口步骤（自行隔离），不要当成全程无窗口
 - `Countdown.CSharp.Tests.ps1`、`Countdown.Ui.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed

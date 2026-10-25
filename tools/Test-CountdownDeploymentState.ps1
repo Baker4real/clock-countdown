@@ -182,4 +182,12 @@ Assert-State ($result.Value.OmittedHistory -gt 0) '总字节预算应收紧历�
 Assert-State ($result.Value.History.Count + $result.Value.OmittedHistory -eq 29) '裁剪后历史记录仍须完整计数。'
 Assert-State ($result.Value.LatestHistoricallyVerified.RunId -eq $completeRunId) '预算裁剪不能丢掉最近历史验收的独立来源。'
 
-[pscustomobject]@{ Valid=$true; Assertions=$assertions; Skipped=@($skipped); EvidenceRoot=$testRoot } | ConvertTo-Json -Compress
+# 断言全部通过才清理测试根；任一断言失败时脚本已中止，测试根留作现场。清理失败只记 stderr，stdout 仍是单个 JSON。
+try {
+    foreach ($file in Get-ChildItem -LiteralPath $testRoot -File -Recurse -Force) { Remove-Item -LiteralPath $file.FullName -Force }
+    foreach ($directory in @(Get-ChildItem -LiteralPath $testRoot -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
+        Remove-Item -LiteralPath $directory.FullName -Force
+    }
+    Remove-Item -LiteralPath $testRoot -Force
+} catch { [Console]::Error.WriteLine("断言已全部通过，但测试根未能清理：$testRoot；$($_.Exception.Message)") }
+[pscustomobject]@{ Valid=$true; Assertions=$assertions; Skipped=@($skipped) } | ConvertTo-Json -Compress

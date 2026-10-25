@@ -310,15 +310,19 @@ $baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFi
 Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
 
 # 窗口探针只走 RunValidationScenarios：控件名、模板部件和窗口字段留在各窗口的场景 partial 里。
-# 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。
+# 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。每个类按它的全部 partial 文件合计。
 $controlNameLookupPattern = [regex]'Required<[^>]+>\(\s*[A-Za-z_][\w\.]*\s*,\s*"|\.FindName\(\s*"'
 $controlNameLookupCeilings = [ordered]@{
-    'src/MinminCountdown/ValidationReport.cs' = 358
-    'src/MinminCountdown/ValidationExercises.cs' = 206
+    'ValidationReport' = 358
+    'ValidationExercises' = 206
 }
 $controlNameLookupFailures = [System.Collections.Generic.List[string]]::new()
 $controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnumerator()) {
-    $count = $controlNameLookupPattern.Matches([System.IO.File]::ReadAllText((Join-Path $repoRoot $entry.Key))).Count
+    $count = 0
+    foreach ($part in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown') -File |
+            Where-Object { $_.Name -eq "$($entry.Key).cs" -or $_.Name -like "$($entry.Key).*.cs" }) {
+        $count += $controlNameLookupPattern.Matches([System.IO.File]::ReadAllText($part.FullName)).Count
+    }
     if ($count -gt $entry.Value) {
         $controlNameLookupFailures.Add("$($entry.Key) 按名取控件 $count 处，超过上限 $($entry.Value)：新探针写进窗口的场景 partial")
     }

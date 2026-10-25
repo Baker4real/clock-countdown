@@ -399,8 +399,11 @@ $constantAcceptanceMembers = @(
 )
 Assert-Equal 0 $constantAcceptanceMembers.Count 'src 不包含返回字面 true 的 internal bool 验收属性'
 
-$validationReportSource = Get-Content -LiteralPath (
-    Join-Path $PSScriptRoot 'src\MinminCountdown\ValidationReport.cs') -Raw -Encoding UTF8
+$validationReportSource = @(
+    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown') -File |
+        Where-Object { $_.Name -eq 'ValidationReport.cs' -or $_.Name -like 'ValidationReport.*.cs' } |
+        ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
+) -join "`n"
 $constantNamedValidationFields = @(
     foreach ($match in [regex]::Matches(
             $validationReportSource,

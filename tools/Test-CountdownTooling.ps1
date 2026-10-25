@@ -70,6 +70,56 @@ foreach ($test in @('Test-CountdownValidationDiagnostics.ps1',
     Add-ToolingCheck -Name "deployment:$test" -Passed ($LASTEXITCODE -eq 0 -and [bool]$report.Valid) -Detail ($report | ConvertTo-Json -Compress -Depth 12)
 }
 
+# CI 单独成步的测试也随 Tooling 跑，本机全绿才代表推上去 CI 不会因为只在 CI 跑的测试变红。
+$transferLedgerRegression = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $repoRoot 'Countdown.TransferLedger.Tests.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'transfer-ledger:regression' -Passed ($LASTEXITCODE -eq 0) -Detail (($transferLedgerRegression -join ' ') -replace '\s+', ' ')
+$officeDeploymentStatus = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-OfficeDeploymentStatus.ps1') -Json 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'deployment:Test-OfficeDeploymentStatus.ps1' -Passed ($LASTEXITCODE -eq 0) -Detail (($officeDeploymentStatus -join ' ') -replace '\s+', ' ')
+
+# CI 用 -File 或 & 跑的每个脚本，本机都要有启动器阶段跑到：启动器的阶段脚本，加上本脚本用 Join-Path 跑的脚本。
+function Get-JoinPathScriptLeaves {
+    param([Parameter(Mandatory)] [string] $Path)
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $tokens, [ref] $errors)
+    $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Join-Path' -and
+            $node.CommandElements[-1] -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+            $node.CommandElements[-1].Value -like '*.ps1'
+        }, $true) | ForEach-Object { ($_.CommandElements[-1].Value -split '[\\/]')[-1] }
+}
+
+function Get-CiWorkflowScripts {
+    param([Parameter(Mandatory)] [string] $WorkflowText)
+    foreach ($match in [regex]::Matches($WorkflowText, '(?:-File\s+|&\s+)(?<path>[\w.\\/-]+\.ps1)\b')) {
+        ($match.Groups['path'].Value -split '[\\/]')[-1]
+    }
+}
+
+$ciParitySelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'file-uncovered'; Gaps = 1; Text = '& pwsh.exe -NoLogo -File .\tools\Missing.ps1 -Json' },
+        @{ Name = 'file-covered'; Gaps = 0; Text = '& pwsh.exe -NoLogo -File ./Covered.ps1 -Only' },
+        @{ Name = 'call-uncovered'; Gaps = 1; Text = '$range = & .\tools\Missing.ps1 -Json' },
+        @{ Name = 'native-exe'; Gaps = 0; Text = '& pwsh.exe -NoLogo -NoProfile' }
+    )) {
+    $caseGaps = @(Get-CiWorkflowScripts -WorkflowText $case.Text | Where-Object { $_ -ne 'Covered.ps1' }).Count
+    if ($caseGaps -ne $case.Gaps) { $ciParitySelfTestFailures.Add("self-test $($case.Name): expected $($case.Gaps) gap(s), got $caseGaps") }
+}
+$locallyRunScripts = @(
+    'Invoke-CountdownSuiteLowImpact.ps1'
+    Get-JoinPathScriptLeaves -Path (Join-Path $PSScriptRoot 'Invoke-CountdownSuiteLowImpact.ps1')
+    Get-JoinPathScriptLeaves -Path $PSCommandPath
+) | Sort-Object -Unique
+$ciScripts = @(Get-CiWorkflowScripts -WorkflowText ([System.IO.File]::ReadAllText((Join-Path $repoRoot '.github/workflows/ci.yml'))) | Sort-Object -Unique)
+$ciParityProblems = @($ciParitySelfTestFailures) + @($ciScripts | Where-Object { $_ -notin $locallyRunScripts } | ForEach-Object {
+        "CI 跑 $_，本机没有启动器阶段跑它：加进启动器阶段，或在本脚本里随 Tooling 跑"
+    })
+$ciParityDetail = if ($ciParityProblems.Count -eq 0) { "CI 的 $($ciScripts.Count) 个脚本都有本机阶段跑到；自检 4 例通过" } else { $ciParityProblems -join ' | ' }
+Add-ToolingCheck -Name 'ci:local-parity' -Passed ($ciParityProblems.Count -eq 0) -Detail $ciParityDetail
+
 $parseErrors = [System.Collections.Generic.List[string]]::new()
 $scriptPaths = @(
     Get-ChildItem -LiteralPath $repoRoot -Filter '*.ps1' -File

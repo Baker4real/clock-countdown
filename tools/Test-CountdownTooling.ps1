@@ -330,6 +330,69 @@ $controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnum
 $controlNameLookupDetail = if ($controlNameLookupFailures.Count -eq 0) { $controlNameLookupCounts -join '; ' } else { $controlNameLookupFailures -join ' | ' }
 Add-ToolingCheck -Name 'validation:control-name-lookups' -Passed ($controlNameLookupFailures.Count -eq 0) -Detail $controlNameLookupDetail
 
+# Move-Item -Force 第一次改名撞上读句柄就先删目标再改名：失败时旧文件已经没了（安装 journal 与启动回执都这样坏过）。
+# 生产脚本里的存量只减不增；替换文件用 [System.IO.File]::Move(源, 目标, $true) 一次改名，撞上占用时有界退避重试。
+function Get-ForcedMoveItemCount {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Ast)
+    @($Ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -in @('Move-Item', 'move', 'mi', 'mv') -and
+                @($node.CommandElements | Where-Object {
+                        $_ -is [System.Management.Automation.Language.CommandParameterAst] -and $_.ParameterName -eq 'Force'
+                    }).Count -gt 0
+            }, $true)).Count
+}
+
+$forcedMoveSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'code'; Count = 1; Source = 'Move-Item -LiteralPath $a -Destination $b -Force' },
+        @{ Name = 'alias'; Count = 1; Source = 'mv $a $b -Force' },
+        @{ Name = 'no-force'; Count = 0; Source = 'Move-Item -LiteralPath $a -Destination $b -ErrorAction Stop' },
+        @{ Name = 'comment'; Count = 0; Source = '# Move-Item -Force 会先删目标再改名' },
+        @{ Name = 'string'; Count = 0; Source = '$text = ''Move-Item -LiteralPath $a -Destination $b -Force''' }
+    )) {
+    $tokens = $null
+    $errors = $null
+    $caseCount = Get-ForcedMoveItemCount -Ast ([System.Management.Automation.Language.Parser]::ParseInput($case.Source, [ref] $tokens, [ref] $errors))
+    if ($caseCount -ne $case.Count) { $forcedMoveSelfTestFailures.Add("self-test $($case.Name): expected $($case.Count), got $caseCount") }
+}
+$forcedMoveCeilings = @{
+    'Countdown.InstallLifecycle.psm1' = 2
+    'Countdown.Runtime.psm1' = 1
+    'Countdown.Settings.psm1' = 1
+}
+$forcedMoveFailures = [System.Collections.Generic.List[string]]::new()
+$forcedMovePaths = @(
+    Get-ChildItem -LiteralPath $repoRoot -File
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File
+) | Where-Object {
+    $_.Extension -in @('.ps1', '.psm1') -and $_.Name -notlike '*.Tests.ps1' -and $_.Name -notlike '*.Tests.*.ps1' -and
+    -not ($_.Directory.Name -eq 'tools' -and $_.Name -like 'Test-*.ps1')
+}
+$forcedMoveCounts = foreach ($forcedMovePath in $forcedMovePaths) {
+    $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $forcedMovePath.FullName).Replace('\', '/')
+    $tokens = $null
+    $errors = $null
+    $count = Get-ForcedMoveItemCount -Ast ([System.Management.Automation.Language.Parser]::ParseFile($forcedMovePath.FullName, [ref] $tokens, [ref] $errors))
+    $ceiling = if ($forcedMoveCeilings.ContainsKey($relativePath)) { $forcedMoveCeilings[$relativePath] } else { 0 }
+    if ($count -gt $ceiling) {
+        $forcedMoveFailures.Add("$relativePath 有 $count 处 Move-Item -Force，超过上限 ${ceiling}：改用 [System.IO.File]::Move(源, 目标, `$true) 并对占用做有界退避重试")
+    }
+    elseif ($count -lt $ceiling) {
+        $forcedMoveFailures.Add("$relativePath 的 Move-Item -Force 已降到 $count 处：把上限从 $ceiling 改成 $count")
+    }
+    if ($count -gt 0) { "$relativePath=$count" }
+}
+foreach ($ceilingPath in $forcedMoveCeilings.Keys) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $ceilingPath) -PathType Leaf)) {
+        $forcedMoveFailures.Add("上限表里的 $ceilingPath 已不存在：删掉这一项")
+    }
+}
+$forcedMoveProblems = @($forcedMoveSelfTestFailures) + @($forcedMoveFailures)
+$forcedMoveDetail = if ($forcedMoveProblems.Count -eq 0) { "$(@($forcedMoveCounts) -join '; ')；扫描 $($forcedMovePaths.Count) 个生产脚本；自检 5 例通过" } else { $forcedMoveProblems -join ' | ' }
+Add-ToolingCheck -Name 'powershell:forced-move-item' -Passed ($forcedMoveProblems.Count -eq 0) -Detail $forcedMoveDetail
+
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
 $diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10

@@ -215,7 +215,7 @@ foreach ($case in @(
 }
 $captureGaps = [System.Collections.Generic.List[string]]::new()
 $capturePaths = @(
-    Get-ChildItem -LiteralPath $repoRoot -Filter '*.Tests.ps1' -File
+    Get-ChildItem -LiteralPath $repoRoot -File | Where-Object { $_.Name -like '*.Tests.ps1' -or $_.Name -like '*.Tests.*.ps1' }
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File | Where-Object Extension -in @('.ps1', '.psm1')
 ) | Sort-Object FullName -Unique
 foreach ($capturePath in $capturePaths) {
@@ -274,7 +274,11 @@ Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0)
 # so a missing current manifest fails here instead of matching nothing.
 Import-Module (Join-Path $repoRoot 'Countdown.Validation.psm1') -Force
 $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
-$coreTestSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
+$coreTestSource = @(
+    Get-ChildItem -LiteralPath $repoRoot -File |
+        Where-Object { $_.Name -eq 'Countdown.Core.Tests.ps1' -or $_.Name -like 'Countdown.Core.Tests.*.ps1' } |
+        ForEach-Object { [System.IO.File]::ReadAllText($_.FullName) }
+) -join "`n"
 $baselineFixtureFailures = [System.Collections.Generic.List[string]]::new()
 $baselineFixtureAgreements = [System.Collections.Generic.List[string]]::new()
 $fixtureDefinitions = [regex]::Matches(

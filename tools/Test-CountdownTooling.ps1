@@ -13,8 +13,24 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $failures = [System.Collections.Generic.List[string]]::new()
 $checks = [System.Collections.Generic.List[object]]::new()
 
+# 子测试通过后不该在 logs\ 或仓库根留下 *-test-* 测试根（2026-10-25 清场时两处共堆了 93 个）。每登记一项检查就比一次两处的
+# 目录，新出现的归给这一项：通过的算泄漏，由末尾的 tests:leftover-test-roots 判失败；失败的是留作现场，记进它自己的 Detail。
+function Get-ToolingTestRoots {
+    foreach ($parent in @($repoRoot, (Join-Path $repoRoot 'logs'))) {
+        if (Test-Path -LiteralPath $parent -PathType Container) {
+            Get-ChildItem -LiteralPath $parent -Directory -Filter '*-test-*' -Force | ForEach-Object { $_.FullName }
+        }
+    }
+}
+$testRootsSeen = [System.Collections.Generic.HashSet[string]]::new([string[]] @(Get-ToolingTestRoots), [System.StringComparer]::OrdinalIgnoreCase)
+$testRootLeaks = [System.Collections.Generic.List[string]]::new()
+
 function Add-ToolingCheck {
     param([Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] [bool] $Passed, [string] $Detail = '')
+    $newRoots = @(Get-ToolingTestRoots | Where-Object { $testRootsSeen.Add($_) } | ForEach-Object { [System.IO.Path]::GetRelativePath($repoRoot, $_) })
+    if ($newRoots.Count -gt 0) {
+        if ($Passed) { $testRootLeaks.Add("$Name 通过却留下 $($newRoots -join '、')") } else { $Detail = "$Detail；失败现场：$($newRoots -join '、')" }
+    }
     $checks.Add([pscustomobject]@{ Name = $Name; Status = if ($Passed) { 'processed' } else { 'failed' }; Detail = $Detail })
     if (-not $Passed) { $failures.Add("$Name：$Detail") }
 }
@@ -405,6 +421,9 @@ if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
 $diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'git:publication-diff-check' -Passed ($LASTEXITCODE -eq 0 -and [bool] $diffCheck.Valid) -Detail ($diffCheck | ConvertTo-Json -Compress -Depth 10)
+
+$testRootDetail = if ($testRootLeaks.Count -eq 0) { '通过的子测试没在 logs\ 与仓库根留下 *-test-* 测试根' } else { "$($testRootLeaks -join ' | ')：断言全部通过后删掉测试根，断言失败时才留作现场" }
+Add-ToolingCheck -Name 'tests:leftover-test-roots' -Passed ($testRootLeaks.Count -eq 0) -Detail $testRootDetail
 
 $result = [pscustomobject]@{
     Valid = $failures.Count -eq 0

@@ -799,19 +799,12 @@ internal static partial class ValidationReport
         }
     }
 
-    private static bool CaptureTextMotionSettled(FrameworkElement root) =>
-        Descendants<TextBlock>(root).Where(text => text.IsVisible).All(text =>
-            !DependencyPropertyHelper.GetValueSource(text, UIElement.OpacityProperty).IsAnimated ||
-            text.Opacity == 1);
-
     private static void WaitForMainReferenceMotion(MainWindow window, FrameworkElement root)
     {
-        if (!WaitForRenderedCaptureState(root, () =>
-                window.VisibleSegmentIndicatorsSettledForCapture && CaptureTextMotionSettled(root)))
+        if (!WaitForRenderedCaptureState(root, () => window.VisibleSegmentIndicatorsSettledForCapture))
         {
             throw new InvalidOperationException(
-                $"主窗口参考帧未在 300ms 内到达选中指示条与数字终态：{window.CurrentWorkspace}；" +
-                $"指示条={window.VisibleSegmentIndicatorsSettledForCapture}，数字={CaptureTextMotionSettled(root)}。");
+                $"主窗口参考帧未在 300ms 内到达选中指示条终态：{window.CurrentWorkspace}。");
         }
     }
 

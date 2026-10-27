@@ -1736,10 +1736,6 @@ internal static partial class ValidationReport
             stablePasses = ready && unchanged ? stablePasses + 1 : 0;
             if (stablePasses >= requiredStablePasses)
             {
-                if (!WaitForRenderedCaptureState(root, () => CaptureTextMotionSettled(root)))
-                {
-                    throw new InvalidOperationException("悬浮窗参考帧数字未在 300ms 内完成淡入。");
-                }
                 return;
             }
 

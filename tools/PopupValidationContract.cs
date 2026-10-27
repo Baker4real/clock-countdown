@@ -476,6 +476,16 @@ public sealed class MotionFrameTiming
     public double RenderingTimeMilliseconds { get; set; }
 }
 
+public sealed class PopupPlacementEvidence
+{
+    public double SurfaceTop { get; set; }
+    public double SurfaceBottom { get; set; }
+    public double TriggerTop { get; set; }
+    public double TriggerBottom { get; set; }
+    // -1：弹层在触发点下方；+1：弹层在触发点上方（含 WPF 翻转）。
+    public int Side { get; set; }
+}
+
 public sealed class MotionStallEvidence
 {
     public string Kind { get; set; }
@@ -522,6 +532,10 @@ public static class MotionValidationContractHarness
     private const int MaxStallRetriesPerScenario = 2;
     private const int MaxStallRetriesPerRun = 4;
     private const int InjectedStallMilliseconds = 150;
+    // #244：弹层进入与退出的位移幅度，方向由弹层落在触发点哪一侧决定。
+    private const double PopupOffset = 4;
+    // ToolTip 连开夹具给后续所有者显式设的 BetweenShowDelay；等待它过期后再验证不连开。
+    private const int ChainBetweenShowDelayMilliseconds = 1000;
     private static readonly string[] ResourceKeys = DurationKeys.Concat(
         new[] { "MotionEaseOut", "MotionCubicEaseOut" }).ToArray();
     private static Assembly _assembly;
@@ -689,13 +703,19 @@ public static class MotionValidationContractHarness
             "300 ms 内没有真实 WPF Rendering 帧；不以位图捕获或 Dispatcher Pump 代替。");
     }
 
-    private static Window ShowFixture(FrameworkElement content, double height = 260)
+    private static Window ShowFixture(FrameworkElement content, double height = 260, Point? location = null)
     {
         var window = new Window {
             Title = "MinminCountdown Motion Validation Contract",
             Width = 360, Height = height, ShowInTaskbar = false,
             ShowActivated = false, Content = content
         };
+        if (location is Point at)
+        {
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = at.X;
+            window.Top = at.Y;
+        }
         try
         {
             window.Show();
@@ -709,6 +729,144 @@ public static class MotionValidationContractHarness
             window.Close();
             Pump();
             throw;
+        }
+    }
+
+    // #244：方向夹具显式摆放。贴工作区顶部时弹层落在触发点下方；贴工作区底部时下方放不下，
+    // 由 WPF 自己把弹层翻到触发点上方。
+    private static Point NearWorkAreaTop() =>
+        new Point(SystemParameters.WorkArea.Left + 40, SystemParameters.WorkArea.Top + 40);
+
+    private static Point NearWorkAreaBottom(double height) =>
+        new Point(SystemParameters.WorkArea.Left + 40, SystemParameters.WorkArea.Bottom - height);
+
+    // Popup 与 ToolTip 各有独立 HWND：只比较两个真实 HWND 上的屏幕坐标（设备像素），不跨原生根
+    // 做视觉树变换。每次测量按阶段记入 InputChecks，作为定位证据。
+    private static PopupPlacementEvidence MeasurePlacement(MotionScenarioResult result, string phase,
+        FrameworkElement surface, FrameworkElement trigger)
+    {
+        Require(PresentationSource.FromVisual(surface) != null && PresentationSource.FromVisual(trigger) != null,
+            phase + "：弹层或触发点没有连上真实 HWND，取不到定位证据。");
+        var evidence = new PopupPlacementEvidence {
+            SurfaceTop = surface.PointToScreen(new Point(0, 0)).Y,
+            SurfaceBottom = surface.PointToScreen(new Point(0, surface.ActualHeight)).Y,
+            TriggerTop = trigger.PointToScreen(new Point(0, 0)).Y,
+            TriggerBottom = trigger.PointToScreen(new Point(0, trigger.ActualHeight)).Y
+        };
+        evidence.Side = evidence.SurfaceTop + evidence.SurfaceBottom <
+            evidence.TriggerTop + evidence.TriggerBottom ? 1 : -1;
+        result.InputChecks[phase + "Placement"] = evidence;
+        return evidence;
+    }
+
+    // 从调用后的首个真实 Rendering 帧起逐帧记录，直到条件成立（含该帧）；首帧落点与单调性都由此判定。
+    private static List<MotionObservation> Trajectory(MotionScenarioResult result, string phase,
+        Visual visual, Func<double[]> values, Func<bool> animated, Func<double[], bool> until,
+        Func<bool> isOpen = null)
+    {
+        var frames = new List<MotionObservation>();
+        var sampling = SampleRendering(visual, phase, rendered => {
+            var frame = Observe(result, phase, values, animated, isOpen, rendered, record: false);
+            frames.Add(frame);
+            return until(frame.Values);
+        });
+        result.SamplingWindows.Add(sampling);
+        result.InputChecks[phase + "Frames"] = frames.Select(frame => frame.Values).ToArray();
+        if (!sampling.Matched)
+        {
+            Observe(result, phase + "-unobserved", values, animated, isOpen);
+            throw Failure(phase + "：300 ms 内未取得所需真实样本；renderedFrames=" + sampling.FrameCount +
+                "；不把终态或缺帧当通过。", SamplingGap(sampling));
+        }
+        result.Observations.Add(frames[0]);
+        if (frames.Count > 1) result.Observations.Add(frames[frames.Count - 1]);
+        return frames;
+    }
+
+    // 位移逐帧单调趋向目标：每帧都落在起点与目标之间，离目标的距离不增大。
+    private static bool MonotonicToward(IList<MotionObservation> frames, double start, double target,
+        double tolerance)
+    {
+        double low = Math.Min(start, target) - tolerance, high = Math.Max(start, target) + tolerance;
+        var previous = double.PositiveInfinity;
+        foreach (var frame in frames)
+        {
+            var value = frame.Values[1];
+            if (double.IsNaN(value) || value < low || value > high) return false;
+            var distance = Math.Abs(target - value);
+            if (distance > previous + tolerance) return false;
+            previous = distance;
+        }
+        return true;
+    }
+
+    private static double[] ClosedRest(double offset) => new[] { 0.0, offset };
+
+    // #244：进入从触发点一侧移入：在下方时首帧位移落在 (-4, 0]，在上方时落在 [0, +4)，之后逐帧
+    // 单调趋向 0。首帧取调用后第一个可见（不透明度大于 0）的真实帧：WPF 在调用后的第一个新帧才
+    // 启动时钟，那一帧仍是完全透明的起点，看不到位移。
+    private static void RequireEntryFromTriggerSide(MotionScenarioResult result, string phase,
+        IList<MotionObservation> frames, double offset)
+    {
+        var first = frames.FirstOrDefault(frame => frame.Values[0] > 0.000001);
+        Require(first != null, phase + "：没有取得可见的进入帧。");
+        result.InputChecks[phase + "FirstVisibleFrame"] = first.Values;
+        var y = first.Values[1];
+        var inRange = offset < 0 ? y > offset && y <= 0.000001 : y >= -0.000001 && y < offset;
+        Require(inRange, phase + "：首个可见帧位移 " + y.ToString("R") + " 不在触发点一侧的 " +
+            (offset < 0 ? "(-4, 0]" : "[0, +4)") + "。");
+        Require(MonotonicToward(frames, offset, 0, 0.000001), phase + "：进入位移没有逐帧单调趋向 0。");
+    }
+
+    // 退出与进入镜像：从 0 朝触发点一侧单调收回，终点停在同一侧的偏移上。
+    private static void RequireExitTowardTriggerSide(string phase, IList<MotionObservation> frames, double offset)
+    {
+        Require(MonotonicToward(frames, 0, offset, 0.000001), phase + "：退出位移没有朝触发点一侧单调收回。");
+        Require(Math.Abs(frames[frames.Count - 1].Values[1] - offset) <= 0.000001,
+            phase + "：退出后的静止位不在触发点一侧。");
+    }
+
+    // 用户实际看到的不透明度：表面自身乘以所在 Popup 根；已关闭或 HWND 已拆掉时为 0。
+    private static double VisibleOpacity(ToolTip surface) =>
+        surface.IsOpen && PresentationSource.FromVisual(surface) is PresentationSource source
+            ? surface.Opacity * ((source.RootVisual as UIElement)?.Opacity ?? 1)
+            : 0;
+
+    private static bool RootAnimated(FrameworkElement surface) =>
+        PresentationSource.FromVisual(surface)?.RootVisual is UIElement root &&
+        Animated(root, UIElement.OpacityProperty);
+
+    // 表面到 Popup 根的不透明度链，用来区分本应用的动效与 WPF 自带的弹层动画。
+    private static object[] OpacityChain(FrameworkElement surface)
+    {
+        var chain = new List<object>();
+        for (DependencyObject current = surface; current is UIElement element;
+            current = VisualTreeHelper.GetParent(current))
+        {
+            chain.Add(new { Type = element.GetType().Name, element.Opacity,
+                Animated = Animated(element, UIElement.OpacityProperty) });
+        }
+        return chain.ToArray();
+    }
+
+    // 只推进 Dispatcher，不阻塞渲染线程。
+    private static void Settle(int milliseconds)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background, _application.Dispatcher) {
+            Interval = TimeSpan.FromMilliseconds(milliseconds)
+        };
+        EventHandler elapsed = (sender, args) => frame.Continue = false;
+        timer.Tick += elapsed;
+        try
+        {
+            timer.Start();
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timer.Stop();
+            timer.Tick -= elapsed;
         }
     }
 
@@ -1111,6 +1269,11 @@ public static class MotionValidationContractHarness
         Action open = null;
         Action close = null;
         Func<bool> isOpen = null;
+        // #244：夹具贴工作区顶部，四类弹层都落在触发点下方：进入从 -4 移入，退出收回 -4。
+        const double offset = -PopupOffset;
+        var closedRest = ClosedRest(offset);
+        var openRest = new[] { 1.0, 0.0 };
+        var location = NearWorkAreaTop();
         try
         {
             if (category == "calendar")
@@ -1120,7 +1283,7 @@ public static class MotionValidationContractHarness
                 picker.Width = 220;
                 inputControl = picker;
                 panel.Children.Add(picker);
-                window = ShowFixture(panel); picker.ApplyTemplate();
+                window = ShowFixture(panel, location: location); picker.ApplyTemplate();
                 var popup = (Popup)picker.Template.FindName("PART_Popup", picker);
                 owner = popup; visual = (FrameworkElement)popup.Child;
                 open = () => picker.IsDropDownOpen = true;
@@ -1132,7 +1295,7 @@ public static class MotionValidationContractHarness
                 var combo = new ComboBox { Width = 220, Items = { "One", "Two" }, SelectedIndex = 0 };
                 inputControl = combo;
                 panel.Children.Add(combo);
-                window = ShowFixture(panel); combo.ApplyTemplate();
+                window = ShowFixture(panel, location: location); combo.ApplyTemplate();
                 var popup = (Popup)combo.Template.FindName("PART_Popup", combo);
                 owner = popup; visual = (FrameworkElement)popup.Child;
                 open = () => combo.IsDropDownOpen = true;
@@ -1144,7 +1307,7 @@ public static class MotionValidationContractHarness
                 var tags = (FrameworkElement)Activator.CreateInstance(AppType("TagSelector"), true);
                 inputControl = tags;
                 panel.Children.Add(tags);
-                window = ShowFixture(panel);
+                window = ShowFixture(panel, location: location);
                 var popup = (Popup)Property(tags.GetType(), tags, "Popup");
                 owner = popup; visual = (FrameworkElement)popup.Child;
                 var property = tags.GetType().GetProperty("IsPopupOpen");
@@ -1155,10 +1318,10 @@ public static class MotionValidationContractHarness
             else
             {
                 var tooltip = new ToolTip { Content = "Production tooltip motion", PlacementTarget = trigger,
-                    Style = (Style)_application.FindResource(typeof(ToolTip)) };
+                    Placement = PlacementMode.Bottom, Style = (Style)_application.FindResource(typeof(ToolTip)) };
                 inputControl = trigger;
                 owner = tooltip; visual = tooltip;
-                window = ShowFixture(panel);
+                window = ShowFixture(panel, location: location);
                 open = () => Call("PopupMotionBehavior", "Open", tooltip);
                 close = () => Call("PopupMotionBehavior", "Close", tooltip);
                 isOpen = () => tooltip.IsOpen;
@@ -1166,6 +1329,10 @@ public static class MotionValidationContractHarness
                     "ToolTip 没有生产动效样式。");
             }
             Require(owner != null && visual != null, category + " 没有真实弹层内容。");
+            // 定位证据的参照点：放置目标；没有显式目标时用模板父级。
+            var sideAnchor = (owner is Popup placed
+                ? placed.PlacementTarget ?? placed.TemplatedParent as UIElement
+                : ((ToolTip)owner).PlacementTarget) as FrameworkElement ?? inputControl;
             result.CapturePopupInput = () => {
                 var placementTarget = owner is Popup popupState
                     ? popupState.PlacementTarget : (owner as ToolTip)?.PlacementTarget;
@@ -1193,16 +1360,24 @@ public static class MotionValidationContractHarness
             var initial = Observe(result, category + "-open-immediate", values, animated, isOpen);
             if (!result.Enabled)
             {
-                Require(isOpen() && Immediate(initial.Values, new[] { 1.0, 0.0 }, animated(), 0.000001),
+                Require(isOpen() && Immediate(initial.Values, openRest, animated(), 0.000001),
                     category + " off 打开不是即时终态。");
+                Require(MeasurePlacement(result, category + "-off-opened", visual, sideAnchor).Side < 0,
+                    category + "：夹具贴工作区顶部，弹层应落在触发点下方。");
                 close();
                 var closed = Observe(result, category + "-close-immediate", values, animated, isOpen);
-                Require(!isOpen() && Immediate(closed.Values, new[] { 0.0, 4.0 }, animated(), 0.000001),
-                    category + " off 关闭没有即时完成。");
+                Require(!isOpen() && Immediate(closed.Values, closedRest, animated(), 0.000001),
+                    category + " off 关闭没有即时停在触发点一侧的静止位。");
                 return;
             }
-            WaitFor(result, category + "-opening-middle", visual, values, animated,
-                value => Intermediate(new[] { 0.0, 4.0 }, value, new[] { 1.0, 0.0 }), isOpen);
+            // 进入只按不透明度取到 10%-90% 的中间帧为止，位移方向交给下面的断言判定。
+            var opening = Trajectory(result, category + "-opening", visual, values, animated,
+                value => value[0] >= 0.1 && value[0] <= 0.9, isOpen);
+            Require(MeasurePlacement(result, category + "-opened", visual, sideAnchor).Side < 0,
+                category + "：夹具贴工作区顶部，弹层应落在触发点下方。");
+            RequireEntryFromTriggerSide(result, category + "-opening", opening, offset);
+            Require(Intermediate(closedRest, opening[opening.Count - 1].Values, openRest),
+                category + " 打开中途样本不是从触发点一侧进入的 10%-90% 真实中间帧。");
             var before = Observe(result, category + "-close-before", values, animated, isOpen);
             close();
             var immediate = Observe(result, category + "-close-committed", values, animated, isOpen);
@@ -1210,20 +1385,20 @@ public static class MotionValidationContractHarness
             Require(immediate.PopupInput.IsDropDownOpen != true,
                 category + " 退出期间把宿主关闭请求回写成了打开。");
             var after = ObserveFrame(result, category + "-close-first-frame", visual, values, animated, isOpen);
-            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
+            Require(ContinuesFromSnapshot(before, immediate, after, closedRest, 90, 0.002),
                 category + " 打开中途关闭未从当前值续接。", LateFirstFrame(before, after, 90));
             WaitFor(result, category + "-closing-middle", visual, values, animated,
-                value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
+                value => Intermediate(before.Values, value, closedRest), isOpen, after);
             before = Observe(result, category + "-reopen-before", values, animated, isOpen);
             open();
             immediate = Observe(result, category + "-reopen-committed", values, animated, isOpen);
             after = ObserveFrame(result, category + "-reopen-first-frame", visual, values, animated, isOpen);
-            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
+            Require(ContinuesFromSnapshot(before, immediate, after, openRest, 140, 0.002),
                 category + " 退出中途重开未从当前值续接。", LateFirstFrame(before, after, 140));
             WaitFor(result, category + "-reopening-middle", visual, values, animated,
-                value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
+                value => isOpen() && Intermediate(before.Values, value, openRest), isOpen, after);
             WaitFor(result, category + "-reopen-final", visual, values, animated,
-                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+                value => isOpen() && Near(value, openRest, 0.000001), isOpen);
             if (owner is Popup nativePopup && (inputControl is DatePicker || inputControl is ComboBox))
             {
                 before = Observe(result, category + "-native-close-before", values, animated, isOpen);
@@ -1232,45 +1407,46 @@ public static class MotionValidationContractHarness
                 Require(isOpen() && immediate.PopupInput.IsDropDownOpen == false,
                     category + " 原生关闭没有分离宿主请求与仍可见的退出表面。");
                 after = ObserveFrame(result, category + "-native-close-first-frame", visual, values, animated, isOpen);
-                Require(ContinuesFromSnapshot(before, immediate, after, new[] { 0.0, 4.0 }, 90, 0.002),
+                Require(ContinuesFromSnapshot(before, immediate, after, closedRest, 90, 0.002),
                     category + " 原生关闭没有从当前值退出。", LateFirstFrame(before, after, 90));
                 WaitFor(result, category + "-native-closing-middle", visual, values, animated,
-                    value => Intermediate(before.Values, value, new[] { 0.0, 4.0 }), isOpen, after);
+                    value => Intermediate(before.Values, value, closedRest), isOpen, after);
                 before = Observe(result, category + "-native-reopen-before", values, animated, isOpen);
                 open();
                 immediate = Observe(result, category + "-native-reopen-committed", values, animated, isOpen);
                 after = ObserveFrame(result, category + "-native-reopen-first-frame", visual, values, animated, isOpen);
-                Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0, 0.0 }, 140, 0.002),
+                Require(ContinuesFromSnapshot(before, immediate, after, openRest, 140, 0.002),
                     category + " 原生退出中途重开没有从当前值续接。", LateFirstFrame(before, after, 140));
                 WaitFor(result, category + "-native-reopening-middle", visual, values, animated,
-                    value => isOpen() && Intermediate(before.Values, value, new[] { 1.0, 0.0 }), isOpen, after);
+                    value => isOpen() && Intermediate(before.Values, value, openRest), isOpen, after);
                 WaitFor(result, category + "-native-reopen-final", visual, values, animated,
-                    value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+                    value => isOpen() && Near(value, openRest, 0.000001), isOpen);
             }
             // Reopen at the real final animation frame, while the native hide
             // is queued. The earlier close must not win over this new request.
             close();
             var completionReopened = false;
             WaitFor(result, category + "-completion-reopen", visual, values, animated, value => {
-                if (!isOpen() || animated() || !Near(value, new[] { 0.0, 4.0 }, 0.000001)) return false;
+                if (!isOpen() || animated() || !Near(value, closedRest, 0.000001)) return false;
                 open();
                 completionReopened = isOpen();
                 return completionReopened;
             }, isOpen);
             Require(completionReopened, category + " 退出完成帧的新打开请求没有生效。");
             WaitFor(result, category + "-completion-reopen-final", visual, values, animated,
-                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+                value => isOpen() && Near(value, openRest, 0.000001), isOpen);
             result.InputChecks["CompletionReopenSurvivedQueuedClose"] = true;
             close();
-            WaitFor(result, category + "-close-final", visual, values, animated,
-                value => !isOpen() && PresentationSource.FromVisual(visual) == null &&
-                    Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+            // 退出与进入镜像：从静止的 0 朝触发点一侧单调收回，HWND 拆掉后停在同一侧。
+            var exit = Trajectory(result, category + "-close", visual, values, animated,
+                value => !isOpen() && PresentationSource.FromVisual(visual) == null && !animated(), isOpen);
+            RequireExitTowardTriggerSide(category + "-close", exit, offset);
             open();
             WaitFor(result, category + "-detach-open-final", visual, values, animated,
-                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+                value => isOpen() && Near(value, openRest, 0.000001), isOpen);
             close();
             WaitFor(result, category + "-detach-at-completion", visual, values, animated, value => {
-                if (!isOpen() || animated() || !Near(value, new[] { 0.0, 4.0 }, 0.000001)) return false;
+                if (!isOpen() || animated() || !Near(value, closedRest, 0.000001)) return false;
                 var popupSource = PresentationSource.FromVisual(visual);
                 Call("PopupMotionBehavior", owner is ToolTip ? "SetIsToolTipEnabled" : "SetIsEnabled", owner, false);
                 Require(!isOpen(), category + " 禁用行为后遗留了透明打开弹层。");
@@ -1317,7 +1493,7 @@ public static class MotionValidationContractHarness
         Window window = null;
         try
         {
-            window = ShowFixture(panel);
+            window = ShowFixture(panel, location: NearWorkAreaTop());
             Call("PopupMotionBehavior", "Attach", popup);
             Func<double[]> values = () => new[] { visual.Opacity, Translation(visual)?.Y ?? double.NaN };
             Func<bool> animated = () => Animated(visual, UIElement.OpacityProperty) ||
@@ -1329,12 +1505,15 @@ public static class MotionValidationContractHarness
             Action closeImmediate = () => Call("PopupMotionBehavior", "Close", popup, true);
             Func<bool> isClosing = () => (bool)Call("PopupMotionBehavior", "IsClosing", popup);
             var openTarget = new[] { 1.0, 0.0 };
-            var closedTarget = new[] { 0.0, 4.0 };
+            // #244：夹具贴工作区顶部，弹层在触发点下方，关闭后的静止位在 -4。
+            var closedTarget = ClosedRest(-PopupOffset);
             Action<string> requireOpenedFirstFrame = phase => {
                 var frame = ObserveFrame(result, phase, visual, values, animated, isOpen);
                 Require(isOpen() && !isClosing() &&
                     Immediate(frame.Values, openTarget, frame.HasAnimation, 0.000001),
                     phase + "：即时打开后的首帧未到终态或仍保留动画时钟。");
+                Require(MeasurePlacement(result, phase, visual, trigger).Side < 0,
+                    phase + "：夹具贴工作区顶部，弹层应落在触发点下方。");
             };
             Action<string> requireClosedFirstFrame = phase => {
                 var committed = !isOpen() && !isClosing();
@@ -1364,6 +1543,8 @@ public static class MotionValidationContractHarness
             open();
             WaitFor(result, "popup-immediate-close-rest-before", visual, values, animated,
                 value => isOpen() && !animated() && Near(value, openTarget, 0.000001), isOpen);
+            Require(MeasurePlacement(result, "popup-immediate-close-rest-before", visual, trigger).Side < 0,
+                "popup-immediate-close：夹具贴工作区顶部，弹层应落在触发点下方。");
             closeImmediate();
             requireClosedFirstFrame("popup-immediate-close-rest-first-frame");
             if (!result.Enabled) return;
@@ -1379,6 +1560,288 @@ public static class MotionValidationContractHarness
         finally
         {
             try { Call("WindowValidationInput", "ClosePopupForCleanup", popup); }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
+    // #244：触发点贴工作区底部，下方放不下，由 WPF 自己把弹层与 ToolTip 翻到触发点上方。进入从 +4
+    // 移入，退出朝上收回到 +4；关闭动画时直接到终态，静止位同样在上方一侧。
+    private static void ExerciseFlippedPopupMotion(MotionScenarioResult result)
+    {
+        const double height = 260;
+        const double offset = PopupOffset;
+        var closedRest = ClosedRest(offset);
+        var openRest = new[] { 1.0, 0.0 };
+        var trigger = new Button { Content = "Flipped trigger", Width = 160, Height = 38,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom };
+        var panel = new Grid { Children = { trigger } };
+        var surface = new Border { Width = 180, Height = 240, Background = Brushes.White };
+        var popup = new Popup { PlacementTarget = trigger, Placement = PlacementMode.Bottom, Child = surface,
+            AllowsTransparency = true };
+        var tooltip = new ToolTip { Content = "Flipped production tooltip motion", PlacementTarget = trigger,
+            Placement = PlacementMode.Bottom, Style = (Style)_application.FindResource(typeof(ToolTip)) };
+        Window window = null;
+        try
+        {
+            window = ShowFixture(panel, height, NearWorkAreaBottom(height));
+            Call("PopupMotionBehavior", "Attach", popup);
+            Require((bool)Call("PopupMotionBehavior", "GetIsToolTipEnabled", tooltip), "ToolTip 没有生产动效样式。");
+            var cases = new (string Name, FrameworkElement Surface, Action Open, Action Close, Func<bool> IsOpen)[] {
+                ("flipped-popup", surface, () => Call("PopupMotionBehavior", "Open", popup),
+                    () => Call("PopupMotionBehavior", "Close", popup), () => popup.IsOpen),
+                ("flipped-tooltip", tooltip, () => Call("PopupMotionBehavior", "Open", tooltip),
+                    () => Call("PopupMotionBehavior", "Close", tooltip), () => tooltip.IsOpen)
+            };
+            foreach (var item in cases)
+            {
+                var visual = item.Surface;
+                Func<double[]> values = () => new[] { visual.Opacity, Translation(visual)?.Y ?? double.NaN };
+                Func<bool> animated = () => Animated(visual, UIElement.OpacityProperty) ||
+                    (Translation(visual) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+                // 这里验证普通进入，先让上一个 ToolTip 的连开窗口过期。
+                Settle(300);
+                item.Open();
+                var initial = Observe(result, item.Name + "-open-immediate", values, animated, item.IsOpen);
+                if (!result.Enabled)
+                {
+                    Require(item.IsOpen() && Immediate(initial.Values, openRest, animated(), 0.000001),
+                        item.Name + " off 打开不是即时终态。");
+                }
+                else
+                {
+                    var entry = Trajectory(result, item.Name + "-opening", visual, values, animated,
+                        value => item.IsOpen() && Near(value, openRest, 0.000001), item.IsOpen);
+                    RequireEntryFromTriggerSide(result, item.Name + "-opening", entry, offset);
+                    Require(entry.Any(frame => frame.HasAnimation && Intermediate(closedRest, frame.Values, openRest)),
+                        item.Name + "：没有从触发点上方动画进入。");
+                }
+                var placement = MeasurePlacement(result, item.Name + "-opened", visual, trigger);
+                Require(placement.Side > 0 && placement.SurfaceBottom <= placement.TriggerTop + 1,
+                    item.Name + "：夹具贴工作区底部，WPF 应把弹层翻到触发点上方。");
+                item.Close();
+                if (!result.Enabled)
+                {
+                    var closed = Observe(result, item.Name + "-close-immediate", values, animated, item.IsOpen);
+                    Require(!item.IsOpen() && Immediate(closed.Values, closedRest, animated(), 0.000001),
+                        item.Name + " off 关闭没有即时停在触发点上方一侧的静止位。");
+                    continue;
+                }
+                var exit = Trajectory(result, item.Name + "-close", visual, values, animated,
+                    value => !item.IsOpen() && !animated(), item.IsOpen);
+                RequireExitTowardTriggerSide(item.Name + "-close", exit, offset);
+                Require(exit.Any(frame => frame.HasAnimation && Intermediate(openRest, frame.Values, closedRest)),
+                    item.Name + "：没有朝触发点上方动画收回。");
+            }
+        }
+        finally
+        {
+            try
+            {
+                Call("WindowValidationInput", "ClosePopupForCleanup", popup);
+                Call("PopupMotionBehavior", "SetIsToolTipEnabled", tooltip, false);
+                tooltip.IsOpen = false;
+            }
+            catch (Exception error) { result.Failures.Add("夹具清理失败：" + error.Message); }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
+    // 140 ms quartic ease-out：每个中间帧按 1-(1-t)^4 反推出的起点应一致，时长或缓动变了就会漂移。
+    private static double[] ImpliedBegins(IEnumerable<MotionObservation> frames, double durationMs) =>
+        frames.Where(frame => frame.HasAnimation && frame.RenderingTimeMilliseconds != null &&
+                frame.Values[0] > 0.001 && frame.Values[0] < 0.999)
+            .Select(frame => frame.RenderingTimeMilliseconds.Value -
+                durationMs * (1 - Math.Pow(1 - frame.Values[0], 0.25)))
+            .ToArray();
+
+    // 打开的 ToolTip 从调用后的首帧起每帧都是终态（含 WPF 弹层根，不叠加系统淡入），上一个 ToolTip
+    // 在这些帧里都不可见。
+    private static void RequireInstantChainFrames(MotionScenarioResult result, string phase,
+        ToolTip opened, ToolTip previous, Func<ToolTip, double[]> values, Func<ToolTip, bool> animated)
+    {
+        var frames = new List<object>();
+        MotionSamplingWindow sampling = null;
+        try
+        {
+            sampling = SampleRendering(opened, phase, rendered => {
+                var index = frames.Count;
+                var openedValues = values(opened);
+                var openedAnimated = animated(opened);
+                var rootAnimated = RootAnimated(opened);
+                var openedVisible = VisibleOpacity(opened);
+                var previousVisible = VisibleOpacity(previous);
+                frames.Add(new {
+                    RenderingTime = rendered.RenderingTime.TotalMilliseconds, Values = openedValues,
+                    Animated = openedAnimated, RootAnimated = rootAnimated, Visible = openedVisible,
+                    PreviousOpen = previous.IsOpen, PreviousVisible = previousVisible,
+                    OpacityChain = index == 0 ? OpacityChain(opened) : null
+                });
+                Require(opened.IsOpen && Immediate(openedValues, new[] { 1.0, 0.0 }, openedAnimated, 0.000001),
+                    phase + "：第 " + (index + 1) + " 帧不是即时终态。");
+                Require(!rootAnimated && Math.Abs(openedVisible - 1) <= 0.000001,
+                    phase + "：第 " + (index + 1) + " 帧叠加了系统弹层淡入，实际可见度 " + openedVisible.ToString("R") + "。");
+                Require(!previous.IsOpen && previousVisible <= 0.000001,
+                    phase + "：第 " + (index + 1) + " 帧两个 ToolTip 同时可见。");
+                return frames.Count >= 8;
+            });
+        }
+        finally
+        {
+            result.InputChecks[phase + "Frames"] = frames.ToArray();
+            if (sampling != null) result.SamplingWindows.Add(sampling);
+        }
+        if (!sampling.Matched)
+            throw Failure(phase + "：300 ms 内没有取得 8 个真实帧；renderedFrames=" + sampling.FrameCount + "。",
+                SamplingGap(sampling));
+    }
+
+    // #244：ToolTip 连开。第一个 ToolTip 保持原有显示延迟与 140 ms 进入；上一个仍在退出时打开的第二个，
+    // 以及上一个关闭后不到所有者 BetweenShowDelay 就打开的第三个，首帧即终值，上一个的退出立即结束，
+    // 没有一帧同时看到两个。最后等 BetweenShowDelay 过期，第一个重新按动画进入，连开状态没有卡住。
+    // ToolTipService 打开和关闭 ToolTip 都是直接写 IsOpen，夹具照做。
+    private static void ExerciseToolTipChain(MotionScenarioResult result)
+    {
+        const double offset = -PopupOffset;
+        var closedRest = ClosedRest(offset);
+        var openRest = new[] { 1.0, 0.0 };
+        var owners = Enumerable.Range(0, 3).Select(index => new Button {
+            Content = "Chain " + (char)('A' + index), Width = 96, Height = 38, Margin = new Thickness(0, 0, 12, 0)
+        }).ToArray();
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var owner in owners) panel.Children.Add(owner);
+        var tips = owners.Select(owner => new ToolTip {
+            Content = "Chained tooltip " + owner.Content, PlacementTarget = owner, Placement = PlacementMode.Bottom,
+            Style = (Style)_application.FindResource(typeof(ToolTip))
+        }).ToArray();
+        ToolTipService.SetBetweenShowDelay(owners[1], ChainBetweenShowDelayMilliseconds);
+        ToolTipService.SetBetweenShowDelay(owners[2], ChainBetweenShowDelayMilliseconds);
+        var defaultInitialShowDelay = (int)ToolTipService.InitialShowDelayProperty
+            .GetMetadata(typeof(Button)).DefaultValue;
+        var defaultBetweenShowDelay = (int)ToolTipService.BetweenShowDelayProperty
+            .GetMetadata(typeof(Button)).DefaultValue;
+        Window window = null;
+        try
+        {
+            window = ShowFixture(panel, location: NearWorkAreaTop());
+            foreach (var tip in tips)
+                Require((bool)Call("PopupMotionBehavior", "GetIsToolTipEnabled", tip), "ToolTip 没有生产动效样式。");
+            Func<ToolTip, double[]> valuesOf = tip => new[] { tip.Opacity, Translation(tip)?.Y ?? double.NaN };
+            Func<ToolTip, bool> animatedOf = tip => Animated(tip, UIElement.OpacityProperty) ||
+                (Translation(tip) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+            var a = tips[0];
+            var b = tips[1];
+            var c = tips[2];
+            // 先让之前场景里关闭的 ToolTip 都过了任何所有者的 BetweenShowDelay。
+            Settle(ChainBetweenShowDelayMilliseconds + 200);
+            if (!result.Enabled)
+            {
+                // 关闭动画时每个 ToolTip 都直接到终态，连开的第二个同样如此，也不叠加系统淡入。
+                foreach (var tip in new[] { a, b })
+                {
+                    var name = tip == a ? "chain-off-first" : "chain-off-second";
+                    tip.IsOpen = true;
+                    var frame = ObserveFrame(result, name + "-open-first-frame", tip, () => valuesOf(tip),
+                        () => animatedOf(tip), () => tip.IsOpen);
+                    result.InputChecks[name + "OpacityChain"] = OpacityChain(tip);
+                    Require(tip.IsOpen && Immediate(frame.Values, openRest, frame.HasAnimation, 0.000001),
+                        name + "：关闭动画时 ToolTip 打开后的首帧不是终态。");
+                    Require(!RootAnimated(tip) && Math.Abs(VisibleOpacity(tip) - 1) <= 0.000001,
+                        name + "：关闭动画时 ToolTip 仍叠加系统弹层淡入，实际可见度 " +
+                        VisibleOpacity(tip).ToString("R") + "。");
+                    Require(MeasurePlacement(result, name + "-opened", tip, (FrameworkElement)tip.PlacementTarget).Side < 0,
+                        name + "：夹具贴工作区顶部，ToolTip 应落在触发点下方。");
+                    tip.IsOpen = false;
+                    var closed = Observe(result, name + "-close-immediate", () => valuesOf(tip),
+                        () => animatedOf(tip), () => tip.IsOpen);
+                    Require(!tip.IsOpen && Immediate(closed.Values, closedRest, closed.HasAnimation, 0.000001),
+                        name + "：关闭动画时 ToolTip 关闭没有即时停在触发点一侧的静止位。");
+                }
+                return;
+            }
+
+            // 1. 第一个 ToolTip：140 ms quartic 进入。
+            a.IsOpen = true;
+            var entry = Trajectory(result, "chain-first-opening", a, () => valuesOf(a), () => animatedOf(a),
+                value => a.IsOpen && Near(value, openRest, 0.000001), () => a.IsOpen);
+            result.InputChecks["chain-first-openedOpacityChain"] = OpacityChain(a);
+            var begins = ImpliedBegins(entry, 140);
+            result.InputChecks["chain-first-openingImpliedBegins"] = begins;
+            Require(begins.Length >= 2 && begins.Max() - begins.Min() <= 1,
+                "第一个 ToolTip 没有按原有 140 ms quartic 动画进入。");
+            Require(MeasurePlacement(result, "chain-first-opened", a, owners[0]).Side < 0,
+                "夹具贴工作区顶部，ToolTip 应落在触发点下方。");
+
+            // 2. 第一个退出到中途时打开第二个。
+            a.IsOpen = false;
+            WaitFor(result, "chain-first-closing-middle", a, () => valuesOf(a), () => animatedOf(a),
+                value => a.IsOpen && value[0] >= 0.1 && value[0] <= 0.9, () => a.IsOpen);
+            b.IsOpen = true;
+            var firstEnded = Observe(result, "chain-first-after-second-open", () => valuesOf(a),
+                () => animatedOf(a), () => a.IsOpen);
+            var secondOpened = Observe(result, "chain-second-open-committed", () => valuesOf(b),
+                () => animatedOf(b), () => b.IsOpen);
+            Require(!a.IsOpen && Immediate(firstEnded.Values, closedRest, firstEnded.HasAnimation, 0.000001),
+                "上一个 ToolTip 仍在退出时打开第二个，上一个的退出没有立即结束。");
+            Require(b.IsOpen && Immediate(secondOpened.Values, openRest, secondOpened.HasAnimation, 0.000001),
+                "上一个 ToolTip 仍在退出时打开的 ToolTip 没有即时出现。");
+            RequireInstantChainFrames(result, "chain-second", b, a, valuesOf, animatedOf);
+
+            // 3. 第二个正常退出结束后，不到其后继所有者的 BetweenShowDelay 就打开第三个。
+            b.IsOpen = false;
+            var secondExit = Trajectory(result, "chain-second-close", b, () => valuesOf(b), () => animatedOf(b),
+                value => !b.IsOpen && !animatedOf(b), () => b.IsOpen);
+            Require(secondExit.Any(frame => frame.HasAnimation && frame.Values[0] > 0.001 && frame.Values[0] < 0.999),
+                "即时出现的 ToolTip 之后的普通关闭没有按退出动画收回。");
+            var secondClosedAt = result.Clock.Elapsed.TotalMilliseconds;
+            c.IsOpen = true;
+            var thirdOpened = Observe(result, "chain-third-open-committed", () => valuesOf(c),
+                () => animatedOf(c), () => c.IsOpen);
+            result.InputChecks["chain-third-open-after-close-ms"] = thirdOpened.ElapsedMilliseconds - secondClosedAt;
+            Require(thirdOpened.ElapsedMilliseconds - secondClosedAt < ChainBetweenShowDelayMilliseconds,
+                "第三个 ToolTip 没有在 BetweenShowDelay 内打开，夹具无效。");
+            Require(c.IsOpen && Immediate(thirdOpened.Values, openRest, thirdOpened.HasAnimation, 0.000001),
+                "上一个 ToolTip 关闭后不到所有者 BetweenShowDelay 就打开的 ToolTip 没有即时出现。");
+            RequireInstantChainFrames(result, "chain-third", c, b, valuesOf, animatedOf);
+            c.IsOpen = false;
+            Trajectory(result, "chain-third-close", c, () => valuesOf(c), () => animatedOf(c),
+                value => !c.IsOpen && !animatedOf(c), () => c.IsOpen);
+
+            // 4. BetweenShowDelay 过期后第一个重新按动画进入，退出镜像收回。
+            Settle(ChainBetweenShowDelayMilliseconds + 200);
+            a.IsOpen = true;
+            var again = Trajectory(result, "chain-first-reopening", a, () => valuesOf(a), () => animatedOf(a),
+                value => a.IsOpen && Near(value, openRest, 0.000001), () => a.IsOpen);
+            Require(again.Any(frame => frame.HasAnimation && Intermediate(closedRest, frame.Values, openRest)),
+                "BetweenShowDelay 过期后 ToolTip 没有恢复动画进入，连开状态卡住。");
+            RequireEntryFromTriggerSide(result, "chain-first-reopening", again, offset);
+            RequireEntryFromTriggerSide(result, "chain-first-opening", entry, offset);
+            a.IsOpen = false;
+            var exit = Trajectory(result, "chain-first-close", a, () => valuesOf(a), () => animatedOf(a),
+                value => !a.IsOpen && !animatedOf(a), () => a.IsOpen);
+            RequireExitTowardTriggerSide("chain-first-close", exit, offset);
+            RequireExitTowardTriggerSide("chain-second-close", secondExit, offset);
+
+            // 原有显示延迟与各所有者的 BetweenShowDelay 都没有被改写。
+            result.InputChecks["chain-owner-delays"] = owners.Select(owner => new {
+                InitialShowDelay = ToolTipService.GetInitialShowDelay(owner),
+                BetweenShowDelay = ToolTipService.GetBetweenShowDelay(owner)
+            }).ToArray();
+            Require(owners.All(owner => ToolTipService.GetInitialShowDelay(owner) == defaultInitialShowDelay) &&
+                ToolTipService.GetBetweenShowDelay(owners[0]) == defaultBetweenShowDelay &&
+                owners.Skip(1).All(owner => ToolTipService.GetBetweenShowDelay(owner) == ChainBetweenShowDelayMilliseconds),
+                "ToolTip 连开改写了所有者的原有显示延迟。");
+        }
+        finally
+        {
+            try
+            {
+                foreach (var tip in tips)
+                {
+                    Call("PopupMotionBehavior", "SetIsToolTipEnabled", tip, false);
+                    tip.IsOpen = false;
+                }
+            }
+            catch (Exception error) { result.Failures.Add("夹具清理失败：" + error.Message); }
             finally { window?.Close(); Pump(); }
         }
     }
@@ -1408,9 +1871,11 @@ public static class MotionValidationContractHarness
         Window window = null;
         Popup popup = null;
         IDisposable pointerState = null;
+        // #244：夹具贴工作区顶部，日历在触发点下方，关闭后的静止位在 -4。
+        var closedRest = ClosedRest(-PopupOffset);
         try
         {
-            window = ShowFixture(panel, 500);
+            window = ShowFixture(panel, 500, NearWorkAreaTop());
             window.Activate();
             picker.ApplyTemplate();
             popup = (Popup)picker.Template.FindName("PART_Popup", picker);
@@ -1487,6 +1952,8 @@ public static class MotionValidationContractHarness
             Require(picker.IsDropDownOpen && popup.IsOpen, "真实触发器 pointer 没有打开日历。");
             WaitFor(result, "pointer-open-final", calendar, values, animated,
                 value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            Require(MeasurePlacement(result, "pointer-open-final", calendar, picker).Side < 0,
+                "夹具贴工作区顶部，日历应落在触发点下方。");
             activatePopupCapture("Initial");
             result.InputChecks["CaptureBeforeEscape"] = Mouse.Captured?.GetType().FullName ?? "none";
             result.InputChecks["PopupCapturedBeforeEscape"] = popupCapture();
@@ -1500,7 +1967,7 @@ public static class MotionValidationContractHarness
             Require(handled && !picker.IsDropDownOpen && popup.IsOpen, "Esc 未启动逻辑关闭与可见退出。");
             Require(!popupCapture(), "退出中的日历仍抓捕鼠标，下一次宿主点击不可达。");
             WaitFor(result, "pointer-escape-middle", calendar, values, animated,
-                value => Intermediate(closeStart.Values, value, new[] { 0.0, 4.0 }), isOpen);
+                value => Intermediate(closeStart.Values, value, closedRest), isOpen);
             Require(popup.IsOpen && (bool)Call("PopupMotionBehavior", "IsClosing", popup),
                 "重开注入前日历已完成退出，未覆盖中途重开。");
             var openedBeforeReopen = openedCount;
@@ -1523,7 +1990,7 @@ public static class MotionValidationContractHarness
             var outsideFocused = outside.IsKeyboardFocusWithin;
             result.InputChecks["OutsideFocusedBeforeClose"] = outsideFocused;
             WaitFor(result, "pointer-outside-close-final", calendar, values, animated,
-                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+                value => !isOpen() && Near(value, closedRest, 0.000001), isOpen);
             Pump();
             result.InputChecks["OutsideFocusPreserved"] = outside.IsKeyboardFocusWithin;
             Require(outsideFocused && outside.IsKeyboardFocusWithin,
@@ -1583,7 +2050,7 @@ public static class MotionValidationContractHarness
             Require((bool)Call("WindowValidationInput", "RaisePreviewKey", escapeTarget, Key.Escape, ModifierKeys.None),
                 "重新打开后 Esc 没有被生产控件处理。");
             WaitFor(result, "selection-escape-final", calendar, values, animated,
-                value => !isOpen() && Near(value, new[] { 0.0, 4.0 }, 0.000001), isOpen);
+                value => !isOpen() && Near(value, closedRest, 0.000001), isOpen);
             result.InputChecks["SelectedDateAfterReopenEscape"] = picker.SelectedDate?.ToString("yyyy-MM-dd");
             Require(picker.SelectedDate == selected, "重新打开后的 Esc 回滚到了上一轮打开前的日期。");
             picker.CoerceValue(DatePicker.SelectedDateProperty);
@@ -1710,7 +2177,7 @@ public static class MotionValidationContractHarness
         try
         {
             Call("PopupMotionBehavior", "SetIsEnabled", popup, true);
-            window = ShowFixture(panel);
+            window = ShowFixture(panel, location: NearWorkAreaTop());
             Func<double[]> values = () => new[] { surface.Opacity, Translation(surface)?.Y ?? double.NaN };
             Func<bool> animated = () => Animated(surface, UIElement.OpacityProperty) ||
                 (Translation(surface) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
@@ -1728,7 +2195,7 @@ public static class MotionValidationContractHarness
                     System.Threading.Thread.Sleep(InjectedStallMilliseconds);
                     return false;
                 }
-                return Intermediate(before.Values, value, new[] { 0.0, 4.0 });
+                return Intermediate(before.Values, value, ClosedRest(-PopupOffset));
             }, isOpen);
         }
         finally
@@ -1766,6 +2233,10 @@ public static class MotionValidationContractHarness
             foreach (var category in new[] { "calendar", "combobox", "tags", "tooltip" })
                 results.Add(RunCaseWithStallRetry("popup-" + category, enabled,
                     result => ExercisePopupMotion(result, category), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("popup-flipped", enabled, ExerciseFlippedPopupMotion,
+                ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("tooltip-chain", enabled, ExerciseToolTipChain,
+                ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("popup-immediate-open", enabled,
                 result => ExerciseImmediatePopupMotion(result, closeVariant: false), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("popup-immediate-close", enabled,

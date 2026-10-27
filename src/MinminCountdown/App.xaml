@@ -1395,6 +1395,10 @@
       </Setter>
     </Style>
 
+    <!-- #244：ToolTip 的进入与退出只由 PopupMotionBehavior 负责。WPF 自带的 ToolTip 弹层淡入
+         会叠在它上面，连开的 ToolTip 无法即时出现，关闭动画时也到不了终态，所以关掉。 -->
+    <PopupAnimation x:Key="{x:Static SystemParameters.ToolTipPopupAnimationKey}">None</PopupAnimation>
+
     <Style TargetType="{x:Type ToolTip}">
       <Setter Property="focus:PopupMotionBehavior.IsToolTipEnabled" Value="True" />
       <Setter Property="Background" Value="{DynamicResource InkBrush}" />

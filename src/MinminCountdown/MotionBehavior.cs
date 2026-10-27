@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -825,6 +826,18 @@ internal static class PopupMotionBehavior
         private bool _hasPresented;
         private bool _attached;
         private bool _restoreDismissOnOutsideClick;
+        // #244：进入从触发点一侧移入、退出朝同一侧收回的位移。弹层在触发点下方为 -4，在上方
+        // （含 WPF 翻转）为 +4；定位完成后才判定，无法判定时按下方处理。
+        private const double PopupOffset = 4;
+        private double _offset = -PopupOffset;
+
+        // #244：ToolTip 连开。应用级只记两件事：最近一次 ToolTip 关闭（退出结束）的时刻，以及
+        // 正在退出的那个 ToolTip。WPF 的 ToolTip 服务按 UI 线程各一份，这里同样按线程记录；
+        // 退出中的 ToolTip 只弱引用，不延长它的生命周期。
+        [ThreadStatic]
+        private static long _lastToolTipClosedAt;
+        [ThreadStatic]
+        private static WeakReference<PopupMotionController>? _exitingToolTip;
 
         public PopupMotionController(DependencyObject owner)
         {
@@ -851,6 +864,10 @@ internal static class PopupMotionBehavior
             {
                 popup.Opened += OnPopupOpened;
                 popup.Closed += OnPopupClosed;
+            }
+            else if (_owner is ToolTip toolTip)
+            {
+                toolTip.Opened += OnToolTipOpened;
             }
 
             AttachPlacementTarget();
@@ -883,7 +900,12 @@ internal static class PopupMotionBehavior
                 popup.Opened -= OnPopupOpened;
                 popup.Closed -= OnPopupClosed;
             }
+            else if (_owner is ToolTip toolTip)
+            {
+                toolTip.Opened -= OnToolTipOpened;
+            }
 
+            ReleaseExitingToolTip();
             DetachPlacementTarget();
             ClearAnimations();
             _visual = null;
@@ -935,6 +957,11 @@ internal static class PopupMotionBehavior
 
         public void RequestOpen(bool immediate = false)
         {
+            if (_isToolTip && !immediate && _transition == TransitionKind.None)
+            {
+                immediate = ContinuesToolTipChain();
+            }
+
             _immediateRequest = immediate;
             _requestedOpen = true;
             if (!IsOpen)
@@ -988,6 +1015,39 @@ internal static class PopupMotionBehavior
             // picker callback can write Popup.IsOpen=false again. An outside
             // close must also make the next trigger click an open request.
             SynchronizeTargetCloseRequest();
+        }
+
+        // #244：另一个 ToolTip 仍在退出时打开，或上一个 ToolTip 关闭后不到本 ToolTip 所有者的
+        // BetweenShowDelay 就打开：即时出现，正在退出的那个立即结束。同一个 ToolTip 在自己退出
+        // 期间重开仍走从当前值反向续接，不进这里。
+        private bool ContinuesToolTipChain()
+        {
+            var exiting = ExitingToolTip;
+            if (exiting is not null && !ReferenceEquals(exiting, this) && exiting.IsClosing)
+            {
+                exiting.CompleteClose();
+                return true;
+            }
+
+            if (_lastToolTipClosedAt == 0)
+            {
+                return false;
+            }
+
+            var delay = ToolTipService.GetBetweenShowDelay(_placementTarget ?? _owner);
+            return delay > 0 &&
+                Stopwatch.GetElapsedTime(_lastToolTipClosedAt).TotalMilliseconds < delay;
+        }
+
+        private static PopupMotionController? ExitingToolTip =>
+            _exitingToolTip is not null && _exitingToolTip.TryGetTarget(out var exiting) ? exiting : null;
+
+        private void ReleaseExitingToolTip()
+        {
+            if (ReferenceEquals(ExitingToolTip, this))
+            {
+                _exitingToolTip = null;
+            }
         }
 
         private void ReleaseCaptureForExit()
@@ -1082,7 +1142,12 @@ internal static class PopupMotionBehavior
             }
         }
 
-        private void OnPopupOpened(object? sender, EventArgs args)
+        private void OnPopupOpened(object? sender, EventArgs args) => OnSurfaceOpened();
+
+        // ToolTip 的弹层可能在请求之后才打开（绑定通知顺序或异步建窗）；打开后重新按定位判定方向。
+        private void OnToolTipOpened(object sender, RoutedEventArgs args) => OnSurfaceOpened();
+
+        private void OnSurfaceOpened()
         {
             ResolveVisual();
             AttachPlacementTarget();
@@ -1186,23 +1251,44 @@ internal static class PopupMotionBehavior
             }
 
             var version = ++_transitionVersion;
+            var previous = _transition;
             _transition = kind;
             var translation = EnsureTranslation(_visual);
             var fromOpacity = _visual.Opacity;
             var fromY = translation.Y;
             ClearAnimations();
+            UpdateOffsetFromPlacement(kind, settleLayout: kind == TransitionKind.Opening &&
+                previous != TransitionKind.Closing);
 
             if (kind == TransitionKind.Opening &&
-                !_hasPresented &&
-                fromOpacity >= 0.999 &&
-                Math.Abs(fromY) < 0.001)
+                previous != TransitionKind.Closing &&
+                (fromOpacity <= 0.001 ||
+                    (!_hasPresented && fromOpacity >= 0.999 && Math.Abs(fromY) < 0.001)))
             {
+                // 从静止出发：完全透明，停在触发点一侧。
                 fromOpacity = 0;
-                fromY = 4;
+                fromY = _offset;
+            }
+            else if (fromY * _offset < 0)
+            {
+                // 续接途中重新定位换了一侧：只镜像当前位移，不透明度照常从当前值续接。
+                fromY = -fromY;
+            }
+
+            if (_isToolTip)
+            {
+                if (kind == TransitionKind.Closing)
+                {
+                    _exitingToolTip = new WeakReference<PopupMotionController>(this);
+                }
+                else
+                {
+                    ReleaseExitingToolTip();
+                }
             }
 
             var targetOpacity = kind == TransitionKind.Opening ? 1 : 0;
-            var targetY = kind == TransitionKind.Opening ? 0 : 4;
+            var targetY = kind == TransitionKind.Opening ? 0 : _offset;
             var duration = _immediateRequest
                 ? TimeSpan.Zero
                 : ResolveDuration(
@@ -1296,7 +1382,7 @@ internal static class PopupMotionBehavior
             _hasPresented = false;
             if (_visual is not null)
             {
-                SetVisualValues(0, 4);
+                SetVisualValues(0, _offset);
             }
 
             if (IsOpen)
@@ -1304,7 +1390,67 @@ internal static class PopupMotionBehavior
                 SetIsOpen(false);
             }
 
+            if (_isToolTip)
+            {
+                // 退出结束即这个 ToolTip 关闭的时刻。
+                _lastToolTipClosedAt = Stopwatch.GetTimestamp();
+                ReleaseExitingToolTip();
+            }
+
             RestoreCapturePolicy();
+        }
+
+        // #244：方向只在定位完成后判定。比较弹层表面与放置目标（没有显式目标时用模板父级）的
+        // 纵向中心；两者分属不同 HWND，只比较屏幕坐标。进入前先让排版落定，复用的弹层窗口按新
+        // 尺寸重新定位后再判定；无法判定时进入按下方处理，退出沿用进入时的方向。
+        private void UpdateOffsetFromPlacement(TransitionKind kind, bool settleLayout)
+        {
+            var side = ResolvePlacementSide(settleLayout);
+            if (side != 0)
+            {
+                _offset = side > 0 ? PopupOffset : -PopupOffset;
+            }
+            else if (kind == TransitionKind.Opening)
+            {
+                _offset = -PopupOffset;
+            }
+        }
+
+        // 返回 +1：弹层在触发点上方；-1：在下方；0：无法判定。
+        private int ResolvePlacementSide(bool settleLayout)
+        {
+            if (_visual is null || _placementTarget is not UIElement target ||
+                PresentationSource.FromVisual(_visual) is null ||
+                PresentationSource.FromVisual(target) is null)
+            {
+                return 0;
+            }
+
+            if (settleLayout)
+            {
+                _visual.UpdateLayout();
+            }
+
+            var surface = VerticalCenterOnScreen(_visual);
+            var anchor = VerticalCenterOnScreen(target);
+            if (surface is null || anchor is null || Math.Abs(surface.Value - anchor.Value) < 0.5)
+            {
+                return 0;
+            }
+
+            return surface.Value < anchor.Value ? 1 : -1;
+        }
+
+        private static double? VerticalCenterOnScreen(UIElement element)
+        {
+            if (PresentationSource.FromVisual(element) is null)
+            {
+                return null;
+            }
+
+            var top = element.PointToScreen(new Point(0, 0)).Y;
+            var bottom = element.PointToScreen(new Point(0, element.RenderSize.Height)).Y;
+            return (top + bottom) / 2;
         }
 
         private void ResolveVisual()

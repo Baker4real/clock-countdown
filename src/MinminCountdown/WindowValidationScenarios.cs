@@ -2428,11 +2428,13 @@ public sealed partial class MainWindow
                 escapeSource = FilterButton;
             }
 
+            // #244：关闭后的静止位在触发点一侧，按关闭前弹层与触发点的屏幕位置判定。
+            var restOffsetY = PopupRestOffsetY(FilterPopup, FilterButton);
             var handled = WindowValidationInput.RaisePreviewKey(escapeSource, Key.Escape);
-            var closedOnFirstFrame = ObserveFirstRenderedFrame(() =>
+            var closedOnFirstFrame = restOffsetY is { } offsetY && ObserveFirstRenderedFrame(() =>
                 !FilterPopup.IsOpen &&
                 !PopupMotionBehavior.IsClosing(FilterPopup) &&
-                PopupSurfaceAtRest(FilterPopup, opacity: 0, offsetY: 4));
+                PopupSurfaceAtRest(FilterPopup, opacity: 0, offsetY: offsetY));
             var focusReturned = WindowValidationInput.WaitUntil(Dispatcher, () =>
                 FilterButton.IsKeyboardFocusWithin ||
                 ReferenceEquals(FocusManager.GetFocusedElement(this), FilterButton), 1000);
@@ -2561,6 +2563,24 @@ public sealed partial class MainWindow
             TransformGroup group => group.Children.OfType<TranslateTransform>().LastOrDefault(),
             _ => null
         };
+
+    // #244：弹层在触发点下方时静止位是 -4，在上方时是 +4。弹层与触发点分属不同 HWND，
+    // 只比较屏幕坐标的纵向中心；任一方没有连上窗口时取不到。
+    private static double? PopupRestOffsetY(Popup popup, FrameworkElement trigger)
+    {
+        if (popup.Child is not FrameworkElement visual ||
+            PresentationSource.FromVisual(visual) is null ||
+            PresentationSource.FromVisual(trigger) is null)
+        {
+            return null;
+        }
+
+        static double CenterY(FrameworkElement element) =>
+            (element.PointToScreen(new Point(0, 0)).Y +
+             element.PointToScreen(new Point(0, element.ActualHeight)).Y) / 2;
+
+        return CenterY(visual) < CenterY(trigger) ? 4 : -4;
+    }
 
     // 聚焦前后控件外尺寸与状态部件边厚都不变——焦点环是常驻透明环，只换色不加厚。
     private bool FocusDoesNotChangeLayout(Control control, string ringName, string surfaceName)

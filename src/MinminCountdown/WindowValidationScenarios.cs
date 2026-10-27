@@ -1701,12 +1701,7 @@ public sealed partial class MainWindow
             var ordinaryIdentityPreserved =
                 ReferenceEquals(rowBefore, _countdownSourceRows.GetValueOrDefault(record.Id)) &&
                 ReferenceEquals(textBefore, _countdownRemainingTexts.GetValueOrDefault(record.Id));
-            var secondsValues = MainValidationDescendants<StackPanel>(CountdownRows)
-                .Where(pair => pair.Children.Count == 2 &&
-                    pair.Children[0] is Border { Child: TextBlock } &&
-                    pair.Children[1] is TextBlock { Text: "秒" })
-                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
-                .ToArray();
+            var secondsValues = WindowValidationInput.RemainingSecondsValues(CountdownRows);
             var countdownSecondsSwitchWithoutAnimation =
                 secondsPrecisionSaved &&
                 !string.Equals(remainingTextBeforeTick, textBefore.Text, StringComparison.Ordinal) &&
@@ -4222,12 +4217,7 @@ public sealed partial class FloatingWindow
                 FloatingLastRenderWasInPlaceForValidation &&
                 !countdownTextsBefore.SequenceEqual(FloatingCountdownTexts) &&
                 !clusterNamesBefore.SequenceEqual(FloatingCountdownClusterNames());
-            var secondsValues = ValidationDescendants<StackPanel>(FloatingRows)
-                .Where(pair => pair.Children.Count == 2 &&
-                    pair.Children[0] is Border { Child: TextBlock } &&
-                    pair.Children[1] is TextBlock { Text: "秒" })
-                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
-                .ToArray();
+            var secondsValues = WindowValidationInput.RemainingSecondsValues(FloatingRows);
             var countdownSecondsSwitchWithoutAnimation =
                 countdownRowsPreservedAndTextUpdatesInPlace &&
                 secondsValues.Length >= 2 &&
@@ -5894,6 +5884,31 @@ internal static class WindowValidationInput
             DispatcherPriority.SystemIdle,
             new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
+    }
+
+    // #239/#240：两窗剩余时间分格里秒位的数值文字。分格是「数值格（Border 包 TextBlock）＋单位」
+    // 两个子元素的 StackPanel，单位为「秒」的那一对即秒位。
+    public static TextBlock[] RemainingSecondsValues(DependencyObject root)
+    {
+        var values = new List<TextBlock>();
+        Collect(root);
+        return values.ToArray();
+
+        void Collect(DependencyObject parent)
+        {
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is StackPanel { Children.Count: 2 } pair &&
+                    pair.Children[0] is Border { Child: TextBlock value } &&
+                    pair.Children[1] is TextBlock { Text: "秒" })
+                {
+                    values.Add(value);
+                }
+
+                Collect(child);
+            }
+        }
     }
 
     public static PopupFocusExerciseResult ExercisePopup(

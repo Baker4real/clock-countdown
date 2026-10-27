@@ -1063,6 +1063,8 @@ internal static partial class ValidationReport
             ValidationExercises.RunStartupAcceptanceProtocolInterfaceBehavior();
         var holidayCalendarInterfaceBehavior =
             ValidationExercises.RunHolidayCalendarInterfaceBehavior();
+        var interactiveClockCadenceBehavior =
+            ValidationExercises.RunInteractiveClockCadenceBehavior();
         var reminderRulesEditorSharedEntryWorks =
             ValidationExercises.ExerciseReminderRulesEntry(
                 main,
@@ -1083,6 +1085,9 @@ internal static partial class ValidationReport
             ["HolidayCalendarInterfaceBehavior"] = Must(holidayCalendarInterfaceBehavior, "工作日历 interface 覆盖缓存初始化、派生结果与失败状态"),
             ["VirtualWorkdayCountdownExcludedFromReminders"] =
                 holidayCalendarInterfaceBehavior,
+            ["InteractiveClockCadenceLocksToQuarterSecond"] = Must(
+                interactiveClockCadenceBehavior,
+                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 10ms，间隔在 10–260ms（#241）"),
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,

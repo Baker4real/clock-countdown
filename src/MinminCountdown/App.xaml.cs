@@ -468,11 +468,21 @@ public sealed partial class App : Application
 
         _clockTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(250)
+            Interval = InteractiveClockCadence.Period
         };
-        _clockTimer.Tick += (_, _) => UpdateInteractiveState();
+        _clockTimer.Tick += (_, _) => OnInteractiveClockTick();
         _clockTimer.Start();
+        OnInteractiveClockTick();
+    }
+
+    private void OnInteractiveClockTick()
+    {
         UpdateInteractiveState();
+        // #241：下游工作做完后，按工作区快照所用的时钟重算下一拍的间隔。
+        if (_clockTimer is { IsEnabled: true } && _desktopWorkspace is not null)
+        {
+            _clockTimer.Interval = InteractiveClockCadence.NextInterval(_desktopWorkspace.Clock.UtcNow);
+        }
     }
 
     private void OnFloatingContentRendered(object? sender, EventArgs eventArgs)
@@ -1728,6 +1738,23 @@ internal static class ReminderPersistenceRetrySchedule
         3 => TimeSpan.FromSeconds(20),
         _ => TimeSpan.FromSeconds(30)
     };
+}
+
+// #241：交互时钟仍是每 250ms 一拍；每拍后按当前时刻重算间隔，让下一拍落在下一个
+// 四分之一秒边界之后 10ms。只看当前时刻，系统时间跳变或睡眠恢复后下一拍就重新对齐。
+internal static class InteractiveClockCadence
+{
+    public static readonly TimeSpan Period = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan LandingOffset = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan MinimumInterval = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan MaximumInterval = TimeSpan.FromMilliseconds(260);
+
+    public static TimeSpan NextInterval(DateTimeOffset nowUtc)
+    {
+        var phaseTicks = nowUtc.UtcTicks % Period.Ticks;
+        var intervalTicks = Period.Ticks - phaseTicks + LandingOffset.Ticks;
+        return TimeSpan.FromTicks(Math.Clamp(intervalTicks, MinimumInterval.Ticks, MaximumInterval.Ticks));
+    }
 }
 
 internal static class CliOutput

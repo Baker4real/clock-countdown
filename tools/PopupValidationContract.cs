@@ -534,7 +534,7 @@ public static class MotionValidationContractHarness
     private const int InjectedStallMilliseconds = 150;
     // #244：弹层进入与退出的位移幅度，方向由弹层落在触发点哪一侧决定。
     private const double PopupOffset = 4;
-    // ToolTip 连开夹具给后续所有者显式设的 BetweenShowDelay；等待它过期后再验证不连开。
+    // ToolTip 连开夹具给长延迟所有者显式设的 BetweenShowDelay；等待它过期后再验证不连开。
     private const int ChainBetweenShowDelayMilliseconds = 1000;
     private static readonly string[] ResourceKeys = DurationKeys.Concat(
         new[] { "MotionEaseOut", "MotionCubicEaseOut" }).ToArray();
@@ -1696,8 +1696,9 @@ public static class MotionValidationContractHarness
     }
 
     // #244：ToolTip 连开。第一个 ToolTip 保持原有显示延迟与 140 ms 进入；上一个仍在退出时打开的第二个，
-    // 以及上一个关闭后不到所有者 BetweenShowDelay 就打开的第三个，首帧即终值，上一个的退出立即结束，
-    // 没有一帧同时看到两个。最后等 BetweenShowDelay 过期，第一个重新按动画进入，连开状态没有卡住。
+    // 以及上一个关闭后不到上一个所有者 BetweenShowDelay 就打开的第三个，首帧即终值，上一个的退出立即结束，
+    // 没有一帧同时看到两个。第三个所有者自己的 BetweenShowDelay 为 0：连开只看上一个所有者。最后等
+    // BetweenShowDelay 过期，第一个重新按动画进入，连开状态没有卡住。
     // ToolTipService 打开和关闭 ToolTip 都是直接写 IsOpen，夹具照做。
     private static void ExerciseToolTipChain(MotionScenarioResult result)
     {
@@ -1714,7 +1715,7 @@ public static class MotionValidationContractHarness
             Style = (Style)_application.FindResource(typeof(ToolTip))
         }).ToArray();
         ToolTipService.SetBetweenShowDelay(owners[1], ChainBetweenShowDelayMilliseconds);
-        ToolTipService.SetBetweenShowDelay(owners[2], ChainBetweenShowDelayMilliseconds);
+        ToolTipService.SetBetweenShowDelay(owners[2], 0);
         var defaultInitialShowDelay = (int)ToolTipService.InitialShowDelayProperty
             .GetMetadata(typeof(Button)).DefaultValue;
         var defaultBetweenShowDelay = (int)ToolTipService.BetweenShowDelayProperty
@@ -1786,7 +1787,8 @@ public static class MotionValidationContractHarness
                 "上一个 ToolTip 仍在退出时打开的 ToolTip 没有即时出现。");
             RequireInstantChainFrames(result, "chain-second", b, a, valuesOf, animatedOf);
 
-            // 3. 第二个正常退出结束后，不到其后继所有者的 BetweenShowDelay 就打开第三个。
+            // 3. 第二个正常退出结束后，不到第二个所有者的 BetweenShowDelay 就打开第三个；第三个所有者
+            //    自己的 BetweenShowDelay 为 0，按它判定就不会连开。
             b.IsOpen = false;
             var secondExit = Trajectory(result, "chain-second-close", b, () => valuesOf(b), () => animatedOf(b),
                 value => !b.IsOpen && !animatedOf(b), () => b.IsOpen);
@@ -1800,7 +1802,8 @@ public static class MotionValidationContractHarness
             Require(thirdOpened.ElapsedMilliseconds - secondClosedAt < ChainBetweenShowDelayMilliseconds,
                 "第三个 ToolTip 没有在 BetweenShowDelay 内打开，夹具无效。");
             Require(c.IsOpen && Immediate(thirdOpened.Values, openRest, thirdOpened.HasAnimation, 0.000001),
-                "上一个 ToolTip 关闭后不到所有者 BetweenShowDelay 就打开的 ToolTip 没有即时出现。");
+                "上一个 ToolTip 关闭后不到上一个所有者 BetweenShowDelay 就打开的 ToolTip 没有即时出现" +
+                "（新所有者自己的 BetweenShowDelay 为 0）。");
             RequireInstantChainFrames(result, "chain-third", c, b, valuesOf, animatedOf);
             c.IsOpen = false;
             Trajectory(result, "chain-third-close", c, () => valuesOf(c), () => animatedOf(c),
@@ -1828,7 +1831,105 @@ public static class MotionValidationContractHarness
             }).ToArray();
             Require(owners.All(owner => ToolTipService.GetInitialShowDelay(owner) == defaultInitialShowDelay) &&
                 ToolTipService.GetBetweenShowDelay(owners[0]) == defaultBetweenShowDelay &&
-                owners.Skip(1).All(owner => ToolTipService.GetBetweenShowDelay(owner) == ChainBetweenShowDelayMilliseconds),
+                ToolTipService.GetBetweenShowDelay(owners[1]) == ChainBetweenShowDelayMilliseconds &&
+                ToolTipService.GetBetweenShowDelay(owners[2]) == 0,
+                "ToolTip 连开改写了所有者的原有显示延迟。");
+        }
+        finally
+        {
+            try
+            {
+                foreach (var tip in tips)
+                {
+                    Call("PopupMotionBehavior", "SetIsToolTipEnabled", tip, false);
+                    tip.IsOpen = false;
+                }
+            }
+            catch (Exception error) { result.Failures.Add("夹具清理失败：" + error.Message); }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
+    // #244：连开看上一个 ToolTip 所有者的 BetweenShowDelay，不看新 ToolTip 所有者的。上一个所有者的
+    // BetweenShowDelay 为 0：它的退出结束之后不久（远小于新所有者的 BetweenShowDelay）打开的 ToolTip，
+    // 即使自己的所有者设了长 BetweenShowDelay，也按动画从触发点一侧进入。关闭动画时所有 ToolTip 都即时
+    // 出现，由 tooltip-chain 覆盖，这里只跑开启动画。
+    private static void ExerciseToolTipChainExpiredPreviousOwner(MotionScenarioResult result)
+    {
+        const double offset = -PopupOffset;
+        var closedRest = ClosedRest(offset);
+        var openRest = new[] { 1.0, 0.0 };
+        var owners = new[] { "Short", "Long" }.Select(name => new Button {
+            Content = name, Width = 96, Height = 38, Margin = new Thickness(0, 0, 12, 0)
+        }).ToArray();
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var owner in owners) panel.Children.Add(owner);
+        var tips = owners.Select(owner => new ToolTip {
+            Content = "Tooltip " + owner.Content, PlacementTarget = owner, Placement = PlacementMode.Bottom,
+            Style = (Style)_application.FindResource(typeof(ToolTip))
+        }).ToArray();
+        ToolTipService.SetBetweenShowDelay(owners[0], 0);
+        ToolTipService.SetBetweenShowDelay(owners[1], ChainBetweenShowDelayMilliseconds);
+        Window window = null;
+        try
+        {
+            window = ShowFixture(panel, location: NearWorkAreaTop());
+            foreach (var tip in tips)
+                Require((bool)Call("PopupMotionBehavior", "GetIsToolTipEnabled", tip), "ToolTip 没有生产动效样式。");
+            Func<ToolTip, double[]> valuesOf = tip => new[] { tip.Opacity, Translation(tip)?.Y ?? double.NaN };
+            Func<ToolTip, bool> animatedOf = tip => Animated(tip, UIElement.OpacityProperty) ||
+                (Translation(tip) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+            var previous = tips[0];
+            var next = tips[1];
+            // 先让之前场景里关闭的 ToolTip 都过了任何所有者的 BetweenShowDelay。
+            Settle(ChainBetweenShowDelayMilliseconds + 200);
+
+            previous.IsOpen = true;
+            Trajectory(result, "expired-previous-opening", previous, () => valuesOf(previous),
+                () => animatedOf(previous), value => previous.IsOpen && Near(value, openRest, 0.000001),
+                () => previous.IsOpen);
+            previous.IsOpen = false;
+            Trajectory(result, "expired-previous-close", previous, () => valuesOf(previous),
+                () => animatedOf(previous), value => !previous.IsOpen && !animatedOf(previous),
+                () => previous.IsOpen);
+            var previousClosedAt = result.Clock.Elapsed.TotalMilliseconds;
+
+            // 上一个退出结束后约 100 ms 再打开（生产默认 BetweenShowDelay 的量级），仍远小于新所有者的
+            // 1000 ms，两种理解照样分得开。退出结束后一帧之内就打开时，新 ToolTip 的进入在头几帧里会读回
+            // 静止位再继续，而控制器只启动了一次进入；那与连开判定无关，不在这里测。
+            Settle(100);
+            next.IsOpen = true;
+            var openedAfterClose = result.Clock.Elapsed.TotalMilliseconds - previousClosedAt;
+            result.InputChecks["expired-next-open-after-close-ms"] = openedAfterClose;
+            var entry = Trajectory(result, "expired-next-opening", next, () => valuesOf(next),
+                () => animatedOf(next), value => next.IsOpen && Near(value, openRest, 0.000001), () => next.IsOpen);
+            Require(openedAfterClose < ChainBetweenShowDelayMilliseconds,
+                "新 ToolTip 没有在其所有者的 BetweenShowDelay 内打开，夹具无效。");
+            Require(entry.Any(frame => frame.HasAnimation && Intermediate(closedRest, frame.Values, openRest)),
+                "上一个 ToolTip 所有者的 BetweenShowDelay 为 0，它退出结束之后打开的 ToolTip 却按自己所有者的 " +
+                "BetweenShowDelay 即时出现。");
+            Require(MeasurePlacement(result, "expired-next-opened", next, owners[1]).Side < 0,
+                "夹具贴工作区顶部，ToolTip 应落在触发点下方。");
+            RequireEntryFromTriggerSide(result, "expired-next-opening", entry, offset);
+            next.IsOpen = false;
+            var exit = Trajectory(result, "expired-next-close", next, () => valuesOf(next),
+                () => animatedOf(next), value => !next.IsOpen && !animatedOf(next), () => next.IsOpen);
+            RequireExitTowardTriggerSide("expired-next-close", exit, offset);
+
+            // 刚关闭的是长延迟所有者的 ToolTip：等它的 BetweenShowDelay 过期，上一个重新按动画进入，
+            // 长延迟同样会过期，连开状态没有卡住。
+            Settle(ChainBetweenShowDelayMilliseconds + 200);
+            previous.IsOpen = true;
+            var reopened = Trajectory(result, "expired-previous-reopening", previous, () => valuesOf(previous),
+                () => animatedOf(previous), value => previous.IsOpen && Near(value, openRest, 0.000001),
+                () => previous.IsOpen);
+            Require(reopened.Any(frame => frame.HasAnimation && Intermediate(closedRest, frame.Values, openRest)),
+                "长延迟所有者的 BetweenShowDelay 过期后 ToolTip 没有恢复动画进入，连开状态卡住。");
+            previous.IsOpen = false;
+            Trajectory(result, "expired-previous-reclose", previous, () => valuesOf(previous),
+                () => animatedOf(previous), value => !previous.IsOpen && !animatedOf(previous), () => previous.IsOpen);
+            Require(ToolTipService.GetBetweenShowDelay(owners[0]) == 0 &&
+                ToolTipService.GetBetweenShowDelay(owners[1]) == ChainBetweenShowDelayMilliseconds,
                 "ToolTip 连开改写了所有者的原有显示延迟。");
         }
         finally
@@ -2246,6 +2347,8 @@ public static class MotionValidationContractHarness
             results.Add(RunCaseWithStallRetry("segment-indicator-immediate", enabled,
                 result => Indicator(result, immediateMove: true), ref stallRetriesLeft));
         }
+        results.Add(RunCaseWithStallRetry("tooltip-chain-expired-previous-owner", true,
+            ExerciseToolTipChainExpiredPreviousOwner, ref stallRetriesLeft));
         results.Add(RunCaseWithStallRetry("datepicker-text-interrupted-input", true,
             result => DatePickerInterruptedInput(result, true), ref stallRetriesLeft));
         results.Add(RunCaseWithStallRetry("datepicker-arrow-interrupted-input", true,

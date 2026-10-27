@@ -436,7 +436,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 弹层方向随触发点（#244）：弹层或提示打开并完成定位后，`PopupMotionBehavior` 比较弹层表面与放置目标（没有显式目标时用模板父级）的纵向中心，判定弹层在触发点哪一侧；两者分属不同窗口，只比较屏幕坐标，无法判定时按「下方」处理。方向只在定位完成后判定。在下方时从 −4 DIP 移入到 0；在上方（含 WPF 因下方放不下而翻转）时从 +4 DIP 移入到 0。退出与进入镜像，朝触发点一侧收回并淡出，关闭后的静止位停在同一侧。时长、缓动和 token 不变，退出期间保留打开、从当前值反向续接的语义不变。
 
-ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不到本 ToolTip 所有者的 `BetweenShowDelay` 就打开的 ToolTip，或者另一个 ToolTip 仍在退出时打开的 ToolTip，即时出现：首帧即完全不透明、位移为 0，上一个的退出立即结束，任何一帧都不会同时看到两个。第一个 ToolTip 保持原有显示延迟和 140ms 进入。应用级只记录两件事：最近一次 ToolTip 关闭的时刻，以及正在退出的那个 ToolTip。ToolTip 的进入与退出只由 `PopupMotionBehavior` 负责：应用资源把 `SystemParameters.ToolTipPopupAnimationKey` 设为 `None`，不再叠加 WPF 自带的 ToolTip 弹层淡入，因此连开能即时出现，系统关闭客户区动画时 ToolTip 也直达终态。
+ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不到上一个 ToolTip 所有者的 `BetweenShowDelay` 就打开的 ToolTip，或者另一个 ToolTip 仍在退出时打开的 ToolTip，即时出现：首帧即完全不透明、位移为 0，上一个的退出立即结束，任何一帧都不会同时看到两个。与 WPF 自己的快速显示一样，计时看关闭方所有者，不看新 ToolTip 的所有者。第一个 ToolTip 保持原有显示延迟和 140ms 进入。应用级只记录三件事：最近一次 ToolTip 关闭的时刻、关闭方所有者的 `BetweenShowDelay`，以及正在退出的那个 ToolTip；这些状态与连开判定放在一个专用类型里，各弹层的动效控制器只调用它。ToolTip 的进入与退出只由 `PopupMotionBehavior` 负责：应用资源把 `SystemParameters.ToolTipPopupAnimationKey` 设为 `None`，不再叠加 WPF 自带的 ToolTip 弹层淡入，因此连开能即时出现，系统关闭客户区动画时 ToolTip 也直达终态。
 
 键盘触发即时（#242）：应用自己处理的键盘路径显式请求即时，不播过渡。Ctrl+1 / Ctrl+2 切换工作区时，页签指示条在按键后的首帧就已对齐新页签；倒计时页 Ctrl+F 打开筛选、Ctrl+T 打开标签管理时，弹层首帧即完全不透明、位移为 0；弹层焦点生命周期处理的 Esc 立即关闭弹层，不保留退出阶段，焦点回到触发器。入口是 `SegmentIndicator.MoveTo(target, immediate: true)` 与 `PopupMotionBehavior.Open / Close(popup, immediate: true)`：即时请求结束进行中的过渡并直接写入终态，即时关闭在调用返回时弹层已关闭。鼠标点击页签与弹层触发器仍播上述过渡；系统关闭客户区动画时两条路径都直达终态。原生日期 / 下拉控件的 F4、Alt+Down 与其自带 Esc，Tab 聚焦按钮后用空格 / 回车激活，以及多选方向键不在此列；不按输入设备嗅探。
 

@@ -796,6 +796,14 @@ internal static class PopupMotionBehavior
             Closing
         }
 
+        // #244：弹层表面相对触发点的一侧；定位未完成或两者中心重合时为 Unknown。
+        private enum PlacementSide
+        {
+            Unknown,
+            Above,
+            Below
+        }
+
         private readonly DependencyObject _owner;
         private readonly bool _isToolTip;
         // Dependency-property bindings use weak invalidation listeners. A
@@ -830,14 +838,6 @@ internal static class PopupMotionBehavior
         // （含 WPF 翻转）为 +4；定位完成后才判定，无法判定时按下方处理。
         private const double PopupOffset = 4;
         private double _offset = -PopupOffset;
-
-        // #244：ToolTip 连开。应用级只记两件事：最近一次 ToolTip 关闭（退出结束）的时刻，以及
-        // 正在退出的那个 ToolTip。WPF 的 ToolTip 服务按 UI 线程各一份，这里同样按线程记录；
-        // 退出中的 ToolTip 只弱引用，不延长它的生命周期。
-        [ThreadStatic]
-        private static long _lastToolTipClosedAt;
-        [ThreadStatic]
-        private static WeakReference<PopupMotionController>? _exitingToolTip;
 
         public PopupMotionController(DependencyObject owner)
         {
@@ -905,7 +905,7 @@ internal static class PopupMotionBehavior
                 toolTip.Opened -= OnToolTipOpened;
             }
 
-            ReleaseExitingToolTip();
+            ToolTipChain.Release(this);
             DetachPlacementTarget();
             ClearAnimations();
             _visual = null;
@@ -957,9 +957,10 @@ internal static class PopupMotionBehavior
 
         public void RequestOpen(bool immediate = false)
         {
+            // 同一个 ToolTip 在自己退出期间重开仍走从当前值反向续接，不问连开。
             if (_isToolTip && !immediate && _transition == TransitionKind.None)
             {
-                immediate = ContinuesToolTipChain();
+                immediate = ToolTipChain.OpensImmediately(this);
             }
 
             _immediateRequest = immediate;
@@ -1015,39 +1016,6 @@ internal static class PopupMotionBehavior
             // picker callback can write Popup.IsOpen=false again. An outside
             // close must also make the next trigger click an open request.
             SynchronizeTargetCloseRequest();
-        }
-
-        // #244：另一个 ToolTip 仍在退出时打开，或上一个 ToolTip 关闭后不到本 ToolTip 所有者的
-        // BetweenShowDelay 就打开：即时出现，正在退出的那个立即结束。同一个 ToolTip 在自己退出
-        // 期间重开仍走从当前值反向续接，不进这里。
-        private bool ContinuesToolTipChain()
-        {
-            var exiting = ExitingToolTip;
-            if (exiting is not null && !ReferenceEquals(exiting, this) && exiting.IsClosing)
-            {
-                exiting.CompleteClose();
-                return true;
-            }
-
-            if (_lastToolTipClosedAt == 0)
-            {
-                return false;
-            }
-
-            var delay = ToolTipService.GetBetweenShowDelay(_placementTarget ?? _owner);
-            return delay > 0 &&
-                Stopwatch.GetElapsedTime(_lastToolTipClosedAt).TotalMilliseconds < delay;
-        }
-
-        private static PopupMotionController? ExitingToolTip =>
-            _exitingToolTip is not null && _exitingToolTip.TryGetTarget(out var exiting) ? exiting : null;
-
-        private void ReleaseExitingToolTip()
-        {
-            if (ReferenceEquals(ExitingToolTip, this))
-            {
-                _exitingToolTip = null;
-            }
         }
 
         private void ReleaseCaptureForExit()
@@ -1279,11 +1247,11 @@ internal static class PopupMotionBehavior
             {
                 if (kind == TransitionKind.Closing)
                 {
-                    _exitingToolTip = new WeakReference<PopupMotionController>(this);
+                    ToolTipChain.ExitStarted(this);
                 }
                 else
                 {
-                    ReleaseExitingToolTip();
+                    ToolTipChain.Release(this);
                 }
             }
 
@@ -1375,8 +1343,13 @@ internal static class PopupMotionBehavior
             }));
         }
 
-        private void CompleteClose()
+        public void CompleteClose()
         {
+            // #244：连开按关闭方所有者的 BetweenShowDelay 计时。在关掉弹层之前读：关掉之后放置
+            // 目标可能随 ToolTip 服务的清理一起变化。
+            var ownerBetweenShowDelay = _isToolTip
+                ? ToolTipService.GetBetweenShowDelay(_placementTarget ?? _owner)
+                : 0;
             _transitionVersion++;
             _transition = TransitionKind.None;
             _hasPresented = false;
@@ -1393,8 +1366,7 @@ internal static class PopupMotionBehavior
             if (_isToolTip)
             {
                 // 退出结束即这个 ToolTip 关闭的时刻。
-                _lastToolTipClosedAt = Stopwatch.GetTimestamp();
-                ReleaseExitingToolTip();
+                ToolTipChain.Closed(this, ownerBetweenShowDelay);
             }
 
             RestoreCapturePolicy();
@@ -1406,9 +1378,9 @@ internal static class PopupMotionBehavior
         private void UpdateOffsetFromPlacement(TransitionKind kind, bool settleLayout)
         {
             var side = ResolvePlacementSide(settleLayout);
-            if (side != 0)
+            if (side != PlacementSide.Unknown)
             {
-                _offset = side > 0 ? PopupOffset : -PopupOffset;
+                _offset = side == PlacementSide.Above ? PopupOffset : -PopupOffset;
             }
             else if (kind == TransitionKind.Opening)
             {
@@ -1416,14 +1388,13 @@ internal static class PopupMotionBehavior
             }
         }
 
-        // 返回 +1：弹层在触发点上方；-1：在下方；0：无法判定。
-        private int ResolvePlacementSide(bool settleLayout)
+        private PlacementSide ResolvePlacementSide(bool settleLayout)
         {
             if (_visual is null || _placementTarget is not UIElement target ||
                 PresentationSource.FromVisual(_visual) is null ||
                 PresentationSource.FromVisual(target) is null)
             {
-                return 0;
+                return PlacementSide.Unknown;
             }
 
             if (settleLayout)
@@ -1435,10 +1406,10 @@ internal static class PopupMotionBehavior
             var anchor = VerticalCenterOnScreen(target);
             if (surface is null || anchor is null || Math.Abs(surface.Value - anchor.Value) < 0.5)
             {
-                return 0;
+                return PlacementSide.Unknown;
             }
 
-            return surface.Value < anchor.Value ? 1 : -1;
+            return surface.Value < anchor.Value ? PlacementSide.Above : PlacementSide.Below;
         }
 
         private static double? VerticalCenterOnScreen(UIElement element)
@@ -1552,5 +1523,56 @@ internal static class PopupMotionBehavior
             return source.TryFindResource("MotionEaseOut") as IEasingFunction ??
                 MotionTokens.CreateEaseOut();
         }
+    }
+
+    // #244：ToolTip 连开的应用级状态与判定。WPF 的 ToolTip 服务按 UI 线程各一份，这里同样按线程
+    // 记三件事：最近一次 ToolTip 关闭（退出结束）的时刻、关闭方所有者的 BetweenShowDelay，以及正在
+    // 退出的那个 ToolTip（只弱引用，不延长它的生命周期）。各 ToolTip 的控制器在退出开始、退出结束、
+    // 重新进入和卸下时通知这里，打开前问这里是否即时出现。
+    private static class ToolTipChain
+    {
+        [ThreadStatic]
+        private static long _lastClosedAt;
+        [ThreadStatic]
+        private static int _lastClosedOwnerBetweenShowDelay;
+        [ThreadStatic]
+        private static WeakReference<PopupMotionController>? _exiting;
+
+        // 另一个 ToolTip 仍在退出时打开，或上一个 ToolTip 关闭后不到其所有者的 BetweenShowDelay
+        // 就打开：即时出现，正在退出的那个立即结束。与 WPF 自己的快速显示一样，看关闭方所有者。
+        public static bool OpensImmediately(PopupMotionController opening)
+        {
+            if (Exiting is { IsClosing: true } exiting && !ReferenceEquals(exiting, opening))
+            {
+                exiting.CompleteClose();
+                return true;
+            }
+
+            return _lastClosedAt != 0 &&
+                _lastClosedOwnerBetweenShowDelay > 0 &&
+                Stopwatch.GetElapsedTime(_lastClosedAt).TotalMilliseconds < _lastClosedOwnerBetweenShowDelay;
+        }
+
+        public static void ExitStarted(PopupMotionController toolTip) =>
+            _exiting = new WeakReference<PopupMotionController>(toolTip);
+
+        public static void Closed(PopupMotionController toolTip, int ownerBetweenShowDelay)
+        {
+            _lastClosedAt = Stopwatch.GetTimestamp();
+            _lastClosedOwnerBetweenShowDelay = ownerBetweenShowDelay;
+            Release(toolTip);
+        }
+
+        // 重新进入、关闭或卸下的 ToolTip 不再是正在退出的那个。
+        public static void Release(PopupMotionController toolTip)
+        {
+            if (ReferenceEquals(Exiting, toolTip))
+            {
+                _exiting = null;
+            }
+        }
+
+        private static PopupMotionController? Exiting =>
+            _exiting is not null && _exiting.TryGetTarget(out var exiting) ? exiting : null;
     }
 }

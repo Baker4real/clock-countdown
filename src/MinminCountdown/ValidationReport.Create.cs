@@ -64,7 +64,7 @@ internal static partial class ValidationReport
         var floatingQuickAddPaletteBindingIsolationBehavior =
             ValidationExercises.RunFloatingQuickAddPaletteBindingIsolationBehavior();
 
-        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
+        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd, theme);
         var countdownReadability = mainWindowScenarios.CountdownReadability;
         var countdownEditing = mainWindowScenarios.CountdownEditing;
         var interactionStates = mainWindowScenarios.InteractionStates;
@@ -74,6 +74,7 @@ internal static partial class ValidationReport
         var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
         var mainUiPolish = mainWindowScenarios.UiPolish;
         var mainStructure = mainWindowScenarios.Structure;
+        var mainKeyboardImmediateMotion = mainWindowScenarios.KeyboardImmediateMotion;
         var floatingStructure = floatingWindowScenarios.Structure;
         var selector = Required<TagSelector>(main, "CountdownTags");
         var mainNoteCompletionValidation = ValidateMainNoteCompletion(
@@ -893,7 +894,6 @@ internal static partial class ValidationReport
             initialFocusedAutomationId);
         var mainShortcutScopeIsSafe = main.MainShortcutScopeIsSafe;
         var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
-        var mainKeyboardImmediateMotion = ValidateMainKeyboardImmediateMotion(theme, main);
         var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
             new MainShortcutGateInputs(
                 new[]

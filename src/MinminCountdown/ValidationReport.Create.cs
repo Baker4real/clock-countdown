@@ -1282,6 +1282,9 @@ internal static partial class ValidationReport
             ["FloatingRemainingBlocksDpiChangeRebuilds"] = Must(
                 remainingBlocksOnDemand.FloatingDpiChangeRebuilds,
                 "悬浮窗 DPI 变化后下一拍按新 DPI 重建分格、字号下限仍满足，之后同文本 tick 跳过（#240）"),
+            ["FloatingCountdownRowNamesFollowRemaining"] = Must(
+                remainingBlocksOnDemand.FloatingRowNamesFollowRemaining,
+                "悬浮窗就地更新与分格重建之后，每个倒计时行根的可访问名称都带当前剩余时间（#240）"),
             ["FloatingNextReminderCache"] = floatingNextReminderCache,
             ["FloatingNextReminderComputedOncePerNoteWithinMinute"] = Must(
                 floatingNextReminderCache.ComputedOncePerNoteWithinMinute,

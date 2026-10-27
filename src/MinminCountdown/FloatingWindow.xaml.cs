@@ -40,6 +40,8 @@ public sealed partial class FloatingWindow : Window
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
     private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RenderedRemainingBlocks> _countdownRemainingBlocks = new(StringComparer.Ordinal);
+    // #240：倒计时行根（卡片 Border 里承载行名的 Grid），按行键登记，逐拍随剩余时间改名。
+    private readonly Dictionary<string, FrameworkElement> _countdownRowRoots = new(StringComparer.Ordinal);
     private int _floatingRowsRenderVersion;
     private string? _floatingRenderSignature;
     private bool _hasBeenVisible;
@@ -1803,6 +1805,7 @@ public sealed partial class FloatingWindow : Window
         _noteCompletionExit = null;
         FloatingRows.Children.Clear();
         _countdownRemainingBlocks.Clear();
+        _countdownRowRoots.Clear();
         _workdayCompletionIncome = null;
         ClearNoteDateStampStickyEntries();
         if (countdownView is not null)
@@ -1885,8 +1888,8 @@ public sealed partial class FloatingWindow : Window
             _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences));
 
     // #212/#239/#240：签名不变时保留行实例，逐行按「跳过 / 就地 / 重建」更新剩余时间分格：
-    // 剩余文本与 DPI 都不变整行跳过；形状键与 DPI 不变只改数值文字并同步分格可访问名称（秒位直接切换）；
-    // 其余按现有排版与适配算法重建该行分格。底部状态由调用方统一 Apply。
+    // 剩余文本与 DPI 都不变整行跳过；形状键与 DPI 不变只改数值文字并同步分格与行根的可访问名称（秒位直接切换）；
+    // 其余按现有排版与适配算法重建该行分格并同步行根名称。底部状态由调用方统一 Apply。
     private void UpdateCountdownRowsInPlace(FloatingCountdownView view)
     {
         FloatingCountdownTexts = view.UserRemainingTexts;
@@ -1895,6 +1898,7 @@ public sealed partial class FloatingWindow : Window
         foreach (var row in view.Rows)
         {
             if (!_countdownRemainingBlocks.TryGetValue(row.Key, out var blocks) ||
+                !_countdownRowRoots.TryGetValue(row.Key, out var rowRoot) ||
                 blocks.Element.Parent is not Panel host)
             {
                 // 签名一致时行必然在册；防御性跳过，下一次签名变化会走整表重建。
@@ -1923,6 +1927,7 @@ public sealed partial class FloatingWindow : Window
 
                     AutomationProperties.SetName(blocks.Element, row.Remaining);
                     blocks.Text = row.Remaining;
+                    UiAccessibility.Name(rowRoot, CountdownRowAccessibleName(row));
                     continue;
                 }
             }
@@ -1933,6 +1938,7 @@ public sealed partial class FloatingWindow : Window
             Grid.SetColumn(fresh.Element, 1);
             host.Children.Insert(childIndex, fresh.Element);
             _countdownRemainingBlocks[row.Key] = fresh;
+            UiAccessibility.Name(rowRoot, CountdownRowAccessibleName(row));
         }
     }
 

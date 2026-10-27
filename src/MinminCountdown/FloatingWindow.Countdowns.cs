@@ -20,12 +20,18 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWarmPaperCountdownRow(FloatingCountdownRow row)
     {
-        return BuildWarmPaperRow(
+        var card = BuildWarmPaperRow(
             row.IsPrimary ? BuildWarmPaperPrimaryContent(row)
                 : BuildWarmPaperSecondaryContent(row),
-            row.IsPrimary ? $"主要倒计时 {row.Name}，{row.Remaining}" : $"倒计时 {row.Name}，{row.Remaining}",
+            CountdownRowAccessibleName(row),
             row.IsPrimary);
+        _countdownRowRoots[row.Key] = (FrameworkElement)card.Child;
+        return card;
     }
+
+    // #240：行根的可访问名称带当前剩余时间。建行与逐拍更新（就地、分格重建）共用这一处格式。
+    private static string CountdownRowAccessibleName(FloatingCountdownRow row) =>
+        row.IsPrimary ? $"主要倒计时 {row.Name}，{row.Remaining}" : $"倒计时 {row.Name}，{row.Remaining}";
 
     private FrameworkElement BuildWorkdayCompletionRow()
     {
@@ -51,7 +57,7 @@ public sealed partial class FloatingWindow
         return BuildWarmPaperRow(content, "下班啦", true);
     }
 
-    private FrameworkElement BuildWarmPaperRow(FrameworkElement content, string accessibleName, bool isPrimary)
+    private Border BuildWarmPaperRow(FrameworkElement content, string accessibleName, bool isPrimary)
     {
         var theme = ActiveTheme;
         var root = new Grid

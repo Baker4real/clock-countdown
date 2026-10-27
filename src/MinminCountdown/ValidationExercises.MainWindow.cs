@@ -235,6 +235,17 @@ internal static partial class ValidationExercises
                     return (after.Main - before.Main, after.Floating - before.Floating);
                 }
 
+                // 悬浮窗行根（卡片 Border 里的 Grid）的可访问名称须带当前剩余时间；每次检查记下实际名称供诊断。
+                var floatingRowNames = new List<string>();
+                bool FloatingRowsNamed(params string[] expected)
+                {
+                    var names = floating.FloatingRows.Children.OfType<Border>()
+                        .Select(card => card.Child is Grid root ? AutomationProperties.GetName(root) : "")
+                        .ToArray();
+                    floatingRowNames.Add(string.Join(" | ", names));
+                    return names.SequenceEqual(expected, StringComparer.Ordinal);
+                }
+
                 Tick(t0);
                 Tick(t0.AddSeconds(1));
 
@@ -302,6 +313,9 @@ internal static partial class ValidationExercises
                     AutomationProperties.GetName(clusters[1]!) == farSecondsText &&
                     delta.Floating == 0 &&
                     RowGenerations().Floating == rows.Floating;
+                var floatingRowNamesAfterInPlace = FloatingRowsNamed(
+                    "主要倒计时 分格按需近期，1 天 00 小时 00 分钟 28 秒",
+                    "倒计时 分格按需远期，100 天 00 小时 00 分钟 18 秒");
 
                 // 就地更新后的分格须与按新文本重新排版的结果一致（等宽数字无宽度漂移），且数值不裁切。
                 var mainInPlaceGeometryMatchesFreshFit =
@@ -352,6 +366,9 @@ internal static partial class ValidationExercises
                     AutomationProperties.GetName(nearAtFarRollover) == nearAtFarRolloverText &&
                     FloatingRemainingBlocksMeetFontFloor(floatingFarAfter) &&
                     RowGenerations().Floating == rows.Floating;
+                var floatingRowNamesAfterDayDigitsRebuild = FloatingRowsNamed(
+                    "主要倒计时 分格按需近期，1 天 00 小时 00 分钟 09 秒",
+                    "倒计时 分格按需远期，99 天 23 小时 59 分钟 59 秒");
 
                 // 4) #229：近期行 1 → 0 天，悬浮窗省略「天」分格须重建；管理窗口不省略「天」分格，
                 // 这一拍两行都就地更新（计数只记入诊断）。
@@ -377,15 +394,24 @@ internal static partial class ValidationExercises
                     AutomationProperties.GetName(farAtZeroDay) == farAtZeroDayText &&
                     FloatingRemainingBlocksMeetFontFloor(floatingNearAfter) &&
                     RowGenerations().Floating == rows.Floating;
+                var floatingRowNamesAfterDayBlockOmission = FloatingRowsNamed(
+                    "主要倒计时 分格按需近期，0 天 23 小时 59 分钟 59 秒",
+                    "倒计时 分格按需远期，99 天 23 小时 59 分钟 49 秒");
 
                 // 5) DPI 变化（沿用 #219 的 WM_DPICHANGED 注入）：同文本的下一拍按新 DPI 重建，再下一拍跳过。
+                bool InjectDpi(Window window)
+                {
+                    if (previousDpiContext == IntPtr.Zero) return false;
+                    var injection = MonitorGeometryValidation.InjectDpiChangeForValidation(window, 1.5);
+                    if (injection is null) return false;
+                    Console.Error.WriteLine(
+                        $"REMAINING_BLOCKS_DPI_PROBE: window={window.GetType().Name}; before={injection.BeforePixelsPerInch}; after={injection.AfterPixelsPerInch}; target={injection.Target}");
+                    return injection.Reached;
+                }
+
                 var dpiScaleBefore = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
-                var mainDpiInjected =
-                    previousDpiContext != IntPtr.Zero &&
-                    MonitorGeometryValidation.InjectDpiChangeForValidation(main, 1.5);
-                var floatingDpiInjected =
-                    previousDpiContext != IntPtr.Zero &&
-                    MonitorGeometryValidation.InjectDpiChangeForValidation(floating, 1.5);
+                var mainDpiInjected = InjectDpi(main);
+                var floatingDpiInjected = InjectDpi(floating);
                 var dpiScaleAfter = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
                 builds = Builds();
                 rows = RowGenerations();
@@ -438,6 +464,10 @@ internal static partial class ValidationExercises
                     floatingDayDigitsChangeRebuilds,
                     floatingDayBlockOmissionRebuilds,
                     floatingDpiChangeRebuilds,
+                    floatingRowNamesAfterInPlace &&
+                        floatingRowNamesAfterDayDigitsRebuild &&
+                        floatingRowNamesAfterDayBlockOmission,
+                    floatingRowNames.ToArray(),
                     mainDeltas.ToArray(),
                     floatingDeltas.ToArray(),
                     dpiScaleBefore,

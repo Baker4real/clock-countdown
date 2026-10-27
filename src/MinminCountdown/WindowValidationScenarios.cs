@@ -1701,12 +1701,7 @@ public sealed partial class MainWindow
             var ordinaryIdentityPreserved =
                 ReferenceEquals(rowBefore, _countdownSourceRows.GetValueOrDefault(record.Id)) &&
                 ReferenceEquals(textBefore, _countdownRemainingTexts.GetValueOrDefault(record.Id));
-            var secondsValues = MainValidationDescendants<StackPanel>(CountdownRows)
-                .Where(pair => pair.Children.Count == 2 &&
-                    pair.Children[0] is Border { Child: TextBlock } &&
-                    pair.Children[1] is TextBlock { Text: "秒" })
-                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
-                .ToArray();
+            var secondsValues = WindowValidationInput.RemainingSecondsValues(CountdownRows);
             var countdownSecondsSwitchWithoutAnimation =
                 secondsPrecisionSaved &&
                 !string.Equals(remainingTextBeforeTick, textBefore.Text, StringComparison.Ordinal) &&
@@ -2471,62 +2466,13 @@ public sealed partial class MainWindow
     // 稳定下来的状态都不算，用来判定“按键后的首帧”。
     private bool ObserveFirstRenderedFrame(Func<bool> observation)
     {
-        const int timeoutMilliseconds = 1000;
-        Dispatcher.VerifyAccess();
-        var watch = Stopwatch.StartNew();
-        var frame = new DispatcherFrame();
-        var rendered = false;
         var observed = false;
-        Exception? failure = null;
-        var timeout = new DispatcherTimer(DispatcherPriority.Send, Dispatcher)
+        var firstFrame = WindowValidationInput.PumpRenderedFrames(Dispatcher, 1000, () =>
         {
-            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
-        };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(10)
-        };
-        void OnRendering(object? sender, EventArgs args)
-        {
-            if (rendered || watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
-            {
-                frame.Continue = false;
-                return;
-            }
-
-            rendered = true;
-            try { observed = observation(); }
-            catch (Exception error) { failure = error; }
-            frame.Continue = false;
-        }
-        EventHandler rendering = OnRendering;
-        EventHandler requestFrame = (_, _) =>
-        {
-            // 订阅 Rendering 本身会请求一帧；隔离桌面上失效请求可能被合并，定时重订一次。
-            CompositionTarget.Rendering -= rendering;
-            CompositionTarget.Rendering += rendering;
-        };
-        EventHandler expired = (_, _) => frame.Continue = false;
-        try
-        {
-            timeout.Tick += expired;
-            frameRequests.Tick += requestFrame;
-            timeout.Start();
-            frameRequests.Start();
-            requestFrame(null, EventArgs.Empty);
-            Dispatcher.PushFrame(frame);
-        }
-        finally
-        {
-            timeout.Stop();
-            timeout.Tick -= expired;
-            frameRequests.Stop();
-            frameRequests.Tick -= requestFrame;
-            CompositionTarget.Rendering -= rendering;
-        }
-
-        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        return rendered && observed;
+            observed = observation();
+            return true;
+        });
+        return firstFrame.Completed && observed;
     }
 
     private ToggleButton WorkspaceTab(WorkspaceKind workspace) =>
@@ -4271,12 +4217,7 @@ public sealed partial class FloatingWindow
                 FloatingLastRenderWasInPlaceForValidation &&
                 !countdownTextsBefore.SequenceEqual(FloatingCountdownTexts) &&
                 !clusterNamesBefore.SequenceEqual(FloatingCountdownClusterNames());
-            var secondsValues = ValidationDescendants<StackPanel>(FloatingRows)
-                .Where(pair => pair.Children.Count == 2 &&
-                    pair.Children[0] is Border { Child: TextBlock } &&
-                    pair.Children[1] is TextBlock { Text: "秒" })
-                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
-                .ToArray();
+            var secondsValues = WindowValidationInput.RemainingSecondsValues(FloatingRows);
             var countdownSecondsSwitchWithoutAnimation =
                 countdownRowsPreservedAndTextUpdatesInPlace &&
                 secondsValues.Length >= 2 &&
@@ -5282,13 +5223,34 @@ internal sealed record SegmentIndicatorScenarios(
     bool RapidSwitchStaysAligned,
     bool StaticThicknessIsUniform);
 
-// #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。
+// #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。14 个检查名钉在 RequiredChecks 里：
+// 缺少的、未通过的和未登记的检查名都进 FailedChecks。
 internal sealed record MainKeyboardImmediateMotionScenarios(IReadOnlyDictionary<string, bool> Checks)
 {
-    public bool AllPassed => Checks.Count == 14 && Checks.Values.All(passed => passed);
+    internal static readonly IReadOnlyList<string> RequiredChecks =
+    [
+        "AnimatedWorkspaceShortcutFirstFrame",
+        "AnimatedWorkspaceClick",
+        "AnimatedFilterShortcutFirstFrame",
+        "AnimatedTagManagerShortcutFirstFrame",
+        "AnimatedEscapeFromPopupFirstFrame",
+        "AnimatedEscapeFromTriggerFirstFrame",
+        "AnimatedFilterClick",
+        "ReducedWorkspaceShortcutFirstFrame",
+        "ReducedWorkspaceClick",
+        "ReducedFilterShortcutFirstFrame",
+        "ReducedTagManagerShortcutFirstFrame",
+        "ReducedEscapeFromPopupFirstFrame",
+        "ReducedEscapeFromTriggerFirstFrame",
+        "ReducedFilterClick"
+    ];
+
+    public bool AllPassed => FailedChecks.Count == 0;
 
     public IReadOnlyList<string> FailedChecks =>
-        Checks.Where(check => !check.Value).Select(check => check.Key).ToArray();
+        RequiredChecks.Where(name => !Checks.TryGetValue(name, out var passed) || !passed)
+            .Concat(Checks.Keys.Where(name => !RequiredChecks.Contains(name)))
+            .ToArray();
 }
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
@@ -5804,6 +5766,73 @@ internal static class WindowValidationInput
         return passed;
     }
 
+    // 推进真实 WPF 渲染帧：每次 CompositionTarget.Rendering 回调调用一次 onFrame，返回 true 即停；
+    // 超时之后的回调和 Send 优先级的超时计时器也会停。订阅 Rendering 本身会请求一帧，位图捕获不推进
+    // 动画时钟，隔离桌面上的失效请求又可能被合并，所以每 10ms 重订一次。onFrame 抛出的异常在清理后原样
+    // 抛回。Completed 表示有一帧在超时内让 onFrame 返回 true；ElapsedMilliseconds 是泵结束时的耗时。
+    public static (bool Completed, double ElapsedMilliseconds) PumpRenderedFrames(
+        Dispatcher dispatcher, int timeoutMilliseconds, Func<bool> onFrame)
+    {
+        dispatcher.VerifyAccess();
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var completed = false;
+        Exception? failure = null;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
+        };
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        void OnRendering(object? sender, EventArgs args)
+        {
+            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
+            {
+                frame.Continue = false;
+                return;
+            }
+
+            try
+            {
+                if (onFrame())
+                {
+                    completed = true;
+                    frame.Continue = false;
+                }
+            }
+            catch (Exception error) { failure = error; frame.Continue = false; }
+        }
+        EventHandler rendering = OnRendering;
+        EventHandler requestFrame = (_, _) =>
+        {
+            CompositionTarget.Rendering -= rendering;
+            CompositionTarget.Rendering += rendering;
+        };
+        EventHandler expired = (_, _) => frame.Continue = false;
+        try
+        {
+            timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
+            timeout.Start();
+            frameRequests.Start();
+            requestFrame(null, EventArgs.Empty);
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
+            CompositionTarget.Rendering -= rendering;
+        }
+
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return (completed, watch.Elapsed.TotalMilliseconds);
+    }
+
     // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its
     // command source. UIA Invoke follows the same command path as a real click.
     public static bool InvokeButton(Button button)
@@ -5876,6 +5905,31 @@ internal static class WindowValidationInput
             DispatcherPriority.SystemIdle,
             new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
+    }
+
+    // #239/#240：两窗剩余时间分格里秒位的数值文字。分格是「数值格（Border 包 TextBlock）＋单位」
+    // 两个子元素的 StackPanel，单位为「秒」的那一对即秒位。
+    public static TextBlock[] RemainingSecondsValues(DependencyObject root)
+    {
+        var values = new List<TextBlock>();
+        Collect(root);
+        return values.ToArray();
+
+        void Collect(DependencyObject parent)
+        {
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is StackPanel { Children.Count: 2 } pair &&
+                    pair.Children[0] is Border { Child: TextBlock value } &&
+                    pair.Children[1] is TextBlock { Text: "秒" })
+                {
+                    values.Add(value);
+                }
+
+                Collect(child);
+            }
+        }
     }
 
     public static PopupFocusExerciseResult ExercisePopup(

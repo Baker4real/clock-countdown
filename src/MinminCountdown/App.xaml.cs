@@ -1741,13 +1741,16 @@ internal static class ReminderPersistenceRetrySchedule
 }
 
 // #241：交互时钟仍是每 250ms 一拍；每拍后按当前时刻重算间隔，让下一拍落在下一个
-// 四分之一秒边界之后 10ms。只看当前时刻，系统时间跳变或睡眠恢复后下一拍就重新对齐。
+// 四分之一秒边界之后 20ms。DispatcherTimer 按 Environment.TickCount 计到期，TickCount 随系统时钟
+// 中断量化（约 15.6ms），计时器最多早一格触发；余量大于这一格，提前触发的拍点也仍在边界之后。
+// 上限是一个周期加余量：正好在边界上时下一拍瞄准下一个边界。只看当前时刻，系统时间跳变或
+// 睡眠恢复后下一拍就重新对齐。
 internal static class InteractiveClockCadence
 {
     public static readonly TimeSpan Period = TimeSpan.FromMilliseconds(250);
-    private static readonly TimeSpan LandingOffset = TimeSpan.FromMilliseconds(10);
+    private static readonly TimeSpan LandingOffset = TimeSpan.FromMilliseconds(20);
     private static readonly TimeSpan MinimumInterval = TimeSpan.FromMilliseconds(10);
-    private static readonly TimeSpan MaximumInterval = TimeSpan.FromMilliseconds(260);
+    private static readonly TimeSpan MaximumInterval = Period + LandingOffset;
 
     public static TimeSpan NextInterval(DateTimeOffset nowUtc)
     {

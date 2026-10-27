@@ -669,7 +669,7 @@ internal sealed record CountdownEmptyStateGateResults(
         };
 }
 
-// #240：剩余时间分格「跳过 / 就地 / 重建」探针；两窗各自一组事实，数值字段只作诊断。
+// #240：剩余时间分格「跳过 / 就地 / 重建」探针；两窗各自一组事实，数值与名称列表字段只作诊断。
 internal sealed record RemainingBlocksOnDemandProbe(
     bool MainSkipsUnchangedTicks,
     bool MainSecondsUpdateInPlace,
@@ -682,6 +682,8 @@ internal sealed record RemainingBlocksOnDemandProbe(
     bool FloatingDayDigitsChangeRebuilds,
     bool FloatingDayBlockOmissionRebuilds,
     bool FloatingDpiChangeRebuilds,
+    bool FloatingRowNamesFollowRemaining,
+    IReadOnlyList<string> FloatingRowNames,
     IReadOnlyList<long> MainBuildDeltas,
     IReadOnlyList<long> FloatingBuildDeltas,
     double DpiScaleBefore,

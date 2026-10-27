@@ -1063,10 +1063,41 @@ internal static partial class ValidationExercises
     }
 
     // #241：交互时钟每拍后只按工作区快照时钟的当前时刻重算下一次间隔，
-    // 期望值按“下一个四分之一秒边界之后 10ms”逐例手算。
+    // 期望值按“下一个四分之一秒边界之后 20ms”逐例手算。
     public static bool RunInteractiveClockCadenceBehavior()
     {
         var boundary = new DateTimeOffset(2026, 10, 28, 2, 0, 0, TimeSpan.Zero);
+        var minimum = TimeSpan.FromMilliseconds(10);
+        var maximum = TimeSpan.FromMilliseconds(270);
+
+        // DispatcherTimer 的到期时刻是 Environment.TickCount 加上截成整毫秒的间隔；TickCount 按系统时钟
+        // 中断量化（约 15.6ms），读数最多落后一格，所以计时器最多比请求早一格（按 16ms 算）再加 1ms 截断。
+        // 每个相位上，提前这么多触发的一拍仍必须落在下一个四分之一秒边界之后。
+        var earliestEarlyFire = TimeSpan.FromMilliseconds(16 + 1);
+        var quarterTicks = TimeSpan.FromMilliseconds(250).Ticks;
+        var landingTicks = TimeSpan.FromMilliseconds(20).Ticks;
+        for (var millisecond = 0; millisecond < 1000; millisecond++)
+        {
+            foreach (var extraTicks in new long[] { 0, 1, 5_000, 9_999 })
+            {
+                var nowUtc = boundary.AddTicks(millisecond * TimeSpan.TicksPerMillisecond + extraTicks);
+                var interval = InteractiveClockCadence.NextInterval(nowUtc);
+                var nextBoundaryTicks = (nowUtc.UtcTicks / quarterTicks + 1) * quarterTicks;
+                if ((nowUtc + interval - earliestEarlyFire).UtcTicks <= nextBoundaryTicks)
+                {
+                    throw new InvalidOperationException(
+                        $"#241：{nowUtc:O} 之后的下一拍间隔 {interval.TotalMilliseconds}ms；计时器提前 {earliestEarlyFire.TotalMilliseconds}ms 触发时没有落在下一个四分之一秒边界之后。");
+                }
+
+                if (interval < minimum || interval > maximum ||
+                    (nowUtc + interval).UtcTicks != nextBoundaryTicks + landingTicks)
+                {
+                    throw new InvalidOperationException(
+                        $"#241：{nowUtc:O} 之后的下一拍间隔 {interval.TotalMilliseconds}ms 越出 10–270ms 或没有落在下一个四分之一秒边界后 20ms。");
+                }
+            }
+        }
+
         void Expect(string scenario, DateTimeOffset nowUtc, int expectedMilliseconds)
         {
             var actual = InteractiveClockCadence.NextInterval(nowUtc);
@@ -1075,44 +1106,25 @@ internal static partial class ValidationExercises
                 $"#241：{scenario}时下一拍应在 {expectedMilliseconds}ms 后，实际 {actual.TotalMilliseconds}ms。");
         }
 
-        Expect("正好在四分之一秒边界", boundary, 260);
-        Expect("边界前 1ms", boundary.AddMilliseconds(-1), 11);
-        Expect("边界后 249ms", boundary.AddMilliseconds(249), 11);
-        Expect("边界后 1ms", boundary.AddMilliseconds(1), 259);
-        Expect("已落在边界后 10ms", boundary.AddMilliseconds(10), 250);
-        Expect("北京时间偏移", new DateTimeOffset(2026, 10, 28, 10, 0, 0, 249, TimeSpan.FromHours(8)), 11);
+        Expect("正好在四分之一秒边界", boundary, 270);
+        Expect("边界前 1ms", boundary.AddMilliseconds(-1), 21);
+        Expect("边界后 249ms", boundary.AddMilliseconds(249), 21);
+        Expect("边界后 1ms", boundary.AddMilliseconds(1), 269);
+        Expect("已落在边界后 20ms", boundary.AddMilliseconds(20), 250);
+        Expect("北京时间偏移", new DateTimeOffset(2026, 10, 28, 10, 0, 0, 249, TimeSpan.FromHours(8)), 21);
 
-        // 上一拍落在 02:00:00.010 之后系统时间被改或机器睡眠：下一次间隔只看新时刻。
-        var previousTick = boundary.AddMilliseconds(10);
+        // 上一拍落在 02:00:00.020 之后系统时间被改或机器睡眠：下一次间隔只看新时刻。
+        var previousTick = boundary.AddMilliseconds(20);
         Expect("时钟向前跳变 1h02m03.456s", previousTick + new TimeSpan(0, 1, 2, 3, 456), 44);
         Expect("时钟向后跳变 3m07.123s", previousTick - new TimeSpan(0, 0, 3, 7, 123), 123);
         Expect("睡眠 8h17m33.333s 后恢复", previousTick + new TimeSpan(0, 8, 17, 33, 333), 167);
 
-        var minimum = TimeSpan.FromMilliseconds(10);
-        var maximum = TimeSpan.FromMilliseconds(260);
         foreach (var extreme in new[] { DateTimeOffset.MinValue, DateTimeOffset.MaxValue })
         {
             var interval = InteractiveClockCadence.NextInterval(extreme);
             Must(
                 interval >= minimum && interval <= maximum,
-                $"#241：{extreme:O} 的下一拍间隔 {interval.TotalMilliseconds}ms 越出 10–260ms。");
-        }
-
-        var quarterTicks = TimeSpan.FromMilliseconds(250).Ticks;
-        var landingTicks = TimeSpan.FromMilliseconds(10).Ticks;
-        for (var millisecond = 0; millisecond < 1000; millisecond++)
-        {
-            foreach (var extraTicks in new long[] { 0, 1, 5_000, 9_999 })
-            {
-                var nowUtc = boundary.AddTicks(millisecond * TimeSpan.TicksPerMillisecond + extraTicks);
-                var interval = InteractiveClockCadence.NextInterval(nowUtc);
-                if (interval < minimum || interval > maximum ||
-                    (nowUtc + interval).UtcTicks % quarterTicks != landingTicks)
-                {
-                    throw new InvalidOperationException(
-                        $"#241：{nowUtc:O} 之后的下一拍间隔 {interval.TotalMilliseconds}ms 越出 10–260ms 或没有落在四分之一秒边界后 10ms。");
-                }
-            }
+                $"#241：{extreme:O} 的下一拍间隔 {interval.TotalMilliseconds}ms 越出 10–270ms。");
         }
 
         return true;

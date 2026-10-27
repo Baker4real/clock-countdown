@@ -1090,7 +1090,7 @@ internal static partial class ValidationReport
                 holidayCalendarInterfaceBehavior,
             ["InteractiveClockCadenceLocksToQuarterSecond"] = Must(
                 interactiveClockCadenceBehavior,
-                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 10ms，间隔在 10–260ms（#241）"),
+                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 20ms，计时器提前一格触发也仍在边界之后，间隔在 10–270ms（#241）"),
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,
@@ -1282,6 +1282,9 @@ internal static partial class ValidationReport
             ["FloatingRemainingBlocksDpiChangeRebuilds"] = Must(
                 remainingBlocksOnDemand.FloatingDpiChangeRebuilds,
                 "悬浮窗 DPI 变化后下一拍按新 DPI 重建分格、字号下限仍满足，之后同文本 tick 跳过（#240）"),
+            ["FloatingCountdownRowNamesFollowRemaining"] = Must(
+                remainingBlocksOnDemand.FloatingRowNamesFollowRemaining,
+                "悬浮窗就地更新与分格重建之后，每个倒计时行根的可访问名称都带当前剩余时间（#240）"),
             ["FloatingNextReminderCache"] = floatingNextReminderCache,
             ["FloatingNextReminderComputedOncePerNoteWithinMinute"] = Must(
                 floatingNextReminderCache.ComputedOncePerNoteWithinMinute,
@@ -1335,7 +1338,7 @@ internal static partial class ValidationReport
             ["NoteBatchDeleteUndo"] = Must(ValidationExercises.RunNoteBatchDeleteUndo(), "#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝"),
             ["NoteSelectionAccessibility"] = Must(ValidationExercises.RunNoteSelectionAccessibility(), "#235 选中数量直播区、行peer、刷新保留与筛选折叠清理"),
             ["NoteCompletionExitTransition"] = Must(ValidationExercises.RunNoteCompletionExitTransition(), "#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断"),
-            ["NoteCompletionFlipTransition"] = Must(ValidationExercises.RunNoteCompletionFlipTransition(), "#243 两窗卡片尺寸快照、稳定身份FLIP补位、同步时钟及全部中断清零"),
+            ["NoteCompletionFlipTransition"] = Must(ValidationExercises.RunNoteCompletionFlipTransition(), "#243 两窗卡片尺寸快照、稳定身份FLIP补位（捕获后新出现的条目不补位）、同步时钟及全部中断清零"),
             ["SystemContrastUpdatesOpenWindows"] = Must(ValidateSystemContrastUpdatesOpenWindows(main, floating), "#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复"),
             ["SystemContrastAccessibleStates"] = Must(ValidateSystemContrastAccessibleStates(main, floating), "#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿"),
             ["SystemContrastColorChangesAndCustomSurfaces"] = Must(

@@ -379,13 +379,19 @@ internal static partial class ValidationExercises
                     RowGenerations().Floating == rows.Floating;
 
                 // 5) DPI 变化（沿用 #219 的 WM_DPICHANGED 注入）：同文本的下一拍按新 DPI 重建，再下一拍跳过。
+                bool InjectDpi(Window window)
+                {
+                    if (previousDpiContext == IntPtr.Zero) return false;
+                    var injection = MonitorGeometryValidation.InjectDpiChangeForValidation(window, 1.5);
+                    if (injection is null) return false;
+                    Console.Error.WriteLine(
+                        $"REMAINING_BLOCKS_DPI_PROBE: window={window.GetType().Name}; before={injection.BeforePixelsPerInch}; after={injection.AfterPixelsPerInch}; target={injection.Target}");
+                    return injection.Reached;
+                }
+
                 var dpiScaleBefore = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
-                var mainDpiInjected =
-                    previousDpiContext != IntPtr.Zero &&
-                    MonitorGeometryValidation.InjectDpiChangeForValidation(main, 1.5);
-                var floatingDpiInjected =
-                    previousDpiContext != IntPtr.Zero &&
-                    MonitorGeometryValidation.InjectDpiChangeForValidation(floating, 1.5);
+                var mainDpiInjected = InjectDpi(main);
+                var floatingDpiInjected = InjectDpi(floating);
                 var dpiScaleAfter = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
                 builds = Builds();
                 rows = RowGenerations();

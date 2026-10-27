@@ -18,7 +18,6 @@ internal static class MonitorGeometryValidation
         var previous = SetThreadDpiAwarenessContext((IntPtr)(-4));
         if (previous == IntPtr.Zero) return false;
         ReminderRulesEditorWindow? editor = null;
-        var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<PhysicalRect>());
         try
         {
             using var monitor = MonitorWorkAreaResolver.OverrideForValidation(
@@ -30,15 +29,8 @@ internal static class MonitorGeometryValidation
             var target = (int)Math.Round(before.PixelsPerInchX * 1.5);
             var observed = false;
             editor.DpiChanged += (_, _) => observed = true;
-            Marshal.StructureToPtr(new PhysicalRect { Left = 2400, Top = 1200, Right = 3600, Bottom = 2200 }, pointer, false);
-            SendMessageW(new WindowInteropHelper(editor).Handle, 0x02E0,
-                (IntPtr)(target | (target << 16)), pointer);
-            for (var attempt = 0; attempt < 4; attempt++)
-            {
-                WindowValidationInput.Pump(editor.Dispatcher);
-                editor.UpdateLayout();
-            }
-            var after = VisualTreeHelper.GetDpi(editor);
+            var after = SendDpiChanged(
+                editor, target, new PhysicalRect { Left = 2400, Top = 1200, Right = 3600, Bottom = 2200 });
             var result = observed && Math.Abs(after.PixelsPerInchX - target) < .1 &&
                 Contains(new Rect(0, 0, 1280, 688), editor) &&
                 ElementReachable(editor, "AcceptReminderRulesButton") &&
@@ -49,7 +41,6 @@ internal static class MonitorGeometryValidation
         finally
         {
             editor?.Close();
-            Marshal.FreeHGlobal(pointer);
             SetThreadDpiAwarenessContext(previous);
         }
     }
@@ -67,37 +58,45 @@ internal static class MonitorGeometryValidation
         }
     }
 
-    // 建议矩形保持窗口左上角、按倍数放大物理尺寸；返回窗口 DPI 是否真的变成目标值。
-    internal static bool InjectDpiChangeForValidation(Window window, double factor)
+    // 建议矩形保持窗口左上角、按倍数放大物理尺寸。取不到窗口句柄或窗口矩形时不注入，返回 null；
+    // 探针日志由调用方按自己的标签写。
+    internal static DpiChangeInjection? InjectDpiChangeForValidation(Window window, double factor)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero || !GetWindowRect(handle, out var current))
         {
-            return false;
+            return null;
         }
 
         var before = VisualTreeHelper.GetDpi(window);
         var target = (int)Math.Round(before.PixelsPerInchX * factor);
+        var after = SendDpiChanged(window, target, new PhysicalRect
+        {
+            Left = current.Left,
+            Top = current.Top,
+            Right = current.Left + (int)Math.Round((current.Right - current.Left) * factor),
+            Bottom = current.Top + (int)Math.Round((current.Bottom - current.Top) * factor)
+        });
+        return new DpiChangeInjection(before.PixelsPerInchX, after.PixelsPerInchX, target);
+    }
+
+    // 向窗口发送一次真实的 WM_DPICHANGED（建议矩形为新 DPI 下的物理矩形），推进 4 轮消息与布局，
+    // 返回窗口此时的 DPI。
+    private static DpiScale SendDpiChanged(Window window, int target, PhysicalRect suggested)
+    {
         var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<PhysicalRect>());
         try
         {
-            Marshal.StructureToPtr(new PhysicalRect
-            {
-                Left = current.Left,
-                Top = current.Top,
-                Right = current.Left + (int)Math.Round((current.Right - current.Left) * factor),
-                Bottom = current.Top + (int)Math.Round((current.Bottom - current.Top) * factor)
-            }, pointer, false);
-            SendMessageW(handle, 0x02E0, (IntPtr)(target | (target << 16)), pointer);
+            Marshal.StructureToPtr(suggested, pointer, false);
+            SendMessageW(new WindowInteropHelper(window).Handle, 0x02E0,
+                (IntPtr)(target | (target << 16)), pointer);
             for (var attempt = 0; attempt < 4; attempt++)
             {
                 WindowValidationInput.Pump(window.Dispatcher);
                 window.UpdateLayout();
             }
 
-            var after = VisualTreeHelper.GetDpi(window);
-            Console.Error.WriteLine($"REMAINING_BLOCKS_DPI_PROBE: window={window.GetType().Name}; before={before.PixelsPerInchX}; after={after.PixelsPerInchX}; target={target}");
-            return Math.Abs(after.PixelsPerInchX - target) < .1;
+            return VisualTreeHelper.GetDpi(window);
         }
         finally
         {
@@ -398,4 +397,10 @@ internal static class MonitorGeometryValidation
     [DllImport("kernel32.dll", ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FreeLibrary(IntPtr module);
+}
+
+// #240：一次 WM_DPICHANGED 注入前后的窗口 DPI 与目标值；Reached 表示窗口真的到了目标 DPI。
+internal sealed record DpiChangeInjection(double BeforePixelsPerInch, double AfterPixelsPerInch, int Target)
+{
+    public bool Reached => Math.Abs(AfterPixelsPerInch - Target) < .1;
 }

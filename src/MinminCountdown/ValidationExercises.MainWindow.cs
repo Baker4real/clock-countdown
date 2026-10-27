@@ -1,9 +1,11 @@
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -153,6 +155,572 @@ internal static partial class ValidationExercises
             DeleteFileIfPresent(diagnosticPath);
         }
     }
+
+    // #240：剩余时间分格按需更新。专用管理窗口与悬浮窗共用一条受控时间线：近期行（两窗主项）在 t0+40s
+    // 由 1 天跨到 0 天，远期行（次项）在 t0+30s 由 100 天跨到 99 天。目标是整秒、剩余时间向下取整，
+    // 所以跨界拍取整秒后 0.25 秒，同一文本的后续拍都落在下一个整秒之前（含）。
+    // 分钟精度连续 9 拍文本不变须整拍跳过；秒位变化须就地改数值文字与可访问名称；天数位数变化、
+    // #229 省略「天」分格与真实 WM_DPICHANGED（沿用 #219 注入）须重建，重建后字号下限事实仍为真。
+    public static RemainingBlocksOnDemandProbe RunRemainingBlocksOnDemand()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-remaining-blocks-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var previousDpiContext = MonitorGeometryValidation.EnterPerMonitorV2ThreadDpiContextForValidation();
+        try
+        {
+            var t0 = new DateTimeOffset(2038, 7, 8, 1, 0, 5, TimeSpan.Zero);
+            var clock = new AdvancingValidationClock(t0);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var preferences = workspace.Snapshot.Settings.Preferences;
+            MustApply(workspace, new SavePreferencesChange(
+                "Minute", preferences.MonthlySalary, preferences.WorkStart, preferences.WorkEnd));
+            const string nearName = "分格按需近期";
+            const string farName = "分格按需远期";
+            MustApply(workspace, new SaveCountdownChange(
+                null, nearName, t0.AddDays(1).AddSeconds(40), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            MustApply(workspace, new SaveCountdownChange(
+                null, farName, t0.AddDays(100).AddSeconds(30), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            var nearId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == nearName).Id;
+            var farId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == farName).Id;
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var main = new MainWindow(
+                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
+            var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            PrepareOffscreenValidationWindow(floating);
+            try
+            {
+                main.Show();
+                floating.Show();
+                main.ShowWorkspace(WorkspaceKind.Countdowns);
+                floating.ShowWorkspace(WorkspaceKind.Countdowns);
+                WindowValidationInput.Pump(main.Dispatcher);
+                var nowText = main.NowText;
+                var mainDeltas = new List<long>();
+                var floatingDeltas = new List<long>();
+
+                void Tick(DateTimeOffset utc)
+                {
+                    clock.UtcNow = utc;
+                    main.UpdateTime(ChinaStandardTime.ToBeijingTime(utc));
+                    floating.UpdateTime(utc);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    main.UpdateLayout();
+                    floating.UpdateLayout();
+                }
+
+                TextBlock MainText(string id) => main.CountdownRemainingTextsForValidation[id];
+                Grid? MainSurface(string id) => (MainText(id).Tag as MainCountdownBlocksHost)?.Surface;
+                TextBlock[] MainValues(params string[] ids) => ids
+                    .SelectMany(id => RemainingBlockPairs(MainSurface(id)).Select(item => item.Value))
+                    .ToArray();
+                Grid? Cluster(string name) => FloatingRemainingCluster(floating, name);
+                Grid?[] Clusters() => [Cluster(nearName), Cluster(farName)];
+                TextBlock[] FloatingValues(params string[] names) => names
+                    .SelectMany(name => RemainingBlockPairs(Cluster(name)).Select(item => item.Value))
+                    .ToArray();
+                (long Main, long Floating) Builds() => (
+                    main.CountdownRemainingBlocksBuildCountForValidation,
+                    floating.FloatingRemainingBlocksBuildCountForValidation);
+                (long Main, long Floating) RowGenerations() => (
+                    main.CountdownRowRebuildGenerationForValidation,
+                    floating.FloatingRowsRebuildGenerationForValidation);
+                (long Main, long Floating) BuildDelta((long Main, long Floating) before)
+                {
+                    var after = Builds();
+                    mainDeltas.Add(after.Main - before.Main);
+                    floatingDeltas.Add(after.Floating - before.Floating);
+                    return (after.Main - before.Main, after.Floating - before.Floating);
+                }
+
+                Tick(t0);
+                Tick(t0.AddSeconds(1));
+
+                // 1) 分钟精度：连续 9 拍文本不变，整拍跳过。
+                var builds = Builds();
+                var rows = RowGenerations();
+                var floatingPasses = floating.FloatingRowsRenderPassCountForValidation;
+                var mainValues = MainValues(nearId, farId);
+                var clusters = Clusters();
+                var floatingValues = FloatingValues(nearName, farName);
+                for (var second = 2; second <= 10; second++)
+                {
+                    Tick(t0.AddSeconds(second));
+                }
+
+                var delta = BuildDelta(builds);
+                var mainSkipsUnchangedTicks =
+                    mainValues.Length == 6 &&
+                    mainValues.SequenceEqual(MainValues(nearId, farId)) &&
+                    delta.Main == 0 &&
+                    RowGenerations().Main == rows.Main &&
+                    MainText(nearId).Text == "1 天 00 小时 00 分钟" &&
+                    MainText(farId).Text == "100 天 00 小时 00 分钟" &&
+                    nowText.Text == "当前北京时间：2038 年 7 月 8 日 09:00:15";
+                var floatingSkipsUnchangedTicks =
+                    floatingValues.Length == 6 &&
+                    clusters.All(cluster => cluster is not null) &&
+                    clusters.SequenceEqual(Clusters()) &&
+                    floatingValues.SequenceEqual(FloatingValues(nearName, farName)) &&
+                    delta.Floating == 0 &&
+                    RowGenerations().Floating == rows.Floating &&
+                    floating.FloatingRowsRenderPassCountForValidation >= floatingPasses + 9;
+
+                // 2) 秒精度：秒位变化就地改数值文字与可访问名称，分格不重建。
+                clock.UtcNow = t0.AddSeconds(11);
+                MustApply(workspace, new SavePreferencesChange(
+                    "Second", preferences.MonthlySalary, preferences.WorkStart, preferences.WorkEnd));
+                Tick(t0.AddSeconds(11));
+                builds = Builds();
+                rows = RowGenerations();
+                mainValues = MainValues(nearId, farId);
+                clusters = Clusters();
+                floatingValues = FloatingValues(nearName, farName);
+                Tick(t0.AddSeconds(11.25));
+                delta = BuildDelta(builds);
+                const string nearSecondsText = "1 天 00 小时 00 分钟 28 秒";
+                const string farSecondsText = "100 天 00 小时 00 分钟 18 秒";
+                var mainSecondsUpdateInPlace =
+                    mainValues.Length == 8 &&
+                    mainValues.SequenceEqual(MainValues(nearId, farId)) &&
+                    mainValues[3].Text == "28" &&
+                    mainValues[7].Text == "18" &&
+                    RemainingTextNamed(MainText(nearId), nearSecondsText) &&
+                    RemainingTextNamed(MainText(farId), farSecondsText) &&
+                    delta.Main == 0 &&
+                    RowGenerations().Main == rows.Main;
+                var floatingSecondsUpdateInPlace =
+                    floatingValues.Length == 8 &&
+                    clusters.All(cluster => cluster is not null) &&
+                    clusters.SequenceEqual(Clusters()) &&
+                    floatingValues.SequenceEqual(FloatingValues(nearName, farName)) &&
+                    floatingValues[3].Text == "28" &&
+                    floatingValues[7].Text == "18" &&
+                    AutomationProperties.GetName(clusters[0]!) == nearSecondsText &&
+                    AutomationProperties.GetName(clusters[1]!) == farSecondsText &&
+                    delta.Floating == 0 &&
+                    RowGenerations().Floating == rows.Floating;
+
+                // 就地更新后的分格须与按新文本重新排版的结果一致（等宽数字无宽度漂移），且数值不裁切。
+                var mainInPlaceGeometryMatchesFreshFit =
+                    RemainingBlocksMatchFreshMainFit(main, MainText(nearId), nearSecondsText, isPrimary: true) &&
+                    RemainingBlocksMatchFreshMainFit(main, MainText(farId), farSecondsText, isPrimary: false) &&
+                    RemainingValuesFitWithoutClipping(MainSurface(nearId)) &&
+                    RemainingValuesFitWithoutClipping(MainSurface(farId));
+                var floatingInPlaceGeometryMatchesFreshFit =
+                    RemainingBlocksMatchFreshFloatingFit(floating, Cluster(nearName), nearSecondsText, isPrimary: true) &&
+                    RemainingBlocksMatchFreshFloatingFit(floating, Cluster(farName), farSecondsText, isPrimary: false) &&
+                    RemainingValuesFitWithoutClipping(Cluster(nearName)) &&
+                    RemainingValuesFitWithoutClipping(Cluster(farName));
+
+                // 3) 天数位数变化（100 → 99 天）：远期行重建，近期行仍就地。
+                Tick(t0.AddSeconds(30));
+                builds = Builds();
+                rows = RowGenerations();
+                var mainFarBefore = MainValues(farId);
+                var floatingFarBefore = Cluster(farName);
+                var floatingFarValuesBefore = FloatingValues(farName);
+                Tick(t0.AddSeconds(30.25));
+                delta = BuildDelta(builds);
+                const string farRolloverText = "99 天 23 小时 59 分钟 59 秒";
+                const string nearAtFarRolloverText = "1 天 00 小时 00 分钟 09 秒";
+                var mainFarAfter = MainValues(farId);
+                var mainDayDigitsChangeRebuilds =
+                    delta.Main == 1 &&
+                    mainFarBefore.Length == 4 &&
+                    mainFarAfter.Length == 4 &&
+                    !mainFarAfter.Intersect(mainFarBefore).Any() &&
+                    mainFarAfter[0].Text == "99" &&
+                    RemainingTextNamed(MainText(farId), farRolloverText) &&
+                    RemainingTextNamed(MainText(nearId), nearAtFarRolloverText) &&
+                    MainRemainingBlocksMeetFontFloor(MainText(farId)) &&
+                    RowGenerations().Main == rows.Main;
+                var floatingFarAfter = Cluster(farName);
+                var floatingFarValuesAfter = FloatingValues(farName);
+                var floatingDayDigitsChangeRebuilds =
+                    delta.Floating == 1 &&
+                    floatingFarBefore is not null &&
+                    floatingFarAfter is not null &&
+                    !ReferenceEquals(floatingFarBefore, floatingFarAfter) &&
+                    floatingFarValuesAfter.Length == 4 &&
+                    !floatingFarValuesAfter.Intersect(floatingFarValuesBefore).Any() &&
+                    floatingFarValuesAfter[0].Text == "99" &&
+                    AutomationProperties.GetName(floatingFarAfter) == farRolloverText &&
+                    Cluster(nearName) is { } nearAtFarRollover &&
+                    AutomationProperties.GetName(nearAtFarRollover) == nearAtFarRolloverText &&
+                    FloatingRemainingBlocksMeetFontFloor(floatingFarAfter) &&
+                    RowGenerations().Floating == rows.Floating;
+
+                // 4) #229：近期行 1 → 0 天，悬浮窗省略「天」分格须重建；管理窗口不省略「天」分格，
+                // 这一拍两行都就地更新（计数只记入诊断）。
+                Tick(t0.AddSeconds(40));
+                builds = Builds();
+                rows = RowGenerations();
+                var floatingNearBefore = Cluster(nearName);
+                Tick(t0.AddSeconds(40.25));
+                delta = BuildDelta(builds);
+                const string nearZeroDayText = "0 天 23 小时 59 分钟 59 秒";
+                const string farAtZeroDayText = "99 天 23 小时 59 分钟 49 秒";
+                var floatingNearAfter = Cluster(nearName);
+                var floatingDayBlockOmissionRebuilds =
+                    delta.Floating == 1 &&
+                    floatingNearBefore is not null &&
+                    floatingNearAfter is not null &&
+                    !ReferenceEquals(floatingNearBefore, floatingNearAfter) &&
+                    RemainingBlockPairs(floatingNearAfter)
+                        .Select(item => item.Value.Text + item.Unit.Text)
+                        .SequenceEqual(["23时", "59分", "59秒"]) &&
+                    AutomationProperties.GetName(floatingNearAfter) == nearZeroDayText &&
+                    Cluster(farName) is { } farAtZeroDay &&
+                    AutomationProperties.GetName(farAtZeroDay) == farAtZeroDayText &&
+                    FloatingRemainingBlocksMeetFontFloor(floatingNearAfter) &&
+                    RowGenerations().Floating == rows.Floating;
+
+                // 5) DPI 变化（沿用 #219 的 WM_DPICHANGED 注入）：同文本的下一拍按新 DPI 重建，再下一拍跳过。
+                var dpiScaleBefore = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
+                var mainDpiInjected =
+                    previousDpiContext != IntPtr.Zero &&
+                    MonitorGeometryValidation.InjectDpiChangeForValidation(main, 1.5);
+                var floatingDpiInjected =
+                    previousDpiContext != IntPtr.Zero &&
+                    MonitorGeometryValidation.InjectDpiChangeForValidation(floating, 1.5);
+                var dpiScaleAfter = VisualTreeHelper.GetDpi(floating).PixelsPerDip;
+                builds = Builds();
+                rows = RowGenerations();
+                mainValues = MainValues(nearId, farId);
+                clusters = Clusters();
+                Tick(t0.AddSeconds(40.5));
+                delta = BuildDelta(builds);
+                var mainValuesAfterDpi = MainValues(nearId, farId);
+                var clustersAfterDpi = Clusters();
+                var mainRebuiltForDpi =
+                    delta.Main == 2 &&
+                    mainValuesAfterDpi.Length == 8 &&
+                    !mainValuesAfterDpi.Intersect(mainValues).Any() &&
+                    RemainingTextNamed(MainText(nearId), nearZeroDayText) &&
+                    RemainingTextNamed(MainText(farId), farAtZeroDayText) &&
+                    MainRemainingBlocksMeetFontFloor(MainText(nearId)) &&
+                    MainRemainingBlocksMeetFontFloor(MainText(farId));
+                var floatingRebuiltForDpi =
+                    delta.Floating == 2 &&
+                    clustersAfterDpi.All(cluster => cluster is not null) &&
+                    !clustersAfterDpi.Intersect(clusters).Any() &&
+                    AutomationProperties.GetName(clustersAfterDpi[0]!) == nearZeroDayText &&
+                    AutomationProperties.GetName(clustersAfterDpi[1]!) == farAtZeroDayText &&
+                    clustersAfterDpi.All(FloatingRemainingBlocksMeetFontFloor);
+                builds = Builds();
+                Tick(t0.AddSeconds(40.75));
+                delta = BuildDelta(builds);
+                var mainDpiChangeRebuilds =
+                    mainDpiInjected &&
+                    mainRebuiltForDpi &&
+                    delta.Main == 0 &&
+                    mainValuesAfterDpi.SequenceEqual(MainValues(nearId, farId)) &&
+                    RowGenerations().Main == rows.Main;
+                var floatingDpiChangeRebuilds =
+                    floatingDpiInjected &&
+                    floatingRebuiltForDpi &&
+                    delta.Floating == 0 &&
+                    clustersAfterDpi.SequenceEqual(Clusters()) &&
+                    RowGenerations().Floating == rows.Floating;
+
+                return new RemainingBlocksOnDemandProbe(
+                    mainSkipsUnchangedTicks,
+                    mainSecondsUpdateInPlace,
+                    mainInPlaceGeometryMatchesFreshFit,
+                    mainDayDigitsChangeRebuilds,
+                    mainDpiChangeRebuilds,
+                    floatingSkipsUnchangedTicks,
+                    floatingSecondsUpdateInPlace,
+                    floatingInPlaceGeometryMatchesFreshFit,
+                    floatingDayDigitsChangeRebuilds,
+                    floatingDayBlockOmissionRebuilds,
+                    floatingDpiChangeRebuilds,
+                    mainDeltas.ToArray(),
+                    floatingDeltas.ToArray(),
+                    dpiScaleBefore,
+                    dpiScaleAfter);
+            }
+            finally
+            {
+                floating.Close();
+                main.Close();
+            }
+        }
+        finally
+        {
+            MonitorGeometryValidation.RestoreThreadDpiContextForValidation(previousDpiContext);
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // #240：悬浮窗便签「下次提醒」按可见便签缓存。同一分钟内且无状态变化时每条只算一次；到达缓存的提醒时刻、
+    // 整分钟翻转、工作区状态变化与节假日日历状态变化后重算；卡片上的「下次提醒」文字始终正确。
+    public static FloatingNextReminderCacheProbe RunFloatingNextReminderCache()
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-next-reminder-cache-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        // 不存在的应用根加合成离线下载：日历刷新同步经历「加载中 → 未就绪」两次状态变化，不触网也不写盘。
+        var calendarRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-next-reminder-calendar-{Guid.NewGuid():N}");
+        try
+        {
+            var t0 = new DateTimeOffset(2038, 7, 8, 1, 0, 5, TimeSpan.Zero);
+            var clock = new AdvancingValidationClock(t0);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            var repeatingFirstDue = new DateTimeOffset(2038, 7, 8, 1, 0, 30, TimeSpan.Zero);
+            var repeatingSecondDue = repeatingFirstDue.AddMinutes(15);
+            var onceDue = new DateTimeOffset(2038, 7, 9, 2, 0, 0, TimeSpan.Zero);
+            const string plainText = "下次提醒缓存·无提醒";
+            MustApply(workspace, new SaveNoteChange(
+                null, "下次提醒缓存·周期", new DateTime(2038, 7, 8), false, Array.Empty<string>(),
+                new ReminderRule[]
+                {
+                    new FixedIntervalReminderRule("next-reminder-cache-repeat", repeatingFirstDue, new ReminderInterval(15))
+                }));
+            MustApply(workspace, new SaveNoteChange(
+                null, "下次提醒缓存·一次", new DateTime(2038, 7, 9), false, Array.Empty<string>(),
+                new ReminderRule[] { new AbsoluteOnceReminderRule("next-reminder-cache-once", onceDue) }));
+            MustApply(workspace, new SaveNoteChange(
+                null, plainText, new DateTime(2038, 7, 10), false, Array.Empty<string>(), Array.Empty<ReminderRule>()));
+            using var calendar = new HolidayCalendar(
+                calendarRoot,
+                static (_, _) => Task.FromException<string>(new HttpRequestException("synthetic offline")));
+            var main = new MainWindow(
+                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
+            var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            PrepareOffscreenValidationWindow(floating);
+            var workspaceEvents = 0;
+            var calendarEvents = 0;
+            workspace.StateChanged += (_, _) => workspaceEvents++;
+            calendar.StateChanged += (_, _) => calendarEvents++;
+            try
+            {
+                main.Show();
+                floating.Show();
+                WindowValidationInput.Pump(floating.Dispatcher);
+                var deltas = new List<long>();
+                var textChecks = new List<bool>();
+
+                long Measure(Action action)
+                {
+                    var before = floating.FloatingNextReminderComputationCountForValidation;
+                    action();
+                    var computed = floating.FloatingNextReminderComputationCountForValidation - before;
+                    deltas.Add(computed);
+                    return computed;
+                }
+
+                void Tick(DateTimeOffset utc)
+                {
+                    clock.UtcNow = utc;
+                    floating.UpdateTime(utc);
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                    floating.UpdateLayout();
+                }
+
+                void CheckTexts(DateTimeOffset repeatingNext) => textChecks.Add(
+                    VisualDescendants<TextBlock>(floating.FloatingRows)
+                        .Where(text => text.Text.StartsWith("下次提醒：", StringComparison.Ordinal))
+                        .Select(text => text.Text)
+                        .Order(StringComparer.Ordinal)
+                        .SequenceEqual(new[]
+                            {
+                                $"下次提醒：{DateDisplay.Deadline(repeatingNext)}",
+                                $"下次提醒：{DateDisplay.Deadline(onceDue)}"
+                            }
+                            .Order(StringComparer.Ordinal)));
+
+                // 进入便签页：三条可见便签各算一次，签名与卡片共用同一份结果。
+                var entered = Measure(() => floating.ShowWorkspace(WorkspaceKind.Notes));
+                CheckTexts(repeatingFirstDue);
+                var sameMinute = Measure(() =>
+                {
+                    for (var second = 1; second <= 19; second += 2)
+                    {
+                        Tick(t0.AddSeconds(second));
+                    }
+                });
+                CheckTexts(repeatingFirstDue);
+
+                // 同一分钟内到达周期便签缓存的提醒时刻（01:00:30）：只重算这一条，卡片改指下一次（01:15:30）。
+                var reached = Measure(() => Tick(repeatingFirstDue));
+                CheckTexts(repeatingSecondDue);
+                var afterReached = Measure(() => Tick(repeatingFirstDue.AddSeconds(10)));
+
+                // 整分钟翻转：三条各重算一次，同一分钟的后续 tick 不再计算。
+                var rollover = Measure(() => Tick(new DateTimeOffset(2038, 7, 8, 1, 1, 0, TimeSpan.Zero)));
+                var afterRollover = Measure(() => Tick(new DateTimeOffset(2038, 7, 8, 1, 1, 10, TimeSpan.Zero)));
+                CheckTexts(repeatingSecondDue);
+
+                // 工作区状态变化：与便签无关的倒计时新增、便签自身编辑都作废缓存，每次变化三条各算一次。
+                clock.UtcNow = new DateTimeOffset(2038, 7, 8, 1, 1, 20, TimeSpan.Zero);
+                var eventsBefore = workspaceEvents;
+                var unrelated = Measure(() =>
+                {
+                    MustApply(workspace, new SaveCountdownChange(
+                        null, "下次提醒缓存·无关倒计时", clock.UtcNow.AddDays(3),
+                        Array.Empty<string>(), Array.Empty<ReminderRule>()));
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                });
+                var unrelatedEvents = workspaceEvents - eventsBefore;
+                var afterUnrelated = Measure(() => Tick(new DateTimeOffset(2038, 7, 8, 1, 1, 25, TimeSpan.Zero)));
+                var plain = workspace.Snapshot.Settings.Notes.Single(note => note.Text == plainText);
+                clock.UtcNow = new DateTimeOffset(2038, 7, 8, 1, 1, 30, TimeSpan.Zero);
+                eventsBefore = workspaceEvents;
+                var edited = Measure(() =>
+                {
+                    MustApply(workspace, new SaveNoteChange(
+                        plain.Id, plainText + "（已改）", new DateTime(2038, 7, 10), false,
+                        Array.Empty<string>(), Array.Empty<ReminderRule>()));
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                });
+                var editedEvents = workspaceEvents - eventsBefore;
+                var afterEdited = Measure(() => Tick(new DateTimeOffset(2038, 7, 8, 1, 1, 35, TimeSpan.Zero)));
+                CheckTexts(repeatingSecondDue);
+
+                // 节假日日历状态变化：每次变化都作废缓存，之后同一分钟的 tick 不再计算。
+                clock.UtcNow = new DateTimeOffset(2038, 7, 8, 1, 1, 40, TimeSpan.Zero);
+                var calendarEventsBefore = calendarEvents;
+                var calendarChanged = Measure(() =>
+                {
+                    var refresh = calendar.RefreshAsync(clock.UtcNow, CancellationToken.None);
+                    WindowValidationInput.WaitUntil(floating.Dispatcher, () => refresh.IsCompleted, 2000);
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                });
+                var calendarChanges = calendarEvents - calendarEventsBefore;
+                var afterCalendar = Measure(() => Tick(new DateTimeOffset(2038, 7, 8, 1, 1, 45, TimeSpan.Zero)));
+                CheckTexts(repeatingSecondDue);
+
+                return new FloatingNextReminderCacheProbe(
+                    entered == 3 && sameMinute == 0,
+                    reached == 1 && afterReached == 0,
+                    rollover == 3 && afterRollover == 0,
+                    unrelatedEvents > 0 && unrelated == 3 * unrelatedEvents && afterUnrelated == 0 &&
+                        editedEvents > 0 && edited == 3 * editedEvents && afterEdited == 0,
+                    calendarChanges > 0 && calendarChanged == 3 * calendarChanges && afterCalendar == 0,
+                    textChecks.Count == 6 && textChecks.All(passed => passed),
+                    deltas.ToArray());
+            }
+            finally
+            {
+                floating.Close();
+                main.Close();
+            }
+        }
+        finally
+        {
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    // 两窗分格同构：块容器 → 横向 StackPanel → 每段 StackPanel（色块 Border{数值} + 单位）。
+    private static IReadOnlyList<(StackPanel Pair, Border Block, TextBlock Value, TextBlock Unit)> RemainingBlockPairs(
+        Panel? blocksRoot) =>
+        blocksRoot is null
+            ? []
+            : blocksRoot.Children.OfType<StackPanel>()
+                .SelectMany(panel => panel.Children.OfType<StackPanel>())
+                .Where(pair => pair.Children.Count == 2 &&
+                    pair.Children[0] is Border { Child: TextBlock } &&
+                    pair.Children[1] is TextBlock)
+                .Select(pair => (
+                    Pair: pair,
+                    Block: (Border)pair.Children[0],
+                    Value: (TextBlock)((Border)pair.Children[0]).Child,
+                    Unit: (TextBlock)pair.Children[1]))
+                .ToArray();
+
+    private static string RemainingBlocksGeometry(Panel? blocksRoot) =>
+        string.Join(" | ", RemainingBlockPairs(blocksRoot).Select(item => FormattableString.Invariant(
+            $"{item.Value.Text}{item.Unit.Text} w={item.Block.Width} min={item.Block.MinWidth} h={item.Block.Height} pad={item.Block.Padding.Left}/{item.Block.Padding.Right} font={item.Value.FontSize} vpad={item.Value.Padding.Left}/{item.Value.Padding.Right} gap={item.Pair.Margin.Left} unit={item.Unit.FontSize}")));
+
+    private static bool RemainingBlocksMatchFreshMainFit(
+        MainWindow main,
+        TextBlock remainingText,
+        string text,
+        bool isPrimary) =>
+        remainingText.Tag is MainCountdownBlocksHost host &&
+        RemainingBlockPairs(host.Surface).Count > 0 &&
+        RemainingBlocksGeometry(host.Surface) ==
+            RemainingBlocksGeometry(main.BuildCountdownBlocksForValidation(text, isPrimary));
+
+    private static bool RemainingBlocksMatchFreshFloatingFit(
+        FloatingWindow floating,
+        Grid? cluster,
+        string text,
+        bool isPrimary) =>
+        cluster is not null &&
+        RemainingBlockPairs(cluster).Count > 0 &&
+        floating.BuildRemainingBlocksForValidation(text, isPrimary) is Grid fresh &&
+        RemainingBlocksGeometry(cluster) == RemainingBlocksGeometry(fresh) &&
+        AutomationProperties.GetItemStatus(cluster) == AutomationProperties.GetItemStatus(fresh) &&
+        AutomationProperties.GetName(cluster) == AutomationProperties.GetName(fresh);
+
+    // 数值按自身字体、字号与等宽数字设置的自然宽度不得超出实际分到的宽度，且保持单行不省略。
+    private static bool RemainingValuesFitWithoutClipping(Panel? blocksRoot)
+    {
+        var pairs = RemainingBlockPairs(blocksRoot);
+        return pairs.Count > 0 && pairs.All(item =>
+        {
+            var natural = new TextBlock
+            {
+                Text = item.Value.Text,
+                FontFamily = item.Value.FontFamily,
+                FontSize = item.Value.FontSize,
+                FontWeight = item.Value.FontWeight,
+                Padding = item.Value.Padding
+            };
+            Typography.SetNumeralAlignment(natural, Typography.GetNumeralAlignment(item.Value));
+            natural.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            return item.Value.TextWrapping == TextWrapping.NoWrap &&
+                   item.Value.TextTrimming == TextTrimming.None &&
+                   natural.DesiredSize.Width <= item.Value.ActualWidth + 0.5;
+        });
+    }
+
+    // 管理窗口分格字号下限（§8）：数值不低于 13，单位字固定在 13 档；承载可访问名称的文本同样不低于 13。
+    private static bool MainRemainingBlocksMeetFontFloor(TextBlock remainingText)
+    {
+        var pairs = RemainingBlockPairs((remainingText.Tag as MainCountdownBlocksHost)?.Surface);
+        return pairs.Count > 0 &&
+               remainingText.FontSize >= 13 - 0.01 &&
+               pairs.All(item => item.Value.FontSize >= 13 - 0.01 && item.Unit.FontSize >= 13 - 0.01);
+    }
+
+    // 悬浮窗分格字号下限（§10）：排版自报 KeyTextFontFloorSatisfied，数值不低于 12。
+    private static bool FloatingRemainingBlocksMeetFontFloor(Grid? cluster) =>
+        cluster is not null &&
+        string.Equals(
+            AutomationProperties.GetItemStatus(cluster),
+            "KeyTextFontFloorSatisfied",
+            StringComparison.Ordinal) &&
+        RemainingBlockPairs(cluster).All(item => item.Value.FontSize >= 12 - 0.01);
+
+    // 管理窗口分格的可访问名称由同列的剩余时间文本承载（TextBlock 的自动化名称即其文本）。
+    private static bool RemainingTextNamed(TextBlock remainingText, string expected) =>
+        string.Equals(remainingText.Text, expected, StringComparison.Ordinal) &&
+        string.Equals(
+            UIElementAutomationPeer.CreatePeerForElement(remainingText)?.GetName(),
+            expected,
+            StringComparison.Ordinal);
+
+    private static Grid? FloatingRemainingCluster(FloatingWindow floating, string rowName) =>
+        floating.FloatingRows.Children.OfType<FrameworkElement>()
+            .Where(row => VisualDescendants<TextBlock>(row).Any(text => text.Text == rowName))
+            .SelectMany(row => VisualDescendants<Grid>(row))
+            .FirstOrDefault(grid => string.Equals(
+                grid.Tag as string,
+                FloatingWindow.RemainingBlocksTag,
+                StringComparison.Ordinal));
 
     public static bool RunCountdownListFirstBehavior()
     {

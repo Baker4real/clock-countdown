@@ -669,6 +669,34 @@ internal sealed record CountdownEmptyStateGateResults(
         };
 }
 
+// #240：剩余时间分格「跳过 / 就地 / 重建」探针；两窗各自一组事实，数值字段只作诊断。
+internal sealed record RemainingBlocksOnDemandProbe(
+    bool MainSkipsUnchangedTicks,
+    bool MainSecondsUpdateInPlace,
+    bool MainInPlaceGeometryMatchesFreshFit,
+    bool MainDayDigitsChangeRebuilds,
+    bool MainDpiChangeRebuilds,
+    bool FloatingSkipsUnchangedTicks,
+    bool FloatingSecondsUpdateInPlace,
+    bool FloatingInPlaceGeometryMatchesFreshFit,
+    bool FloatingDayDigitsChangeRebuilds,
+    bool FloatingDayBlockOmissionRebuilds,
+    bool FloatingDpiChangeRebuilds,
+    IReadOnlyList<long> MainBuildDeltas,
+    IReadOnlyList<long> FloatingBuildDeltas,
+    double DpiScaleBefore,
+    double DpiScaleAfter);
+
+// #240：悬浮窗便签「下次提醒」缓存探针；ComputationDeltas 按步骤记录实际计算次数。
+internal sealed record FloatingNextReminderCacheProbe(
+    bool ComputedOncePerNoteWithinMinute,
+    bool RecomputedWhenCachedReminderIsReached,
+    bool RecomputedOnMinuteRollover,
+    bool RecomputedOnWorkspaceStateChange,
+    bool RecomputedOnCalendarStateChange,
+    bool DisplayedTextAlwaysCorrect,
+    IReadOnlyList<long> ComputationDeltas);
+
 internal sealed record NoteVisualTokenGateInputs(
     bool CompactInputPaddingAligned,
     bool BadgeTokensFollowState,

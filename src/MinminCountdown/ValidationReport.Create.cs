@@ -156,6 +156,8 @@ internal static partial class ValidationReport
             ValidationExercises.RunCountdownIncrementalRefreshGateIsolationBehavior();
         var floatingRenderSignatureGateIsolationBehavior =
             ValidationExercises.RunFloatingRenderSignatureGateIsolationBehavior();
+        var remainingBlocksOnDemand = ValidationExercises.RunRemainingBlocksOnDemand();
+        var floatingNextReminderCache = ValidationExercises.RunFloatingNextReminderCache();
         var floatingEmptyStateTextIsolationBehavior =
             ValidationExercises.RunFloatingEmptyStateTextIsolationBehavior();
         var floatingUiPolish = floatingWindowScenarios.UiPolish;
@@ -1246,6 +1248,59 @@ internal static partial class ValidationReport
             ["FloatingRenderSignatureGateIsolationBehavior"] = Must(
                 floatingRenderSignatureGateIsolationBehavior,
                 "渲染签名隔离反例：同输入同签名，标题/精度/筛选/结构变化改签名，剩余时间仅数值变化不改签名（#212）"),
+            ["RemainingBlocksOnDemand"] = remainingBlocksOnDemand,
+            ["MainRemainingBlocksSkipUnchangedTicks"] = Must(
+                remainingBlocksOnDemand.MainSkipsUnchangedTicks,
+                "管理窗口分钟精度连续 tick 剩余文本不变时整拍跳过：分格与数值实例不变、重建计数不增（#240）"),
+            ["MainRemainingBlocksSecondsUpdateInPlace"] = Must(
+                remainingBlocksOnDemand.MainSecondsUpdateInPlace,
+                "管理窗口秒位变化保留分格与数值实例，只改数值文字并同步可访问名称（#240）"),
+            ["MainRemainingBlocksInPlaceGeometryMatchesFreshFit"] = Must(
+                remainingBlocksOnDemand.MainInPlaceGeometryMatchesFreshFit,
+                "管理窗口就地更新后的分格几何与按新文本重新排版一致，数值单行不裁切（#240）"),
+            ["MainRemainingBlocksDayDigitsChangeRebuilds"] = Must(
+                remainingBlocksOnDemand.MainDayDigitsChangeRebuilds,
+                "管理窗口天数位数变化（100 → 99 天）按现有排版重建该行分格，字号下限仍满足（#240）"),
+            ["MainRemainingBlocksDpiChangeRebuilds"] = Must(
+                remainingBlocksOnDemand.MainDpiChangeRebuilds,
+                "管理窗口 DPI 变化后下一拍按新 DPI 重建分格、字号下限仍满足，之后同文本 tick 跳过（#240）"),
+            ["FloatingRemainingBlocksSkipUnchangedTicks"] = Must(
+                remainingBlocksOnDemand.FloatingSkipsUnchangedTicks,
+                "悬浮窗分钟精度连续 tick 剩余文本不变时整拍跳过：分格与数值实例不变、重建计数不增（#240）"),
+            ["FloatingRemainingBlocksSecondsUpdateInPlace"] = Must(
+                remainingBlocksOnDemand.FloatingSecondsUpdateInPlace,
+                "悬浮窗秒位变化保留分格与数值实例，只改数值文字并同步分格可访问名称（#240）"),
+            ["FloatingRemainingBlocksInPlaceGeometryMatchesFreshFit"] = Must(
+                remainingBlocksOnDemand.FloatingInPlaceGeometryMatchesFreshFit,
+                "悬浮窗就地更新后的分格几何、字号状态与可访问名称和按新文本重新排版一致，数值单行不裁切（#240）"),
+            ["FloatingRemainingBlocksDayDigitsChangeRebuilds"] = Must(
+                remainingBlocksOnDemand.FloatingDayDigitsChangeRebuilds,
+                "悬浮窗天数位数变化（100 → 99 天）按现有排版重建该行分格，字号下限仍满足（#240）"),
+            ["FloatingRemainingBlocksDayBlockOmissionRebuilds"] = Must(
+                remainingBlocksOnDemand.FloatingDayBlockOmissionRebuilds,
+                "悬浮窗剩余跨到 0 天时按 #229 省略「天」分格并重建该行，字号下限仍满足（#240）"),
+            ["FloatingRemainingBlocksDpiChangeRebuilds"] = Must(
+                remainingBlocksOnDemand.FloatingDpiChangeRebuilds,
+                "悬浮窗 DPI 变化后下一拍按新 DPI 重建分格、字号下限仍满足，之后同文本 tick 跳过（#240）"),
+            ["FloatingNextReminderCache"] = floatingNextReminderCache,
+            ["FloatingNextReminderComputedOncePerNoteWithinMinute"] = Must(
+                floatingNextReminderCache.ComputedOncePerNoteWithinMinute,
+                "悬浮窗便签「下次提醒」同一分钟内且无状态变化时每条可见便签只计算一次（#240）"),
+            ["FloatingNextReminderRecomputedWhenReached"] = Must(
+                floatingNextReminderCache.RecomputedWhenCachedReminderIsReached,
+                "悬浮窗便签到达缓存的提醒时刻后只重算该条「下次提醒」（#240）"),
+            ["FloatingNextReminderRecomputedOnMinuteRollover"] = Must(
+                floatingNextReminderCache.RecomputedOnMinuteRollover,
+                "悬浮窗便签「下次提醒」整分钟翻转后每条重算一次（#240）"),
+            ["FloatingNextReminderRecomputedOnWorkspaceStateChange"] = Must(
+                floatingNextReminderCache.RecomputedOnWorkspaceStateChange,
+                "悬浮窗便签「下次提醒」在任一工作区状态变化后重算（#240）"),
+            ["FloatingNextReminderRecomputedOnCalendarStateChange"] = Must(
+                floatingNextReminderCache.RecomputedOnCalendarStateChange,
+                "悬浮窗便签「下次提醒」在节假日日历状态变化后重算（#240）"),
+            ["FloatingNextReminderTextAlwaysCorrect"] = Must(
+                floatingNextReminderCache.DisplayedTextAlwaysCorrect,
+                "悬浮窗便签卡「下次提醒」文字在缓存命中与重算前后始终正确（#240）"),
             ["FloatingDateStampPastelRotationMatches"] = Must(floatingWindowScenarios.BottomCommand.PastelIndexPass, "悬浮窗日期印记按列表顺序粉/蓝/绿轮换且卡底暖黄与白纸交替"),
             ["FloatingNotesHandwrittenDecorationPass"] = Must(
                 floatingWindowScenarios.BottomCommand.HandwrittenDecorationLands,

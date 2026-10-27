@@ -204,9 +204,10 @@ public sealed partial class FloatingWindow
         var remainingBlocks = BuildRemainingBlocks(
             row.Remaining,
             isPrimary: true);
-        Grid.SetColumn(remainingBlocks, 1);
+        _countdownRemainingBlocks[row.Key] = remainingBlocks;
+        Grid.SetColumn(remainingBlocks.Element, 1);
         layout.Children.Add(deadlineRow);
-        layout.Children.Add(remainingBlocks);
+        layout.Children.Add(remainingBlocks.Element);
         return layout;
     }
 
@@ -232,19 +233,23 @@ public sealed partial class FloatingWindow
         var remainingBlocks = BuildRemainingBlocks(
             row.Remaining,
             isPrimary: false);
-        Grid.SetColumn(remainingBlocks, 1);
+        _countdownRemainingBlocks[row.Key] = remainingBlocks;
+        Grid.SetColumn(remainingBlocks.Element, 1);
         layout.Children.Add(name);
-        layout.Children.Add(remainingBlocks);
+        layout.Children.Add(remainingBlocks.Element);
         return layout;
     }
 
-    private FrameworkElement BuildRemainingBlocks(
+    private RenderedRemainingBlocks BuildRemainingBlocks(
         string remaining,
         bool isPrimary)
     {
+        FloatingRemainingBlocksBuildCountForValidation++;
         var theme = ActiveTheme;
         var valueBrushKey = isPrimary ? "PrimaryCountdownNumberBrush" : theme.TextBrushKey;
         var pairs = ParseRemainingPairs(remaining);
+        var shapeKey = RemainingPair.ShapeKey(pairs, remaining);
+        var dpiScale = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         if (pairs is null || pairs.Count == 0)
         {
             var fallback = CountdownRemainingText(
@@ -257,7 +262,7 @@ public sealed partial class FloatingWindow
             fallback.Width = isPrimary ? PrimaryRemainingWidth : SecondaryRemainingWidth;
             // #148：到期剩余文字不得用强调轨色当字；主项到期回落主项数字色，次项回落主文字。
             fallback.SetResourceReference(TextBlock.ForegroundProperty, valueBrushKey);
-            return fallback;
+            return new RenderedRemainingBlocks(fallback, [], shapeKey, dpiScale, remaining);
         }
 
         // #198: keep the floating window on the same enlarged countdown
@@ -441,7 +446,7 @@ public sealed partial class FloatingWindow
             cluster,
             keyFontFloorSatisfied ? "KeyTextFontFloorSatisfied" : "KeyTextFontFloorExceeded");
         cluster.Children.Add(pairsPanel);
-        return cluster;
+        return new RenderedRemainingBlocks(cluster, valueBlocks, shapeKey, dpiScale, remaining);
     }
 
     // ValidationReport uses the same rendering seam for the expired fallback,
@@ -449,7 +454,27 @@ public sealed partial class FloatingWindow
     internal FrameworkElement BuildRemainingBlocksForValidation(
         string remaining,
         bool isPrimary) =>
-        BuildRemainingBlocks(remaining, isPrimary);
+        BuildRemainingBlocks(remaining, isPrimary).Element;
+
+    // #240：一行剩余时间分格的渲染记录——分格簇（或无分格时的回退文字）、按分格顺序的数值文字实例，
+    // 以及上次渲染的剩余文本、形状键与 DPI 缩放，供下一拍判定跳过、就地或重建。
+    private sealed class RenderedRemainingBlocks(
+        FrameworkElement element,
+        IReadOnlyList<TextBlock> values,
+        string shapeKey,
+        double dpiScale,
+        string text)
+    {
+        public FrameworkElement Element { get; } = element;
+
+        public IReadOnlyList<TextBlock> Values { get; } = values;
+
+        public string ShapeKey { get; } = shapeKey;
+
+        public double DpiScale { get; } = dpiScale;
+
+        public string Text { get; set; } = text;
+    }
 
     private static IReadOnlyList<RemainingPair>? ParseRemainingPairs(string remaining)
     {
@@ -556,4 +581,15 @@ public sealed partial class FloatingWindow
     }
 }
 
-internal sealed record RemainingPair(string Value, string Unit);
+internal sealed record RemainingPair(string Value, string Unit)
+{
+    // #240：分格形状键——数字统一替换为 #，反映分格数、单位与每格位数；
+    // 无分格（已到期、少于 1 天等回退文字）时以整段文本为键，文本一变即视为形状变化。
+    internal static string ShapeKey(IReadOnlyList<RemainingPair>? pairs, string remaining) =>
+        pairs is null || pairs.Count == 0
+            ? "\u0000" + remaining
+            : string.Join(
+                "\u001f",
+                pairs.Select(pair => string.Concat(
+                    pair.Value.Select(character => char.IsAsciiDigit(character) ? '#' : character)) + pair.Unit));
+}

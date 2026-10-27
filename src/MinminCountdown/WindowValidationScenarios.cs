@@ -2184,6 +2184,7 @@ public sealed partial class MainWindow
                 keyboardFocusRingShowsOnTab,
                 selectedTabWeightDominates,
                 segmentIndicators.GeometryMatches,
+                segmentIndicators.StaticThicknessIsUniform,
                 segmentIndicators.ReducedMotionIsImmediate,
                 segmentIndicators.RapidSwitchStaysAligned);
         }
@@ -2198,6 +2199,7 @@ public sealed partial class MainWindow
     // #196：页签与便签状态分段共享一个可中断指示条。这里以真实控件的
     // TransformToAncestor 几何作断言，并快速往返切换，确保过期回调不会把
     // 指示条留在旧段；关闭系统动画时只保留同一目标几何的即时等价。
+    // #245：四个静止目标的终态均须保持零圆角、宽 1、高 3。
     private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
     {
         var originalWorkspace = _workspace;
@@ -2208,31 +2210,34 @@ public sealed partial class MainWindow
             Activate();
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var countdownTabAligned = ObserveIndicator(_workspaceTabIndicator, CountdownTab, MainWorkspaceTabHost);
+            var countdownTab = ObserveIndicator(
+                _workspaceTabIndicator, CountdownTab, MainWorkspaceTabHost, MainWorkspaceTabIndicator);
 
             ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var notesTabAligned = ObserveIndicator(_workspaceTabIndicator, NotesTab, MainWorkspaceTabHost);
-            var activeSegmentAligned = ObserveIndicator(_notesSegmentIndicator, ActiveNotesSegment, NotesSegmentHost);
+            var notesTab = ObserveIndicator(
+                _workspaceTabIndicator, NotesTab, MainWorkspaceTabHost, MainWorkspaceTabIndicator);
+            var activeSegment = ObserveIndicator(
+                _notesSegmentIndicator, ActiveNotesSegment, NotesSegmentHost, NotesSegmentIndicator);
 
             SelectNotesSegment(showCompleted: true);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var completedSegmentAligned = ObserveIndicator(_notesSegmentIndicator, CompletedNotesSegment, NotesSegmentHost);
+            var completedSegment = ObserveIndicator(
+                _notesSegmentIndicator, CompletedNotesSegment, NotesSegmentHost, NotesSegmentIndicator);
 
             var rapidSwitchStaysAligned =
                 SegmentIndicatorRapidSwitchIsStableForValidation;
             var reducedMotionIsImmediate =
                 SegmentIndicatorReducedMotionIsImmediateForValidation;
+            var observations = new[] { countdownTab, notesTab, activeSegment, completedSegment };
 
             return new SegmentIndicatorScenarios(
-                countdownTabAligned &&
-                notesTabAligned &&
-                activeSegmentAligned &&
-                completedSegmentAligned,
+                observations.All(observation => observation.Aligned),
                 reducedMotionIsImmediate,
-                rapidSwitchStaysAligned);
+                rapidSwitchStaysAligned,
+                observations.All(observation => observation.StaticThicknessIsUniform));
         }
         finally
         {
@@ -2242,7 +2247,11 @@ public sealed partial class MainWindow
             UpdateLayout();
         }
 
-        bool ObserveIndicator(SegmentIndicator indicator, FrameworkElement target, FrameworkElement root)
+        (bool Aligned, bool StaticThicknessIsUniform) ObserveIndicator(
+            SegmentIndicator indicator,
+            FrameworkElement target,
+            FrameworkElement root,
+            Border border)
         {
             var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target));
             if (!aligned)
@@ -2259,7 +2268,12 @@ public sealed partial class MainWindow
                     }));
             }
 
-            return aligned;
+            var staticThicknessIsUniform = aligned &&
+                border.Width == 1 &&
+                border.Height == 3 &&
+                border.CornerRadius == new CornerRadius(0) &&
+                Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001;
+            return (aligned, staticThicknessIsUniform);
         }
     }
 
@@ -4917,17 +4931,19 @@ internal sealed record MainWindowInteractionStates(
     bool KeyboardFocusRingShowsOnTab,
     bool SelectedTabWeightDominates,
     bool SegmentIndicatorGeometryMatches,
+    bool SegmentIndicatorStaticThicknessIsUniform,
     bool SegmentIndicatorReducedMotionIsImmediate,
     bool SegmentIndicatorRapidSwitchStaysAligned)
 {
     public static MainWindowInteractionStates Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
 }
 
 internal sealed record SegmentIndicatorScenarios(
     bool GeometryMatches,
     bool ReducedMotionIsImmediate,
-    bool RapidSwitchStaysAligned);
+    bool RapidSwitchStaysAligned,
+    bool StaticThicknessIsUniform);
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
 internal sealed record MainCountdownReadabilityScenarios(

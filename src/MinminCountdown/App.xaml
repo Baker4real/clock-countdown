@@ -47,7 +47,6 @@
     <Duration x:Key="MotionPopupEnterDuration">0:0:0.140</Duration>
     <Duration x:Key="MotionPopupExitDuration">0:0:0.090</Duration>
     <Duration x:Key="MotionIndicatorDuration">0:0:0.160</Duration>
-    <Duration x:Key="MotionCountdownDuration">0:0:0.090</Duration>
     <PowerEase x:Key="MotionEaseOut" EasingMode="EaseOut" Power="4" />
     <CubicEase x:Key="MotionCubicEaseOut" EasingMode="EaseOut" />
 

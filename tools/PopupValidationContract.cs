@@ -511,9 +511,9 @@ public static class MotionValidationContractHarness
     private const int DeadlineMilliseconds = 300;
     private static readonly string[] DurationKeys = {
         "MotionHoverDuration", "MotionPressDuration", "MotionPopupEnterDuration",
-        "MotionPopupExitDuration", "MotionIndicatorDuration", "MotionCountdownDuration"
+        "MotionPopupExitDuration", "MotionIndicatorDuration"
     };
-    private static readonly double[] EnabledMilliseconds = { 120, 100, 140, 90, 160, 90 };
+    private static readonly double[] EnabledMilliseconds = { 120, 100, 140, 90, 160 };
     // Quartic ease-out stays inside the 10%-90% sample band for
     // 0.9^(1/4) - 0.1^(1/4) of a transition: about 37 ms of the shortest 90 ms
     // token. One- or two-tick frame gaps cannot skip that band; a longer stall can.
@@ -877,7 +877,7 @@ public static class MotionValidationContractHarness
         return moved;
     }
 
-    // Popup and digit controllers synchronously commit the captured current value.
+    // Popup controllers synchronously commit the captured current value.
     // WPF frame-clock progress is not the Stopwatch interval between these reads.
     // Require that snapshot, a live nonterminal frame in the target direction, and
     // leave each caller's subsequent real 10%-90% observation mandatory.
@@ -928,7 +928,7 @@ public static class MotionValidationContractHarness
             result.EffectiveMilliseconds = EnabledMilliseconds.Select(value =>
                 ((TimeSpan)Call("ApplicationTheme", "GetEffectiveMotionDuration",
                     TimeSpan.FromMilliseconds(value))).TotalMilliseconds).ToArray();
-            var expected = enabled ? EnabledMilliseconds : new double[6];
+            var expected = enabled ? EnabledMilliseconds : new double[EnabledMilliseconds.Length];
             Require(Near(result.TokenMilliseconds, expected, 0) &&
                 Near(result.EffectiveMilliseconds, expected, 0), "token 或有效时长不符合注入模式。");
             Require(_application.Resources["MotionEaseOut"] is PowerEase easing &&
@@ -1695,74 +1695,51 @@ public static class MotionValidationContractHarness
         finally { window?.Close(); Pump(); }
     }
 
-    private static void Digit(MotionScenarioResult result)
-    {
-        var text = new TextBlock { Text = "59", FontSize = 26, Width = 80, Height = 42 };
-        Window window = null;
-        try
-        {
-            window = ShowFixture(text);
-            Func<double[]> values = () => new[] { text.Opacity };
-            Func<bool> animated = () => Animated(text, UIElement.OpacityProperty);
-            Action pulse = () => Call("MotionBehavior", "FadeCountdownDigit", text);
-            if (!result.Enabled)
-            {
-                // A real pre-existing WPF opacity clock must be removed too.
-                text.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.6, 1,
-                    TimeSpan.FromMilliseconds(90)), HandoffBehavior.SnapshotAndReplace);
-                text.Text = "58";
-                pulse();
-                var instant = Observe(result, "digit-off-immediate", values, animated);
-                Require(text.Text == "58" && Immediate(instant.Values, new[] { 1.0 }, animated(), 0),
-                    "off 秒位没有直接切换到无动画终态。");
-                return;
-            }
-            pulse();
-            Observe(result, "digit-first-committed", values, animated);
-            WaitFor(result, "digit-middle", text, values, animated,
-                value => Intermediate(new[] { 0.6 }, value, new[] { 1.0 }));
-            var before = Observe(result, "digit-repeat-before", values, animated);
-            text.Text = "58";
-            pulse();
-            var immediate = Observe(result, "digit-repeat-committed", values, animated);
-            var after = ObserveFrame(result, "digit-repeat-first-frame", text, values, animated);
-            Require(ContinuesFromSnapshot(before, immediate, after, new[] { 1.0 }, 90, 0.002),
-                "秒位中断把 opacity 重置到 0.6 或终点。", LateFirstFrame(before, after, 90));
-            WaitFor(result, "digit-repeat-middle", text, values, animated,
-                value => Intermediate(before.Values, value, new[] { 1.0 }), firstFrame: after);
-            WaitFor(result, "digit-final", text, values, animated,
-                value => Near(value, new[] { 1.0 }, 0.000001));
-        }
-        finally { window?.Close(); Pump(); }
-    }
-
-    // Proves the stall gate on the production digit clock: blocking the
+    // Proves the stall gate on the production popup exit clock: blocking the
     // dispatcher at the first frame for longer than the whole 90 ms transition
     // leaves the 10%-90% band unobservable and must count as starved. It runs
     // once: in CI the block also starved the next attempt, so the rerun path
     // is proven by a synthetic control instead.
     private static void InjectedStall(MotionScenarioResult result)
     {
-        var text = new TextBlock { Text = "59", FontSize = 26, Width = 80, Height = 42 };
+        var trigger = new Button { Content = "Stall fixture", Width = 160, Height = 38 };
+        var panel = new StackPanel { Children = { trigger } };
+        var surface = new Border { Width = 160, Height = 60, Background = Brushes.White };
+        var popup = new Popup { PlacementTarget = trigger, Child = surface };
         Window window = null;
         try
         {
-            window = ShowFixture(text);
-            Func<double[]> values = () => new[] { text.Opacity };
-            Func<bool> animated = () => Animated(text, UIElement.OpacityProperty);
-            Call("MotionBehavior", "FadeCountdownDigit", text);
-            Observe(result, "injected-stall-committed", values, animated);
+            Call("PopupMotionBehavior", "SetIsEnabled", popup, true);
+            window = ShowFixture(panel);
+            Func<double[]> values = () => new[] { surface.Opacity, Translation(surface)?.Y ?? double.NaN };
+            Func<bool> animated = () => Animated(surface, UIElement.OpacityProperty) ||
+                (Translation(surface) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+            Func<bool> isOpen = () => popup.IsOpen;
+            Call("PopupMotionBehavior", "Open", popup);
+            WaitFor(result, "injected-stall-popup-open-final", surface, values, animated,
+                value => isOpen() && Near(value, new[] { 1.0, 0.0 }, 0.000001), isOpen);
+            var before = Observe(result, "injected-stall-popup-exit-before", values, animated, isOpen);
+            Call("PopupMotionBehavior", "Close", popup);
+            Observe(result, "injected-stall-popup-exit-committed", values, animated, isOpen);
             var frames = 0;
-            WaitFor(result, "injected-stall-middle", text, values, animated, value => {
+            WaitFor(result, "injected-stall-popup-exit-middle", surface, values, animated, value => {
                 if (frames++ == 0)
                 {
                     System.Threading.Thread.Sleep(InjectedStallMilliseconds);
                     return false;
                 }
-                return Intermediate(new[] { 0.6 }, value, new[] { 1.0 });
-            });
+                return Intermediate(before.Values, value, new[] { 0.0, 4.0 });
+            }, isOpen);
         }
-        finally { window?.Close(); Pump(); }
+        finally
+        {
+            try
+            {
+                Call("PopupMotionBehavior", "SetIsEnabled", popup, false);
+                popup.IsOpen = false;
+            }
+            finally { window?.Close(); Pump(); }
+        }
     }
 
     private static MotionSamplingWindow SyntheticWindow(IEnumerable<int> ticks,
@@ -1797,7 +1774,6 @@ public static class MotionValidationContractHarness
                 result => Indicator(result), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("segment-indicator-immediate", enabled,
                 result => Indicator(result, immediateMove: true), ref stallRetriesLeft));
-            results.Add(RunCaseWithStallRetry("countdown-digit", enabled, Digit, ref stallRetriesLeft));
         }
         results.Add(RunCaseWithStallRetry("datepicker-text-interrupted-input", true,
             result => DatePickerInterruptedInput(result, true), ref stallRetriesLeft));
@@ -1832,7 +1808,7 @@ public static class MotionValidationContractHarness
                 Enumerable.Range(0, 19).Where(tick => tick != 9),
                 tick => tick == 0 ? 0.4 : 4 + 15.625 * tick,
                 tick => tick == 0 ? 9956.7 : 9991.2 + 15.625 * tick)) == null,
-            // CI 38281951585 digit-middle: no callback for 50.9 ms after the first one.
+            // CI 38281951585 90 ms transition: no callback for 50.9 ms after the first one.
             ["callback-gap-stall"] = SamplingGap(SyntheticWindow(Enumerable.Range(0, 17),
                 tick => tick == 0 ? 0.12 : 51.05 + 15.625 * (tick - 1),
                 tick => tick == 0 ? 20607.95 : 20654.82 + 15.625 * (tick - 1)))?.Kind == "sampling-gap",

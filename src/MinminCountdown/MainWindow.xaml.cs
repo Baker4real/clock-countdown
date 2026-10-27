@@ -1872,7 +1872,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void RenderMainCountdownBlocks(MainCountdownBlocksHost host, string remaining)
     {
-        var previousSeconds = host.LastRenderedSeconds;
         host.Surface.Children.Clear();
         var pairs = ParseMainRemainingPairs(remaining);
         if (pairs is null || pairs.Count == 0)
@@ -1895,15 +1894,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Typography.SetNumeralAlignment(fallback, FontNumeralAlignment.Tabular);
             host.Surface.Children.Add(fallback);
             host.LastRenderedText = remaining;
-            host.LastRenderedSeconds = null;
             return;
         }
-
-        var secondsPair = pairs.FirstOrDefault(static pair =>
-            string.Equals(pair.Unit, "秒", StringComparison.Ordinal));
-        var secondsChanged = previousSeconds is not null &&
-            secondsPair is not null &&
-            !string.Equals(previousSeconds, secondsPair.Value, StringComparison.Ordinal);
 
         // #148：主窗口分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、间距约块宽三分之一），
         // 主窗真实 DIP：主项 38x57、次项 34x51，圆角约短边 1/4；数值优先压内边距与间距，
@@ -2012,7 +2004,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center
         };
-        TextBlock? secondsValueBlock = null;
         for (var index = 0; index < pairs.Count; index++)
         {
             var value = valueBlocks[index];
@@ -2053,20 +2044,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             pairPanel.Children.Add(block);
             pairPanel.Children.Add(unit);
             values.Children.Add(pairPanel);
-
-            if (string.Equals(pairs[index].Unit, "秒", StringComparison.Ordinal))
-            {
-                secondsValueBlock = value;
-            }
         }
 
         host.Surface.Children.Add(values);
         host.LastRenderedText = remaining;
-        host.LastRenderedSeconds = secondsPair?.Value;
-        if (secondsChanged && secondsValueBlock is not null)
-        {
-            MotionBehavior.FadeCountdownDigit(secondsValueBlock);
-        }
     }
 
     private static double MeasureMainText(string text, Typeface typeface, double fontSize)
@@ -2390,6 +2371,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 // #153：日期章节间距消费 §13.3 SpacingBlockGap（12，§5 日期章节 12px 节奏）。
                 Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingBlockGap"))
             };
+            NoteCompletionExit.SetCompletionIdentity(section, NoteCompletionExit.DateIdentity(group.Key));
             section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
             Grid.SetColumn(content, 1);
@@ -2591,6 +2573,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
+        NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
         AttachNoteSelection(card, note);
         card.PreviewKeyDown += (_, args) =>
         {
@@ -4126,8 +4109,6 @@ internal sealed class MainCountdownBlocksHost
     public bool IsPrimary { get; init; }
 
     public string? LastRenderedText { get; set; }
-
-    public string? LastRenderedSeconds { get; set; }
 }
 
 internal sealed record MainWindowActivationState(

@@ -24,6 +24,15 @@ internal static partial class ValidationReport
         bool PopupGuarded,
         bool ModalOwnerGuarded);
 
+    // #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。
+    private sealed record MainKeyboardImmediateMotionResult(IReadOnlyDictionary<string, bool> Checks)
+    {
+        public bool AllPassed => Checks.Count == 14 && Checks.Values.All(passed => passed);
+
+        public IReadOnlyList<string> FailedChecks =>
+            Checks.Where(check => !check.Value).Select(check => check.Key).ToArray();
+    }
+
     private sealed record MainShortcutCommandDiagnostic(
         bool Handled,
         bool EffectObserved,

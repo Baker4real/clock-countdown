@@ -815,9 +815,14 @@ internal static partial class ValidationReport
         }
     }
 
-    private static bool WaitForRenderedCaptureState(FrameworkElement visual, Func<bool> isReady)
+    private static bool WaitForRenderedCaptureState(FrameworkElement visual, Func<bool> isReady) =>
+        WaitForRenderedCaptureState(visual, isReady, timeoutMilliseconds: 300);
+
+    private static bool WaitForRenderedCaptureState(
+        FrameworkElement visual,
+        Func<bool> isReady,
+        int timeoutMilliseconds)
     {
-        const int timeoutMilliseconds = 300;
         visual.Dispatcher.VerifyAccess();
         var watch = System.Diagnostics.Stopwatch.StartNew();
         var frame = new DispatcherFrame();

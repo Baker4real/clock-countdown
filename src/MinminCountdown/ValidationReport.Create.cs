@@ -893,6 +893,7 @@ internal static partial class ValidationReport
             initialFocusedAutomationId);
         var mainShortcutScopeIsSafe = main.MainShortcutScopeIsSafe;
         var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
+        var mainKeyboardImmediateMotion = ValidateMainKeyboardImmediateMotion(theme, main);
         var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
             new MainShortcutGateInputs(
                 new[]
@@ -1364,6 +1365,13 @@ internal static partial class ValidationReport
             ["MainKeyboardNavigationGates"] = mainKeyboardNavigationGates,
             ["MainKeyboardNavigationGateIsolationBehavior"] = Must(mainKeyboardNavigationGateIsolationBehavior, "主窗口初始焦点与完整 Tab 路径负向夹具可独立失败"),
             ["MainKeyboardBehavior"] = mainKeyboardBehavior,
+            ["MainKeyboardImmediateMotion"] = Must(
+                mainKeyboardImmediateMotion.AllPassed,
+                "#242 应用处理的键盘路径（Ctrl+1/2、Ctrl+F、Ctrl+T、弹层 Esc）首帧即终态且无动画时钟，鼠标页签与弹层仍有动画，关闭动画时两路都直达终态" +
+                    (mainKeyboardImmediateMotion.AllPassed
+                        ? string.Empty
+                        : "；未通过：" + string.Join('/', mainKeyboardImmediateMotion.FailedChecks))),
+            ["MainKeyboardImmediateMotionChecks"] = mainKeyboardImmediateMotion,
             ["MainKeyboardPathNegativeFixtures"] = Must(mainKeyboardPathNegativeFixtures, "完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点"),
             ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
             ["MainEmptyStateGuidance"] = mainStructuralAnnouncements.EmptyStateGuidance,

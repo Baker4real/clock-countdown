@@ -686,11 +686,15 @@ internal static class PopupMotionBehavior
             ? controller.CoerceIsOpen(requestedOpen)
             : requestedOpen;
 
-    internal static void Open(Popup popup)
+    internal static void Open(Popup popup) => Open(popup, immediate: false);
+
+    // #242：应用自己处理的键盘路径传 immediate: true。即时打开结束进行中的进入或退出，
+    // 直接写入完全不透明、位移 0 的终态；鼠标与原生控件仍走 Open(popup) 的进入过渡。
+    internal static void Open(Popup popup, bool immediate)
     {
         if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
         {
-            controller.RequestOpen();
+            controller.RequestOpen(immediate);
         }
         else
         {
@@ -698,11 +702,14 @@ internal static class PopupMotionBehavior
         }
     }
 
-    internal static void Close(Popup popup)
+    internal static void Close(Popup popup) => Close(popup, immediate: false);
+
+    // #242：即时关闭在调用返回前关闭弹层，不保留退出阶段；进行中的退出也立即结束。
+    internal static void Close(Popup popup, bool immediate)
     {
         if (popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
         {
-            controller.RequestClose();
+            controller.RequestClose(immediate);
         }
         else
         {
@@ -850,6 +857,8 @@ internal static class PopupMotionBehavior
             $"version={_transitionVersion},kind={_transition},requested={_requestedOpen},opacity={_visual?.Opacity:R}";
         private bool _suppress;
         private bool _requestedOpen;
+        // 最近一次打开或关闭请求是否要求即时；Opened 回调与延后重试沿用它。
+        private bool _immediateRequest;
         private bool _hasPresented;
         private bool _attached;
         private bool _restoreDismissOnOutsideClick;
@@ -961,8 +970,9 @@ internal static class PopupMotionBehavior
             return false;
         }
 
-        public void RequestOpen()
+        public void RequestOpen(bool immediate = false)
         {
+            _immediateRequest = immediate;
             _requestedOpen = true;
             if (!IsOpen)
             {
@@ -973,7 +983,7 @@ internal static class PopupMotionBehavior
             RestoreCapturePolicy();
         }
 
-        public void RequestClose()
+        public void RequestClose(bool immediate = false)
         {
             // Only a live/open request can own an exit transition. A binding
             // may already have closed that host; a never-opened or completed
@@ -983,13 +993,18 @@ internal static class PopupMotionBehavior
                 return;
             }
 
-            if (!_requestedOpen && _transition == TransitionKind.Closing)
+            // A repeated ordinary close keeps the running exit. An immediate
+            // close finishes it now.
+            if (!immediate && !_requestedOpen && _transition == TransitionKind.Closing)
             {
                 return;
             }
 
+            _immediateRequest = immediate;
             _requestedOpen = false;
-            var duration = ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration);
+            var duration = immediate
+                ? TimeSpan.Zero
+                : ResolveDuration("MotionPopupExitDuration", MotionTokens.PopupExitDuration);
             if (duration <= TimeSpan.Zero)
             {
                 CompleteClose();
@@ -1225,13 +1240,15 @@ internal static class PopupMotionBehavior
 
             var targetOpacity = kind == TransitionKind.Opening ? 1 : 0;
             var targetY = kind == TransitionKind.Opening ? 0 : 4;
-            var duration = ResolveDuration(
-                kind == TransitionKind.Opening
-                    ? "MotionPopupEnterDuration"
-                    : "MotionPopupExitDuration",
-                kind == TransitionKind.Opening
-                    ? MotionTokens.PopupEnterDuration
-                    : MotionTokens.PopupExitDuration);
+            var duration = _immediateRequest
+                ? TimeSpan.Zero
+                : ResolveDuration(
+                    kind == TransitionKind.Opening
+                        ? "MotionPopupEnterDuration"
+                        : "MotionPopupExitDuration",
+                    kind == TransitionKind.Opening
+                        ? MotionTokens.PopupEnterDuration
+                        : MotionTokens.PopupExitDuration);
             var easing = ResolveEasing();
             SetVisualValues(fromOpacity, fromY);
             if (duration <= TimeSpan.Zero)

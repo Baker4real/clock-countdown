@@ -73,18 +73,32 @@ internal sealed class SegmentIndicator
     internal static TimeSpan EffectiveDuration(TimeSpan configured, bool clientAreaAnimationsEnabled) =>
         clientAreaAnimationsEnabled ? configured : TimeSpan.Zero;
 
-    internal void MoveTo(FrameworkElement target)
+    internal void MoveTo(FrameworkElement target) => MoveTo(target, immediate: false);
+
+    internal void MoveTo(FrameworkElement target, bool immediate)
     {
         _target = target;
         var version = ++_requestVersion;
+        if (immediate)
+        {
+            // #242：键盘路径的下一帧就必须停在目标上。先把本轮选中变化排版完，
+            // 再按真实几何直接写入终值；下面的 Loaded 复核仍会再对齐一次。
+            _coordinateRoot.UpdateLayout();
+            if (TryGetTargetBounds(target, out var bounds))
+            {
+                _lastTargetBounds = bounds;
+                ApplyTarget(IndicatorBounds(bounds), immediate: true);
+            }
+        }
+
         // Selection can change the segment's text weight and badge width in
         // this same turn. Measure only after WPF has arranged those changes.
         _coordinateRoot.Dispatcher.BeginInvoke(
             DispatcherPriority.Loaded,
-            new Action(() => ApplyWhenReady(version)));
+            new Action(() => ApplyWhenReady(version, immediate)));
     }
 
-    private void ApplyWhenReady(long version)
+    private void ApplyWhenReady(long version, bool immediate)
     {
         if (version != _requestVersion || _target is null)
         {
@@ -107,7 +121,7 @@ internal sealed class SegmentIndicator
                             TryGetTargetBounds(_target, out var bounds))
                         {
                             _lastTargetBounds = bounds;
-                            ApplyTarget(IndicatorBounds(bounds));
+                            ApplyTarget(IndicatorBounds(bounds), immediate);
                         }
                     }));
             }
@@ -116,10 +130,10 @@ internal sealed class SegmentIndicator
         }
 
         _lastTargetBounds = GetTargetBounds(_target);
-        ApplyTarget(IndicatorBounds(_lastTargetBounds));
+        ApplyTarget(IndicatorBounds(_lastTargetBounds), immediate);
     }
 
-    private void ApplyTarget(Rect targetBounds)
+    private void ApplyTarget(Rect targetBounds, bool immediate)
     {
         _layer.IsHitTestVisible = false;
         _indicator.Visibility = Visibility.Visible;
@@ -128,7 +142,9 @@ internal sealed class SegmentIndicator
             duration.HasTimeSpan
                 ? duration.TimeSpan
                 : MotionTokens.IndicatorDuration;
-        var effectiveDuration = EffectiveDuration(configuredDuration, ApplicationTheme.ClientAreaAnimationEnabled);
+        var effectiveDuration = immediate
+            ? TimeSpan.Zero
+            : EffectiveDuration(configuredDuration, ApplicationTheme.ClientAreaAnimationEnabled);
         var easing = _coordinateRoot.TryFindResource("MotionEaseOut") as IEasingFunction ??
             MotionTokens.CreateEaseOut();
 

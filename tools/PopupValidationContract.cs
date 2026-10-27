@@ -1302,6 +1302,87 @@ public static class MotionValidationContractHarness
         }
     }
 
+    // #242：键盘路径显式请求即时。打开与关闭各从静止出发一次；开启动画时再打断一次
+    // 进行中的打开（打开变体）或退出（关闭变体）。即时请求后的首个真实帧必须已是终态、
+    // 没有动画时钟；即时关闭在调用返回时就不再保留退出阶段。
+    private static void ExerciseImmediatePopupMotion(MotionScenarioResult result, bool closeVariant)
+    {
+        var panel = new StackPanel();
+        var trigger = new Button { Content = "Immediate popup", Width = 160, Height = 38 };
+        panel.Children.Add(trigger);
+        var visual = new Border { Width = 180, Height = 90, Background = Brushes.White };
+        var popup = new Popup {
+            PlacementTarget = trigger, Child = visual, StaysOpen = false, AllowsTransparency = true
+        };
+        Window window = null;
+        try
+        {
+            window = ShowFixture(panel);
+            Call("PopupMotionBehavior", "Attach", popup);
+            Func<double[]> values = () => new[] { visual.Opacity, Translation(visual)?.Y ?? double.NaN };
+            Func<bool> animated = () => Animated(visual, UIElement.OpacityProperty) ||
+                (Translation(visual) is TranslateTransform move && Animated(move, TranslateTransform.YProperty));
+            Func<bool> isOpen = () => popup.IsOpen;
+            Action open = () => Call("PopupMotionBehavior", "Open", popup);
+            Action openImmediate = () => Call("PopupMotionBehavior", "Open", popup, true);
+            Action close = () => Call("PopupMotionBehavior", "Close", popup);
+            Action closeImmediate = () => Call("PopupMotionBehavior", "Close", popup, true);
+            Func<bool> isClosing = () => (bool)Call("PopupMotionBehavior", "IsClosing", popup);
+            var openTarget = new[] { 1.0, 0.0 };
+            var closedTarget = new[] { 0.0, 4.0 };
+            Action<string> requireOpenedFirstFrame = phase => {
+                var frame = ObserveFrame(result, phase, visual, values, animated, isOpen);
+                Require(isOpen() && !isClosing() &&
+                    Immediate(frame.Values, openTarget, frame.HasAnimation, 0.000001),
+                    phase + "：即时打开后的首帧未到终态或仍保留动画时钟。");
+            };
+            Action<string> requireClosedFirstFrame = phase => {
+                var committed = !isOpen() && !isClosing();
+                var frame = ObserveFrame(result, phase, visual, values, animated, isOpen);
+                Require(committed && !isOpen() &&
+                    Immediate(frame.Values, closedTarget, frame.HasAnimation, 0.000001),
+                    phase + "：即时关闭保留了退出阶段，或首帧仍可见、仍有动画时钟。");
+            };
+            if (!closeVariant)
+            {
+                if (result.Enabled)
+                {
+                    open();
+                    WaitFor(result, "popup-immediate-open-interrupt-before", visual, values, animated,
+                        value => Intermediate(closedTarget, value, openTarget), isOpen);
+                    openImmediate();
+                    requireOpenedFirstFrame("popup-immediate-open-interrupt-first-frame");
+                    close();
+                    WaitFor(result, "popup-immediate-open-rest-before", visual, values, animated,
+                        value => !isOpen() && Near(value, closedTarget, 0.000001), isOpen);
+                }
+                openImmediate();
+                requireOpenedFirstFrame("popup-immediate-open-rest-first-frame");
+                return;
+            }
+
+            open();
+            WaitFor(result, "popup-immediate-close-rest-before", visual, values, animated,
+                value => isOpen() && !animated() && Near(value, openTarget, 0.000001), isOpen);
+            closeImmediate();
+            requireClosedFirstFrame("popup-immediate-close-rest-first-frame");
+            if (!result.Enabled) return;
+            open();
+            WaitFor(result, "popup-immediate-close-interrupt-open", visual, values, animated,
+                value => isOpen() && !animated() && Near(value, openTarget, 0.000001), isOpen);
+            close();
+            WaitFor(result, "popup-immediate-close-interrupt-before", visual, values, animated,
+                value => Intermediate(openTarget, value, closedTarget), isOpen);
+            closeImmediate();
+            requireClosedFirstFrame("popup-immediate-close-interrupt-first-frame");
+        }
+        finally
+        {
+            try { Call("WindowValidationInput", "ClosePopupForCleanup", popup); }
+            finally { window?.Close(); Pump(); }
+        }
+    }
+
     private static void DatePickerInterruptedInput(MotionScenarioResult result, bool textTrigger)
     {
         var selected = new DateTime(2026, 10, 12);
@@ -1530,7 +1611,7 @@ public static class MotionValidationContractHarness
         }
     }
 
-    private static void Indicator(MotionScenarioResult result)
+    private static void Indicator(MotionScenarioResult result, bool immediateMove = false)
     {
         var root = new Grid { Width = 240, Height = 44 };
         var targets = new Canvas();
@@ -1559,12 +1640,38 @@ public static class MotionValidationContractHarness
             move(left);
             WaitFor(result, "indicator-left", indicator, values, animated,
                 value => Near(value, new[] { 0.0, 80.0 }, 0.00001));
+            if (immediateMove)
+            {
+                // #242：开启动画时打断进行中的移动，关闭动画时从静止出发。调用后的首个
+                // 真实帧就必须对齐且没有动画时钟，不等 Loaded 回调；之后的排版提交也不得
+                // 偏离目标或重新开始动画。
+                var target = right;
+                var expected = new[] { 120.0, 100.0 };
+                if (result.Enabled)
+                {
+                    move(right);
+                    WaitFor(result, "indicator-immediate-before", indicator, values, animated,
+                        value => Intermediate(new[] { 0.0, 80.0 }, value, expected));
+                    target = left;
+                    expected = new[] { 0.0, 80.0 };
+                }
+                Invoke(type, controller, "MoveTo", target, true);
+                var immediate = ObserveFrame(result, "indicator-immediate-first-frame", indicator, values, animated);
+                Require(Immediate(immediate.Values, expected, immediate.HasAnimation, 0.00001),
+                    "即时指示器调用后的首帧未对齐或仍保留动画时钟。");
+                _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+                var afterCommit = Observe(result, "indicator-immediate-after-commit", values, animated);
+                Require(Immediate(afterCommit.Values, expected, afterCommit.HasAnimation, 0.00001) &&
+                    (bool)Invoke(type, controller, "IsAlignedTo", target, 0.75),
+                    "即时指示器在排版提交后偏离目标或重新开始动画。");
+                return;
+            }
             move(right);
             _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-            var immediate = Observe(result, "indicator-right-committed", values, animated);
+            var committed = Observe(result, "indicator-right-committed", values, animated);
             if (!result.Enabled)
             {
-                Require(Immediate(immediate.Values, new[] { 120.0, 100.0 }, animated(), 0.00001),
+                Require(Immediate(committed.Values, new[] { 120.0, 100.0 }, animated(), 0.00001),
                     "off 指示器未在生产提交后即时对齐。");
                 return;
             }
@@ -1682,7 +1789,14 @@ public static class MotionValidationContractHarness
             foreach (var category in new[] { "calendar", "combobox", "tags", "tooltip" })
                 results.Add(RunCaseWithStallRetry("popup-" + category, enabled,
                     result => ExercisePopupMotion(result, category), ref stallRetriesLeft));
-            results.Add(RunCaseWithStallRetry("segment-indicator", enabled, Indicator, ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("popup-immediate-open", enabled,
+                result => ExerciseImmediatePopupMotion(result, closeVariant: false), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("popup-immediate-close", enabled,
+                result => ExerciseImmediatePopupMotion(result, closeVariant: true), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("segment-indicator", enabled,
+                result => Indicator(result), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("segment-indicator-immediate", enabled,
+                result => Indicator(result, immediateMove: true), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("countdown-digit", enabled, Digit, ref stallRetriesLeft));
         }
         results.Add(RunCaseWithStallRetry("datepicker-text-interrupted-input", true,

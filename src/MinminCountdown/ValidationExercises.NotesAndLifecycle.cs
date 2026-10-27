@@ -240,7 +240,7 @@ internal static partial class ValidationExercises
             !resources.Contains("MotionPopupEnterDuration") ||
             !resources.Contains("MotionPopupExitDuration") ||
             !resources.Contains("MotionIndicatorDuration") ||
-            !resources.Contains("MotionCountdownDuration") ||
+            resources.Contains("MotionCountdownDuration") ||
             !resources.Contains("MotionEaseOut"))
         {
             return false;
@@ -252,20 +252,17 @@ internal static partial class ValidationExercises
         var expectedPopupEnter = TimeSpan.FromMilliseconds(animationEnabled ? 140 : 0);
         var expectedPopupExit = TimeSpan.FromMilliseconds(animationEnabled ? 90 : 0);
         var expectedIndicator = TimeSpan.FromMilliseconds(animationEnabled ? 160 : 0);
-        var expectedCountdown = TimeSpan.FromMilliseconds(animationEnabled ? 90 : 0);
 
         return resources["MotionHoverDuration"] is Duration hover &&
                resources["MotionPressDuration"] is Duration press &&
                resources["MotionPopupEnterDuration"] is Duration popupEnter &&
                resources["MotionPopupExitDuration"] is Duration popupExit &&
                resources["MotionIndicatorDuration"] is Duration indicator &&
-               resources["MotionCountdownDuration"] is Duration countdown &&
                hover.TimeSpan == expectedHover &&
                press.TimeSpan == expectedPress &&
                popupEnter.TimeSpan == expectedPopupEnter &&
                popupExit.TimeSpan == expectedPopupExit &&
                indicator.TimeSpan == expectedIndicator &&
-               countdown.TimeSpan == expectedCountdown &&
                resources["MotionEaseOut"] is EasingFunctionBase easing &&
                easing.EasingMode == EasingMode.EaseOut;
     }

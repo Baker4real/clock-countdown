@@ -145,7 +145,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 管理窗口普通主项数值实际渲染字号为 `20–22 DIP`，大于本行标题（`16 DIP`）。管理窗口色块使用完整 `228 DIP` 列（四分格次项在 `10 DIP` 间距下恰好需要 `226 DIP`，留 `2 DIP` 余量），四分格主项先将间距压至 `4 DIP`；悬浮主项必要时将间距压至 `2 DIP`，再对长数值执行已有有界字号适配（管理窗口下限 `13 DIP`）。两窗显式覆盖 `999 天 13 时 18 分 59 秒` 的真实色块单行、无裁切和标题层级。
 - 悬浮主项在百万天数仍无法以 `12 DIP` 下限容纳时，先将分格内边距和组间距压至零，再适配数字字号；色块最小宽度、`13 DIP` 单位字和 `194 DIP` 列保持不变。最长截止日期在有滚动条时也保留至少 `2 DIP` 的文字测量余量。
 - 数值不得换行、不得裁切；管理窗口与悬浮窗的数值都允许压缩分格内边距而不是压缩字号到不可读。
-- #198：秒位发生变化时，新数字从 `0.6` 透明度淡入到 `1`，使用 `MotionCountdownDuration` 的 `90ms` 时长；该时长继续由 `ApplicationTheme.ClientAreaAnimationEnabled` 收敛为零，系统关闭客户区动画时直接显示目标值。
+- #239：秒位发生变化时直接切换，不再淡入；管理窗口与悬浮窗的主项和次项数值始终保持透明度 `1`，不启动秒位动画。
 
 ### 「超期待！」徽章
 
@@ -445,12 +445,15 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
 | `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
-| `MotionCountdownDuration` | 90ms | `MotionEaseOut`（quartic） | 倒计时数字轻量切换 |
 | `MotionNoteCompletionExitDuration` | 160ms | `MotionEaseOut`（quartic） | 完成便签卡片离场 |
+
+#239：秒位直接切换，不消费动效 token；删除秒位 token 后，最短现役 token 仍为 `MotionPopupExitDuration` 的 90ms，ValidationHarness 的卡顿阈值保持不变。
 
 `MotionCubicEaseOut` 同时作为可复用的 cubic ease-out 资源；新增落点只能引用上述 token，不得在控件模板中写字面时长或第二套缓动。
 
 主窗口工作区页签与便签“未完成 / 已完成”分段共用选中指示条。指示条的最终左、右边界与选中控件的实际几何对齐；切换时只对位移和横向缩放做 `MotionIndicatorDuration` 过渡，使用 `SnapshotAndReplace` 从当前呈现值继续。快速连续切换以最后一次选中状态为准，系统关闭客户区动画时直接到达同一目标几何。
+
+#245：两个指示条静态模板均为宽 1、高 3、零圆角的 Border，不添加端帽；不同目标宽度只由横向缩放改变可见宽度，静止时保持 3 DIP 等粗细。
 
 ## 10. 悬浮窗双工作区附录
 
@@ -504,7 +507,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 悬浮窗 250ms tick 刷新按渲染签名分流，不逐拍整表重建：
 
 - 渲染签名输入：当前工作区、显示精度、便签筛选与搜索词、记录 ID 序列、每条记录的标题/目标时刻/标签/完成状态/卡片错误文本/提醒摘要（含「下次提醒」）、主项身份（首条记录与「距离下班」存在性）。签名只比较这些语义输入；剩余时间的数值变化（同一结构、同一精度下的下一秒）不改变签名。
-- 签名不变时只就地更新剩余时间数字与底部状态（今日已赚）：行与便签卡实例保留，倒计时秒位变化的 0.6→1 / 90ms fade（#198 token 合同）按既有规则就地执行，不重建行容器。便签卡上 tick 只触达会随时间变化的文本；复选框、`…` 菜单触发器等交互元素实例必须保持，键盘焦点不得因 tick 迁移或丢失。
+- 签名不变时只就地更新剩余时间数字与底部状态（今日已赚）：行与便签卡实例保留，倒计时秒位变化按 #239 直接切换、不再淡入，不重建行容器。便签卡上 tick 只触达会随时间变化的文本；复选框、`…` 菜单触发器等交互元素实例必须保持，键盘焦点不得因 tick 迁移或丢失。
 - 签名变化时才整表重建；重建后滚动偏移与焦点按「记录 ID + 控件角色」恢复：同一便签的完成复选框与 `…` 菜单触发器是不同角色，焦点必须回到原角色控件，不得落到同卡首个可聚焦控件。
 - 悬浮窗隐藏（托盘/隐藏）或窗口最小化时 tick 跳过渲染；恢复可见或还原到正常态时立即渲染一次。首次显示前的初始渲染不受此门控。
 - 主窗口倒计时行已有同名语义（就地更新 + 重建恢复）；两个窗口共用「签名不变只刷数字」的合同口径，各自实现。
@@ -531,7 +534,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v60 基线 `assets/ui-references/floating-window/520x390/2026-10-24-v60/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v61 基线 `assets/ui-references/floating-window/520x390/2026-10-28-v61/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -583,11 +586,13 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 当前状态（2026-10-24，架构加深重拍）：本轮架构加深只搬动实现、不改界面构成。桌面工作区连同原 `ApplicationSession` 的提交事务移入不依赖 WPF 的 `MinminCountdown.Core`（`DesktopWorkspace.cs`、`DesktopWorkspace.Transactions.cs`、`DomainLogic.cs`）；删除与完成的短时撤销槽改由 `DesktopWorkspace` 持有，`DeleteUndoOffer.cs` 只留确认文案；悬浮窗倒计时页的行、唯一视觉主项、空态与渲染签名改由新的 `FloatingCountdownProjection` 一次算出，`HolidayCalendar` 只给今天的下班时刻；色值与系统对比度角色只在 `ApplicationTheme.Tokens` 声明，`App.xaml` 不再写色值。`FloatingCountdownProjection.cs` 接替的是原本已绑定的悬浮窗代码，随本次加入悬浮窗 `sourceBinding`（悬浮窗绑定 25→26 个文件，主窗仍为 22 个）。上述文件都在 `sourceBinding` 内，现役基线改为 `2026-10-24-v60`（跨分支未占用的下一个编号）。BaselineGenerate `20261024T124657089-5b046468`（Build `20261024T124504287-818be52c`）生成双 manifest：主窗 9 帧聚合 SHA-256 `58411B9D319BDB8B3EAE9466D4ED4963C7EBD005720A0EC5A91C6309B17E503D`，悬浮窗 5 帧聚合 `F814FBCF7C1C5229DDF8FC727B6019F7FF16B20BD53E7052080A49EB2F433419`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。14 帧的 PNG 与状态指纹都和 v59 逐字节一致，日间渲染没有变化。v59 保留为历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v60** 真实渲染系列，版本目录为 `2026-10-24-v60`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-10-28，PRD #238 集成分支重拍：#245 与 #239）：集成分支 `integration/spec-238-motion-clock` 先合入两票。#245 把两个选中指示条（工作区页签、便签“未完成 / 已完成”分段）的圆角由 2 改为 0，静止时不再两端渐细；#239 删除秒位淡入及其 token、逐行簿记与 Harness 场景，秒位直接切换。两票改到的 `MainWindow.xaml`、`MainWindow.xaml.cs`、`MotionBehavior.cs`、`App.xaml`、`ApplicationTheme.cs` 与悬浮窗倒计时代码都在 `sourceBinding` 内，现役基线改为 `2026-10-28-v61`（跨分支未占用的下一个编号）。BaselineGenerate `20261028T005426416-51d401fb`（Build `20261028T005230728-9c538da1`）生成双 manifest：主窗 9 帧聚合 SHA-256 `FB433B00D6A1CB2250C95D9D65E7F7046C0072C24597295515ECA1340E15DCF8`，悬浮窗 5 帧聚合 `743369FB64160F506D9882906E5742DDA04DB07F91C49BA02D2C598D8E8937F1`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。与 v60 相比，主窗 9 帧的 PNG 都有变化，差异只在指示条两端：倒计时页 3 帧只有工作区页签指示条（y 175–177）共 149 px；便签页 6 帧另有便签分段指示条（y 653–656，多选态在 y 687–690），共 341 px。14 帧的状态指纹与 v60 一致，悬浮窗 5 帧的 PNG 逐字节一致，秒位直接切换不改变静止帧。v60 保留为历史捕获，不再作为现役门禁。
 
-2. v60 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-24-v60/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v60 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58 与 v59 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v60。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版使用纯日间 **v61** 真实渲染系列，版本目录为 `2026-10-28-v61`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v61 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-28-v61/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v61 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59 与 v60 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v61。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项
@@ -661,7 +666,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 13.3.1 动效 token 与系统开关
 
-动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的七个时长；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
 
 ### 13.4 对比度基线
 

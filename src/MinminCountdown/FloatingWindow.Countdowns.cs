@@ -20,10 +20,9 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildWarmPaperCountdownRow(FloatingCountdownRow row)
     {
-        var secondsChanged = TrackSecondsChange(row.Key, row.Remaining);
         return BuildWarmPaperRow(
-            row.IsPrimary ? BuildWarmPaperPrimaryContent(row, secondsChanged)
-                : BuildWarmPaperSecondaryContent(row, secondsChanged),
+            row.IsPrimary ? BuildWarmPaperPrimaryContent(row)
+                : BuildWarmPaperSecondaryContent(row),
             row.IsPrimary ? $"主要倒计时 {row.Name}，{row.Remaining}" : $"倒计时 {row.Name}，{row.Remaining}",
             row.IsPrimary);
     }
@@ -123,8 +122,7 @@ public sealed partial class FloatingWindow
     }
 
     private FrameworkElement BuildWarmPaperPrimaryContent(
-        FloatingCountdownRow row,
-        bool fadeSeconds)
+        FloatingCountdownRow row)
     {
         var theme = ActiveTheme;
         var layout = new Grid
@@ -205,8 +203,7 @@ public sealed partial class FloatingWindow
         Grid.SetColumnSpan(deadlineRow, 2);
         var remainingBlocks = BuildRemainingBlocks(
             row.Remaining,
-            isPrimary: true,
-            fadeSeconds: fadeSeconds);
+            isPrimary: true);
         Grid.SetColumn(remainingBlocks, 1);
         layout.Children.Add(deadlineRow);
         layout.Children.Add(remainingBlocks);
@@ -214,8 +211,7 @@ public sealed partial class FloatingWindow
     }
 
     private FrameworkElement BuildWarmPaperSecondaryContent(
-        FloatingCountdownRow row,
-        bool fadeSeconds)
+        FloatingCountdownRow row)
     {
         var layout = new Grid
         {
@@ -235,8 +231,7 @@ public sealed partial class FloatingWindow
         name.SetResourceReference(TextBlock.ForegroundProperty, ActiveTheme.TextBrushKey);
         var remainingBlocks = BuildRemainingBlocks(
             row.Remaining,
-            isPrimary: false,
-            fadeSeconds: fadeSeconds);
+            isPrimary: false);
         Grid.SetColumn(remainingBlocks, 1);
         layout.Children.Add(name);
         layout.Children.Add(remainingBlocks);
@@ -245,8 +240,7 @@ public sealed partial class FloatingWindow
 
     private FrameworkElement BuildRemainingBlocks(
         string remaining,
-        bool isPrimary,
-        bool fadeSeconds = false)
+        bool isPrimary)
     {
         var theme = ActiveTheme;
         var valueBrushKey = isPrimary ? "PrimaryCountdownNumberBrush" : theme.TextBrushKey;
@@ -433,11 +427,6 @@ public sealed partial class FloatingWindow
             pair.Children.Add(block);
             pair.Children.Add(unit);
             pairsPanel.Children.Add(pair);
-
-            if (fadeSeconds && string.Equals(pairs[index].Unit, "秒", StringComparison.Ordinal))
-            {
-                MotionBehavior.FadeCountdownDigit(value);
-            }
         }
 
         var cluster = new Grid
@@ -461,26 +450,6 @@ public sealed partial class FloatingWindow
         string remaining,
         bool isPrimary) =>
         BuildRemainingBlocks(remaining, isPrimary);
-
-    // #198/#212：秒位变化判定与每行的上次秒值簿记（按投影行 Key），重建路径与就地更新路径共用。
-    private bool TrackSecondsChange(string rowKey, string remaining)
-    {
-        var currentSeconds = ParseRemainingPairs(remaining)?.FirstOrDefault(static pair =>
-            string.Equals(pair.Unit, "秒", StringComparison.Ordinal))?.Value;
-        var secondsChanged = currentSeconds is not null &&
-            _lastCountdownSeconds.TryGetValue(rowKey, out var previousSeconds) &&
-            !string.Equals(previousSeconds, currentSeconds, StringComparison.Ordinal);
-        if (currentSeconds is null)
-        {
-            _lastCountdownSeconds.Remove(rowKey);
-        }
-        else
-        {
-            _lastCountdownSeconds[rowKey] = currentSeconds;
-        }
-
-        return secondsChanged;
-    }
 
     private static IReadOnlyList<RemainingPair>? ParseRemainingPairs(string remaining)
     {

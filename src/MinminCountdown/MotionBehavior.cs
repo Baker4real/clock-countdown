@@ -122,43 +122,6 @@ internal static class MotionBehavior
         }
     }
 
-    /// <summary>
-    /// Gives a newly rendered countdown digit the shared 90 ms opacity pulse.
-    /// The current animated value is used when a refresh interrupts an in-flight
-    /// pulse, so repeated ticks never snap through a hidden frame.
-    /// </summary>
-    internal static void FadeCountdownDigit(FrameworkElement element)
-    {
-        ArgumentNullException.ThrowIfNull(element);
-        var configured = element.TryFindResource("MotionCountdownDuration") is Duration duration &&
-            duration.HasTimeSpan
-            ? duration.TimeSpan
-            : MotionTokens.CountdownDuration;
-        var effectiveDuration = ApplicationTheme.GetEffectiveMotionDuration(configured);
-        var current = element.Opacity;
-        var from = current > 0.001 && current < 0.999 ? current : 0.6;
-        element.BeginAnimation(UIElement.OpacityProperty, null);
-        element.Opacity = from;
-        if (effectiveDuration <= TimeSpan.Zero)
-        {
-            element.Opacity = 1;
-            return;
-        }
-
-        var easing = element.TryFindResource("MotionEaseOut") as IEasingFunction ??
-            MotionTokens.CreateEaseOut();
-        element.BeginAnimation(
-            UIElement.OpacityProperty,
-            new DoubleAnimation
-            {
-                From = from,
-                To = 1,
-                Duration = new Duration(effectiveDuration),
-                EasingFunction = easing
-            },
-            HandoffBehavior.SnapshotAndReplace);
-    }
-
     private static void OnIsEnabledChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
     {
         if (dependencyObject is not FrameworkElement element)

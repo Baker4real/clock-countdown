@@ -111,7 +111,7 @@ public enum FloatingCountdownRowKind
     Countdown
 }
 
-// Key 在一次投影内唯一，且不会与用户记录 ID 相撞；窗口用它对应行实例与秒位淡入簿记。
+// Key 在一次投影内唯一，且不会与用户记录 ID 相撞；窗口用它对应行实例。
 public sealed record FloatingCountdownRow(
     FloatingCountdownRowKind Kind,
     string Key,

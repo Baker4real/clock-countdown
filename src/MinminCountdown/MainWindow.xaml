@@ -1095,7 +1095,7 @@
                               Width="1"
                               Height="3"
                               Background="{DynamicResource PinkAccentStrongBrush}"
-                              CornerRadius="2"
+                              CornerRadius="0"
                               Visibility="Collapsed" />
                     </Canvas>
                     <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
@@ -1869,7 +1869,7 @@
                                         Width="1"
                                         Height="3"
                                         Background="{DynamicResource PeachRailBrush}"
-                                        CornerRadius="2"
+                                        CornerRadius="0"
                                         Visibility="Collapsed" />
                               </Canvas>
                               <StackPanel Panel.ZIndex="1" Orientation="Horizontal">

@@ -5132,21 +5132,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $segmentIndicatorSource -match 'EffectiveDuration\(' -and
         $segmentIndicatorSource -match 'clientAreaAnimationsEnabled' -and
         $segmentIndicatorSource -match 'TransformGroup') '指示条动画消费 160ms token、从当前值可中断续接并提供 reduced-motion 即时等价（#196 源码契约）'
-    $motionBehaviorSource = Get-Content -LiteralPath (
-        Join-Path $PSScriptRoot 'src\MinminCountdown\MotionBehavior.cs') -Raw -Encoding UTF8
-    $floatingCountdownsSource = Get-Content -LiteralPath (
-        Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.Countdowns.cs') -Raw -Encoding UTF8
     $countdownDesignSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'DESIGN.md') -Raw -Encoding UTF8
     Assert-Equal $true (
         $countdownDesignSource -match '主项 `38 x 57`、次项 `34 x 51`' -and
-        $countdownDesignSource -match '0\.6.*?透明度淡入到.*?`1`.*?90ms') '主/次倒计时分格几何与秒位 0.6→1/90ms 合同同步写入 DESIGN（#198）'
-    Assert-Equal $true (
-        $motionBehaviorSource -match 'FadeCountdownDigit\(' -and
-        $motionBehaviorSource -match 'MotionCountdownDuration' -and
-        $motionBehaviorSource -match 'HandoffBehavior\.SnapshotAndReplace' -and
-        $mainWindowCodeSource -match 'FadeCountdownDigit\(' -and
-        $floatingCountdownsSource -match 'FadeCountdownDigit\(') '主窗与悬浮窗秒位刷新消费 90ms 淡入 token，并从当前动画状态续接（#198 源码契约）'
+        $countdownDesignSource -match '#239：秒位发生变化时直接切换，不再淡入') '主/次倒计时分格几何与秒位直接切换合同同步写入 DESIGN（#239）'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
     Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'

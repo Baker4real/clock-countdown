@@ -2384,6 +2384,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 // #153：日期章节间距消费 §13.3 SpacingBlockGap（12，§5 日期章节 12px 节奏）。
                 Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingBlockGap"))
             };
+            NoteCompletionExit.SetCompletionIdentity(section, NoteCompletionExit.DateIdentity(group.Key));
             section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
             Grid.SetColumn(content, 1);
@@ -2585,6 +2586,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
+        NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
         AttachNoteSelection(card, note);
         card.PreviewKeyDown += (_, args) =>
         {

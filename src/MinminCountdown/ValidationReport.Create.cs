@@ -1467,6 +1467,7 @@ internal static partial class ValidationReport
                 interactionStates.SegmentIndicatorGeometryMatches,
                 "选中页签使用 PinkTint 底与 SemiBold 权重"),
             ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条几何与选中页签对齐"),
+            ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "#245 两个指示条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状"),
             ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
             ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),
             ["MotionClientAreaAnimationSwitchReadable"] = Must(

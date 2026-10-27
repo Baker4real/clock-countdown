@@ -174,6 +174,7 @@ public sealed partial class FloatingWindow
             SnapsToDevicePixels = true,
             UseLayoutRounding = true
         };
+        NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
         card.SetResourceReference(Border.BorderBrushProperty, theme.BorderBrushKey);
         card.PreviewKeyDown += (_, args) =>
         {
@@ -250,14 +251,16 @@ public sealed partial class FloatingWindow
         {
             if (entry.StampBorder.ActualHeight <= 0 ||
                 entry.StampContent.ActualHeight <= 0 ||
-                entry.Card.ActualHeight <= 0)
+                entry.Card.ActualHeight <= 0 ||
+                VisualTreeHelper.GetParent(entry.Card) is not Visual cardParent)
             {
                 continue;
             }
 
-            var cardTop = entry.Card
+            // #243：按卡片布局位置计算，不含完成补位的过渡 RenderTransform，补位结束时印记即在终态位置。
+            var cardTop = cardParent
                 .TransformToVisual(FloatingBodyScroller)
-                .Transform(new Point(0, 0))
+                .Transform((Point)VisualTreeHelper.GetOffset(entry.Card))
                 .Y;
             var visibleTop = Math.Max(0, -cardTop);
             var visibleBottom = Math.Min(

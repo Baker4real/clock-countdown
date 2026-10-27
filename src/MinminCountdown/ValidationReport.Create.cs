@@ -64,7 +64,7 @@ internal static partial class ValidationReport
         var floatingQuickAddPaletteBindingIsolationBehavior =
             ValidationExercises.RunFloatingQuickAddPaletteBindingIsolationBehavior();
 
-        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd);
+        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd, theme);
         var countdownReadability = mainWindowScenarios.CountdownReadability;
         var countdownEditing = mainWindowScenarios.CountdownEditing;
         var interactionStates = mainWindowScenarios.InteractionStates;
@@ -74,6 +74,7 @@ internal static partial class ValidationReport
         var floatingReminderModeExercise = floatingWindowScenarios.ReminderModes;
         var mainUiPolish = mainWindowScenarios.UiPolish;
         var mainStructure = mainWindowScenarios.Structure;
+        var mainKeyboardImmediateMotion = mainWindowScenarios.KeyboardImmediateMotion;
         var floatingStructure = floatingWindowScenarios.Structure;
         var selector = Required<TagSelector>(main, "CountdownTags");
         var mainNoteCompletionValidation = ValidateMainNoteCompletion(
@@ -1065,6 +1066,8 @@ internal static partial class ValidationReport
             ValidationExercises.RunStartupAcceptanceProtocolInterfaceBehavior();
         var holidayCalendarInterfaceBehavior =
             ValidationExercises.RunHolidayCalendarInterfaceBehavior();
+        var interactiveClockCadenceBehavior =
+            ValidationExercises.RunInteractiveClockCadenceBehavior();
         var reminderRulesEditorSharedEntryWorks =
             ValidationExercises.ExerciseReminderRulesEntry(
                 main,
@@ -1085,6 +1088,9 @@ internal static partial class ValidationReport
             ["HolidayCalendarInterfaceBehavior"] = Must(holidayCalendarInterfaceBehavior, "工作日历 interface 覆盖缓存初始化、派生结果与失败状态"),
             ["VirtualWorkdayCountdownExcludedFromReminders"] =
                 holidayCalendarInterfaceBehavior,
+            ["InteractiveClockCadenceLocksToQuarterSecond"] = Must(
+                interactiveClockCadenceBehavior,
+                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 10ms，间隔在 10–260ms（#241）"),
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,
@@ -1329,6 +1335,7 @@ internal static partial class ValidationReport
             ["NoteBatchDeleteUndo"] = Must(ValidationExercises.RunNoteBatchDeleteUndo(), "#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝"),
             ["NoteSelectionAccessibility"] = Must(ValidationExercises.RunNoteSelectionAccessibility(), "#235 选中数量直播区、行peer、刷新保留与筛选折叠清理"),
             ["NoteCompletionExitTransition"] = Must(ValidationExercises.RunNoteCompletionExitTransition(), "#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断"),
+            ["NoteCompletionFlipTransition"] = Must(ValidationExercises.RunNoteCompletionFlipTransition(), "#243 两窗卡片尺寸快照、稳定身份FLIP补位、同步时钟及全部中断清零"),
             ["SystemContrastUpdatesOpenWindows"] = Must(ValidateSystemContrastUpdatesOpenWindows(main, floating), "#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复"),
             ["SystemContrastAccessibleStates"] = Must(ValidateSystemContrastAccessibleStates(main, floating), "#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿"),
             ["SystemContrastColorChangesAndCustomSurfaces"] = Must(
@@ -1422,6 +1429,13 @@ internal static partial class ValidationReport
             ["MainKeyboardNavigationGates"] = mainKeyboardNavigationGates,
             ["MainKeyboardNavigationGateIsolationBehavior"] = Must(mainKeyboardNavigationGateIsolationBehavior, "主窗口初始焦点与完整 Tab 路径负向夹具可独立失败"),
             ["MainKeyboardBehavior"] = mainKeyboardBehavior,
+            ["MainKeyboardImmediateMotion"] = Must(
+                mainKeyboardImmediateMotion.AllPassed,
+                "#242 应用处理的键盘路径（Ctrl+1/2、Ctrl+F、Ctrl+T、弹层 Esc）首帧即终态且无动画时钟，鼠标页签与弹层仍有动画，关闭动画时两路都直达终态" +
+                    (mainKeyboardImmediateMotion.AllPassed
+                        ? string.Empty
+                        : "；未通过：" + string.Join('/', mainKeyboardImmediateMotion.FailedChecks))),
+            ["MainKeyboardImmediateMotionChecks"] = mainKeyboardImmediateMotion,
             ["MainKeyboardPathNegativeFixtures"] = Must(mainKeyboardPathNegativeFixtures, "完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点"),
             ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
             ["MainEmptyStateGuidance"] = mainStructuralAnnouncements.EmptyStateGuidance,

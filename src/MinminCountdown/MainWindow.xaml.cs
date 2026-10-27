@@ -455,10 +455,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         switch (modifiers, key)
         {
             case (ModifierKeys.Control, Key.D1):
-                ShowWorkspace(WorkspaceKind.Countdowns);
+                ShowWorkspace(WorkspaceKind.Countdowns, immediateIndicator: true);
                 return true;
             case (ModifierKeys.Control, Key.D2):
-                ShowWorkspace(WorkspaceKind.Notes);
+                ShowWorkspace(WorkspaceKind.Notes, immediateIndicator: true);
                 return true;
             case (ModifierKeys.Control, Key.F):
                 // #156：便签页有正文搜索，Ctrl+F 聚焦便签搜索（与悬浮窗记忆一致）；
@@ -469,13 +469,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 }
                 else
                 {
-                    PopupMotionBehavior.Open(FilterPopup);
+                    // #242：应用处理的键盘路径即时打开，鼠标点击筛选按钮仍有进入过渡。
+                    PopupMotionBehavior.Open(FilterPopup, immediate: true);
                 }
 
                 return true;
             case (ModifierKeys.Control, Key.T):
                 RenderTagManager();
-                PopupMotionBehavior.Open(TagManagerPopup);
+                PopupMotionBehavior.Open(TagManagerPopup, immediate: true);
                 return true;
             case (ModifierKeys.Control, Key.M):
                 MinimizeToTray();
@@ -834,7 +835,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
-    internal void ShowWorkspace(WorkspaceKind workspace)
+    internal void ShowWorkspace(WorkspaceKind workspace) => ShowWorkspace(workspace, immediateIndicator: false);
+
+    internal void ShowWorkspace(WorkspaceKind workspace, bool immediateIndicator)
     {
         _workspace = workspace;
         var showCountdowns = workspace == WorkspaceKind.Countdowns;
@@ -844,7 +847,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownTab.IsChecked = showCountdowns;
         NotesTab.IsChecked = !showCountdowns;
         FilterButton.ToolTip = showCountdowns ? "筛选倒计时（Ctrl+F）" : "筛选便签";
-        UpdateWorkspaceTabIndicator();
+        UpdateWorkspaceTabIndicator(immediateIndicator);
         CountdownFilterOptions.Visibility = showCountdowns ? Visibility.Visible : Visibility.Collapsed;
         NoteFilterOptions.Visibility = showCountdowns ? Visibility.Collapsed : Visibility.Visible;
         SaveCountdownButton.IsEnabled = showCountdowns;
@@ -2267,10 +2270,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UpdateNotesSegmentIndicator(_completedSegmentSelected);
     }
 
-    private void UpdateWorkspaceTabIndicator()
+    private void UpdateWorkspaceTabIndicator() => UpdateWorkspaceTabIndicator(immediate: false);
+
+    private void UpdateWorkspaceTabIndicator(bool immediate)
     {
         _workspaceTabIndicator.MoveTo(
-            _workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab);
+            _workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab,
+            immediate);
     }
 
     private void UpdateNotesSegmentIndicator(bool showCompleted)
@@ -2404,6 +2410,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 // #153：日期章节间距消费 §13.3 SpacingBlockGap（12，§5 日期章节 12px 节奏）。
                 Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingBlockGap"))
             };
+            NoteCompletionExit.SetCompletionIdentity(section, NoteCompletionExit.DateIdentity(group.Key));
             section.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
             section.ColumnDefinitions.Add(new ColumnDefinition());
             Grid.SetColumn(content, 1);
@@ -2605,6 +2612,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         grid.Children.Add(tagChips);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
+        NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
         AttachNoteSelection(card, note);
         card.PreviewKeyDown += (_, args) =>
         {

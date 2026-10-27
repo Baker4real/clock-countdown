@@ -4499,7 +4499,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $tryExecuteShortcutBody -match '_workspace == WorkspaceKind\.Notes' -and
         $tryExecuteShortcutBody -match 'NoteSearch\.Focus\(\)' -and
-        $tryExecuteShortcutBody -match 'PopupMotionBehavior\.Open\(FilterPopup\)') '便签页 Ctrl+F 聚焦便签搜索，倒计时页 Ctrl+F 仍打开筛选（#156 源码契约）'
+        $tryExecuteShortcutBody -match 'PopupMotionBehavior\.Open\(FilterPopup\b') '便签页 Ctrl+F 聚焦便签搜索，倒计时页 Ctrl+F 仍打开筛选（#156 源码契约）'
     Assert-Equal $true (
         $mainWindowCodeSource -match 'UiAccessibility\.MarkLive\(RecordCountText\);' -and
         $mainWindowCodeSource -match 'SetRecordCountText\(RecordCountText,') '命令栏数量文字是唯一的数量直播区且只在数值变化时更新（#156 源码契约）'

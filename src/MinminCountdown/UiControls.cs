@@ -428,7 +428,8 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
-                PopupMotionBehavior.Close(popup);
+                // #242：Esc 是应用处理的键盘路径，立即关闭、不保留退出阶段。
+                PopupMotionBehavior.Close(popup, immediate: true);
                 eventArgs.Handled = true;
                 RestoreTriggerFocus(trigger);
                 trigger.Dispatcher.BeginInvoke(
@@ -469,7 +470,7 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
-                PopupMotionBehavior.Close(popup);
+                PopupMotionBehavior.Close(popup, immediate: true);
                 eventArgs.Handled = true;
                 trigger.Dispatcher.BeginInvoke(
                     System.Windows.Threading.DispatcherPriority.Input,

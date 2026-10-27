@@ -17,7 +17,7 @@ namespace MinminCountdown;
 
 public sealed partial class MainWindow
 {
-    internal MainWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd)
+    internal MainWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd, ApplicationTheme theme)
     {
         var noteExercise = exerciseNoteAdd
             ? RunNoteAddExercise()
@@ -41,7 +41,8 @@ public sealed partial class MainWindow
             ProbeCountdownEditingScenarios(),
             ProbeNoteValidationScenarios(),
             ProbeMainWindowInteractionStates(),
-            ProbeStructureScenarios());
+            ProbeStructureScenarios(),
+            ProbeKeyboardImmediateMotionScenarios(theme));
     }
 
     // 静态结构事实：控件名、类型与已退役控件的缺席都在窗口内判定，报告只读结论。
@@ -2298,6 +2299,268 @@ public sealed partial class MainWindow
             return (aligned, staticThicknessIsUniform);
         }
     }
+
+    // #242：应用自己处理的键盘路径（Ctrl+1/2、倒计时页 Ctrl+F、Ctrl+T、弹层焦点生命周期 Esc）
+    // 显式要求即时：按键后的首个真实 Rendering 帧已是终态且没有动画时钟。鼠标点击页签与
+    // 弹层仍以动画提交。两种客户区动画偏好各跑一遍；关闭动画时两条路径都直达终态。
+    private MainKeyboardImmediateMotionScenarios ProbeKeyboardImmediateMotionScenarios(ApplicationTheme theme)
+    {
+        var originalWorkspace = _workspace;
+        var checks = new SortedDictionary<string, bool>(StringComparer.Ordinal);
+        try
+        {
+            Activate();
+            foreach (var animationsEnabled in new[] { true, false })
+            {
+                var mode = animationsEnabled ? "Animated" : "Reduced";
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(animationsEnabled))
+                {
+                    // 动效 token 只在 Apply 时按当前偏好写入资源。
+                    theme.Apply();
+                    checks[mode + "WorkspaceShortcutFirstFrame"] =
+                        ProbeWorkspaceShortcutFirstFrame(WorkspaceKind.Countdowns, Key.D2) &&
+                        ProbeWorkspaceShortcutFirstFrame(WorkspaceKind.Notes, Key.D1);
+                    checks[mode + "WorkspaceClick"] = ProbeWorkspaceTabClick(animationsEnabled);
+                    checks[mode + "FilterShortcutFirstFrame"] = ProbePopupShortcutFirstFrame(Key.F, FilterPopup);
+                    checks[mode + "TagManagerShortcutFirstFrame"] =
+                        ProbePopupShortcutFirstFrame(Key.T, TagManagerPopup);
+                    checks[mode + "EscapeFromPopupFirstFrame"] = ProbeFilterEscapeFirstFrame(escapeFromTrigger: false);
+                    checks[mode + "EscapeFromTriggerFirstFrame"] = ProbeFilterEscapeFirstFrame(escapeFromTrigger: true);
+                    checks[mode + "FilterClick"] = ProbeFilterButtonClick(animationsEnabled);
+                }
+            }
+        }
+        finally
+        {
+            theme.Apply();
+            WindowValidationInput.ClosePopupForCleanup(FilterPopup);
+            WindowValidationInput.ClosePopupForCleanup(TagManagerPopup);
+            ShowWorkspace(originalWorkspace);
+            CountdownTab.Focus();
+            WindowValidationInput.Pump(Dispatcher);
+        }
+
+        return new MainKeyboardImmediateMotionScenarios(checks);
+    }
+
+    private bool ProbeWorkspaceShortcutFirstFrame(WorkspaceKind startingWorkspace, Key key)
+    {
+        var expectedWorkspace = startingWorkspace == WorkspaceKind.Countdowns
+            ? WorkspaceKind.Notes
+            : WorkspaceKind.Countdowns;
+        ShowWorkspace(startingWorkspace);
+        if (!WaitForWorkspaceIndicatorAligned(WorkspaceTab(startingWorkspace)))
+        {
+            return false;
+        }
+
+        CountdownTab.Focus();
+        WindowValidationInput.Pump(Dispatcher);
+        var handled = WindowValidationInput.RaisePreviewKey(CountdownTab, key, ModifierKeys.Control);
+        return handled && ObserveFirstRenderedFrame(() =>
+            _workspace == expectedWorkspace &&
+            WorkspaceIndicatorImmediatelyAt(WorkspaceTab(expectedWorkspace)));
+    }
+
+    private bool ProbeWorkspaceTabClick(bool animationsEnabled)
+    {
+        ShowWorkspace(WorkspaceKind.Countdowns);
+        if (!WaitForWorkspaceIndicatorAligned(CountdownTab))
+        {
+            return false;
+        }
+
+        NotesTab.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        // 鼠标路径保持既有提交时机：选中项完成排版后，在 Loaded 回调里开始移动。
+        Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+        var committedWithAnimation = WorkspaceIndicatorAnimating();
+        var committedAtRest = WorkspaceIndicatorImmediatelyAt(NotesTab);
+        var settled = _workspace == WorkspaceKind.Notes && WaitForWorkspaceIndicatorAligned(NotesTab);
+        return settled && (animationsEnabled ? committedWithAnimation : committedAtRest);
+    }
+
+    private bool ProbePopupShortcutFirstFrame(Key key, Popup popup)
+    {
+        ShowWorkspace(WorkspaceKind.Countdowns);
+        WindowValidationInput.ClosePopupForCleanup(popup);
+        CountdownTab.Focus();
+        WindowValidationInput.Pump(Dispatcher);
+        try
+        {
+            var handled = WindowValidationInput.RaisePreviewKey(CountdownTab, key, ModifierKeys.Control);
+            return handled && ObserveFirstRenderedFrame(() =>
+                popup.IsOpen &&
+                !PopupMotionBehavior.IsClosing(popup) &&
+                PopupSurfaceAtRest(popup, opacity: 1, offsetY: 0));
+        }
+        finally
+        {
+            WindowValidationInput.ClosePopupForCleanup(popup);
+        }
+    }
+
+    private bool ProbeFilterEscapeFirstFrame(bool escapeFromTrigger)
+    {
+        ShowWorkspace(WorkspaceKind.Countdowns);
+        WindowValidationInput.ClosePopupForCleanup(FilterPopup);
+        CountdownTab.Focus();
+        WindowValidationInput.Pump(Dispatcher);
+        try
+        {
+            // 弹层打开后在 Input 优先级把焦点交给首项；等焦点进层再按 Esc。
+            if (!WindowValidationInput.RaisePreviewKey(CountdownTab, Key.F, ModifierKeys.Control) ||
+                !FilterPopup.IsOpen ||
+                !WindowValidationInput.WaitUntil(Dispatcher, () => AnyTagMode.IsKeyboardFocusWithin, 1000))
+            {
+                return false;
+            }
+
+            UIElement escapeSource = AnyTagMode;
+            if (escapeFromTrigger)
+            {
+                Keyboard.Focus(FilterButton);
+                WindowValidationInput.Pump(Dispatcher);
+                if (!FilterButton.IsKeyboardFocused || !FilterPopup.IsOpen)
+                {
+                    return false;
+                }
+
+                escapeSource = FilterButton;
+            }
+
+            var handled = WindowValidationInput.RaisePreviewKey(escapeSource, Key.Escape);
+            var closedOnFirstFrame = ObserveFirstRenderedFrame(() =>
+                !FilterPopup.IsOpen &&
+                !PopupMotionBehavior.IsClosing(FilterPopup) &&
+                PopupSurfaceAtRest(FilterPopup, opacity: 0, offsetY: 4));
+            var focusReturned = WindowValidationInput.WaitUntil(Dispatcher, () =>
+                FilterButton.IsKeyboardFocusWithin ||
+                ReferenceEquals(FocusManager.GetFocusedElement(this), FilterButton), 1000);
+            return handled && closedOnFirstFrame && focusReturned && !FilterPopup.IsOpen;
+        }
+        finally
+        {
+            WindowValidationInput.ClosePopupForCleanup(FilterPopup);
+        }
+    }
+
+    private bool ProbeFilterButtonClick(bool animationsEnabled)
+    {
+        ShowWorkspace(WorkspaceKind.Countdowns);
+        WindowValidationInput.ClosePopupForCleanup(FilterPopup);
+        Keyboard.Focus(FilterButton);
+        WindowValidationInput.Pump(Dispatcher);
+        try
+        {
+            FilterButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            var committedWithAnimation = FilterPopup.IsOpen && PopupSurfaceAnimating(FilterPopup);
+            var committedAtRest = FilterPopup.IsOpen && PopupSurfaceAtRest(FilterPopup, opacity: 1, offsetY: 0);
+            var settled = WindowValidationInput.WaitUntil(Dispatcher, () =>
+                FilterPopup.IsOpen && PopupSurfaceAtRest(FilterPopup, opacity: 1, offsetY: 0), 1000);
+            return settled && (animationsEnabled ? committedWithAnimation : committedAtRest);
+        }
+        finally
+        {
+            WindowValidationInput.ClosePopupForCleanup(FilterPopup);
+        }
+    }
+
+    // 只在请求后的第一次 CompositionTarget.Rendering 回调里观察一次：之前的同步状态与之后
+    // 稳定下来的状态都不算，用来判定“按键后的首帧”。
+    private bool ObserveFirstRenderedFrame(Func<bool> observation)
+    {
+        const int timeoutMilliseconds = 1000;
+        Dispatcher.VerifyAccess();
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var rendered = false;
+        var observed = false;
+        Exception? failure = null;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
+        };
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        void OnRendering(object? sender, EventArgs args)
+        {
+            if (rendered || watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
+            {
+                frame.Continue = false;
+                return;
+            }
+
+            rendered = true;
+            try { observed = observation(); }
+            catch (Exception error) { failure = error; }
+            frame.Continue = false;
+        }
+        EventHandler rendering = OnRendering;
+        EventHandler requestFrame = (_, _) =>
+        {
+            // 订阅 Rendering 本身会请求一帧；隔离桌面上失效请求可能被合并，定时重订一次。
+            CompositionTarget.Rendering -= rendering;
+            CompositionTarget.Rendering += rendering;
+        };
+        EventHandler expired = (_, _) => frame.Continue = false;
+        try
+        {
+            timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
+            timeout.Start();
+            frameRequests.Start();
+            requestFrame(null, EventArgs.Empty);
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
+            CompositionTarget.Rendering -= rendering;
+        }
+
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return rendered && observed;
+    }
+
+    private ToggleButton WorkspaceTab(WorkspaceKind workspace) =>
+        workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab;
+
+    private bool WorkspaceIndicatorAnimating() =>
+        MainWorkspaceTabIndicator.RenderTransform is TransformGroup group &&
+        group.Children.Any(transform => transform.HasAnimatedProperties);
+
+    // 鼠标路径的动画结束后 HoldEnd 时钟仍挂在变换上，等待就位只看几何；
+    // “没有动画时钟”只用来判定即时路径（即时提交会清掉旧时钟）。
+    private bool WaitForWorkspaceIndicatorAligned(FrameworkElement tab) =>
+        WindowValidationInput.WaitUntil(Dispatcher, () => _workspaceTabIndicator.IsAlignedTo(tab), 1000);
+
+    private bool WorkspaceIndicatorImmediatelyAt(FrameworkElement tab) =>
+        _workspaceTabIndicator.IsAlignedTo(tab) && !WorkspaceIndicatorAnimating();
+
+    private static bool PopupSurfaceAnimating(Popup popup) =>
+        popup.Child is FrameworkElement visual &&
+        (DependencyPropertyHelper.GetValueSource(visual, UIElement.OpacityProperty).IsAnimated ||
+         PopupSurfaceTranslation(visual)?.HasAnimatedProperties == true);
+
+    private static bool PopupSurfaceAtRest(Popup popup, double opacity, double offsetY) =>
+        popup.Child is FrameworkElement visual &&
+        PopupSurfaceTranslation(visual) is { } translation &&
+        Math.Abs(visual.Opacity - opacity) <= 0.000001 &&
+        Math.Abs(translation.Y - offsetY) <= 0.000001 &&
+        !PopupSurfaceAnimating(popup);
+
+    private static TranslateTransform? PopupSurfaceTranslation(FrameworkElement visual) =>
+        visual.RenderTransform switch
+        {
+            TranslateTransform direct => direct,
+            TransformGroup group => group.Children.OfType<TranslateTransform>().LastOrDefault(),
+            _ => null
+        };
 
     // 聚焦前后控件外尺寸与状态部件边厚都不变——焦点环是常驻透明环，只换色不加厚。
     private bool FocusDoesNotChangeLayout(Control control, string ringName, string surfaceName)
@@ -4920,7 +5183,8 @@ internal sealed record MainWindowValidationScenarios(
     CountdownEditingScenarios CountdownEditing,
     NoteValidationScenarios NoteValidation,
     MainWindowInteractionStates InteractionStates,
-    MainStructureScenarios Structure);
+    MainStructureScenarios Structure,
+    MainKeyboardImmediateMotionScenarios KeyboardImmediateMotion);
 
 internal sealed record MainStructureScenarios(
     bool NoteGroupingSelectorAbsent,
@@ -4997,6 +5261,15 @@ internal sealed record SegmentIndicatorScenarios(
     bool ReducedMotionIsImmediate,
     bool RapidSwitchStaysAligned,
     bool StaticThicknessIsUniform);
+
+// #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。
+internal sealed record MainKeyboardImmediateMotionScenarios(IReadOnlyDictionary<string, bool> Checks)
+{
+    public bool AllPassed => Checks.Count == 14 && Checks.Values.All(passed => passed);
+
+    public IReadOnlyList<string> FailedChecks =>
+        Checks.Where(check => !check.Value).Select(check => check.Key).ToArray();
+}
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
 internal sealed record MainCountdownReadabilityScenarios(

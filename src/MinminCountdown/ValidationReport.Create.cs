@@ -1227,6 +1227,9 @@ internal static partial class ValidationReport
             ["FloatingStableRefreshCountdownUpdatesInPlace"] = Must(
                 floatingWindowScenarios.StableRefresh.CountdownRowsPreservedAndTextUpdatesInPlace,
                 "悬浮窗倒计时 tick 行实例保留且剩余时间分格就地更新（#212）"),
+            ["FloatingCountdownSecondsSwitchWithoutAnimation"] = Must(
+                floatingWindowScenarios.StableRefresh.CountdownSecondsSwitchWithoutAnimation,
+                "悬浮窗动画开启时主项与次项秒位直接切换，数值透明度为 1 且不处于动画中（#239）"),
             ["FloatingStableRefreshNoteCardsPreserved"] = Must(
                 floatingWindowScenarios.StableRefresh.NoteCardInstancesPreservedAcrossTicks,
                 "悬浮窗便签卡与完成复选框实例跨 tick 保留（#212）"),
@@ -1276,6 +1279,7 @@ internal static partial class ValidationReport
             ["NoteBatchDeleteUndo"] = Must(ValidationExercises.RunNoteBatchDeleteUndo(), "#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝"),
             ["NoteSelectionAccessibility"] = Must(ValidationExercises.RunNoteSelectionAccessibility(), "#235 选中数量直播区、行peer、刷新保留与筛选折叠清理"),
             ["NoteCompletionExitTransition"] = Must(ValidationExercises.RunNoteCompletionExitTransition(), "#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断"),
+            ["NoteCompletionFlipTransition"] = Must(ValidationExercises.RunNoteCompletionFlipTransition(), "#243 两窗卡片尺寸快照、稳定身份FLIP补位、同步时钟及全部中断清零"),
             ["SystemContrastUpdatesOpenWindows"] = Must(ValidateSystemContrastUpdatesOpenWindows(main, floating), "#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复"),
             ["SystemContrastAccessibleStates"] = Must(ValidateSystemContrastAccessibleStates(main, floating), "#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿"),
             ["SystemContrastColorChangesAndCustomSurfaces"] = Must(
@@ -1472,6 +1476,7 @@ internal static partial class ValidationReport
                 interactionStates.SegmentIndicatorGeometryMatches,
                 "选中页签使用 PinkTint 底与 SemiBold 权重"),
             ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条几何与选中页签对齐"),
+            ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "#245 两个指示条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状"),
             ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
             ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),
             ["MotionClientAreaAnimationSwitchReadable"] = Must(
@@ -1479,7 +1484,7 @@ internal static partial class ValidationReport
                 "已接入系统客户区动画开关读取点"),
             ["MotionTokensMatch"] = Must(
                 motionTokensMatch && interactionStates.SegmentIndicatorReducedMotionIsImmediate,
-                "六个动效时长与 ease-out 缓动符合当前系统动画偏好"),
+                "五个动效时长与 ease-out 缓动符合当前系统动画偏好（#239 删除秒位 token）"),
             ["KeyboardFocusRingTabGapAvoidsSelectedFill"] = Must(keyboardFocusRingContrast.TabRingGapAvoidsSelectedFill, "页签键盘焦点环与选中底色之间留出间隙"),
             ["KeyboardFocusRingFloatingCapsuleMeetsContrast"] = Must(
                 keyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast,
@@ -1752,6 +1757,9 @@ internal static partial class ValidationReport
             ["CountdownRemainingGateIsolationBehavior"] = Must(mainCountdownRemainingGateIsolationBehavior, "主窗口倒计时剩余时间门禁负向夹具独立失败"),
             ["CountdownIncrementalRefreshIdentityMatches"] =
                 mainUiPolish.CountdownIncrementalRefresh.IdentityPreserved,
+            ["MainCountdownSecondsSwitchWithoutAnimation"] = Must(
+                mainUiPolish.CountdownIncrementalRefresh.SecondsSwitchWithoutAnimation,
+                "管理窗口动画开启时主项与次项秒位直接切换，数值透明度为 1 且不处于动画中（#239）"),
             ["CountdownExpiryVisualsFlipTogether"] =
                 mainUiPolish.CountdownIncrementalRefresh.ExpiryVisualsFlipTogether,
             ["CountdownIncrementalRefresh"] = mainUiPolish.CountdownIncrementalRefresh,

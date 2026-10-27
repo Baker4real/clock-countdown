@@ -1625,10 +1625,19 @@ public sealed partial class MainWindow
         var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         var temporaryIds = new List<string>();
         double? originalOpacity = null;
+        using var animationPreference = ApplicationTheme.OverrideAnimationPreferenceForValidation(true);
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
+            // #239：前序空态探针可能留下倒计时筛选（UI 夹具含已到期种子时会留下“已到期”），
+            // 新建的未到期行会被筛掉；本探针从无筛选开始，finally 恢复原筛选。
+            _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
             var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+            var secondsPrecisionSaved = _desktopWorkspace.Apply(new SavePreferencesChange(
+                "Second",
+                originalPreferences.MonthlySalary,
+                originalPreferences.WorkStart,
+                originalPreferences.WorkEnd)).Succeeded;
             var dueUtc = nowUtc.AddSeconds(10);
             for (var index = 0; index < 10; index++)
             {
@@ -1684,11 +1693,25 @@ public sealed partial class MainWindow
             Activate();
             WindowValidationInput.Pump(Dispatcher);
             var pointerCaptured = Mouse.Capture(pointerRow, CaptureMode.SubTree);
+            var remainingTextBeforeTick = textBefore.Text;
             UpdateTime(before.AddMilliseconds(250));
             WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
             var ordinaryIdentityPreserved =
                 ReferenceEquals(rowBefore, _countdownSourceRows.GetValueOrDefault(record.Id)) &&
                 ReferenceEquals(textBefore, _countdownRemainingTexts.GetValueOrDefault(record.Id));
+            var secondsValues = MainValidationDescendants<StackPanel>(CountdownRows)
+                .Where(pair => pair.Children.Count == 2 &&
+                    pair.Children[0] is Border { Child: TextBlock } &&
+                    pair.Children[1] is TextBlock { Text: "秒" })
+                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
+                .ToArray();
+            var countdownSecondsSwitchWithoutAnimation =
+                secondsPrecisionSaved &&
+                !string.Equals(remainingTextBeforeTick, textBefore.Text, StringComparison.Ordinal) &&
+                secondsValues.Length >= 2 &&
+                secondsValues.All(value => value.Opacity == 1 &&
+                    !DependencyPropertyHelper.GetValueSource(value, UIElement.OpacityProperty).IsAnimated);
             var focusPreserved = ReferenceEquals(Keyboard.FocusedElement, focusTarget);
             var nonZeroScrollPreserved =
                 offsetBefore > 0 &&
@@ -1730,20 +1753,18 @@ public sealed partial class MainWindow
                 _countdownSourceRows.ContainsKey(collectionRecord.Id);
 
             generation = CountdownRowRebuildGenerationForValidation;
-            _desktopWorkspace.ApplyFilter(originalFilter with { CountdownStatus = CountdownStatusFilter.Expired });
+            _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { CountdownStatus = CountdownStatusFilter.Expired });
             WindowValidationInput.Pump(Dispatcher);
             var filterChangeRebuilt =
                 CountdownRowRebuildGenerationForValidation > generation &&
                 !_countdownSourceRows.ContainsKey(record.Id);
-            _desktopWorkspace.ApplyFilter(originalFilter);
+            _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
             WindowValidationInput.Pump(Dispatcher);
 
             generation = CountdownRowRebuildGenerationForValidation;
-            var nextPrecision = string.Equals(originalPreferences.DisplayPrecision, "Second", StringComparison.Ordinal)
-                ? "Minute"
-                : "Second";
+            // 探针开头已切到秒精度，这里换到分钟精度触发签名变化。
             var precisionSaved = _desktopWorkspace.Apply(new SavePreferencesChange(
-                nextPrecision,
+                "Minute",
                 originalPreferences.MonthlySalary,
                 originalPreferences.WorkStart,
                 originalPreferences.WorkEnd)).Succeeded;
@@ -1767,6 +1788,7 @@ public sealed partial class MainWindow
                 ReferenceEquals(textAfter.Foreground, FindResource("PrimaryCountdownNumberBrush"));
             return new CountdownIncrementalRefreshProbe(
                 ordinaryIdentityPreserved,
+                countdownSecondsSwitchWithoutAnimation,
                 focusPreserved,
                 nonZeroScrollPreserved,
                 pointerStatePreserved,
@@ -2184,6 +2206,7 @@ public sealed partial class MainWindow
                 keyboardFocusRingShowsOnTab,
                 selectedTabWeightDominates,
                 segmentIndicators.GeometryMatches,
+                segmentIndicators.StaticThicknessIsUniform,
                 segmentIndicators.ReducedMotionIsImmediate,
                 segmentIndicators.RapidSwitchStaysAligned);
         }
@@ -2198,6 +2221,7 @@ public sealed partial class MainWindow
     // #196：页签与便签状态分段共享一个可中断指示条。这里以真实控件的
     // TransformToAncestor 几何作断言，并快速往返切换，确保过期回调不会把
     // 指示条留在旧段；关闭系统动画时只保留同一目标几何的即时等价。
+    // #245：四个静止目标的终态均须保持零圆角、宽 1、高 3。
     private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
     {
         var originalWorkspace = _workspace;
@@ -2208,31 +2232,34 @@ public sealed partial class MainWindow
             Activate();
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var countdownTabAligned = ObserveIndicator(_workspaceTabIndicator, CountdownTab, MainWorkspaceTabHost);
+            var countdownTab = ObserveIndicator(
+                _workspaceTabIndicator, CountdownTab, MainWorkspaceTabHost, MainWorkspaceTabIndicator);
 
             ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var notesTabAligned = ObserveIndicator(_workspaceTabIndicator, NotesTab, MainWorkspaceTabHost);
-            var activeSegmentAligned = ObserveIndicator(_notesSegmentIndicator, ActiveNotesSegment, NotesSegmentHost);
+            var notesTab = ObserveIndicator(
+                _workspaceTabIndicator, NotesTab, MainWorkspaceTabHost, MainWorkspaceTabIndicator);
+            var activeSegment = ObserveIndicator(
+                _notesSegmentIndicator, ActiveNotesSegment, NotesSegmentHost, NotesSegmentIndicator);
 
             SelectNotesSegment(showCompleted: true);
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
-            var completedSegmentAligned = ObserveIndicator(_notesSegmentIndicator, CompletedNotesSegment, NotesSegmentHost);
+            var completedSegment = ObserveIndicator(
+                _notesSegmentIndicator, CompletedNotesSegment, NotesSegmentHost, NotesSegmentIndicator);
 
             var rapidSwitchStaysAligned =
                 SegmentIndicatorRapidSwitchIsStableForValidation;
             var reducedMotionIsImmediate =
                 SegmentIndicatorReducedMotionIsImmediateForValidation;
+            var observations = new[] { countdownTab, notesTab, activeSegment, completedSegment };
 
             return new SegmentIndicatorScenarios(
-                countdownTabAligned &&
-                notesTabAligned &&
-                activeSegmentAligned &&
-                completedSegmentAligned,
+                observations.All(observation => observation.Aligned),
                 reducedMotionIsImmediate,
-                rapidSwitchStaysAligned);
+                rapidSwitchStaysAligned,
+                observations.All(observation => observation.StaticThicknessIsUniform));
         }
         finally
         {
@@ -2242,7 +2269,11 @@ public sealed partial class MainWindow
             UpdateLayout();
         }
 
-        bool ObserveIndicator(SegmentIndicator indicator, FrameworkElement target, FrameworkElement root)
+        (bool Aligned, bool StaticThicknessIsUniform) ObserveIndicator(
+            SegmentIndicator indicator,
+            FrameworkElement target,
+            FrameworkElement root,
+            Border border)
         {
             var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target));
             if (!aligned)
@@ -2259,7 +2290,12 @@ public sealed partial class MainWindow
                     }));
             }
 
-            return aligned;
+            var staticThicknessIsUniform = aligned &&
+                border.Width == 1 &&
+                border.Height == 3 &&
+                border.CornerRadius == new CornerRadius(0) &&
+                Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001;
+            return (aligned, staticThicknessIsUniform);
         }
     }
 
@@ -3888,6 +3924,7 @@ public sealed partial class FloatingWindow
         var originalPreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         var temporaryCountdownIds = new List<string>();
         var temporaryNoteIds = new List<string>();
+        using var animationPreference = ApplicationTheme.OverrideAnimationPreferenceForValidation(true);
         try
         {
             ShowWorkspace(WorkspaceKind.Countdowns);
@@ -3933,6 +3970,17 @@ public sealed partial class FloatingWindow
                 FloatingLastRenderWasInPlaceForValidation &&
                 !countdownTextsBefore.SequenceEqual(FloatingCountdownTexts) &&
                 !clusterNamesBefore.SequenceEqual(FloatingCountdownClusterNames());
+            var secondsValues = ValidationDescendants<StackPanel>(FloatingRows)
+                .Where(pair => pair.Children.Count == 2 &&
+                    pair.Children[0] is Border { Child: TextBlock } &&
+                    pair.Children[1] is TextBlock { Text: "秒" })
+                .Select(pair => (TextBlock)((Border)pair.Children[0]).Child)
+                .ToArray();
+            var countdownSecondsSwitchWithoutAnimation =
+                countdownRowsPreservedAndTextUpdatesInPlace &&
+                secondsValues.Length >= 2 &&
+                secondsValues.All(value => value.Opacity == 1 &&
+                    !DependencyPropertyHelper.GetValueSource(value, UIElement.OpacityProperty).IsAnimated);
 
             ShowWorkspace(WorkspaceKind.Notes);
             var today = _desktopWorkspace.Snapshot.BeijingNow.Date;
@@ -4101,6 +4149,7 @@ public sealed partial class FloatingWindow
             return new FloatingStableRefreshScenarios(
                 focusStaysOnOverflowTriggerAcrossTicks,
                 countdownRowsPreservedAndTextUpdatesInPlace,
+                countdownSecondsSwitchWithoutAnimation,
                 noteCardInstancesPreservedAcrossTicks,
                 rebuildRestoresFocusAndScrollByRole,
                 hiddenSkipsRenderUntilVisible,
@@ -4917,17 +4966,19 @@ internal sealed record MainWindowInteractionStates(
     bool KeyboardFocusRingShowsOnTab,
     bool SelectedTabWeightDominates,
     bool SegmentIndicatorGeometryMatches,
+    bool SegmentIndicatorStaticThicknessIsUniform,
     bool SegmentIndicatorReducedMotionIsImmediate,
     bool SegmentIndicatorRapidSwitchStaysAligned)
 {
     public static MainWindowInteractionStates Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
 }
 
 internal sealed record SegmentIndicatorScenarios(
     bool GeometryMatches,
     bool ReducedMotionIsImmediate,
-    bool RapidSwitchStaysAligned);
+    bool RapidSwitchStaysAligned,
+    bool StaticThicknessIsUniform);
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。
 internal sealed record MainCountdownReadabilityScenarios(
@@ -5010,6 +5061,7 @@ internal sealed record FloatingStructureScenarios(
 internal sealed record FloatingStableRefreshScenarios(
     bool FocusStaysOnOverflowTriggerAcrossTicks,
     bool CountdownRowsPreservedAndTextUpdatesInPlace,
+    bool CountdownSecondsSwitchWithoutAnimation,
     bool NoteCardInstancesPreservedAcrossTicks,
     bool RebuildRestoresFocusAndScrollByRole,
     bool HiddenSkipsRenderUntilVisible,
@@ -5018,13 +5070,14 @@ internal sealed record FloatingStableRefreshScenarios(
     public bool AllPassed =>
         FocusStaysOnOverflowTriggerAcrossTicks &&
         CountdownRowsPreservedAndTextUpdatesInPlace &&
+        CountdownSecondsSwitchWithoutAnimation &&
         NoteCardInstancesPreservedAcrossTicks &&
         RebuildRestoresFocusAndScrollByRole &&
         HiddenSkipsRenderUntilVisible &&
         MinimizedSkipsRenderUntilRestored;
 
     public static FloatingStableRefreshScenarios Failed { get; } = new(
-        false, false, false, false, false, false);
+        false, false, false, false, false, false, false);
 }
 
 internal sealed record FloatingBottomCommandScenarios(
@@ -5195,6 +5248,7 @@ internal sealed record MainVisualChromeScenarios(
 
 internal sealed record CountdownIncrementalRefreshProbe(
     bool IdentityPreserved,
+    bool SecondsSwitchWithoutAnimation,
     bool FocusPreserved,
     bool NonZeroScrollPreserved,
     bool PointerStatePreserved,
@@ -5218,7 +5272,7 @@ internal sealed record CountdownIncrementalRefreshProbe(
         ExpiryChangeRebuilt;
 
     public static CountdownIncrementalRefreshProbe Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false);
 }
 
 internal sealed record MainCountdownRemainingMeasurement(

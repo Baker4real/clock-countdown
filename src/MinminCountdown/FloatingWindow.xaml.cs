@@ -39,7 +39,6 @@ public sealed partial class FloatingWindow : Window
     private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
     private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _lastCountdownSeconds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FrameworkElement> _countdownRowElements = new(StringComparer.Ordinal);
     private int _floatingRowsRenderVersion;
     private string? _floatingRenderSignature;
@@ -1801,16 +1800,6 @@ public sealed partial class FloatingWindow : Window
         ClearNoteDateStampStickyEntries();
         if (countdownView is not null)
         {
-            var visibleRowKeys = countdownView.Rows
-                .Select(static row => row.Key)
-                .ToHashSet(StringComparer.Ordinal);
-            foreach (var staleKey in _lastCountdownSeconds.Keys
-                         .Where(key => !visibleRowKeys.Contains(key))
-                         .ToArray())
-            {
-                _lastCountdownSeconds.Remove(staleKey);
-            }
-
             FloatingCountdownTexts = countdownView.UserRemainingTexts;
             FloatingCountdownCount = FloatingCountdownTexts.Count;
             _countdownRowElements.Clear();
@@ -1891,8 +1880,8 @@ public sealed partial class FloatingWindow : Window
             _calendar.GetWorkdayEndUtc(nowUtc, snapshot.Settings.Preferences),
             _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences));
 
-    // #212：签名不变的就地更新——逐条重建行内剩余时间分格（在行容器内原位替换，
-    // 行实例保留），秒位变化仍按 #198 执行 0.6→1 fade；底部状态由调用方统一 Apply。
+    // #212/#239：签名不变时就地重建行内剩余时间分格并保留行实例；
+    // 秒位直接切换，底部状态由调用方统一 Apply。
     private void UpdateCountdownRowsInPlace(FloatingCountdownView view)
     {
         FloatingCountdownTexts = view.UserRemainingTexts;
@@ -1907,8 +1896,7 @@ public sealed partial class FloatingWindow : Window
                 continue;
             }
 
-            var fadeSeconds = TrackSecondsChange(row.Key, row.Remaining);
-            var fresh = BuildRemainingBlocks(row.Remaining, isPrimary: row.IsPrimary, fadeSeconds: fadeSeconds);
+            var fresh = BuildRemainingBlocks(row.Remaining, isPrimary: row.IsPrimary);
             var childIndex = host.Children.IndexOf(cluster);
             host.Children.RemoveAt(childIndex);
             Grid.SetColumn(fresh, 1);

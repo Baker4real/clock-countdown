@@ -230,6 +230,277 @@ internal static partial class ValidationExercises
         }
     }
 
+    public static bool RunNoteCompletionFlipTransition()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-flip-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(path);
+        void Add(string text, DateTime date) => MustApply(
+            workspace,
+            new SaveNoteChange(null, text, date, false, [], Array.Empty<ReminderRule>()));
+        Add("零位移便签", new DateTime(2038, 7, 14));
+        Add("悬浮下一张", new DateTime(2038, 7, 13));
+        Add("悬浮完成", new DateTime(2038, 7, 13));
+        Add("管理下一张", new DateTime(2038, 7, 12));
+        Add("管理完成", new DateTime(2038, 7, 12));
+        Add("日期末条", new DateTime(2038, 7, 11));
+        Add("日期下方", new DateTime(2038, 7, 10));
+        for (var index = 0; index < 8; index++)
+        {
+            Add($"视口外{index}", new DateTime(2038, 7, 8 - index));
+        }
+
+        var notes = workspace.Snapshot.Settings.Notes;
+        var stationary = notes.Single(note => note.Text == "零位移便签");
+        var floatingTarget = notes.Single(note => note.Text == "悬浮完成");
+        var floatingNext = notes.Single(note => note.Text == "悬浮下一张");
+        var mainTarget = notes.Single(note => note.Text == "管理完成");
+        var mainNext = notes.Single(note => note.Text == "管理下一张");
+        var lastInDate = notes.Single(note => note.Text == "日期末条");
+        var belowDate = notes.Single(note => note.Text == "日期下方");
+        // 日期最早的一条排在两个列表末尾，完成前后都在视口外。
+        var farFiller = notes.Single(note => note.Text == "视口外7");
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            PrepareOffscreenValidationWindow(floating);
+            main.Show();
+            floating.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            floating.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+
+            CheckBox CompletionCheck(Window source, string id) =>
+                VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == id);
+            FrameworkElement Card(Window source, string id)
+            {
+                var check = CompletionCheck(source, id);
+                return VisualDescendants<Border>(source).Single(candidate =>
+                    candidate.Child is Grid grid && grid.Children.Contains(check));
+            }
+            NoteCompletionExit? ExitVisual(ScrollViewer viewport) =>
+                AdornerLayer.GetAdornerLayer(viewport)?.GetAdorners(viewport)?
+                    .OfType<NoteCompletionExit>()
+                    .SingleOrDefault();
+            Rect Bounds(FrameworkElement element, ScrollViewer viewport) =>
+                element.TransformToAncestor(viewport).TransformBounds(new Rect(element.RenderSize));
+            bool OutsideViewport(Rect bounds, ScrollViewer viewport) =>
+                bounds.Bottom <= 0 || bounds.Top >= viewport.ActualHeight;
+            double TranslationY(FrameworkElement element) =>
+                element.RenderTransform is System.Windows.Media.TranslateTransform translate ? translate.Y : 0;
+            // 元素自身及其祖先（到视口为止）上的纵向位移之和，即该元素实际受到的补位。
+            double Displacement(FrameworkElement element, ScrollViewer viewport)
+            {
+                var total = 0d;
+                for (DependencyObject? current = element;
+                     current is not null && !ReferenceEquals(current, viewport);
+                     current = System.Windows.Media.VisualTreeHelper.GetParent(current))
+                {
+                    if (current is FrameworkElement { RenderTransform: System.Windows.Media.TranslateTransform translate })
+                    {
+                        total += translate.Y;
+                    }
+                }
+                return total;
+            }
+            // 下沿对齐时，下一张卡在完成前完整位于视口下方，补位从视口外进入；上沿对齐时下一张卡完成前可见。
+            void Align(Window source, ScrollViewer viewport, FrameworkElement element, bool bottom)
+            {
+                element.BringIntoView();
+                WindowValidationInput.Pump(source.Dispatcher);
+                var bounds = Bounds(element, viewport);
+                viewport.ScrollToVerticalOffset(Math.Clamp(
+                    viewport.VerticalOffset + (bottom ? bounds.Bottom - viewport.ActualHeight : bounds.Top),
+                    0,
+                    viewport.ScrollableHeight));
+                WindowValidationInput.Pump(source.Dispatcher);
+            }
+            void Toggle(Window source, string id)
+            {
+                var peer = new CheckBoxAutomationPeer(CompletionCheck(source, id));
+                ((System.Windows.Automation.Provider.IToggleProvider)peer.GetPattern(PatternInterface.Toggle)).Toggle();
+            }
+            (NoteCompletionExit Visual, FrameworkElement Next, double Delta) Begin(
+                Window source,
+                ScrollViewer viewport,
+                NoteRecord target,
+                NoteRecord next,
+                bool nextEntersFromBelow)
+            {
+                var targetCard = Card(source, target.Id);
+                Align(source, viewport, targetCard, bottom: nextEntersFromBelow);
+                var cardSize = targetCard.RenderSize;
+                var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(targetCard);
+                var oldNext = Bounds(Card(source, next.Id), viewport);
+                var oldStationary = Bounds(Card(source, stationary.Id), viewport);
+                Must(OutsideViewport(oldNext, viewport) == nextEntersFromBelow &&
+                    (!nextEntersFromBelow || !OutsideViewport(oldStationary, viewport)) &&
+                    OutsideViewport(Bounds(Card(source, farFiller.Id), viewport), viewport),
+                    $"#243：完成补位探针的视口前置条件不成立。surface={source.GetType().Name}; " +
+                    $"nextTop={oldNext.Top:0.###}; stationaryTop={oldStationary.Top:0.###}; " +
+                    $"viewport={viewport.ActualHeight:0.###}; nextEntersFromBelow={nextEntersFromBelow}。");
+
+                // 不泵消息：领域事务、列表重建与反向位移在同一次同步调用里完成，首帧渲染前即可观察。
+                Toggle(source, target.Id);
+                // 新设的 RenderTransform 要经过一次排列才并入视觉变换，首帧渲染前的布局遍历同样做这一步；
+                // UpdateLayout 只处理布局队列，不推进动画时钟。
+                viewport.UpdateLayout();
+                var visual = ExitVisual(viewport);
+                Must(visual is not null && !visual.IsHitTestVisible && Math.Abs(visual.Opacity - 1) <= 0.001 &&
+                    new SettingsStore().Load(path).Settings.Notes.Single(note => note.Id == target.Id).IsCompleted,
+                    "#243：完成提交后必须立即保留不透明的卡片快照，且写盘时机不变。");
+                var nextAfter = Card(source, next.Id);
+                var delta = Displacement(nextAfter, viewport);
+                var newNextTop = Bounds(nextAfter, viewport).Top - delta;
+                Must(nextAfter.RenderTransform is System.Windows.Media.TranslateTransform && delta > 0 &&
+                    Math.Abs(delta - (oldNext.Top - newNextTop)) <= 0.1,
+                    $"#243：下一张卡的起始位移必须等于旧位置减新位置。surface={source.GetType().Name}; " +
+                    $"oldY={oldNext.Top:0.###}; newY={newNextTop:0.###}; displacement={delta:0.###}; " +
+                    $"transform={nextAfter.RenderTransform?.GetType().Name ?? "null"}; " +
+                    $"captured={visual!.CapturedPositionCountForValidation}; activeFlip={visual.ActiveFlipCountForValidation}。");
+                Must(visual.SnapshotPixelWidthForValidation == (int)Math.Ceiling(cardSize.Width * dpi.DpiScaleX) &&
+                    visual.SnapshotPixelHeightForValidation == (int)Math.Ceiling(cardSize.Height * dpi.DpiScaleY),
+                    "#243：快照像素尺寸必须等于完成卡片尺寸乘DPI，而不是列表视口尺寸。" +
+                    $"snapshot={visual.SnapshotPixelWidthForValidation}x{visual.SnapshotPixelHeightForValidation}; " +
+                    $"card={cardSize.Width:0.###}x{cardSize.Height:0.###}; dpiScale={dpi.DpiScaleX:0.###}。");
+                var farAfter = Card(source, farFiller.Id);
+                Must(Math.Abs(Displacement(Card(source, stationary.Id), viewport)) <= 0.001 &&
+                    Math.Abs(Displacement(farAfter, viewport)) <= 0.001 &&
+                    OutsideViewport(Bounds(farAfter, viewport), viewport),
+                    "#243：零位移便签与完成前后都在视口外的便签不得产生补位。");
+                return (visual, nextAfter, delta);
+            }
+            void AssertCleared(ScrollViewer viewport, FrameworkElement moved, string scenario) =>
+                Must(ExitVisual(viewport) is null && Math.Abs(Displacement(moved, viewport)) <= 0.001,
+                    $"#243：{scenario}后快照必须消失且补位必须立即清零。");
+
+            foreach (var onFloating in new[] { true, false })
+            {
+                var source = onFloating ? (Window)floating : main;
+                var viewport = onFloating ? floating.FloatingBodyScroller : main.NotesListRegion;
+                var undo = onFloating ? floating.FloatingDeleteUndoButton : main.MainStatusUndoButton;
+                var target = onFloating ? floatingTarget : mainTarget;
+                var next = onFloating ? floatingNext : mainNext;
+                // 悬浮窗视口约一张半卡高：下一张卡完成前整张在视口下方，从视口外补位进入；管理窗口下一张卡完成前可见。
+                var nextEntersFromBelow = onFloating;
+                void Undo()
+                {
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    WindowValidationInput.Pump(source.Dispatcher);
+                }
+
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(true))
+                {
+                    var running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    Must(WindowValidationInput.WaitUntil(source.Dispatcher, () =>
+                            running.Visual.Opacity is > 0 and < 1 &&
+                            Displacement(running.Next, viewport) is > 0 &&
+                            Displacement(running.Next, viewport) < running.Delta),
+                        "#243：快照和补位没有经过真实中间帧。");
+                    var remaining = Displacement(running.Next, viewport) / running.Delta;
+                    Must(Math.Abs(remaining - running.Visual.Opacity) <= 0.04,
+                        "#243：快照淡出与补位必须使用同一时钟和缓动。" +
+                        $"remaining={remaining:0.####}; opacity={running.Visual.Opacity:0.####}。");
+                    Must(WindowValidationInput.WaitUntil(source.Dispatcher, () =>
+                            ExitVisual(viewport) is null && Math.Abs(Displacement(running.Next, viewport)) <= 0.001),
+                        "#243：160ms完成后快照和补位必须一起释放。");
+                    Undo();
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    AssertCleared(viewport, running.Next, "撤销");
+                    WindowValidationInput.Pump(source.Dispatcher);
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    if (onFloating) floating.ShowWorkspace(WorkspaceKind.Countdowns);
+                    else main.ShowWorkspace(WorkspaceKind.Countdowns);
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    AssertCleared(viewport, running.Next, "切换工作区");
+                    if (onFloating) floating.ShowWorkspace(WorkspaceKind.Notes);
+                    else main.ShowWorkspace(WorkspaceKind.Notes);
+                    Undo();
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    source.Hide();
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    AssertCleared(viewport, running.Next, "隐藏");
+                    source.Show();
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    Undo();
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    source.WindowState = WindowState.Minimized;
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    AssertCleared(viewport, running.Next, "最小化");
+                    source.WindowState = WindowState.Normal;
+                    WindowValidationInput.Pump(source.Dispatcher);
+                    Undo();
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    MustApply(workspace, new SaveNoteChange(null, "重建新便签", new DateTime(2038, 7, 15),
+                        false, [], Array.Empty<ReminderRule>()));
+                    var added = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "重建新便签");
+                    AssertCleared(viewport, running.Next, "整表重建");
+                    Must(Math.Abs(Displacement(Card(source, added.Id), viewport)) <= 0.001,
+                        "#243：新出现便签不得产生补位。");
+                    Undo();
+                    MustApply(workspace, new DeleteNoteChange(added.Id));
+                    WindowValidationInput.Pump(source.Dispatcher);
+
+                    running = Begin(source, viewport, target, next, nextEntersFromBelow);
+                    viewport.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+                    AssertCleared(viewport, running.Next, "卸载");
+                    Undo();
+
+                    if (!onFloating)
+                    {
+                        Grid DateSection(string? date) => VisualDescendants<Grid>(main).Single(section =>
+                            section.Uid == "NoteDateTimelineSection" && section.IsVisible &&
+                            VisualDescendants<Button>(section).Any(toggle =>
+                                toggle.Uid == "NoteDateDisclosure" &&
+                                string.Equals(toggle.Tag as string, date ?? string.Empty, StringComparison.Ordinal)));
+                        Align(main, viewport, Card(main, lastInDate.Id), bottom: false);
+                        var oldSection = Bounds(DateSection(belowDate.Date), viewport);
+                        Toggle(main, lastInDate.Id);
+                        viewport.UpdateLayout();
+                        var sectionAfter = DateSection(belowDate.Date);
+                        var sectionDelta = Displacement(sectionAfter, viewport);
+                        var newSectionTop = Bounds(sectionAfter, viewport).Top - sectionDelta;
+                        Must(ExitVisual(viewport) is not null &&
+                            sectionAfter.RenderTransform is System.Windows.Media.TranslateTransform &&
+                            sectionDelta > 0 && Math.Abs(sectionDelta - (oldSection.Top - newSectionTop)) <= 0.1 &&
+                            Math.Abs(TranslationY(Card(main, belowDate.Id))) <= 0.001,
+                            "#243：日期最后一条便签完成后，下面的日期分组必须整体按旧位置减新位置补位。" +
+                            $"oldY={oldSection.Top:0.###}; newY={newSectionTop:0.###}; displacement={sectionDelta:0.###}。");
+                        undo.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        AssertCleared(viewport, sectionAfter, "日期分组撤销");
+                        WindowValidationInput.Pump(main.Dispatcher);
+                    }
+                }
+
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(false))
+                {
+                    Toggle(source, target.Id);
+                    Must(ExitVisual(viewport) is null && Math.Abs(Displacement(Card(source, next.Id), viewport)) <= 0.001 &&
+                        new SettingsStore().Load(path).Settings.Notes.Single(note => note.Id == target.Id).IsCompleted,
+                        "#243：系统关闭动画时不得产生快照或补位，完成事务仍须同步提交。");
+                    Undo();
+                }
+            }
+
+            return true;
+        }
+        finally
+        {
+            floating.Close();
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     public static bool RunNoteCompletionUndoFeedback()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-undo-{Guid.NewGuid():N}.json");

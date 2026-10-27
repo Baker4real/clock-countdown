@@ -5223,13 +5223,34 @@ internal sealed record SegmentIndicatorScenarios(
     bool RapidSwitchStaysAligned,
     bool StaticThicknessIsUniform);
 
-// #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。
+// #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。14 个检查名钉在 RequiredChecks 里：
+// 缺少的、未通过的和未登记的检查名都进 FailedChecks。
 internal sealed record MainKeyboardImmediateMotionScenarios(IReadOnlyDictionary<string, bool> Checks)
 {
-    public bool AllPassed => Checks.Count == 14 && Checks.Values.All(passed => passed);
+    internal static readonly IReadOnlyList<string> RequiredChecks =
+    [
+        "AnimatedWorkspaceShortcutFirstFrame",
+        "AnimatedWorkspaceClick",
+        "AnimatedFilterShortcutFirstFrame",
+        "AnimatedTagManagerShortcutFirstFrame",
+        "AnimatedEscapeFromPopupFirstFrame",
+        "AnimatedEscapeFromTriggerFirstFrame",
+        "AnimatedFilterClick",
+        "ReducedWorkspaceShortcutFirstFrame",
+        "ReducedWorkspaceClick",
+        "ReducedFilterShortcutFirstFrame",
+        "ReducedTagManagerShortcutFirstFrame",
+        "ReducedEscapeFromPopupFirstFrame",
+        "ReducedEscapeFromTriggerFirstFrame",
+        "ReducedFilterClick"
+    ];
+
+    public bool AllPassed => FailedChecks.Count == 0;
 
     public IReadOnlyList<string> FailedChecks =>
-        Checks.Where(check => !check.Value).Select(check => check.Key).ToArray();
+        RequiredChecks.Where(name => !Checks.TryGetValue(name, out var passed) || !passed)
+            .Concat(Checks.Keys.Where(name => !RequiredChecks.Contains(name)))
+            .ToArray();
 }
 
 // #148：倒计时列表可读性——徽章排他、到期文字对比、分格几何、表格数字格式（颗粒化子旗标便于定位）。

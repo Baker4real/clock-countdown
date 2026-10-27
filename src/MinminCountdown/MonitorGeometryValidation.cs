@@ -54,6 +54,57 @@ internal static class MonitorGeometryValidation
         }
     }
 
+    // #240：沿用上面 #219 的真实 WM_DPICHANGED 注入，供专用窗口探针制造运行期 DPI 变化。
+    // 调用方在创建窗口句柄前进入 PerMonitorV2 线程上下文，关闭窗口后还原；返回 IntPtr.Zero 表示进入失败。
+    internal static IntPtr EnterPerMonitorV2ThreadDpiContextForValidation() =>
+        SetThreadDpiAwarenessContext((IntPtr)(-4));
+
+    internal static void RestoreThreadDpiContextForValidation(IntPtr previous)
+    {
+        if (previous != IntPtr.Zero)
+        {
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+
+    // 建议矩形保持窗口左上角、按倍数放大物理尺寸；返回窗口 DPI 是否真的变成目标值。
+    internal static bool InjectDpiChangeForValidation(Window window, double factor)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle == IntPtr.Zero || !GetWindowRect(handle, out var current))
+        {
+            return false;
+        }
+
+        var before = VisualTreeHelper.GetDpi(window);
+        var target = (int)Math.Round(before.PixelsPerInchX * factor);
+        var pointer = Marshal.AllocHGlobal(Marshal.SizeOf<PhysicalRect>());
+        try
+        {
+            Marshal.StructureToPtr(new PhysicalRect
+            {
+                Left = current.Left,
+                Top = current.Top,
+                Right = current.Left + (int)Math.Round((current.Right - current.Left) * factor),
+                Bottom = current.Top + (int)Math.Round((current.Bottom - current.Top) * factor)
+            }, pointer, false);
+            SendMessageW(handle, 0x02E0, (IntPtr)(target | (target << 16)), pointer);
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                WindowValidationInput.Pump(window.Dispatcher);
+                window.UpdateLayout();
+            }
+
+            var after = VisualTreeHelper.GetDpi(window);
+            Console.Error.WriteLine($"REMAINING_BLOCKS_DPI_PROBE: window={window.GetType().Name}; before={before.PixelsPerInchX}; after={after.PixelsPerInchX}; target={target}");
+            return Math.Abs(after.PixelsPerInchX - target) < .1;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(pointer);
+        }
+    }
+
     internal static bool ProductManifestDeclaresPerMonitorV2()
     {
         var module = LoadLibraryExW(Path.Combine(ApplicationPaths.ResolveApplicationRoot(), "app", "MinminCountdown.exe"), IntPtr.Zero, 0x22);

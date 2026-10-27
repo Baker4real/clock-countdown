@@ -221,6 +221,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
     internal long CountdownRowRebuildGenerationForValidation { get; private set; }
+    // #240：剩余时间分格按现有排版与适配算法（重新）构建的累计次数；跳过与就地更新都不计入。
+    internal long CountdownRemainingBlocksBuildCountForValidation { get; private set; }
 
     internal static (string Message, bool ShowReset) CountdownEmptyStatePresentation(bool hasSavedCountdowns) =>
         hasSavedCountdowns
@@ -1834,10 +1836,20 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SetCountdownRemainingText(TextBlock textBlock, string text)
     {
-        textBlock.Text = text;
-        if (textBlock.Tag is MainCountdownBlocksHost blocksHost)
+        var blocksHost = textBlock.Tag as MainCountdownBlocksHost;
+        var dpiScale = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        // #240：剩余文本与 DPI 都未变时整拍跳过，分格与承载可访问名称的文字都不动。
+        if (blocksHost is not null &&
+            blocksHost.DpiScale == dpiScale &&
+            string.Equals(blocksHost.LastRenderedText, text, StringComparison.Ordinal))
         {
-            RenderMainCountdownBlocks(blocksHost, text);
+            return;
+        }
+
+        textBlock.Text = text;
+        if (blocksHost is not null)
+        {
+            UpdateMainCountdownBlocks(blocksHost, text, dpiScale);
         }
         textBlock.FontSize = CountdownRemainingBaseFontSize;
         var availableWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin;
@@ -1867,10 +1879,35 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         textBlock.FontSize = Math.Max(CountdownRemainingMinimumFontSize, fitted);
     }
 
+    // #240：分格形状（分格数、单位与每格位数）与 DPI 不变时保留分格与数值实例，只改数值文字；
+    // 否则按现有排版与适配算法重建。
+    private void UpdateMainCountdownBlocks(MainCountdownBlocksHost host, string remaining, double dpiScale)
+    {
+        var pairs = ParseMainRemainingPairs(remaining);
+        if (host.DpiScale == dpiScale &&
+            pairs is { Count: > 0 } &&
+            pairs.Count == host.Values.Count &&
+            string.Equals(host.ShapeKey, RemainingPair.ShapeKey(pairs, remaining), StringComparison.Ordinal))
+        {
+            for (var index = 0; index < pairs.Count; index++)
+            {
+                host.Values[index].Text = pairs[index].Value;
+            }
+
+            host.LastRenderedText = remaining;
+            return;
+        }
+
+        RenderMainCountdownBlocks(host, remaining);
+    }
+
     private void RenderMainCountdownBlocks(MainCountdownBlocksHost host, string remaining)
     {
+        CountdownRemainingBlocksBuildCountForValidation++;
         host.Surface.Children.Clear();
         var pairs = ParseMainRemainingPairs(remaining);
+        host.ShapeKey = RemainingPair.ShapeKey(pairs, remaining);
+        host.DpiScale = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         if (pairs is null || pairs.Count == 0)
         {
             var fallback = new TextBlock
@@ -1890,6 +1927,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 host.IsPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
             Typography.SetNumeralAlignment(fallback, FontNumeralAlignment.Tabular);
             host.Surface.Children.Add(fallback);
+            host.Values = [];
             host.LastRenderedText = remaining;
             return;
         }
@@ -2044,6 +2082,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         host.Surface.Children.Add(values);
+        host.Values = valueBlocks;
         host.LastRenderedText = remaining;
     }
 
@@ -4100,7 +4139,15 @@ internal sealed class MainCountdownBlocksHost
 
     public bool IsPrimary { get; init; }
 
+    // #240：上次渲染的剩余文本、分格形状键、DPI 缩放与按分格顺序的数值文字实例，
+    // 供下一拍判定跳过、就地或重建。
     public string? LastRenderedText { get; set; }
+
+    public string? ShapeKey { get; set; }
+
+    public double DpiScale { get; set; }
+
+    public IReadOnlyList<TextBlock> Values { get; set; } = [];
 }
 
 internal sealed record MainWindowActivationState(

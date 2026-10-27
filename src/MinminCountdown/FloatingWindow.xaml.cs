@@ -39,7 +39,7 @@ public sealed partial class FloatingWindow : Window
     private WorkspaceKind _renderedWorkspace = WorkspaceKind.Countdowns;
     private readonly Dictionary<WorkspaceKind, double> _workspaceScrollOffsets = new();
     private readonly Dictionary<string, string> _noteCardErrors = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, FrameworkElement> _countdownRowElements = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RenderedRemainingBlocks> _countdownRemainingBlocks = new(StringComparer.Ordinal);
     private int _floatingRowsRenderVersion;
     private string? _floatingRenderSignature;
     private bool _hasBeenVisible;
@@ -84,8 +84,8 @@ public sealed partial class FloatingWindow : Window
         WindowWorkAreaGeometry.TrackChanges(this, Reanchor);
         PreviewKeyDown += OnPreviewKeyDown;
         ApplyTheme();
-        _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
-        _calendar.StateChanged += (_, _) => Dispatcher.Invoke(Refresh);
+        _desktopWorkspace.StateChanged += (_, _) => Dispatcher.Invoke(RefreshAfterStateChange);
+        _calendar.StateChanged += (_, _) => Dispatcher.Invoke(RefreshAfterStateChange);
         ShowWorkspace(WorkspaceKind.Countdowns);
     }
 
@@ -421,6 +421,12 @@ public sealed partial class FloatingWindow : Window
     internal long FloatingRowsSkippedRenderCountForValidation { get; private set; }
 
     internal bool FloatingLastRenderWasInPlaceForValidation { get; private set; }
+
+    // #240：剩余时间分格按现有排版与适配算法（重新）构建的累计次数，以及便签「下次提醒」的实际计算次数；
+    // 跳过、就地更新与缓存命中都不计入。
+    internal long FloatingRemainingBlocksBuildCountForValidation { get; private set; }
+
+    internal long FloatingNextReminderComputationCountForValidation { get; private set; }
 
     // #212：便签卡内可聚焦控件的角色标记；焦点恢复按「记录 ID + 角色」精确匹配。
     internal static readonly DependencyProperty NoteControlRoleProperty =
@@ -1796,19 +1802,17 @@ public sealed partial class FloatingWindow : Window
         _noteCompletionExit?.Dispose();
         _noteCompletionExit = null;
         FloatingRows.Children.Clear();
+        _countdownRemainingBlocks.Clear();
         _workdayCompletionIncome = null;
         ClearNoteDateStampStickyEntries();
         if (countdownView is not null)
         {
             FloatingCountdownTexts = countdownView.UserRemainingTexts;
             FloatingCountdownCount = FloatingCountdownTexts.Count;
-            _countdownRowElements.Clear();
             if (countdownView.ShowsWorkdayCompletion) FloatingRows.Children.Add(BuildWorkdayCompletionRow());
             foreach (var row in countdownView.Rows)
             {
-                var element = BuildWarmPaperCountdownRow(row);
-                _countdownRowElements[row.Key] = element;
-                FloatingRows.Children.Add(element);
+                FloatingRows.Children.Add(BuildWarmPaperCountdownRow(row));
             }
 
             if (countdownView.EmptyStateText is { } emptyStateText)
@@ -1880,48 +1884,56 @@ public sealed partial class FloatingWindow : Window
             _calendar.GetWorkdayEndUtc(nowUtc, snapshot.Settings.Preferences),
             _calendar.IsWorkdayComplete(nowUtc, snapshot.Settings.Preferences));
 
-    // #212/#239：签名不变时就地重建行内剩余时间分格并保留行实例；
-    // 秒位直接切换，底部状态由调用方统一 Apply。
+    // #212/#239/#240：签名不变时保留行实例，逐行按「跳过 / 就地 / 重建」更新剩余时间分格：
+    // 剩余文本与 DPI 都不变整行跳过；形状键与 DPI 不变只改数值文字并同步分格可访问名称（秒位直接切换）；
+    // 其余按现有排版与适配算法重建该行分格。底部状态由调用方统一 Apply。
     private void UpdateCountdownRowsInPlace(FloatingCountdownView view)
     {
         FloatingCountdownTexts = view.UserRemainingTexts;
         FloatingCountdownCount = FloatingCountdownTexts.Count;
+        var dpiScale = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         foreach (var row in view.Rows)
         {
-            if (!_countdownRowElements.TryGetValue(row.Key, out var element) ||
-                FindRemainingBlocksCluster(element) is not { } cluster ||
-                VisualTreeHelper.GetParent(cluster) is not Grid host)
+            if (!_countdownRemainingBlocks.TryGetValue(row.Key, out var blocks) ||
+                blocks.Element.Parent is not Panel host)
             {
                 // 签名一致时行必然在册；防御性跳过，下一次签名变化会走整表重建。
                 continue;
             }
 
-            var fresh = BuildRemainingBlocks(row.Remaining, isPrimary: row.IsPrimary);
-            var childIndex = host.Children.IndexOf(cluster);
-            host.Children.RemoveAt(childIndex);
-            Grid.SetColumn(fresh, 1);
-            host.Children.Insert(childIndex, fresh);
-        }
-    }
-
-    private static Grid? FindRemainingBlocksCluster(DependencyObject element)
-    {
-        if (element is Grid grid &&
-            grid.Tag is string tag &&
-            string.Equals(tag, RemainingBlocksTag, StringComparison.Ordinal))
-        {
-            return grid;
-        }
-
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
-        {
-            if (FindRemainingBlocksCluster(VisualTreeHelper.GetChild(element, index)) is { } found)
+            if (blocks.DpiScale == dpiScale)
             {
-                return found;
-            }
-        }
+                if (string.Equals(blocks.Text, row.Remaining, StringComparison.Ordinal))
+                {
+                    continue;
+                }
 
-        return null;
+                var pairs = ParseRemainingPairs(row.Remaining);
+                if (pairs is { Count: > 0 } &&
+                    pairs.Count == blocks.Values.Count &&
+                    string.Equals(
+                        RemainingPair.ShapeKey(pairs, row.Remaining),
+                        blocks.ShapeKey,
+                        StringComparison.Ordinal))
+                {
+                    for (var index = 0; index < pairs.Count; index++)
+                    {
+                        blocks.Values[index].Text = pairs[index].Value;
+                    }
+
+                    AutomationProperties.SetName(blocks.Element, row.Remaining);
+                    blocks.Text = row.Remaining;
+                    continue;
+                }
+            }
+
+            var fresh = BuildRemainingBlocks(row.Remaining, isPrimary: row.IsPrimary);
+            var childIndex = host.Children.IndexOf(blocks.Element);
+            host.Children.RemoveAt(childIndex);
+            Grid.SetColumn(fresh.Element, 1);
+            host.Children.Insert(childIndex, fresh.Element);
+            _countdownRemainingBlocks[row.Key] = fresh;
+        }
     }
 
     // #212：渲染签名只比较语义输入；剩余时间的数值变化（同一结构、同一精度下的下一秒）
@@ -1953,7 +1965,7 @@ public sealed partial class FloatingWindow : Window
         {
             foreach (var note in snapshot.VisibleActiveNotes)
             {
-                var nextReminder = ReminderSchedule.GetNextDueUtc(snapshot.Settings, note, nowUtc);
+                var nextReminder = NextReminderUtc(snapshot.Settings, note, nowUtc);
                 entries.Add(string.Join("\u001e", new[]
                 {
                     note.Id,

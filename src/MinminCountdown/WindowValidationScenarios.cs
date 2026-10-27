@@ -2471,62 +2471,13 @@ public sealed partial class MainWindow
     // 稳定下来的状态都不算，用来判定“按键后的首帧”。
     private bool ObserveFirstRenderedFrame(Func<bool> observation)
     {
-        const int timeoutMilliseconds = 1000;
-        Dispatcher.VerifyAccess();
-        var watch = Stopwatch.StartNew();
-        var frame = new DispatcherFrame();
-        var rendered = false;
         var observed = false;
-        Exception? failure = null;
-        var timeout = new DispatcherTimer(DispatcherPriority.Send, Dispatcher)
+        var firstFrame = WindowValidationInput.PumpRenderedFrames(Dispatcher, 1000, () =>
         {
-            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
-        };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(10)
-        };
-        void OnRendering(object? sender, EventArgs args)
-        {
-            if (rendered || watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
-            {
-                frame.Continue = false;
-                return;
-            }
-
-            rendered = true;
-            try { observed = observation(); }
-            catch (Exception error) { failure = error; }
-            frame.Continue = false;
-        }
-        EventHandler rendering = OnRendering;
-        EventHandler requestFrame = (_, _) =>
-        {
-            // 订阅 Rendering 本身会请求一帧；隔离桌面上失效请求可能被合并，定时重订一次。
-            CompositionTarget.Rendering -= rendering;
-            CompositionTarget.Rendering += rendering;
-        };
-        EventHandler expired = (_, _) => frame.Continue = false;
-        try
-        {
-            timeout.Tick += expired;
-            frameRequests.Tick += requestFrame;
-            timeout.Start();
-            frameRequests.Start();
-            requestFrame(null, EventArgs.Empty);
-            Dispatcher.PushFrame(frame);
-        }
-        finally
-        {
-            timeout.Stop();
-            timeout.Tick -= expired;
-            frameRequests.Stop();
-            frameRequests.Tick -= requestFrame;
-            CompositionTarget.Rendering -= rendering;
-        }
-
-        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        return rendered && observed;
+            observed = observation();
+            return true;
+        });
+        return firstFrame.Completed && observed;
     }
 
     private ToggleButton WorkspaceTab(WorkspaceKind workspace) =>
@@ -5802,6 +5753,73 @@ internal static class WindowValidationInput
             }));
         }
         return passed;
+    }
+
+    // 推进真实 WPF 渲染帧：每次 CompositionTarget.Rendering 回调调用一次 onFrame，返回 true 即停；
+    // 超时之后的回调和 Send 优先级的超时计时器也会停。订阅 Rendering 本身会请求一帧，位图捕获不推进
+    // 动画时钟，隔离桌面上的失效请求又可能被合并，所以每 10ms 重订一次。onFrame 抛出的异常在清理后原样
+    // 抛回。Completed 表示有一帧在超时内让 onFrame 返回 true；ElapsedMilliseconds 是泵结束时的耗时。
+    public static (bool Completed, double ElapsedMilliseconds) PumpRenderedFrames(
+        Dispatcher dispatcher, int timeoutMilliseconds, Func<bool> onFrame)
+    {
+        dispatcher.VerifyAccess();
+        var watch = Stopwatch.StartNew();
+        var frame = new DispatcherFrame();
+        var completed = false;
+        Exception? failure = null;
+        var timeout = new DispatcherTimer(DispatcherPriority.Send, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
+        };
+        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        void OnRendering(object? sender, EventArgs args)
+        {
+            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
+            {
+                frame.Continue = false;
+                return;
+            }
+
+            try
+            {
+                if (onFrame())
+                {
+                    completed = true;
+                    frame.Continue = false;
+                }
+            }
+            catch (Exception error) { failure = error; frame.Continue = false; }
+        }
+        EventHandler rendering = OnRendering;
+        EventHandler requestFrame = (_, _) =>
+        {
+            CompositionTarget.Rendering -= rendering;
+            CompositionTarget.Rendering += rendering;
+        };
+        EventHandler expired = (_, _) => frame.Continue = false;
+        try
+        {
+            timeout.Tick += expired;
+            frameRequests.Tick += requestFrame;
+            timeout.Start();
+            frameRequests.Start();
+            requestFrame(null, EventArgs.Empty);
+            Dispatcher.PushFrame(frame);
+        }
+        finally
+        {
+            timeout.Stop();
+            timeout.Tick -= expired;
+            frameRequests.Stop();
+            frameRequests.Tick -= requestFrame;
+            CompositionTarget.Rendering -= rendering;
+        }
+
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        return (completed, watch.Elapsed.TotalMilliseconds);
     }
 
     // #205 regression: raising Click alone bypasses ButtonBase.OnClick and its

@@ -808,68 +808,11 @@ internal static partial class ValidationReport
         }
     }
 
+    // 逐个真实渲染帧轮询到就绪：300ms 内某一帧就绪、且泵结束时仍未超时才算到达。
     private static bool WaitForRenderedCaptureState(FrameworkElement visual, Func<bool> isReady)
     {
         const int timeoutMilliseconds = 300;
-        visual.Dispatcher.VerifyAccess();
-        var watch = System.Diagnostics.Stopwatch.StartNew();
-        var frame = new DispatcherFrame();
-        var ready = false;
-        Exception? failure = null;
-        var timeout = new DispatcherTimer(DispatcherPriority.Send, visual.Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(timeoutMilliseconds)
-        };
-        var frameRequests = new DispatcherTimer(DispatcherPriority.Background, visual.Dispatcher)
-        {
-            Interval = TimeSpan.FromMilliseconds(10)
-        };
-        void OnRendering(object? sender, EventArgs args)
-        {
-            if (watch.Elapsed.TotalMilliseconds > timeoutMilliseconds)
-            {
-                frame.Continue = false;
-                return;
-            }
-
-            try
-            {
-                if (isReady())
-                {
-                    ready = true;
-                    frame.Continue = false;
-                }
-            }
-            catch (Exception error) { failure = error; frame.Continue = false; }
-        }
-        EventHandler rendering = OnRendering;
-        EventHandler requestFrame = (_, _) =>
-        {
-            // Adding Rendering posts a real WPF render request. A bitmap
-            // capture does not tick animations, and invalidations can merge.
-            CompositionTarget.Rendering -= rendering;
-            CompositionTarget.Rendering += rendering;
-        };
-        EventHandler expired = (_, _) => frame.Continue = false;
-        try
-        {
-            timeout.Tick += expired;
-            frameRequests.Tick += requestFrame;
-            timeout.Start();
-            frameRequests.Start();
-            requestFrame(null, EventArgs.Empty);
-            Dispatcher.PushFrame(frame);
-        }
-        finally
-        {
-            timeout.Stop();
-            timeout.Tick -= expired;
-            frameRequests.Stop();
-            frameRequests.Tick -= requestFrame;
-            CompositionTarget.Rendering -= rendering;
-        }
-
-        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        return ready && watch.Elapsed.TotalMilliseconds <= timeoutMilliseconds;
+        var pumped = WindowValidationInput.PumpRenderedFrames(visual.Dispatcher, timeoutMilliseconds, isReady);
+        return pumped.Completed && pumped.ElapsedMilliseconds <= timeoutMilliseconds;
     }
 }

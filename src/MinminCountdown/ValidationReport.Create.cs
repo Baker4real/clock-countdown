@@ -1090,7 +1090,7 @@ internal static partial class ValidationReport
                 holidayCalendarInterfaceBehavior,
             ["InteractiveClockCadenceLocksToQuarterSecond"] = Must(
                 interactiveClockCadenceBehavior,
-                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 10ms，间隔在 10–260ms（#241）"),
+                "交互时钟下一拍落在快照时钟下一个四分之一秒边界后 20ms，计时器提前一格触发也仍在边界之后，间隔在 10–270ms（#241）"),
             ["Title"] = main.Title,
             ["Width"] = main.Width,
             ["Height"] = main.Height,

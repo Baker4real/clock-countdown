@@ -113,7 +113,7 @@ public sealed partial class FloatingWindow
         noteText.SetResourceReference(TextBlock.ForegroundProperty, theme.TextBrushKey);
         body.Children.Add(noteText);
 
-        var nextReminder = ReminderSchedule.GetNextDueUtc(
+        var nextReminder = NextReminderUtc(
             _desktopWorkspace.Snapshot.Settings,
             note,
             nowUtc);
@@ -197,6 +197,42 @@ public sealed partial class FloatingWindow
                 stampTranslate));
 
         return card;
+    }
+
+    // #240：可见便签「下次提醒」按便签缓存，渲染签名与便签卡共用同一份结果。缓存在以下最先发生者作废：
+    // 整分钟翻转、到达该便签缓存的提醒时刻、任一工作区状态变化、节假日日历状态变化。
+    private readonly Dictionary<string, CachedNextReminder> _nextReminderCache = new(StringComparer.Ordinal);
+    private long _nextReminderCacheMinute = long.MinValue;
+
+    private readonly record struct CachedNextReminder(DateTimeOffset? DueUtc, DateTimeOffset ComputedAtUtc);
+
+    private DateTimeOffset? NextReminderUtc(CountdownSettings settings, NoteRecord note, DateTimeOffset nowUtc)
+    {
+        var minute = nowUtc.UtcTicks / TimeSpan.TicksPerMinute;
+        if (minute != _nextReminderCacheMinute)
+        {
+            _nextReminderCache.Clear();
+            _nextReminderCacheMinute = minute;
+        }
+
+        // 计算时已过去的提醒时刻（未处理的一次性或日历提醒）不再「到达」，只随状态变化或整分钟翻转更新。
+        if (_nextReminderCache.TryGetValue(note.Id, out var cached) &&
+            cached.ComputedAtUtc <= nowUtc &&
+            (cached.DueUtc is not { } dueUtc || dueUtc <= cached.ComputedAtUtc || nowUtc < dueUtc))
+        {
+            return cached.DueUtc;
+        }
+
+        FloatingNextReminderComputationCountForValidation++;
+        var nextReminder = ReminderSchedule.GetNextDueUtc(settings, note, nowUtc);
+        _nextReminderCache[note.Id] = new CachedNextReminder(nextReminder, nowUtc);
+        return nextReminder;
+    }
+
+    private void RefreshAfterStateChange()
+    {
+        _nextReminderCache.Clear();
+        Refresh();
     }
 
     /// <summary>

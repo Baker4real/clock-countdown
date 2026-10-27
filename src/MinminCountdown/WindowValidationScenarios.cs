@@ -3501,6 +3501,24 @@ public sealed partial class MainWindow
     private Rect ValidationBounds(FrameworkElement element) =>
         element.TransformToAncestor(this).TransformBounds(
             new Rect(new Point(0, 0), element.RenderSize));
+
+    // #240：按现有排版与适配算法为同一文本新建一组分格，供就地更新后的几何对照。
+    internal Grid BuildCountdownBlocksForValidation(string remaining, bool isPrimary)
+    {
+        var host = new MainCountdownBlocksHost
+        {
+            Surface = new Grid
+            {
+                Width = CountdownRemainingColumnWidth,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            },
+            IsPrimary = isPrimary
+        };
+        RenderMainCountdownBlocks(host, remaining);
+        return host.Surface;
+    }
 }
 
 public sealed partial class FloatingWindow

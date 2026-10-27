@@ -438,16 +438,55 @@ internal static partial class ValidationExercises
                     WindowValidationInput.Pump(source.Dispatcher);
                     Undo();
 
+                    // 离场进行中再有领域变更触发整表重建：离场立即清掉。
                     running = Begin(source, viewport, target, next, nextEntersFromBelow);
                     MustApply(workspace, new SaveNoteChange(null, "重建新便签", new DateTime(2038, 7, 15),
                         false, [], Array.Empty<ReminderRule>()));
                     var added = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "重建新便签");
                     AssertCleared(viewport, running.Next, "整表重建");
-                    Must(Math.Abs(Displacement(Card(source, added.Id), viewport)) <= 0.001,
-                        "#243：新出现便签不得产生补位。");
                     Undo();
                     MustApply(workspace, new DeleteNoteChange(added.Id));
                     WindowValidationInput.Pump(source.Dispatcher);
+
+                    if (onFloating)
+                    {
+                        // 捕获之后、Start 之前的同一同步步骤里既完成目标又插入一条新便签。新便签排在下一张卡之后，
+                        // 落在下一张卡完成前的位置上（视口内），捕获时没有旧位置，不得补位；下一张卡照常从旧位置
+                        // 补位，证明这次 Start 确实施加了补位。
+                        var targetCard = Card(floating, target.Id);
+                        Align(floating, viewport, targetCard, bottom: false);
+                        var oldNext = Bounds(Card(floating, next.Id), viewport);
+                        Must(!OutsideViewport(oldNext, viewport),
+                            $"#243：新条目补位探针的视口前置条件不成立。nextTop={oldNext.Top:0.###}; " +
+                            $"viewport={viewport.ActualHeight:0.###}。");
+                        var exit = NoteCompletionExit.Capture(targetCard, viewport) ??
+                            throw new InvalidOperationException("#243：开启动画时完成离场必须截取完成卡片。");
+                        MustApply(workspace, new SetNoteCompletionChange(target.Id, true));
+                        MustApply(workspace, new SaveNoteChange(null, "补位新便签", new DateTime(2038, 7, 12),
+                            false, [], Array.Empty<ReminderRule>()));
+                        var inserted = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "补位新便签");
+                        exit.Start();
+                        viewport.UpdateLayout();
+                        var nextAfter = Card(floating, next.Id);
+                        var nextDelta = Displacement(nextAfter, viewport);
+                        var newNextTop = Bounds(nextAfter, viewport).Top - nextDelta;
+                        Must(ExitVisual(viewport) is not null && exit.ActiveFlipCountForValidation > 0 &&
+                            nextDelta > 0 && Math.Abs(nextDelta - (oldNext.Top - newNextTop)) <= 0.1,
+                            $"#243：插入新便签的同时，原有的下一张卡仍须从旧位置补位。oldY={oldNext.Top:0.###}; " +
+                            $"newY={newNextTop:0.###}; displacement={nextDelta:0.###}; " +
+                            $"activeFlip={exit.ActiveFlipCountForValidation}。");
+                        var insertedCard = Card(floating, inserted.Id);
+                        var insertedBounds = Bounds(insertedCard, viewport);
+                        var insertedDelta = Displacement(insertedCard, viewport);
+                        Must(!OutsideViewport(insertedBounds, viewport) && Math.Abs(insertedDelta) <= 0.001,
+                            $"#243：捕获时不存在的新便签不得补位。top={insertedBounds.Top:0.###}; " +
+                            $"displacement={insertedDelta:0.###}; viewport={viewport.ActualHeight:0.###}。");
+                        exit.Dispose();
+                        AssertCleared(viewport, nextAfter, "新条目补位探针结束");
+                        MustApply(workspace, new SetNoteCompletionChange(target.Id, false));
+                        MustApply(workspace, new DeleteNoteChange(inserted.Id));
+                        WindowValidationInput.Pump(floating.Dispatcher);
+                    }
 
                     running = Begin(source, viewport, target, next, nextEntersFromBelow);
                     viewport.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));

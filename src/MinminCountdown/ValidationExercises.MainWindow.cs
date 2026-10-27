@@ -197,7 +197,7 @@ internal static partial class ValidationExercises
                 main.ShowWorkspace(WorkspaceKind.Countdowns);
                 floating.ShowWorkspace(WorkspaceKind.Countdowns);
                 WindowValidationInput.Pump(main.Dispatcher);
-                var nowText = (TextBlock)main.FindName("NowText");
+                var nowText = main.NowText;
                 var mainDeltas = new List<long>();
                 var floatingDeltas = new List<long>();
 

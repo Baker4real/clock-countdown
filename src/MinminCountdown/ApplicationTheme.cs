@@ -331,8 +331,6 @@ internal sealed class ApplicationTheme : IDisposable
             enabled ? MotionTokens.PopupExitDuration : TimeSpan.Zero);
         _resources["MotionIndicatorDuration"] = new Duration(
             enabled ? MotionTokens.IndicatorDuration : TimeSpan.Zero);
-        _resources["MotionCountdownDuration"] = new Duration(
-            enabled ? MotionTokens.CountdownDuration : TimeSpan.Zero);
         _resources["MotionNoteCompletionExitDuration"] = new Duration(
             enabled ? MotionTokens.NoteCompletionExitDuration : TimeSpan.Zero);
         _resources["MotionEaseOut"] = MotionTokens.CreateEaseOut();
@@ -463,7 +461,6 @@ internal static class MotionTokens
     internal static readonly TimeSpan PopupEnterDuration = TimeSpan.FromMilliseconds(140);
     internal static readonly TimeSpan PopupExitDuration = TimeSpan.FromMilliseconds(90);
     internal static readonly TimeSpan IndicatorDuration = TimeSpan.FromMilliseconds(160);
-    internal static readonly TimeSpan CountdownDuration = TimeSpan.FromMilliseconds(90);
     internal static readonly TimeSpan NoteCompletionExitDuration = TimeSpan.FromMilliseconds(160);
 
     internal static PowerEase CreateEaseOut() => new()

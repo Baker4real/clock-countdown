@@ -145,7 +145,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 管理窗口普通主项数值实际渲染字号为 `20–22 DIP`，大于本行标题（`16 DIP`）。管理窗口色块使用完整 `228 DIP` 列（四分格次项在 `10 DIP` 间距下恰好需要 `226 DIP`，留 `2 DIP` 余量），四分格主项先将间距压至 `4 DIP`；悬浮主项必要时将间距压至 `2 DIP`，再对长数值执行已有有界字号适配（管理窗口下限 `13 DIP`）。两窗显式覆盖 `999 天 13 时 18 分 59 秒` 的真实色块单行、无裁切和标题层级。
 - 悬浮主项在百万天数仍无法以 `12 DIP` 下限容纳时，先将分格内边距和组间距压至零，再适配数字字号；色块最小宽度、`13 DIP` 单位字和 `194 DIP` 列保持不变。最长截止日期在有滚动条时也保留至少 `2 DIP` 的文字测量余量。
 - 数值不得换行、不得裁切；管理窗口与悬浮窗的数值都允许压缩分格内边距而不是压缩字号到不可读。
-- #198：秒位发生变化时，新数字从 `0.6` 透明度淡入到 `1`，使用 `MotionCountdownDuration` 的 `90ms` 时长；该时长继续由 `ApplicationTheme.ClientAreaAnimationEnabled` 收敛为零，系统关闭客户区动画时直接显示目标值。
+- #239：秒位发生变化时直接切换，不再淡入；管理窗口与悬浮窗的主项和次项数值始终保持透明度 `1`，不启动秒位动画。
 
 ### 「超期待！」徽章
 
@@ -445,8 +445,9 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
 | `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
-| `MotionCountdownDuration` | 90ms | `MotionEaseOut`（quartic） | 倒计时数字轻量切换 |
 | `MotionNoteCompletionExitDuration` | 160ms | `MotionEaseOut`（quartic） | 完成便签卡片离场 |
+
+#239：秒位直接切换，不消费动效 token；删除秒位 token 后，最短现役 token 仍为 `MotionPopupExitDuration` 的 90ms，ValidationHarness 的卡顿阈值保持不变。
 
 `MotionCubicEaseOut` 同时作为可复用的 cubic ease-out 资源；新增落点只能引用上述 token，不得在控件模板中写字面时长或第二套缓动。
 
@@ -506,7 +507,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 悬浮窗 250ms tick 刷新按渲染签名分流，不逐拍整表重建：
 
 - 渲染签名输入：当前工作区、显示精度、便签筛选与搜索词、记录 ID 序列、每条记录的标题/目标时刻/标签/完成状态/卡片错误文本/提醒摘要（含「下次提醒」）、主项身份（首条记录与「距离下班」存在性）。签名只比较这些语义输入；剩余时间的数值变化（同一结构、同一精度下的下一秒）不改变签名。
-- 签名不变时只就地更新剩余时间数字与底部状态（今日已赚）：行与便签卡实例保留，倒计时秒位变化的 0.6→1 / 90ms fade（#198 token 合同）按既有规则就地执行，不重建行容器。便签卡上 tick 只触达会随时间变化的文本；复选框、`…` 菜单触发器等交互元素实例必须保持，键盘焦点不得因 tick 迁移或丢失。
+- 签名不变时只就地更新剩余时间数字与底部状态（今日已赚）：行与便签卡实例保留，倒计时秒位变化按 #239 直接切换、不再淡入，不重建行容器。便签卡上 tick 只触达会随时间变化的文本；复选框、`…` 菜单触发器等交互元素实例必须保持，键盘焦点不得因 tick 迁移或丢失。
 - 签名变化时才整表重建；重建后滚动偏移与焦点按「记录 ID + 控件角色」恢复：同一便签的完成复选框与 `…` 菜单触发器是不同角色，焦点必须回到原角色控件，不得落到同卡首个可聚焦控件。
 - 悬浮窗隐藏（托盘/隐藏）或窗口最小化时 tick 跳过渲染；恢复可见或还原到正常态时立即渲染一次。首次显示前的初始渲染不受此门控。
 - 主窗口倒计时行已有同名语义（就地更新 + 重建恢复）；两个窗口共用「签名不变只刷数字」的合同口径，各自实现。
@@ -663,7 +664,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 13.3.1 动效 token 与系统开关
 
-动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的七个时长；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
 
 ### 13.4 对比度基线
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -37,24 +38,57 @@ internal sealed class ValidationReportProjection
         }
     }
 
-    public IReadOnlyDictionary<string, object?> Seal()
+    public IReadOnlyDictionary<string, object?> Seal(ReferenceBaselineDeferral? deferral)
     {
         if (_sealed)
         {
             throw new InvalidOperationException("validate-only report 不能重复封存。");
         }
 
-        var snapshot = ValidationReportContract.Seal(_values, _facts);
+        var snapshot = ValidationReportContract.Seal(_values, _facts, deferral);
         _sealed = true;
         return snapshot;
     }
 }
 
+// 改了视觉源码而尚未重拍时，参考基线必然过期；窗口套件要跑完其余断言，不能停在 validate-only。
+// 只有套件脚本预先建好记录文件并经环境变量交给应用时才开启：过期项写进报告与记录文件，
+// 套件收尾时据记录以失败退出。生产启动、安装验证和基线生成都不带这个变量，照旧严格失败。
+internal sealed class ReferenceBaselineDeferral
+{
+    internal const string LogPathVariable = "MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG";
+    private readonly Action<IReadOnlyList<string>> _record;
+
+    private ReferenceBaselineDeferral(Action<IReadOnlyList<string>> record) => _record = record;
+
+    internal static ReferenceBaselineDeferral? FromEnvironment()
+    {
+        var path = Environment.GetEnvironmentVariable(LogPathVariable);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
+        {
+            throw new InvalidDataException($"{LogPathVariable} 必须指向套件预先建好的记录文件。");
+        }
+
+        return new(items => File.AppendAllLines(path, items, new UTF8Encoding(false)));
+    }
+
+    internal static ReferenceBaselineDeferral InMemory(List<string> sink) => new(sink.AddRange);
+
+    internal void Record(IReadOnlyList<string> items) => _record(items);
+}
+
 internal static class ValidationReportContract
 {
+    internal const string ReferenceBaselinesCurrentFact = "CrossInterfaceReferenceBaselinesCurrent";
     private const string ValidField = "Valid";
     private const string ContractBehaviorField = "ValidationReportContractBehavior";
     private const string ModuleDepthField = "ValidationReportModuleDeep";
+    private const string DeferredField = "DeferredReferenceBaselineFailures";
     private const int MaximumDiagnosticCount = 12;
     private const int MaximumDiagnosticLength = 240;
     private static readonly Regex DiagnosticPathPattern = new(
@@ -72,39 +106,53 @@ internal static class ValidationReportContract
 
     internal static IReadOnlyDictionary<string, object?> Seal(
         Dictionary<string, object?> report,
-        IReadOnlyDictionary<string, string> facts)
+        IReadOnlyDictionary<string, string> facts,
+        ReferenceBaselineDeferral? deferral)
     {
         RunBehaviorExercise(facts);
-        return SealCore(report, facts);
+        return SealCore(report, facts, deferral);
     }
 
     private static IReadOnlyDictionary<string, object?> SealCore(
         Dictionary<string, object?> report,
-        IReadOnlyDictionary<string, string> facts)
+        IReadOnlyDictionary<string, string> facts,
+        ReferenceBaselineDeferral? deferral = null)
     {
         if (report.ContainsKey(ValidField) ||
             report.ContainsKey(ContractBehaviorField) ||
-            report.ContainsKey(ModuleDepthField))
+            report.ContainsKey(ModuleDepthField) ||
+            report.ContainsKey(DeferredField))
         {
             throw new InvalidDataException(
                 "validate-only report 的结论与契约结果字段只能由 Seal 追加。");
         }
 
-        Validate(report, facts);
-        // 走到这里说明每条声明的验证事实都为真；Valid 是这一结论，不再单独赋值。
+        var deferred = Validate(report, facts, deferStaleReferenceBaselines: deferral is not null);
+        // 走到这里说明除显式延后的参考基线过期项外，每条声明的验证事实都为真；Valid 是这一结论，不再单独赋值。
         report.Add(ValidField, true);
         report.Add(ContractBehaviorField, true);
         report.Add(ModuleDepthField, true);
+        if (deferral is not null)
+        {
+            report.Add(DeferredField, deferred.ToArray());
+        }
 
         var snapshot = new ReadOnlyDictionary<string, object?>(
             new Dictionary<string, object?>(report, StringComparer.Ordinal));
         EnsureStableJsonObject(snapshot);
+        if (deferred.Count > 0)
+        {
+            // 记录失败即 validate-only 失败：延后项不能只留在一份可能没人读的报告里。
+            deferral!.Record(deferred);
+        }
+
         return snapshot;
     }
 
-    private static void Validate(
+    private static List<string> Validate(
         IReadOnlyDictionary<string, object?> report,
-        IReadOnlyDictionary<string, string> facts)
+        IReadOnlyDictionary<string, string> facts,
+        bool deferStaleReferenceBaselines)
     {
         var json = JsonSerializer.Serialize(report);
         var repeatedJson = JsonSerializer.Serialize(report);
@@ -124,6 +172,7 @@ internal static class ValidationReportContract
         }
 
         var failedFacts = new List<string>();
+        var deferred = new List<string>();
         foreach (var (field, meaning) in facts)
         {
             if (!report.TryGetValue(field, out var value) || value is not bool typedValue)
@@ -134,7 +183,9 @@ internal static class ValidationReportContract
 
             if (!typedValue)
             {
-                failedFacts.Add($"{field}（{meaning}）");
+                var deferrable = deferStaleReferenceBaselines &&
+                    string.Equals(field, ReferenceBaselinesCurrentFact, StringComparison.Ordinal);
+                (deferrable ? deferred : failedFacts).Add($"{field}（{meaning}）");
             }
         }
 
@@ -155,8 +206,8 @@ internal static class ValidationReportContract
             }
         }
 
-        var mainMode = ReadManifestMode(report, root, "MainReferenceBaseline");
-        var floatingMode = ReadManifestMode(report, root, "FloatingReferenceBaseline");
+        var mainMode = ReadManifestMode(report, root, "MainReferenceBaseline", deferStaleReferenceBaselines, deferred);
+        var floatingMode = ReadManifestMode(report, root, "FloatingReferenceBaseline", deferStaleReferenceBaselines, deferred);
         if (mainMode != floatingMode)
         {
             throw new InvalidDataException(
@@ -203,12 +254,16 @@ internal static class ValidationReportContract
             throw new InvalidDataException(
                 "发布包模式不能伪造主窗口便签卡提醒摘要测量。");
         }
+
+        return deferred;
     }
 
     private static ManifestMode ReadManifestMode(
         IReadOnlyDictionary<string, object?> report,
         JsonElement root,
-        string prefix)
+        string prefix,
+        bool deferStale,
+        List<string> deferred)
     {
         var requested = ReadBoolean(report, $"{prefix}Requested");
         var manifestAvailable = ReadBoolean(report, $"{prefix}ManifestAvailable");
@@ -219,13 +274,19 @@ internal static class ValidationReportContract
         {
             if (!manifestAvailable || !validated || captureCount == 0)
             {
-                throw new InvalidDataException(
-                    BuildManifestFailureMessage(
-                        root,
-                        prefix,
-                        manifestAvailable,
-                        validated,
-                        captureCount));
+                var message = BuildManifestFailureMessage(
+                    root,
+                    prefix,
+                    manifestAvailable,
+                    validated,
+                    captureCount);
+                // 只有“manifest 在、实拍也写出了、比对没过”才是过期；缺 manifest 或没有实拍照旧失败。
+                if (!(deferStale && manifestAvailable && captureCount > 0))
+                {
+                    throw new InvalidDataException(message);
+                }
+
+                deferred.Add(message);
             }
         }
         else if (manifestAvailable || validated || captureCount != 0)
@@ -234,7 +295,8 @@ internal static class ValidationReportContract
                 $"{prefix} 发布包模式不能声明 manifest/验证成功或伪造 capture。");
         }
 
-        return new ManifestMode(requested, manifestAvailable, validated);
+        // 模式只看请求与 manifest 是否在场：延后时主窗口与悬浮窗可以只有一侧过期。
+        return new ManifestMode(requested, manifestAvailable);
     }
 
     private static string BuildManifestFailureMessage(
@@ -590,6 +652,62 @@ internal static class ValidationReportContract
             false,
             "契约未拒绝发布包伪造便签卡提醒摘要测量。");
 
+        // 参考基线延后：只在显式开启时生效，只放过基线过期这一类失败，并把延后项同时写进报告与记录。
+        if (!facts.ContainsKey(ReferenceBaselinesCurrentFact))
+        {
+            throw new InvalidOperationException($"参考基线一致性未声明为验证事实：{ReferenceBaselinesCurrentFact}。");
+        }
+
+        MustReject(
+            facts,
+            report => report[ReferenceBaselinesCurrentFact] = false,
+            true,
+            "未开启延后时契约未拒绝参考基线过期。");
+        var staleRecord = new List<string>();
+        var staleReport = CreateBehaviorFixture(facts, requested: true);
+        staleReport[ReferenceBaselinesCurrentFact] = false;
+        staleReport["FloatingReferenceBaselineValidated"] = false;
+        var staleSnapshot = SealCore(staleReport, facts, ReferenceBaselineDeferral.InMemory(staleRecord));
+        var staleDeferred = staleSnapshot[DeferredField] as string[];
+        if (staleSnapshot[ValidField] is not true ||
+            staleDeferred is not { Length: 2 } ||
+            !staleDeferred.SequenceEqual(staleRecord, StringComparer.Ordinal) ||
+            !staleDeferred[0].StartsWith(ReferenceBaselinesCurrentFact, StringComparison.Ordinal) ||
+            !staleDeferred[1].StartsWith("FloatingReferenceBaseline 源码树模式验证失败", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("开启延后时参考基线过期未同时记入报告与记录。");
+        }
+
+        var currentRecord = new List<string>();
+        var currentSnapshot = SealCore(
+            CreateBehaviorFixture(facts, requested: true),
+            facts,
+            ReferenceBaselineDeferral.InMemory(currentRecord));
+        if (currentSnapshot[DeferredField] is not string[] { Length: 0 } || currentRecord.Count != 0)
+        {
+            throw new InvalidOperationException("开启延后但基线未过期时不应有延后项。");
+        }
+
+        var otherFact = facts.Keys.First(field =>
+            !string.Equals(field, ReferenceBaselinesCurrentFact, StringComparison.Ordinal));
+        MustRejectDeferred(facts, report => report[otherFact] = false, "开启延后时契约仍须拒绝其他验证事实失败。");
+        MustRejectDeferred(
+            facts,
+            report =>
+            {
+                report["MainReferenceBaselineValidated"] = false;
+                report["MainReferenceBaselineManifestAvailable"] = false;
+            },
+            "开启延后时契约仍须拒绝缺少 manifest。");
+        MustRejectDeferred(
+            facts,
+            report =>
+            {
+                report["MainReferenceBaselineValidated"] = false;
+                report["MainReferenceBaselineCaptures"] = Array.Empty<object>();
+            },
+            "开启延后时契约仍须拒绝没有实拍。");
+
         var sourceSnapshot = SealCore(CreateBehaviorFixture(facts, requested: true), facts);
         var firstJson = JsonSerializer.Serialize(sourceSnapshot);
         var secondJson = JsonSerializer.Serialize(sourceSnapshot);
@@ -620,6 +738,24 @@ internal static class ValidationReportContract
         var report = CreateBehaviorFixture(facts, requested);
         mutate(report);
         MustThrow<InvalidDataException>(() => SealCore(report, facts), message);
+    }
+
+    private static void MustRejectDeferred(
+        IReadOnlyDictionary<string, string> facts,
+        Action<Dictionary<string, object?>> mutate,
+        string message)
+    {
+        var record = new List<string>();
+        var report = CreateBehaviorFixture(facts, requested: true);
+        report[ReferenceBaselinesCurrentFact] = false;
+        mutate(report);
+        MustThrow<InvalidDataException>(
+            () => SealCore(report, facts, ReferenceBaselineDeferral.InMemory(record)),
+            message);
+        if (record.Count != 0)
+        {
+            throw new InvalidOperationException($"{message}被拒绝的报告不应留下延后记录。");
+        }
     }
 
     private static Dictionary<string, object?> CreateBehaviorFixture(
@@ -713,6 +849,5 @@ internal static class ValidationReportContract
 
     private sealed record ManifestMode(
         bool Requested,
-        bool ManifestAvailable,
-        bool Validated);
+        bool ManifestAvailable);
 }

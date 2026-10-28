@@ -163,15 +163,27 @@ if ($Clean) {
         else {
             $resolvedCleanPath
         }
-        $cleanupJson = & $safeTreeDelete `
-            -Mode BatchPurge `
-            -TargetPaths $resolvedCleanPath `
-            -CapabilityRoot $cleanupCapabilityRoot `
-            -ConfirmApply `
-            -ConfirmPurge `
-            -Json | Out-String
-        if ($LASTEXITCODE -ne 0) {
-            throw "受管构建目录清理失败：$resolvedCleanPath（退出码 $LASTEXITCODE）：$($cleanupJson.Trim())"
+        # 删除门的全局锁被别的会话的长批次占着时，门等 2 分钟后报 deployment-mutex-acquire-timeout。
+        # 这不是本次构建的错：只对这一种拒绝有限重试，其余失败照旧立即抛出。
+        $cleanupAttempts = 5
+        for ($cleanupAttempt = 1; ; $cleanupAttempt++) {
+            $cleanupJson = & $safeTreeDelete `
+                -Mode BatchPurge `
+                -TargetPaths $resolvedCleanPath `
+                -CapabilityRoot $cleanupCapabilityRoot `
+                -ConfirmApply `
+                -ConfirmPurge `
+                -Json | Out-String
+            $cleanupExitCode = $LASTEXITCODE
+            if ($cleanupExitCode -eq 0) { break }
+            $refusal = $null
+            try { $refusal = $cleanupJson | ConvertFrom-Json -ErrorAction Stop } catch { }
+            $gateBusy = $null -ne $refusal -and $null -ne $refusal.PSObject.Properties['refusalReason'] -and
+                $refusal.refusalReason -eq 'deployment-mutex-acquire-timeout'
+            if (-not $gateBusy -or $cleanupAttempt -ge $cleanupAttempts) {
+                throw "受管构建目录清理失败：$resolvedCleanPath（退出码 $cleanupExitCode，第 $cleanupAttempt 次尝试）：$($cleanupJson.Trim())"
+            }
+            Write-Host "删除门锁被别的会话占用（$($cleanupJson.Trim())），第 $cleanupAttempt/$cleanupAttempts 次尝试未取得，继续等待。"
         }
         $cleanup = $cleanupJson | ConvertFrom-Json
         if (-not $cleanup.completed -or $cleanup.purgedCount -ne 1) {

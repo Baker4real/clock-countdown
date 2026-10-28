@@ -22,6 +22,41 @@ intent: 按 issue 类型定义必需检查、可选检查和明确的免测理�
 
 关闭时只依据本票的必需检查逐项对账。父 issue 的汇总只能引用子票记录，不能把父票状态或本地构建结果提升为子票证据。
 
+## 记录文件
+
+`-RecordPath` 指向一份 UTF-8 JSON：顶层 `issues` 数组每票一条记录，可选的 `parentIssue` 指定父票（也可用 `-ParentIssue`）。回写脚本会先用 `tools/Test-IssueAcceptance.ps1` 校验记录。下面这份最小示例能通过校验和预演，替换票号、类型和证据即可：
+
+```json
+{
+  "parentIssue": 200,
+  "issues": [
+    {
+      "number": 201,
+      "taskType": "docs",
+      "requiredChecks": ["diff-check", "docs-links"],
+      "evidence": [
+        { "check": "diff-check", "status": "processed", "detail": "git diff --check <基点>..<提交> 退出码 0。" },
+        { "check": "docs-links", "status": "processed", "detail": "12 个受跟踪 Markdown 文件、30 个本地链接全部可解析。" }
+      ],
+      "notApplicable": [
+        { "check": "runtime-behavior", "reason": "只改 docs/ 下的说明，没有触达运行合同或渲染表面。" }
+      ],
+      "status": "closed",
+      "summary": "一句话写清本票交付了什么。",
+      "missing": [],
+      "next": "无。"
+    }
+  ]
+}
+```
+
+先不带开关预演，检查输出目录里的 `issue-<票号>.md` 与 `plan.json`，再用同一份记录加 `-Apply -CloseSatisfied` 正式回写。不传 `-OutputDirectory` 时输出写到 `logs/issue-writeback/<时间戳>-<随机后缀>/`，已有目录不复用：
+
+```powershell
+pwsh -NoLogo -NoProfile -File ./tools/Invoke-IssueWriteback.ps1 -RecordPath <records.json>
+pwsh -NoLogo -NoProfile -File ./tools/Invoke-IssueWriteback.ps1 -RecordPath <records.json> -Apply -CloseSatisfied
+```
+
 ## 回写与恢复
 
 `tools/Invoke-IssueWriteback.ps1` 默认生成正文和计划；只有 `-Apply` 才发请求，关闭票还须 `-CloseSatisfied`。`-Repo` 缺省时从当前仓库 `origin` 远端解析 `owner/repo`，解析失败即拒绝运行。每票在 POST 前保存意图、取得评论 ID 后立即保存，再独立回读正文和状态。父票在所有子票回读通过后处理。

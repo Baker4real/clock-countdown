@@ -3924,6 +3924,9 @@ $fixture = @'
 
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
+    # 改了视觉源码而尚未重拍时，validate-only 把参考基线过期项记进这份记录、照常输出报告；本套件跑完其余断言后以 75 退出。
+    $referenceBaselineDeferralPath = Join-Path $testRoot 'reference-baseline-deferrals.log'
+    Enable-CountdownReferenceBaselineDeferral -Path $referenceBaselineDeferralPath
     $captureArgumentMarker = 'argument with spaces;not-a-command'
     $captureHelperProbeSource = @'
 param([Parameter(Mandatory)] [string] $Value)
@@ -4246,6 +4249,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $adapterValidationDocument.Dispose()
     }
     $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
+    # 参考基线过期已延后时，复述基线比对结果的断言（Validated、门禁、实拍与基线 SHA、像素阈值、残留诊断）
+    # 留到重拍后的重跑；其余断言照常执行，套件收尾以 75 退出。
+    $deferredReferenceBaselines = @(
+        if ($null -ne $adapterValidation.PSObject.Properties['DeferredReferenceBaselineFailures']) {
+            $adapterValidation.DeferredReferenceBaselineFailures
+        })
+    $mainReferenceBaselineDeferred = @($deferredReferenceBaselines |
+        Where-Object { ([string] $_).StartsWith('MainReferenceBaseline ', [StringComparison]::Ordinal) }).Count -gt 0
+    $floatingReferenceBaselineDeferred = @($deferredReferenceBaselines |
+        Where-Object { ([string] $_).StartsWith('FloatingReferenceBaseline ', [StringComparison]::Ordinal) }).Count -gt 0
     $adapterDiagnosticEvents = @(
         Get-Content -LiteralPath $adapterDiagnosticPath |
             ForEach-Object { ($_ | ConvertFrom-Json).event }
@@ -4813,11 +4826,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
     Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($adapterValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
     if ($mainReferenceBaselineRequired) {
-    Assert-Equal $true ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest'
+    Assert-Equal (-not $mainReferenceBaselineDeferred) ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest（基线过期已延后时如实记为未通过）'
     Assert-Equal "$($visualBaseline.Main.RelativeDirectory)/manifest.json" ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
     Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
-    Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
+    if (-not $mainReferenceBaselineDeferred) {
+        Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
+    }
     $mainReferenceCaptures = @($adapterValidation.MainReferenceBaselineCaptures)
     $expectedMainReferenceCaptureIds = @(
         'main-day-countdowns-empty',
@@ -4835,10 +4850,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 9 @($mainReferenceCaptures | ForEach-Object { "$($_.Theme)|$($_.Workspace)|$($_.State)" } | Sort-Object -Unique).Count '主窗口九个 Theme/Workspace/State 组合唯一'
     Assert-Equal 9 @($mainReferenceCaptures.BaselineSha256 | Sort-Object -Unique).Count '主窗口九帧 PNG hash 全部唯一'
     Assert-Equal 9 @($mainReferenceCaptures.StateFingerprint.Sha256 | Sort-Object -Unique).Count '主窗口九帧状态指纹全部唯一'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike "$($visualBaseline.Main.RelativeDirectory)/*.png" -or $_.BaselineSha256 -ne $_.ActualSha256 }).Count '主窗口九帧路径可移植且基线与实拍 SHA 一致'
+    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Path -notlike "$($visualBaseline.Main.RelativeDirectory)/*.png" -or (-not $mainReferenceBaselineDeferred -and $_.BaselineSha256 -ne $_.ActualSha256) }).Count '主窗口九帧路径可移植且基线与实拍 SHA 一致（基线过期已延后时只核对路径）'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.Alpha.Minimum -ne 255 -or $_.Alpha.Maximum -ne 255 -or $_.Alpha.NonOpaquePixelCount -ne 0 -or $_.Alpha.OpaquePixelCount -ne 864000 }).Count '主窗口九帧 864×1000 画布全部不透明'
     Assert-Equal 0 @($mainReferenceCaptures | Where-Object { $_.ContentRoi.Algorithm -ne 'fixed full-canvas ROI for opaque 864x1000 main-window surface' -or $_.ContentRoi.X -ne 0 -or $_.ContentRoi.Y -ne 0 -or $_.ContentRoi.Width -ne 864 -or $_.ContentRoi.Height -ne 1000 -or $_.ContentRoi.PixelCount -ne 864000 }).Count '主窗口 opaque surface 使用固定全画布 ROI 而非透明 alpha ROI'
-    Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口九帧像素指标未超过 manifest 固定阈值'
+    if (-not $mainReferenceBaselineDeferred) {
+        Assert-Equal 0 @($mainReferenceCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '主窗口九帧像素指标未超过 manifest 固定阈值'
+    }
     Assert-Equal 2 @($mainReferenceCaptures | Where-Object { $_.StateFingerprint.CountdownCount -eq 0 -and $_.StateFingerprint.NoteCount -eq 0 }).Count '主窗口 Empty 两态确实绑定零数据设置'
     Assert-Equal 2 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Representative' -and $_.StateFingerprint.CountdownCount -eq 3 -and $_.StateFingerprint.NoteCount -eq 3 -and $_.StateFingerprint.ActiveNoteCount -eq 3 }).Count '主窗口 Representative 两态绑定少量倒计时、未完成便签与提醒'
     Assert-Equal 1 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Edit' -and $_.StateFingerprint.CountdownCount -eq 3 -and $_.StateFingerprint.NoteCount -eq 3 }).Count '主窗口 Edit 便签帧绑定 Representative 数据并打开编辑器'
@@ -4868,7 +4885,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     Assert-Equal $true ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '主窗口便签卡提醒摘要真实渲染达到 12 DIP'
     Assert-Equal 0 @($noteCardReminderMeasurements | Where-Object { [double] $_.FontSizeDip -lt 12 -or -not $_.MeetsContract }).Count '每份便签卡提醒摘要取样真实渲染均 ≥ 12 DIP'
-    Assert-Equal 0 @($adapterValidation.MainReferenceBaselineDiagnostics).Count '主窗口正式 manifest 验证没有残留诊断'
+    if (-not $mainReferenceBaselineDeferred) {
+        Assert-Equal 0 @($adapterValidation.MainReferenceBaselineDiagnostics).Count '主窗口正式 manifest 验证没有残留诊断'
+    }
     Assert-Equal $true ([bool] $adapterValidation.MainDaySingleBorderGate) '主窗口日间态在声明装饰带之外只保留一层控件边框'
     Assert-Equal $true ([bool] $adapterValidation.MainDaySingleBorderGateIsolationBehavior) '主窗口意外控件边、标签相交和下半装饰缺失负夹具逐项失败'
     Assert-Equal 'unexpected-control-edge,label-intersection,missing-lower-ornament' ((@($adapterValidation.MainDaySingleBorderNegativeFixtures) -join ',')) '主窗口单边框负向夹具集合固定'
@@ -4976,15 +4995,19 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ($floatingReferenceBaselineRequired) {
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
-        Assert-Equal $true ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest'
+        Assert-Equal (-not $floatingReferenceBaselineDeferred) ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest（基线过期已延后时如实记为未通过）'
         Assert-Equal "$($visualBaseline.Floating.RelativeDirectory)/manifest.json" ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
         Assert-Equal $visualBaseline.Version ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
         Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
-        Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
+        if (-not $floatingReferenceBaselineDeferred) {
+            Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
+        }
         Assert-Equal 5 @($adapterValidation.FloatingReferenceBaselineCaptures).Count '悬浮窗参考 manifest 严格绑定五帧（#236 收尾场景）'
         Assert-Equal 'floating-countdowns-day,floating-workday-complete-day,long-notes-day-bottom,long-notes-day-top,notes-search-expanded-day' ((@($adapterValidation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') '悬浮窗参考 manifest capture ID 固定'
-        Assert-Equal 8 @($adapterValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签八个真实新鲜度与排版门禁全部通过'
+        if (-not $floatingReferenceBaselineDeferred) {
+            Assert-Equal 8 @($adapterValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签八个真实新鲜度与排版门禁全部通过'
+        }
         Assert-Equal 5 @($adapterValidation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count '五帧 PNG hash 全部唯一'
         Assert-Equal 5 @($floatingReferenceBaselineDefinition.captures).Count '悬浮窗正式 manifest 严格声明五帧'
         foreach ($expectedCapture in @($floatingReferenceBaselineDefinition.captures)) {
@@ -4993,10 +5016,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
             Assert-Equal 1 $reportedCapture.Count "悬浮窗 capture ID 唯一绑定正式 manifest：$($expectedCapture.captureId)"
             Assert-Equal ([string] $expectedCapture.path) ([string] $reportedCapture[0].Path) "悬浮窗 capture 路径绑定正式 manifest：$($expectedCapture.captureId)"
             Assert-Equal ([string] $expectedCapture.pngSha256) ([string] $reportedCapture[0].BaselineSha256) "悬浮窗 baseline SHA 绑定正式 manifest：$($expectedCapture.captureId)"
-            Assert-Equal ([string] $expectedCapture.pngSha256) ([string] $reportedCapture[0].ActualSha256) "悬浮窗实拍 SHA 绑定正式 manifest：$($expectedCapture.captureId)"
+            if (-not $floatingReferenceBaselineDeferred) {
+                Assert-Equal ([string] $expectedCapture.pngSha256) ([string] $reportedCapture[0].ActualSha256) "悬浮窗实拍 SHA 绑定正式 manifest：$($expectedCapture.captureId)"
+            }
         }
-        Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '当前真实帧像素指标未超过 manifest 固定阈值'
-        Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineDiagnostics).Count '悬浮窗参考 manifest 验证没有残留诊断'
+        if (-not $floatingReferenceBaselineDeferred) {
+            Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '当前真实帧像素指标未超过 manifest 固定阈值'
+            Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineDiagnostics).Count '悬浮窗参考 manifest 验证没有残留诊断'
+        }
     }
     else {
         Assert-Equal $false ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '发布包不伪造未携带参考资产时的视觉验收'
@@ -5840,6 +5867,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         RuntimeSchemaVersion = $runtimeReceipt.schemaVersion
         AdapterUiValidated = $true
     } | ConvertTo-Json
+    Complete-CountdownReferenceBaselineDeferral -Path $referenceBaselineDeferralPath -Suite 'CSharp'
 }
 catch {
     # 记下主失败，finally 里的清理失败据此只告警。

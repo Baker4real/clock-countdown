@@ -437,6 +437,44 @@ function Get-CountdownVisualBaseline {
     }
 }
 
+function Enable-CountdownReferenceBaselineDeferral {
+    # 源码树模式下改了视觉源码而尚未重拍时，参考基线必然过期。开启后应用把过期项写进这份记录、照常输出报告，
+    # 窗口套件得以跑完其余断言；收尾时 Complete-CountdownReferenceBaselineDeferral 据记录以失败退出。
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string] $Path)
+
+    [System.IO.File]::WriteAllText($Path, '', [System.Text.UTF8Encoding]::new($false))
+    [Environment]::SetEnvironmentVariable(
+        'MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG',
+        $Path,
+        [EnvironmentVariableTarget]::Process)
+}
+
+function Complete-CountdownReferenceBaselineDeferral {
+    # 套件跑完全部断言后调用。记录里有延后项就写到 stderr 并以 75 退出：低影响启动器据此继续调度其余阶段，
+    # 整轮仍判失败（75 与 tools/Countdown.SuiteRun.psm1 的 $ReferenceBaselinePendingExitCode 一致）。stdout 只留套件 JSON。
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $Suite
+    )
+
+    $entries = @([System.IO.File]::ReadAllLines($Path, [System.Text.UTF8Encoding]::new($false)) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -Unique)
+    [Environment]::SetEnvironmentVariable(
+        'MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG',
+        $null,
+        [EnvironmentVariableTarget]::Process)
+    [System.IO.File]::Delete($Path)
+    if ($entries.Count -eq 0) { return }
+
+    [Console]::Error.WriteLine("参考基线待重拍：$Suite 其余断言已全部通过；以下 $($entries.Count) 项因视觉源码、EXE 或实拍与现役基线不一致而延后：")
+    foreach ($entry in $entries) { [Console]::Error.WriteLine("  - $entry") }
+    [Console]::Error.WriteLine('改了视觉源码就按 README「本机验证」重拍基线后重跑本阶段；没改却失配时先按 DESIGN.md 视觉基线节核对显示缩放（CSharp err 日志的 MONITOR_DPI_PROBE before=），不为过门禁重拍。延后不改变本阶段和整轮的失败结论。')
+    exit 75
+}
+
 function Invoke-CountdownValidationSuite {
     [CmdletBinding()]
     param(
@@ -531,6 +569,8 @@ function Invoke-CountdownValidationSuite {
         MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = if ($visualBaselinesRequired) { $resolvedRoot } else { $null }
         MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = $null
         MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE = $null
+        # 安装验证永远严格：不继承窗口套件的参考基线延后。
+        MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG = $null
     }
     $applicationValidationRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     [System.IO.Directory]::CreateDirectory($applicationValidationRoot) | Out-Null
@@ -619,4 +659,5 @@ function Invoke-CountdownValidationSuite {
     }
 }
 
-Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Get-CountdownVisualBaseline, Invoke-CountdownValidationSuite
+Export-ModuleMember -Function Assert-CountdownApplicationValidationReport, Get-CountdownVisualBaseline, Invoke-CountdownValidationSuite,
+    Enable-CountdownReferenceBaselineDeferral, Complete-CountdownReferenceBaselineDeferral

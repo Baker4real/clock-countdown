@@ -2500,9 +2500,28 @@ function New-CountdownRemoteDeploymentWindowsAdapter {
             param($AdapterState, $Context)
             $AdapterState.Stage = '刷新桌面图标'
             $iconRefreshPath = Join-Path $env:SystemRoot 'System32\ie4uinit.exe'
-            $null = & $iconRefreshPath -show 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                throw "桌面图标刷新失败，退出码：$LASTEXITCODE"
+            # ie4uinit 是 GUI 程序，用 & 调用时 PowerShell 不等它退出，也不更新 $LASTEXITCODE；
+            # 改从进程对象读真实退出码，并限时 30 秒，不在安装事务锁内无限等待。
+            $iconRefreshStart = [System.Diagnostics.ProcessStartInfo]::new()
+            $iconRefreshStart.FileName = $iconRefreshPath
+            $iconRefreshStart.UseShellExecute = $false
+            $iconRefreshStart.CreateNoWindow = $true
+            [void] $iconRefreshStart.ArgumentList.Add('-show')
+            $iconRefresh = [System.Diagnostics.Process]::new()
+            $iconRefresh.StartInfo = $iconRefreshStart
+            try {
+                if (-not $iconRefresh.Start()) {
+                    throw "无法启动桌面图标刷新：$iconRefreshPath"
+                }
+                if (-not $iconRefresh.WaitForExit(30000)) {
+                    throw '桌面图标刷新 30 秒内没有结束。'
+                }
+                if ($iconRefresh.ExitCode -ne 0) {
+                    throw "桌面图标刷新失败，退出码：$($iconRefresh.ExitCode)"
+                }
+            }
+            finally {
+                $iconRefresh.Dispose()
             }
         }
         Dispose = {

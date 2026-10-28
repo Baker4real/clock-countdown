@@ -46,6 +46,8 @@ $environment = @{
     MINMIN_COUNTDOWN_FLOATING_BASELINE_GENERATE = '1'
     MINMIN_COUNTDOWN_EMPTY_DAY_PROBE = $null
     MINMIN_COUNTDOWN_VISUAL_EVIDENCE_DIR = Join-Path $runDirectory 'captures'
+    # 生成后的自检必须严格通过，不继承窗口套件的参考基线延后。
+    MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG = $null
 }
 $previousEnvironment = @{}
 try {

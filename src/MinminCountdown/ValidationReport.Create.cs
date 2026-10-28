@@ -2270,9 +2270,12 @@ internal static partial class ValidationReport
             mainStructure.CountdownWorkspaceIsCanvas &&
             floatingWorkspace.InitialStateMatches &&
             floatingWorkspace.SwitchingStaysSynchronized &&
-            reminderCenterRepresentativeCapture.Rendered &&
-            (!crossInterfaceSourceTreeMode ||
-                (mainReferenceBaseline.AllPassed && floatingReferenceExercise.Baseline.AllPassed));
+            reminderCenterRepresentativeCapture.Rendered;
+        // 参考基线是否仍与当前源码、EXE 和实拍一致单列一条事实：改了视觉源码而尚未重拍时，
+        // 窗口套件可以显式延后这一条（见 ReferenceBaselineDeferral），其余行为事实照常判定。
+        var crossInterfaceReferenceBaselinesCurrent =
+            !crossInterfaceSourceTreeMode ||
+            (mainReferenceBaseline.AllPassed && floatingReferenceExercise.Baseline.AllPassed);
         var crossInterfaceSharedWarmPinkTokens =
             warmYellowPaletteMatchesLegacy &&
             noteDisclosureThemeTokens &&
@@ -2351,6 +2354,7 @@ internal static partial class ValidationReport
             crossInterfaceRealSettingsConserved;
         report["CrossInterfaceAiReferencePriority"] = Must(crossInterfaceAiReferencePriority, "跨界面整合门禁");
         report["CrossInterfacePageSpecificComposition"] = Must(crossInterfacePageSpecificComposition, "跨界面整合门禁");
+        report[ValidationReportContract.ReferenceBaselinesCurrentFact] = Must(crossInterfaceReferenceBaselinesCurrent, "源码树模式下主窗口与悬浮窗参考基线与当前源码、EXE 和实拍一致");
         report["CrossInterfaceSharedWarmPinkTokens"] = Must(crossInterfaceSharedWarmPinkTokens, "跨界面整合门禁");
         report["CrossInterfaceStaticDayThemeInfo"] = Must(crossInterfaceStaticDayThemeInfo, "跨界面整合门禁");
         report["CrossInterfacePlushDecorationLayering"] = Must(crossInterfacePlushDecorationLayering, "跨界面整合门禁");
@@ -2367,6 +2371,6 @@ internal static partial class ValidationReport
         reminderCenterWindow.Close();
         floating.Hide();
         main.Hide();
-        return report.Seal();
+        return report.Seal(ReferenceBaselineDeferral.FromEnvironment());
     }
 }

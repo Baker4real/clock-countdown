@@ -259,6 +259,10 @@ Add-ToolingCheck -Name 'isolation:crash-dialog-watchdog' -Passed ($LASTEXITCODE 
 $suiteRunStateWrite = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteRunStateWrite.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:state-write-retry' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteRunStateWrite -join ' ') -replace '\s+', ' ')
 
+# 启动器打印的失败摘要：混合编码的 err 日志逐行解码、取最后一个错误块；不开窗口。
+$suiteStageExcerpt = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteStageFailureExcerpt.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'suite-run:failure-excerpt' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteStageExcerpt -join ' ') -replace '\s+', ' ')
+
 $docLinkFailures = [System.Collections.Generic.List[string]]::new()
 $markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
     Where-Object {

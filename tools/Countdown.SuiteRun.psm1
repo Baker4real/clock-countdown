@@ -2,6 +2,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# CSharp / Ui 跑完其余断言、只剩参考基线过期时以此退出（Countdown.Validation.psm1 的
+# Complete-CountdownReferenceBaselineDeferral）：阶段记为失败但不触发红即停，其余阶段照常跑完，整轮仍判失败。
+$script:ReferenceBaselinePendingExitCode = 75
+
 function Write-SuiteRunJson {
     param([string] $Path, [object] $Value)
     $temporaryPath = "$Path.$([guid]::NewGuid().ToString('N')).tmp"
@@ -279,7 +283,8 @@ function Invoke-SuiteRun {
                 if ($owned.Process.HasExited) {
                     $code = $owned.Process.ExitCode
                     $status = if ($code -eq 0) { 'Completed' } elseif ($code -eq 124) { 'TimedOut' } else { 'Failed' }
-                    Complete-SuiteOwnedProcess $owned $status $code ''
+                    $failure = if ($code -eq $script:ReferenceBaselinePendingExitCode) { '参考基线待重拍：本阶段其余断言已跑完。' } else { '' }
+                    Complete-SuiteOwnedProcess $owned $status $code $failure
                 }
                 elseif ($owned.Stopwatch.Elapsed.TotalSeconds -ge $stage.TimeoutSeconds) {
                     Complete-SuiteOwnedProcess $owned 'TimedOut' 124 "阶段超过 $($stage.TimeoutSeconds) 秒上限。"
@@ -288,7 +293,7 @@ function Invoke-SuiteRun {
                 [void]$ownedProcesses.Remove($owned)
                 Save-SuiteRun $run
                 Write-Host "[suite] $($stage.Stage)：$($stage.Status)，退出码 $($stage.ExitCode)"
-                if ($stage.Status -ne 'Completed') {
+                if ($stage.Status -ne 'Completed' -and $stage.ExitCode -ne $script:ReferenceBaselinePendingExitCode) {
                     $run.Status = $stage.Status; $run.Failure = "阶段 $($stage.Stage) 未通过。"
                 }
             }
@@ -314,7 +319,15 @@ function Invoke-SuiteRun {
                     throw
                 }
             }
-            if ($ownedProcesses.Count -eq 0) { $run.Status = 'Completed'; break }
+            if ($ownedProcesses.Count -eq 0) {
+                $pendingBaselineStages = @($run.Stages | Where-Object ExitCode -EQ $script:ReferenceBaselinePendingExitCode)
+                if ($pendingBaselineStages.Count -gt 0) {
+                    $run.Status = 'Failed'
+                    $run.Failure = "参考基线待重拍：$(@($pendingBaselineStages.Stage) -join '、') 其余断言已跑完；按 README「本机验证」处理后重跑。"
+                }
+                else { $run.Status = 'Completed' }
+                break
+            }
             Start-Sleep -Milliseconds 100
         }
         $normalReturn = $true
@@ -352,4 +365,65 @@ function Invoke-SuiteRun {
     return $run
 }
 
-Export-ModuleMember -Function Invoke-SuiteRun, Read-SuiteRun, Test-SuiteProcessIdentity
+function Read-SuiteLogLines {
+    param([string] $Path)
+    # 阶段日志是原始字节：多数进程写 UTF-8，未自设编码的 pwsh 按控制台代码页（中文 Windows 为 936）
+    # 写错误块，同一文件里两种都有。按 LF 切行（两种编码的多字节序列都不含 0x0A），逐行先按严格 UTF-8 解码，失败再按 936。
+    $stream = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+    try {
+        $buffer = [System.IO.MemoryStream]::new()
+        $stream.CopyTo($buffer)
+        $bytes = $buffer.ToArray()
+    }
+    finally { $stream.Dispose() }
+    $strict = [System.Text.UTF8Encoding]::new($false, $true)
+    $fallback = [System.Text.Encoding]::GetEncoding(936)
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $start = 0
+    while ($start -lt $bytes.Length) {
+        $end = [Array]::IndexOf($bytes, [byte] 10, $start)
+        if ($end -lt 0) { $end = $bytes.Length }
+        $text = try { $strict.GetString($bytes, $start, $end - $start) } catch { $fallback.GetString($bytes, $start, $end - $start) }
+        $lines.Add($text.TrimEnd("`r"))
+        $start = $end + 1
+    }
+    return $lines.ToArray()
+}
+
+function Get-SuiteStageFailureExcerpt {
+    <#
+    .SYNOPSIS
+        失败阶段 err 日志的摘要：从最后一个 PowerShell 错误块（`Line |` 标记的上一行）起取若干行，没有错误块时取末尾。
+        以 75 退出的阶段把参考基线延后清单写在日志末尾，直接取末尾。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [object] $Stage,
+        [ValidateRange(1, 200)] [int] $MaxLines = 12,
+        [ValidateRange(40, 4000)] [int] $MaxLineLength = 300
+    )
+    foreach ($property in @('Stderr', 'LauncherStderr')) {
+        $path = if ($null -ne $Stage.PSObject.Properties[$property]) { [string] $Stage.$property } else { '' }
+        if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.File]::Exists($path)) { continue }
+        $lines = @(Read-SuiteLogLines $path | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($lines.Count -eq 0) { continue }
+        $marker = -1
+        $pendingBaseline = $null -ne $Stage.PSObject.Properties['ExitCode'] -and $Stage.ExitCode -eq $script:ReferenceBaselinePendingExitCode
+        if (-not $pendingBaseline) {
+            for ($index = $lines.Count - 1; $index -ge 0; $index--) {
+                if ($lines[$index] -match '^\s*Line \|') { $marker = $index; break }
+            }
+        }
+        $first = if ($marker -ge 0) { [Math]::Max(0, $marker - 1) } else { [Math]::Max(0, $lines.Count - $MaxLines) }
+        $last = [Math]::Min($lines.Count, $first + $MaxLines) - 1
+        return [pscustomobject]@{
+            Path = $path
+            Lines = @($lines[$first..$last] | ForEach-Object {
+                    if ($_.Length -gt $MaxLineLength) { $_.Substring(0, $MaxLineLength) + '…' } else { $_ }
+                })
+        }
+    }
+    return $null
+}
+
+Export-ModuleMember -Function Invoke-SuiteRun, Read-SuiteRun, Test-SuiteProcessIdentity, Get-SuiteStageFailureExcerpt

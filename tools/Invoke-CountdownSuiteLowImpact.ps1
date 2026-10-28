@@ -14,6 +14,8 @@ param(
     [switch] $AllowUnisolatedDesktop,
     [ValidateRange(1, 5)] [int] $MaxParallel = 2,
     [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800,
+    # 单实例锁按会话共享（含别的 worktree）。默认被占即拒绝；给秒数则最多等这么久。
+    [ValidateRange(0, 86400)] [int] $WaitForLockSeconds = 0,
     [string] $TauriExecutable,
     [string] $TauriEvidenceDirectory,
     [string] $AppPath,
@@ -57,12 +59,37 @@ else {
     Write-Warning '已显式 -AllowUnisolatedDesktop：窗口会进入用户桌面。用户正在用电脑时禁止。'
 }
 
+# 命名 mutex 查不到持有者：按命令行列出别的启动器进程，只作诊断。排除本进程和祖先，
+# 因为调用方（如 Agent 宿主的 pwsh -Command）的命令文本里也会出现脚本名。
+function Format-SuiteLauncherHolders {
+    $ancestors = [System.Collections.Generic.HashSet[int]]::new()
+    $process = Get-Process -Id $PID
+    while ($null -ne $process -and $ancestors.Count -lt 32 -and $ancestors.Add($process.Id)) { $process = $process.Parent }
+    $holders = @(Get-CimInstance Win32_Process -Filter "Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { -not $ancestors.Contains([int] $_.ProcessId) -and "$($_.CommandLine)" -match 'Invoke-CountdownSuiteLowImpact\.ps1' } |
+        ForEach-Object { $_.ProcessId })
+    if ($holders.Count -eq 0) { return '未找到别的启动器进程' }
+    return "疑似持有者 PID $($holders -join ', ')"
+}
+
 $suiteMutex = [System.Threading.Mutex]::new($false, 'Local\MinminCountdown.SuiteLowImpact')
 $mutexHeld = $false
 try {
     try { $mutexHeld = $suiteMutex.WaitOne(0) }
     catch [System.Threading.AbandonedMutexException] { $mutexHeld = $true }
-    if (-not $mutexHeld) { throw '已有低影响套件启动器实例在运行，拒绝并发。' }
+    if (-not $mutexHeld -and $WaitForLockSeconds -gt 0) {
+        Write-Host "[suite] 已有低影响套件启动器实例在运行（$(Format-SuiteLauncherHolders)），最多等待 $WaitForLockSeconds 秒。"
+        $lockDeadline = [datetime]::UtcNow.AddSeconds($WaitForLockSeconds)
+        while (-not $mutexHeld -and [datetime]::UtcNow -lt $lockDeadline) {
+            # 分段等待，Ctrl+C 能在两段之间生效。
+            try { $mutexHeld = $suiteMutex.WaitOne(1000) }
+            catch [System.Threading.AbandonedMutexException] { $mutexHeld = $true }
+        }
+    }
+    if (-not $mutexHeld) {
+        $waited = if ($WaitForLockSeconds -gt 0) { "等待 $WaitForLockSeconds 秒后仍被占用，" } else { '' }
+        throw "已有低影响套件启动器实例在运行（$(Format-SuiteLauncherHolders)），$($waited)拒绝并发。可加 -WaitForLockSeconds <秒> 排队。"
+    }
     try { [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' }
     catch { Write-Warning "无法设置 BelowNormal 优先级：$($_.Exception.Message)" }
 
@@ -135,6 +162,12 @@ try {
     $result.Stages | Format-Table Stage, ExitCode, Status, ElapsedSeconds, Isolated, DesktopName -AutoSize
     Write-Host "[suite] $($result.Status)；summary：$($result.SummaryPath)"
     if ($result.Failure) { Write-Host "[suite] $($result.Failure)" }
+    foreach ($failedStage in @($result.Stages | Where-Object Status -In @('Failed', 'TimedOut'))) {
+        $excerpt = Get-SuiteStageFailureExcerpt -Stage $failedStage
+        if ($null -eq $excerpt) { continue }
+        Write-Host "[suite] $($failedStage.Stage) 失败摘要（$($excerpt.Path)）："
+        foreach ($line in $excerpt.Lines) { Write-Host "    $line" }
+    }
     exit $result.ExitCode
 }
 finally {

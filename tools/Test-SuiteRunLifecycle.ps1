@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#$
 .SYNOPSIS
-    无窗口验证 SuiteRun 的成功、非零、启动失败、超时、取消和中断回读。
+    无窗口验证 SuiteRun 的成功、非零、参考基线待重拍、启动失败、超时、取消和中断回读。
 #>
 [CmdletBinding()]
 param()
@@ -185,6 +185,13 @@ Invoke-SuiteRun -StageSpecs @($spec) -RepositoryRoot $RepositoryRoot -LogDirecto
     $failed = & $run @(& $makeSpec 'NonZero' 'exit 7')
     Assert-Lifecycle ($failed.Status -eq 'Failed' -and $failed.ExitCode -eq 1 -and $failed.Stages[0].ExitCode -eq 7) '非零阶段应失败并保留退出码'
 
+    # 75 = 参考基线待重拍：阶段记失败但不红即停，后续阶段照常跑完，整轮仍失败。
+    $baselinePending = & $run @((& $makeSpec 'BaselinePending' 'exit 75'), (& $makeSpec 'AfterPending' 'exit 0'))
+    Assert-Lifecycle ($baselinePending.Status -eq 'Failed' -and $baselinePending.ExitCode -eq 1 -and
+        $baselinePending.Stages[0].Status -eq 'Failed' -and $baselinePending.Stages[0].ExitCode -eq 75 -and
+        $baselinePending.Stages[1].Status -eq 'Completed' -and
+        $baselinePending.Failure -match '^参考基线待重拍：BaselinePending ') '退出码 75 应记失败、不中止后续阶段，整轮仍失败'
+
     $startFailed = & $run @(& $makeSpec 'StartFailed' 'exit 0' (Join-Path $tempRoot 'missing-pwsh.exe'))
     Assert-Lifecycle ($startFailed.Status -eq 'Failed' -and $startFailed.ExitCode -eq 1 -and $startFailed.Stages[0].Status -eq 'Failed') '启动异常应形成失败终态'
 
@@ -223,7 +230,7 @@ Invoke-SuiteRun -StageSpecs @($spec) -RepositoryRoot $RepositoryRoot -LogDirecto
         $settingsAfter = [pscustomobject]@{ Length = $settingsAfterItem.Length; LastWriteTimeUtc = $settingsAfterItem.LastWriteTimeUtc; Hash = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash }
         Assert-Lifecycle ($settingsAfter.Length -eq $settingsBefore.Length -and $settingsAfter.LastWriteTimeUtc -eq $settingsBefore.LastWriteTimeUtc -and $settingsAfter.Hash -eq $settingsBefore.Hash) '根 settings.json 指纹必须守恒'
     }
-    Write-Output 'PASS: success, nonzero, start-failure, timeout, cancellation, interrupted-readback'
+    Write-Output 'PASS: success, nonzero, baseline-pending, start-failure, timeout, cancellation, interrupted-readback'
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) { Remove-Item -LiteralPath $tempRoot -Recurse -Force }

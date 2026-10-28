@@ -103,6 +103,17 @@ if (-not [string]::IsNullOrWhiteSpace(
         [Environment]::GetEnvironmentVariable('MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE'))) {
     throw 'UI 测试未清理主窗口视觉基线生成环境变量。'
 }
+# 改了视觉源码而尚未重拍时，validate-only 把过期的参考基线记进这份记录、照常输出报告；本套件跑完其余断言后
+# 据记录以 75 退出（见 Countdown.Validation.psm1）。中途失败时 trap 删掉记录，原错误照常终止脚本。
+$referenceBaselineDeferralRoot = 'D:\Codex\.codex\tmp\clock-countdown-ui-tests'
+[System.IO.Directory]::CreateDirectory($referenceBaselineDeferralRoot) | Out-Null
+$referenceBaselineDeferralPath = Join-Path $referenceBaselineDeferralRoot `
+    ('{0}.reference-baseline-deferrals.log' -f [guid]::NewGuid().ToString('N'))
+Enable-CountdownReferenceBaselineDeferral -Path $referenceBaselineDeferralPath
+trap {
+    if ($referenceBaselineDeferralPath) { [System.IO.File]::Delete($referenceBaselineDeferralPath) }
+    break
+}
 Add-Type -AssemblyName PresentationFramework
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
@@ -656,3 +667,4 @@ if ($null -ne $popupUiaSkipEvidence) {
     Add-Member -InputObject $report -NotePropertyName PopupUiaGate -NotePropertyValue $popupUiaSkipEvidence
 }
 $report | ConvertTo-Json
+Complete-CountdownReferenceBaselineDeferral -Path $referenceBaselineDeferralPath -Suite 'Ui'

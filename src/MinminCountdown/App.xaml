@@ -999,9 +999,12 @@
                             BorderThickness="0"
                             AutomationProperties.Name="打开日历"
                             IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+              <!-- 日期框的 Tab 焦点落在这枚按钮上；整框焦点边界由 IsKeyboardFocusWithin 触发器画，
+                   按钮不再叠 FocusVisualStyle 装饰层（§4 #152）。 -->
               <ui:Button x:Name="PART_Button"
                       Grid.Column="1"
                       Style="{StaticResource {x:Type Button}}"
+                      FocusVisualStyle="{x:Null}"
                       Padding="0"
                       Background="{TemplateBinding Background}"
                       BorderThickness="1"

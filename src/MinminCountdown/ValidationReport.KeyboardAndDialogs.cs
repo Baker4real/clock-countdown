@@ -583,20 +583,21 @@ internal static partial class ValidationReport
             return false;
         }
 
+        // 日期框的焦点边界画在 PART_TextBox（DatePickerTextBox）的边框属性上，不在具名 Border 上。
         control.ApplyTemplate();
-        return new[] { "FocusRing", "Box", "Surface" }
+        return new[] { "FocusRing", "Box", "Surface", "PART_TextBox" }
             .Select(name => control.Template.FindName(name, control))
-            .OfType<Border>()
-            .Any(border =>
-                border.IsVisible &&
-                HasVisibleBrush(border.BorderBrush) &&
-                new[]
-                {
-                    border.BorderThickness.Left,
-                    border.BorderThickness.Top,
-                    border.BorderThickness.Right,
-                    border.BorderThickness.Bottom
-                }.Max() >= 2);
+            .Any(part => part switch
+            {
+                Border border => IsFocusStroke(border.IsVisible, border.BorderBrush, border.BorderThickness),
+                Control inner => IsFocusStroke(inner.IsVisible, inner.BorderBrush, inner.BorderThickness),
+                _ => false
+            });
+
+        static bool IsFocusStroke(bool visible, Brush? brush, Thickness thickness) =>
+            visible &&
+            HasVisibleBrush(brush) &&
+            new[] { thickness.Left, thickness.Top, thickness.Right, thickness.Bottom }.Max() >= 2;
     }
 
     private static bool ValidateMainKeyboardPathNegativeFixtures()

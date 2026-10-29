@@ -1524,7 +1524,7 @@ internal static partial class ValidationReport
             ["MainFocusRingConstantThicknessNoSqueeze"] = Must(interactionStates.FocusRingsReserveSpace, "主窗焦点环常驻透明环变色，聚焦不加厚边、不挤布局"),
             ["MainPrimaryAndPinSingleFocusStroke"] = Must(
                 interactionStates.PrimaryAndPinSingleFocusStroke,
-                "主按钮、置顶与模板自带焦点环的键盘路径控件不叠 FocusVisualStyle 第二套描边，模板不画环的控件保留 2px 暖边"),
+                "主按钮、置顶与模板自己画焦点的键盘路径控件（常驻焦点环、输入框 2px 边界，含日期框的打开日历按钮）不叠 FocusVisualStyle 第二套描边，模板不画焦点的控件保留 2px 暖边"),
             ["MainNotesTabHoverDiffersFromSelected"] = Must(interactionStates.NotesTabHoverDiffersFromSelected, "未选中便签页签悬停边换 ActiveBrush，不复用选中实心底"),
             ["MainLocalControlsPressAndDisabled"] = Must(interactionStates.LocalControlsPressAndDisabled, "本地页签/帮助/提醒单选/日期披露具备按压与禁用外观"),
             ["MainReminderHelpFocusShowsHelp"] = Must(interactionStates.HelpFocusShowsHelpText, "聚焦提醒规则帮助显示与悬停相同的说明并提供帮助文本"),

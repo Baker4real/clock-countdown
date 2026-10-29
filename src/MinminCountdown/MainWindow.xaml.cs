@@ -1230,15 +1230,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
         AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
         AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
-        // #152：模板自带常驻 FocusRing 的控件（页签、次级 / 图标按钮、提醒帮助与单选、标签触发
-        // 按钮）只用模板环变色表达键盘焦点，不再套 FocusVisualStyle——那是被禁止的第二套描边，
-        // 而且 WPF 在 Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它。模板不画焦点环的
-        // 键盘路径控件继续用 2px 暖边 FocusVisualStyle。主按钮与置顶开关不在本列表，见下方。
+        // #152：模板自己画键盘焦点的控件（页签、次级 / 图标按钮、提醒帮助与单选、标签触发按钮的
+        // 常驻 FocusRing，文本框、下拉框与日期框获焦时的 2px 输入面边界）不再套 FocusVisualStyle——
+        // 那是被禁止的第二套描边，而且 WPF 在 Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它。
+        // 模板不画焦点的键盘路径控件继续用 2px 暖边 FocusVisualStyle。主按钮与置顶开关不在本列表，见下方。
         foreach (var element in KeyboardPathControls)
         {
             if (element is Control control)
             {
-                control.FocusVisualStyle = FocusVisualState.HasTemplateFocusRing(control) ? null : keyboardFocusVisual;
+                control.FocusVisualStyle = FocusVisualState.DrawsOwnKeyboardFocus(control) ? null : keyboardFocusVisual;
                 FocusVisualState.Attach(control);
             }
         }
@@ -4219,9 +4219,11 @@ internal static class FocusVisualState
     internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
         (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
 
-    // 模板里有常驻 FocusRing 的控件自己画键盘焦点，不能再叠 FocusVisualStyle 装饰层。
-    internal static bool HasTemplateFocusRing(Control control)
+    // 模板自己画键盘焦点的控件不能再叠 FocusVisualStyle 装饰层：模板里有常驻 FocusRing 的控件，
+    // 以及获焦时由模板把输入面边界换成 2px ActiveBrush 的文本框、下拉框与日期框（App.xaml）。
+    internal static bool DrawsOwnKeyboardFocus(Control control)
     {
+        if (control is TextBox or ComboBox or DatePicker) return true;
         control.ApplyTemplate();
         return control.Template?.FindName("FocusRing", control) is Border;
     }

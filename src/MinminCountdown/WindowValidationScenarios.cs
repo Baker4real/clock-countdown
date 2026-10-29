@@ -2102,19 +2102,26 @@ public sealed partial class MainWindow
                 FocusDoesNotChangeLayout(TopmostCheck, "Box", "Box") &&
                 FocusDoesNotChangeLayout(CountdownTab, "FocusRing", "Surface");
 
-            // 主按钮/置顶与模板自带 FocusRing 的键盘路径控件只有模板环（FocusVisualStyle 为空），
-            // 否则 WPF 会在 Alt/Tab/方向键时另画一层装饰描边；模板不画环的控件保留 2px 暖边。
-            var templateRingControls = KeyboardPathControls
+            // 主按钮/置顶与模板自己画键盘焦点的键盘路径控件（常驻 FocusRing、输入框获焦时的 2px 输入面
+            // 边界）只有模板这一层（FocusVisualStyle 为空），否则 WPF 会在 Alt/Tab/方向键时另画一层装饰
+            // 描边。装饰层画在实际获焦的元素上，日期框的 Tab 焦点落在模板里的打开日历按钮，按钮也不能带。
+            // 模板不画焦点的控件保留 2px 暖边。
+            var selfDrawnFocusControls = KeyboardPathControls
                 .OfType<Control>()
-                .Where(FocusVisualState.HasTemplateFocusRing)
+                .Where(FocusVisualState.DrawsOwnKeyboardFocus)
                 .ToArray();
             var primaryAndPinSingleFocusStroke =
                 SaveCountdownButton.FocusVisualStyle is null &&
                 SaveNoteButton.FocusVisualStyle is null &&
                 TopmostCheck.FocusVisualStyle is null &&
                 new Control[] { CountdownTab, NotesTab, FilterButton, TagManagerButton, PreferencesButton }
-                    .All(templateRingControls.Contains) &&
-                templateRingControls.All(control => control.FocusVisualStyle is null) &&
+                    .All(selfDrawnFocusControls.Contains) &&
+                selfDrawnFocusControls.All(control => control.FocusVisualStyle is null) &&
+                new DatePicker[] { CountdownDate, NoteDate }.All(picker =>
+                {
+                    picker.ApplyTemplate();
+                    return picker.Template?.FindName("PART_Button", picker) is Control { FocusVisualStyle: null };
+                }) &&
                 CountdownListRegion.FocusVisualStyle is Style regularStroke &&
                 RegularFocusVisualThicknessIs(regularStroke, 2);
 

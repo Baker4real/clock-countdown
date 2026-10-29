@@ -349,7 +349,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 主窗可操作性与紧凑命中（#152）
 
-- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。#217 主按钮（`＋ 添加倒计时`/`＋ 添加`）与已勾选的 `窗口置顶` 使用调深的 `MainActionFocusBrush` 暖金；未勾选置顶使用常规 `ActiveBrush`。不得再套 `FocusVisualStyle` 第二套描边，其余键盘路径控件继续消费 2px 暖边 `MainKeyboardFocusVisual`。
+- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。#217 主按钮（`＋ 添加倒计时`/`＋ 添加`）与已勾选的 `窗口置顶` 使用调深的 `MainActionFocusBrush` 暖金；未勾选置顶使用常规 `ActiveBrush`。模板自带常驻 `FocusRing` 的控件（含上列样式，以及共享隐式 Button 模板的 `MainSecondaryButton`、`MainIconButton` 与标签选择触发按钮）不得再套 `FocusVisualStyle` 第二套描边——WPF 会在 Alt、Tab、方向键时绕过 `FocusVisualState` 单独点亮装饰层，鼠标点过的控件按 Alt 也会亮；只有模板不画焦点环的键盘路径控件消费 2px 暖边 `MainKeyboardFocusVisual`。`MainPrimaryAndPinSingleFocusStroke` 遍历键盘路径守住这一条。
 - **选中粉底/实心粉邻色**：选中页签（`PinkTintBrush`）的焦点环与粉底之间常驻 1px 间隙（Surface 外缩 3），环的实际邻色是容器 `CardAltBrush`（实测 3.50 ≥ 3:1）。#217 悬浮窗选中实心粉工作区胶囊仍用暖金外环，但按外侧 `FloatingHeaderSurface` 的实际背景量度（3.75 ≥3:1），不能以内侧深粉填充冒充外侧邻色。键盘焦点环按上下文钉唯一期望 token，不存在仅匹配 token 就放过对比度的分支。
 - **悬停区分**：未选中页签悬停使用 `CardAltBrush` + `ActiveHoverBrush`，不得复用选中实心底；选中页签统一使用 `PinkTintBrush` 底和 `SemiBold` 字重，悬停不得反转层级。
 - **帮助聚焦**：提醒规则 `?` 帮助在键盘聚焦时即时打开与悬停相同的 ToolTip 说明，并以 `AutomationProperties.HelpText` 提供同一份帮助文本。
@@ -457,7 +457,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 `MotionCubicEaseOut` 同时作为可复用的 cubic ease-out 资源；新增落点只能引用上述 token，不得在控件模板中写字面时长或第二套缓动。
 
-主窗口工作区页签与便签“未完成 / 已完成”分段共用选中指示条。指示条的最终左、右边界与选中控件的实际几何对齐；切换时只对位移和横向缩放做 `MotionIndicatorDuration` 过渡，使用 `SnapshotAndReplace` 从当前呈现值继续。快速连续切换以最后一次选中状态为准，系统关闭客户区动画时直接到达同一目标几何。
+主窗口工作区页签与便签“未完成 / 已完成”分段共用选中指示条。指示条的最终左、右边界与选中胶囊（模板 `Surface`）的平直底边对齐：`Surface` 外边距加底部圆角之内，工作区页签「倒计时」55 DIP、「便签」38 DIP，不再伸到胶囊圆头下面；纵向落在选中控件外缘之下 1 DIP，与常驻焦点环分层，不再与焦点环挤在同一条 3 DIP 环槽里。两个容器都在宿主下方预留 4 DIP 承载指示条：工作区页签容器取消透明边，内边距 `4,3,3,4`，宿主正好容下 183×44 的两枚页签，指示条贴容器底边；便签分段容器底内边距 4，表头下边距同步减 2，便签行不移位。切换时只对位移和横向缩放做 `MotionIndicatorDuration` 过渡，使用 `SnapshotAndReplace` 从当前呈现值继续。快速连续切换以最后一次选中状态为准，系统关闭客户区动画时直接到达同一目标几何。
 
 #245：两个指示条静态模板均为宽 1、高 3、零圆角的 Border，不添加端帽；不同目标宽度只由横向缩放改变可见宽度，静止时保持 3 DIP 等粗细。
 

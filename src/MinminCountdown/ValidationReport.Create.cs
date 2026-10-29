@@ -1524,7 +1524,7 @@ internal static partial class ValidationReport
             ["MainFocusRingConstantThicknessNoSqueeze"] = Must(interactionStates.FocusRingsReserveSpace, "主窗焦点环常驻透明环变色，聚焦不加厚边、不挤布局"),
             ["MainPrimaryAndPinSingleFocusStroke"] = Must(
                 interactionStates.PrimaryAndPinSingleFocusStroke,
-                "主按钮与置顶不再叠 FocusVisualStyle 第二套焦点描边，常规控件保留 2px 暖边"),
+                "主按钮、置顶与模板自带焦点环的键盘路径控件不叠 FocusVisualStyle 第二套描边，模板不画环的控件保留 2px 暖边"),
             ["MainNotesTabHoverDiffersFromSelected"] = Must(interactionStates.NotesTabHoverDiffersFromSelected, "未选中便签页签悬停边换 ActiveBrush，不复用选中实心底"),
             ["MainLocalControlsPressAndDisabled"] = Must(interactionStates.LocalControlsPressAndDisabled, "本地页签/帮助/提醒单选/日期披露具备按压与禁用外观"),
             ["MainReminderHelpFocusShowsHelp"] = Must(interactionStates.HelpFocusShowsHelpText, "聚焦提醒规则帮助显示与悬停相同的说明并提供帮助文本"),
@@ -1541,7 +1541,7 @@ internal static partial class ValidationReport
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
                 "选中页签使用 PinkTint 底与 SemiBold 权重"),
-            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条几何与选中页签对齐"),
+            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条对齐选中胶囊平直底边，落在焦点环之外、容器之内"),
             ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "#245 两个指示条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状"),
             ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
             ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),

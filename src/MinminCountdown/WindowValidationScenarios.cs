@@ -2102,12 +2102,20 @@ public sealed partial class MainWindow
                 FocusDoesNotChangeLayout(TopmostCheck, "Box", "Box") &&
                 FocusDoesNotChangeLayout(CountdownTab, "FocusRing", "Surface");
 
-            // 主按钮/置顶只有模板内暖粉焦点环（FocusVisualStyle 为空）；常规控件保留 2px 暖边。
+            // 主按钮/置顶与模板自带 FocusRing 的键盘路径控件只有模板环（FocusVisualStyle 为空），
+            // 否则 WPF 会在 Alt/Tab/方向键时另画一层装饰描边；模板不画环的控件保留 2px 暖边。
+            var templateRingControls = KeyboardPathControls
+                .OfType<Control>()
+                .Where(FocusVisualState.HasTemplateFocusRing)
+                .ToArray();
             var primaryAndPinSingleFocusStroke =
                 SaveCountdownButton.FocusVisualStyle is null &&
                 SaveNoteButton.FocusVisualStyle is null &&
                 TopmostCheck.FocusVisualStyle is null &&
-                FilterButton.FocusVisualStyle is Style regularStroke &&
+                new Control[] { CountdownTab, NotesTab, FilterButton, TagManagerButton, PreferencesButton }
+                    .All(templateRingControls.Contains) &&
+                templateRingControls.All(control => control.FocusVisualStyle is null) &&
+                CountdownListRegion.FocusVisualStyle is Style regularStroke &&
                 RegularFocusVisualThicknessIs(regularStroke, 2);
 
             var notesTabHoverDiffersFromSelected = NotesTabHoverDoesNotReuseSelectedFill();
@@ -2217,7 +2225,8 @@ public sealed partial class MainWindow
     // #196：页签与便签状态分段共享一个可中断指示条。这里以真实控件的
     // TransformToAncestor 几何作断言，并快速往返切换，确保过期回调不会把
     // 指示条留在旧段；关闭系统动画时只保留同一目标几何的即时等价。
-    // #245：四个静止目标的终态均须保持零圆角、宽 1、高 3。
+    // #245：四个静止目标的终态均须保持零圆角、宽 1、高 3；可见宽度只取胶囊平直底边，
+    // 落在焦点环之外、容器之内。
     private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
     {
         var originalWorkspace = _workspace;
@@ -2267,11 +2276,12 @@ public sealed partial class MainWindow
 
         (bool Aligned, bool StaticThicknessIsUniform) ObserveIndicator(
             SegmentIndicator indicator,
-            FrameworkElement target,
+            Control target,
             FrameworkElement root,
             Border border)
         {
-            var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target));
+            var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target)) &&
+                IndicatorSitsUnderPillClearOfFocusRing(indicator.CurrentVisualBounds, target, root);
             if (!aligned)
             {
                 var targetBounds = target.TransformToAncestor(root).TransformBounds(new Rect(target.RenderSize));
@@ -2293,6 +2303,27 @@ public sealed partial class MainWindow
                 Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001;
             return (aligned, staticThicknessIsUniform);
         }
+    }
+
+    // 静止指示条只覆盖胶囊（Surface）的平直底边，顶边在焦点环外缘之下至少 1 DIP，整条留在
+    // 容器可见底色之内。按模板部件与容器独立推导，不复用 SegmentIndicator 的算式。
+    private static bool IndicatorSitsUnderPillClearOfFocusRing(Rect bar, Control target, FrameworkElement root)
+    {
+        if (target.Template?.FindName("Surface", target) is not Border pill ||
+            target.Template.FindName("FocusRing", target) is not Border ring ||
+            VisualTreeHelper.GetParent(root) is not Border container)
+        {
+            return false;
+        }
+
+        var pillBounds = pill.TransformToAncestor(root).TransformBounds(new Rect(pill.RenderSize));
+        var ringBounds = ring.TransformToAncestor(root).TransformBounds(new Rect(ring.RenderSize));
+        var fillBottom = container.ActualHeight - container.BorderThickness.Bottom -
+            root.TranslatePoint(new Point(0, 0), container).Y;
+        return Math.Abs(bar.Left - (pillBounds.Left + pill.CornerRadius.BottomLeft)) <= 0.75 &&
+            Math.Abs(bar.Right - (pillBounds.Right - pill.CornerRadius.BottomRight)) <= 0.75 &&
+            bar.Top >= ringBounds.Bottom + 1 - 0.01 &&
+            bar.Bottom <= fillBottom + 0.01;
     }
 
     // #242：应用自己处理的键盘路径（Ctrl+1/2、倒计时页 Ctrl+F、Ctrl+T、弹层焦点生命周期 Esc）

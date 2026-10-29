@@ -16,6 +16,9 @@ internal sealed class SegmentIndicator
 {
     private const double GeometryTolerance = 0.75;
 
+    // 指示条顶边与选中控件外缘（常驻焦点环）之间的空隙，选中与焦点不叠在同一条槽里。
+    private const double FocusRingClearance = 1;
+
     private readonly FrameworkElement _coordinateRoot;
     private readonly Canvas _layer;
     private readonly Border _indicator;
@@ -61,7 +64,7 @@ internal sealed class SegmentIndicator
     internal bool IsAlignedTo(FrameworkElement target, double tolerance = GeometryTolerance)
     {
         return TryGetTargetBounds(target, out var targetBounds) &&
-            GeometryMatches(CurrentVisualBounds, IndicatorBounds(targetBounds), tolerance);
+            GeometryMatches(CurrentVisualBounds, IndicatorBounds(target, targetBounds), tolerance);
     }
 
     internal static bool GeometryMatches(Rect actual, Rect expected, double tolerance = GeometryTolerance) =>
@@ -87,7 +90,7 @@ internal sealed class SegmentIndicator
             if (TryGetTargetBounds(target, out var bounds))
             {
                 _lastTargetBounds = bounds;
-                ApplyTarget(IndicatorBounds(bounds), immediate: true);
+                ApplyTarget(IndicatorBounds(target, bounds), immediate: true);
             }
         }
 
@@ -121,7 +124,7 @@ internal sealed class SegmentIndicator
                             TryGetTargetBounds(_target, out var bounds))
                         {
                             _lastTargetBounds = bounds;
-                            ApplyTarget(IndicatorBounds(bounds), immediate);
+                            ApplyTarget(IndicatorBounds(_target, bounds), immediate);
                         }
                     }));
             }
@@ -130,7 +133,7 @@ internal sealed class SegmentIndicator
         }
 
         _lastTargetBounds = GetTargetBounds(_target);
-        ApplyTarget(IndicatorBounds(_lastTargetBounds), immediate);
+        ApplyTarget(IndicatorBounds(_target, _lastTargetBounds), immediate);
     }
 
     private void ApplyTarget(Rect targetBounds, bool immediate)
@@ -240,13 +243,22 @@ internal sealed class SegmentIndicator
         return transform.TransformBounds(new Rect(new Point(0, 0), target.RenderSize));
     }
 
-    private Rect IndicatorBounds(Rect targetBounds)
+    // 可见宽度只取选中胶囊（模板 Surface）的平直底边：Surface 外边距加底部圆角之内，按布局值
+    // 计算，不受按压缩放影响；整条落在控件外缘之下 FocusRingClearance 处。
+    private Rect IndicatorBounds(FrameworkElement target, Rect targetBounds)
     {
         var height = _indicator.Height > 0 ? _indicator.Height : 4;
+        var (leftInset, rightInset) = PillSurface(target) is { } surface
+            ? (surface.Margin.Left + surface.CornerRadius.BottomLeft,
+                surface.Margin.Right + surface.CornerRadius.BottomRight)
+            : (0d, 0d);
         return new Rect(
-            targetBounds.Left,
-            targetBounds.Bottom - height,
-            targetBounds.Width,
+            targetBounds.Left + leftInset,
+            targetBounds.Bottom + FocusRingClearance,
+            Math.Max(0, targetBounds.Width - leftInset - rightInset),
             height);
     }
+
+    private static Border? PillSurface(FrameworkElement target) =>
+        target is Control control ? control.Template?.FindName("Surface", control) as Border : null;
 }

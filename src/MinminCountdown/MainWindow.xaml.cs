@@ -1155,6 +1155,20 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
+    private FrameworkElement[] KeyboardPathControls =>
+    [
+        MinimizeButton, CloseButton,
+        CountdownTab, NotesTab, PreferencesButton, FilterButton, TagManagerButton,
+        CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
+        CountdownTags.PopupTrigger, CountdownReminderHelp,
+        CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
+        CancelCountdownEdit, CountdownEditorExpandButton, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
+        WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
+        NoteText, NoteDate, CancelNoteEdit, AddEmptyNoteButton,
+        ManageNoteReminderRulesButton,
+        NoteTags.PopupTrigger, NoteSearch, NotesListRegion, StatusText
+    ];
+
     private void ConfigureControls()
     {
         var keyboardFocusVisual = (Style)FindResource("MainKeyboardFocusVisual");
@@ -1216,27 +1230,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
         AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
         AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
-        // #152：主按钮（SaveCountdownButton/SaveNoteButton）与置顶开关不再套 FocusVisualStyle——
-        // 它们的模板内常驻 2px 暖粉焦点环是全应用唯一焦点例外，外圈 3px（现 2px）描边属于被
-        // 禁止的第二套焦点描边；其余键盘路径控件继续用 2px 暖边 FocusVisualStyle。
-        var keyboardPathControls = new FrameworkElement[]
-        {
-            MinimizeButton, CloseButton,
-            CountdownTab, NotesTab, PreferencesButton, FilterButton, TagManagerButton,
-            CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
-            CountdownTags.PopupTrigger, CountdownReminderHelp,
-            CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
-            CancelCountdownEdit, CountdownEditorExpandButton, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
-            WorkStart, WorkEnd, SavePreferencesButton, CountdownListRegion,
-            NoteText, NoteDate, CancelNoteEdit, AddEmptyNoteButton,
-            ManageNoteReminderRulesButton,
-            NoteTags.PopupTrigger, NoteSearch, NotesListRegion, StatusText
-        };
-        foreach (var element in keyboardPathControls)
+        // #152：模板自带常驻 FocusRing 的控件（页签、次级 / 图标按钮、提醒帮助与单选、标签触发
+        // 按钮）只用模板环变色表达键盘焦点，不再套 FocusVisualStyle——那是被禁止的第二套描边，
+        // 而且 WPF 在 Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它。模板不画焦点环的
+        // 键盘路径控件继续用 2px 暖边 FocusVisualStyle。主按钮与置顶开关不在本列表，见下方。
+        foreach (var element in KeyboardPathControls)
         {
             if (element is Control control)
             {
-                control.FocusVisualStyle = keyboardFocusVisual;
+                control.FocusVisualStyle = FocusVisualState.HasTemplateFocusRing(control) ? null : keyboardFocusVisual;
                 FocusVisualState.Attach(control);
             }
         }
@@ -4216,6 +4218,13 @@ internal static class FocusVisualState
 
     internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
         (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
+
+    // 模板里有常驻 FocusRing 的控件自己画键盘焦点，不能再叠 FocusVisualStyle 装饰层。
+    internal static bool HasTemplateFocusRing(Control control)
+    {
+        control.ApplyTemplate();
+        return control.Template?.FindName("FocusRing", control) is Border;
+    }
 
     internal static void Attach(Control control)
     {

@@ -392,6 +392,7 @@
               <Setter Property="Height" Value="44" />
               <Setter Property="Padding" Value="13,0" />
               <Setter Property="Cursor" Value="Hand" />
+              <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
                   <!-- #152：页签改常驻 2px 透明环 + 1px 间隙；选中粉底（PinkTintBrush）上
@@ -1078,13 +1079,13 @@
                   <ColumnDefinition Width="12" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+                <!-- 页签宿主正好 183×44（99 + 2 + 82），不再被容器裁掉 1 DIP；宿主下方留 4 DIP 给
+                     选中指示条：离页签外缘（焦点环）1 DIP，贴容器底边（§9）。 -->
                 <Border Grid.Column="0"
                         Width="190"
                         Height="51"
-                        Padding="3"
+                        Padding="4,3,3,4"
                         Background="{DynamicResource CardAltBrush}"
-                        BorderBrush="Transparent"
-                        BorderThickness="1"
                         CornerRadius="10">
                   <Grid x:Name="MainWorkspaceTabHost">
                     <!-- #196：选中指示条只改变 RenderTransform，避免切换时重排同级页签。 -->
@@ -1851,13 +1852,15 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                       <StackPanel Margin="15,13,9,16">
-                        <Grid x:Name="NotesStatusHeader" Margin="0,0,0,3">
+                        <Grid x:Name="NotesStatusHeader" Margin="0,0,0,1">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                           </Grid.ColumnDefinitions>
-                          <Border Padding="2"
+                          <!-- 分段下方留 4 DIP 给选中指示条（离焦点环 1 DIP，§9）；表头下边距同步减 2，
+                               下面的便签行不移位。 -->
+                          <Border Padding="2,2,2,4"
                                   Background="Transparent"
                                   CornerRadius="13">
                             <Grid x:Name="NotesSegmentHost">

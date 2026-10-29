@@ -105,6 +105,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 源码树模式下改了视觉源码而尚未重拍时，参考基线必然失配。CSharp / Ui 不在第一个基线断言处中止：应用把失配项记进套件给的延后记录、照常输出报告，套件跑完其余断言后在 err 日志末尾列出延后项，并以 75 退出。启动器把 75 记为该阶段失败，但不触发红即停，其余阶段照常跑完；整轮仍判失败（“参考基线待重拍：…”），办公室部署要求的同一提交全绿证据不变。安装验证和基线生成后的自检始终严格。视觉源码没改却失配时，先按 [DESIGN.md](DESIGN.md) 视觉基线节核对显示缩放，不为过门禁重拍。
 
+参考帧捕获前会清掉键盘焦点，焦点描边因此不在任何基线里。源码树模式下 validate-only 另开一个一次性主窗口，沿两个工作区的 Tab 路径逐个停靠点截取放大裁图，连同 `focus-evidence.json` 写进本次运行实拍证据目录的 `focus\` 子目录（报告字段 `MainFocusEvidenceManifestPath`，失败原因在 `MainFocusEvidenceError`）。截取时最近输入设备临时设为键盘，裁图含焦点装饰层，和真实按 Tab 时一致。它们不进门禁，只供核对单层描边，结论以裁图为准。`focusVisualAdorner` 表示挂着 FocusVisualStyle 装饰层；`templateDrawsFocus` 取自 `FocusVisualState.DrawsOwnKeyboardFocus`（模板带 `FocusRing`，或是文本框、下拉框、日期框），勾选框这类用别的模板部件画焦点的控件为假。两项同时为真，说明按约定自己画焦点的控件又挂了装饰层：裁图上要么叠成两层描边，要么是系统默认虚线框顶替了没点亮的模板焦点。
+
 候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
 
 ```powershell
@@ -130,7 +132,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 `ValidationHarness` 的生产动效检查必须在 300 ms 内取得真实的 10%–90% 中间帧，终态或缺帧都不算通过。只有某场景唯一的失败与实测卡顿重合时，才重跑该场景。卡顿指以下任一情况：采样窗口内最长无帧间隔不短于最短 90 ms token 的 10%–90% 区间（约 37 ms）；或反转后的首帧到达时，整段动效时长已经过去。每个场景最多重跑 2 次，每轮最多 4 次。每次因卡顿失败的尝试都记入 `Motion.Results[].StarvedAttempts`；阈值、实际用量、注入卡顿自检和判定对照见 `Motion.StallRetry`。最终判定仍取自一次完整的真实通过。
 
-视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），按其提示重算 `IntegrityHashes` 并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖，失败时保留生成现场。生成完成后还须另行运行 CSharp / Ui 复验，生成过程本身不替代回归。
+视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），按其提示重算 `IntegrityHashes` 并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖，失败时保留生成现场。生成完成后还须另行运行 CSharp / Ui 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹，把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate

@@ -3523,6 +3523,9 @@ public sealed partial class MainWindow
         RenderMainCountdownBlocks(host, remaining);
         return host.Surface;
     }
+
+    // 焦点态证据要让时分秒下拉框与提醒单选也进 Tab 路径。
+    internal void ExpandCountdownEditorForValidation() => SetCountdownEditorExpanded(true);
 }
 
 public sealed partial class FloatingWindow

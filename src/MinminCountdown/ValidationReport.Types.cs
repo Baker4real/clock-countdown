@@ -439,6 +439,9 @@ internal static partial class ValidationReport
         string NotesCapturePath,
         string ManifestPath);
 
+    // 焦点态实拍证据的落盘结果，不进门禁：未请求时两项都为空，失败时只有 Error。
+    private sealed record MainFocusEvidenceResult(string ManifestPath, string Error);
+
     // #134 真实运行态 UI 捕获 seam 的单帧证据条目与 DPI 变更遥测。
     private sealed record MainUiCaptureSeamEntry(
         string CaptureId,

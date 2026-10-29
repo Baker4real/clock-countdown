@@ -165,6 +165,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\ValidationReport.Create.cs',
     'src\MinminCountdown\ValidationReport.FloatingFitAndTray.cs',
     'src\MinminCountdown\ValidationReport.FloatingReference.cs',
+    'src\MinminCountdown\ValidationReport.FocusEvidence.cs',
     'src\MinminCountdown\ValidationReport.Imaging.cs',
     'src\MinminCountdown\ValidationReport.KeyboardAndDialogs.cs',
     'src\MinminCountdown\ValidationReport.MainReference.cs',

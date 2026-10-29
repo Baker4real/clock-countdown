@@ -310,7 +310,7 @@ foreach ($surface in @(
         [pscustomobject]@{ Fixture = 'main'; Baseline = $visualBaseline.Main })) {
     $relativeDirectory = $surface.Baseline.RelativeDirectory
     if (-not (Test-Path -LiteralPath $surface.Baseline.ManifestPath -PathType Leaf)) {
-        $baselineFixtureFailures.Add("missing current manifest: $relativeDirectory/manifest.json")
+        $baselineFixtureFailures.Add("missing current manifest: $relativeDirectory/manifest.json (after Set-CountdownBaselineVersion, run the launcher's BaselineGenerate stage before Tooling)")
         continue
     }
     $manifest = Get-Content -LiteralPath $surface.Baseline.ManifestPath -Raw | ConvertFrom-Json -Depth 100
@@ -332,6 +332,44 @@ foreach ($surface in @(
 }
 $baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFixtureAgreements -join '; ' } else { $baselineFixtureFailures -join ' | ' }
 Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
+
+# DESIGN.md 里指向现役基线的叙述锚点。Set-CountdownBaselineVersion 只改代码钉点，这几行靠人工跟改：v65 重拍时 §11 只改了
+# 第 1 条，悬浮窗现役帧表头和第 2–4 条仍写着 v64。每个标记在 DESIGN.md 恰好一行且写着现役版本，归档条目还要列出比现役早的
+# 最近一版目录。改了这几行的措辞就同步改这里的标记。
+$currentBaselineNumber = [int] ($visualBaseline.Version -replace '^.*-v', '')
+$currentBaselineShort = "v$currentBaselineNumber"
+$previousBaselineVersion = @(
+    foreach ($surface in @($visualBaseline.Main, $visualBaseline.Floating)) {
+        Get-ChildItem -LiteralPath (Split-Path -Parent (Split-Path -Parent $surface.ManifestPath)) -Directory
+    }) |
+    Where-Object { $_.Name -match '^[0-9]{4}-[0-9]{2}-[0-9]{2}-v(?<number>[0-9]+)$' -and [int] $Matches['number'] -lt $currentBaselineNumber } |
+    Sort-Object { [int] ($_.Name -replace '^.*-v', '') } -Descending |
+    Select-Object -First 1 -ExpandProperty Name
+$designAnchors = [ordered]@{
+    '现役五帧与场景对应' = @("$currentBaselineShort 基线", "``$($visualBaseline.Floating.RelativeDirectory)/manifest.json``")
+    '真实渲染系列，版本目录为' = @("**$currentBaselineShort**", "``$($visualBaseline.Version)``")
+    '主窗口帧规模' = @("$currentBaselineShort 主窗口帧规模", "``$($visualBaseline.Main.RelativeDirectory)/manifest.json``")
+    '悬浮窗帧规模' = @("$currentBaselineShort 悬浮窗帧规模")
+    '目录作为归档保留' = @("``$previousBaselineVersion/``", "只读取 $currentBaselineShort")
+}
+$designLines = [System.IO.File]::ReadAllLines((Join-Path $repoRoot 'DESIGN.md'))
+$designAnchorFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($anchor in $designAnchors.GetEnumerator()) {
+    $lineNumbers = @(for ($index = 0; $index -lt $designLines.Count; $index++) {
+            if ($designLines[$index].Contains($anchor.Key)) { $index + 1 }
+        })
+    if ($lineNumbers.Count -ne 1) {
+        $designAnchorFailures.Add("「$($anchor.Key)」在 DESIGN.md 出现 $($lineNumbers.Count) 行，应恰好 1 行")
+        continue
+    }
+    # 期望值后紧跟数字不算命中，避免 v6 误配 v66。
+    $missing = @($anchor.Value | Where-Object { -not [regex]::IsMatch($designLines[$lineNumbers[0] - 1], [regex]::Escape($_) + '(?![0-9])') })
+    if ($missing.Count -gt 0) {
+        $designAnchorFailures.Add("DESIGN.md:$($lineNumbers[0])「$($anchor.Key)」缺少 $($missing -join '、')")
+    }
+}
+$designAnchorDetail = if ($designAnchorFailures.Count -eq 0) { "DESIGN.md $($designAnchors.Count) 处锚点指向 $($visualBaseline.Version)，归档列出 $previousBaselineVersion" } else { $designAnchorFailures -join ' | ' }
+Add-ToolingCheck -Name 'visual-baseline:design-anchors' -Passed ($designAnchorFailures.Count -eq 0) -Detail $designAnchorDetail
 
 # 窗口探针只走 RunValidationScenarios：控件名、模板部件和窗口字段留在各窗口的场景 partial 里。
 # 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。每个类按它的全部 partial 文件合计。

@@ -449,7 +449,8 @@ internal static partial class ValidationReport
         MainWindow main,
         string startId,
         string endId,
-        FocusNavigationDirection direction)
+        FocusNavigationDirection direction,
+        Action<MainTabTarget, DependencyObject>? visit = null)
     {
         var start = Required<FrameworkElement>(main, startId);
         main.Activate();
@@ -487,6 +488,7 @@ internal static partial class ValidationReport
                     System.Text.Json.JsonSerializer.Serialize(new { direction, focusedTarget }));
             }
 
+            visit?.Invoke(target, focused);
             if (string.Equals(target.Id, endId, StringComparison.Ordinal))
             {
                 break;

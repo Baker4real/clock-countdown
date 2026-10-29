@@ -181,4 +181,5 @@ if ($documents.Lines.Count -gt 0) {
 '下一步：'
 '  1. git add 上面的代码文件，运行 tools/Update-CountdownIntegrityHashes.ps1，再 git add Countdown.ReleaseContract.psm1。'
 '  2. 按 README「本机验证」经启动器跑 Build，再单独跑 BaselineGenerate 生成 {0} 的双 manifest。' -f $Version
-'  3. 经启动器跑 CSharp / Ui 复验，并在 DESIGN.md 记录新基线与聚合哈希。'
+'  3. 运行 tools/Compare-CountdownVisualBaseline.ps1 -From {0} -To {1} 比对两版，在 DESIGN.md 记录新基线与聚合哈希，并把其中指向现役基线的锚点改到 {1}（Tooling 的 visual-baseline:design-anchors 逐条核对）。' -f $oldVersion, $Version
+'  4. 经启动器跑 CSharp / Ui 复验；Tooling 放在生成与 DESIGN.md 更新之后跑。'

@@ -1075,6 +1075,8 @@ internal static partial class ValidationReport
             ValidationExercises.ExerciseReminderRulesEntry(
                 floating,
                 Required<Button>(floating, "FloatingManageReminderRules"));
+        // 焦点态证据在一次性窗口里截，放在全部窗口断言之后，不改动被测窗口的状态。
+        var mainFocusEvidence = CaptureMainFocusEvidence(assetRoot, legacyMainReferenceCapture.CountdownCapturePath);
 
         var report = new ValidationReportProjection
         {
@@ -1748,6 +1750,8 @@ internal static partial class ValidationReport
             ["MainReferenceCountdownCapturePath"] = legacyMainReferenceCapture.CountdownCapturePath,
             ["MainReferenceNotesCapturePath"] = legacyMainReferenceCapture.NotesCapturePath,
             ["MainReferenceCaptureManifestPath"] = legacyMainReferenceCapture.ManifestPath,
+            ["MainFocusEvidenceManifestPath"] = mainFocusEvidence.ManifestPath,
+            ["MainFocusEvidenceError"] = mainFocusEvidence.Error,
             ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
             ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
             ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,

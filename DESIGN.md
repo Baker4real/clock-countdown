@@ -550,7 +550,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v66 基线 `assets/ui-references/floating-window/520x390/2026-10-29-v66/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v67 基线 `assets/ui-references/floating-window/520x390/2026-10-31-v67/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -614,11 +614,13 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 当前状态（2026-10-29，输入框焦点单层描边重拍）：v65 评审修复的跟进。文本框、下拉框与日期框获焦时，模板本来就把输入面边界换成 2px `ActiveBrush`，`ConfigureControls` 却又给它们套了 `MainKeyboardFocusVisual`，键盘进入时两道描边叠在一起；日期框的键盘焦点落在模板里的打开日历按钮（`PART_Button`）上，这枚按钮的 `FocusVisualStyle` 也没有置空。现在三类输入框不再套 `FocusVisualStyle`，日期框模板里的 `PART_Button` 同样置空（见 §4「主窗可操作性与紧凑命中」）。验证字段 `MainPrimaryAndPinSingleFocusStroke` 把输入框和这枚按钮纳入检查，Tab 路径的焦点可见判定对日期框改读 `PART_TextBox` 的边框。`App.xaml` 在主窗与悬浮窗的 `sourceBinding` 内，`MainWindow.xaml.cs` 在主窗 `sourceBinding` 内，现役基线改为 `2026-10-29-v66`（跨分支未占用的下一个编号）。BaselineGenerate `20261029T144739814-d75bc5f1`（Build `20261029T144341222-0ac9a4aa`）生成双 manifest：主窗 9 帧聚合 SHA-256 `EB6D46B876D9BDA50944B70D4C0E38CFBB0FD2AC99420E5794746EE335821444`，悬浮窗 5 帧聚合 `CA184CAF76E459D48432401E8D2925DE5F74F08BB5F7CE3575E595C9A6DEE551`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。14 帧的 PNG 与状态指纹都和 v65 逐字节一致：v65 参考帧里本来就没有画出输入框的装饰层。v65 保留为历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v66** 真实渲染系列，版本目录为 `2026-10-29-v66`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-10-31，行内按钮焦点接线重拍）：v66 之后用焦点态实拍证据核对单层描边，发现倒计时行、便签行与标签管理行的编辑 / 删除按钮由 `ActionButton`、`NoteActionButton` 在代码里创建，既没接 `FocusVisualState`，也没清掉 `FocusVisualStyle`：键盘进入时 WPF 画系统默认虚线框，模板的 `FocusRing` 不亮。Tab 路径的焦点可见判定只看 `FocusVisualStyle` 非空，因此放过了它。现在这两个函数和 `ConfigureControls` 共用 `ApplyKeyboardFocusVisual`（见 §4「主窗可操作性与紧凑命中」）；焦点可见判定只认 `MainKeyboardFocusVisual` 这一种装饰层，模板自己画焦点的控件再挂装饰层也判为不可见，`MainKeyboardPathNegativeFixtures` 补了这两种反例。`MainWindow.xaml.cs` 在主窗 `sourceBinding` 内，现役基线改为 `2026-10-31-v67`（跨分支未占用的下一个编号）。BaselineGenerate `20261031T195835389-12976f2c`（Build `20261031T195607760-f719f0c7`）生成双 manifest：主窗源码绑定聚合 SHA-256 `EB5ED9BBC5B425198C1CA457104AC9E4DE00510B333B17E9E850D1F965CD2C14`，悬浮窗 `CA184CAF76E459D48432401E8D2925DE5F74F08BB5F7CE3575E595C9A6DEE551`（绑定文件没变，与 v66 相同），`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。用 `tools/Compare-CountdownVisualBaseline.ps1` 比对，14 帧的 PNG 与状态指纹都和 v66 逐字节一致：参考帧捕获前会清掉键盘焦点，行内按钮的常态没有变。v66 保留为历史捕获，不再作为现役门禁。
 
-2. v66 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-29-v66/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v66 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64 与 v65 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v66。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版使用纯日间 **v67** 真实渲染系列，版本目录为 `2026-10-31-v67`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v67 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-10-31-v67/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v67 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64、v65 与 v66 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`、`2026-10-29-v66/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v67。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

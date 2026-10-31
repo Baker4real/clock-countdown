@@ -7,7 +7,7 @@ intent: 评审改动时逐条检查、需要判断的编码规则
 
 # 编码标准
 
-评审本仓库的改动时逐条检查下面的规则。能机械判定的规则做成 Tooling 检查或测试（例如 `tools/Test-CountdownTooling.ps1` 的 `visual-baseline:design-anchors`、`validation:control-name-lookups`），不写在这里。
+评审本仓库的改动时逐条检查下面的规则。能机械判定的规则做成 Tooling 检查或测试（例如 `tools/Test-CountdownTooling.ps1` 的 `visual-baseline:design-anchors`、`validation:control-name-lookups`、`xaml:focus-visual-style-null`），不写在这里。
 
 ## 代码后台的本地值会盖掉样式
 
@@ -29,9 +29,18 @@ WPF 把 `FocusVisualStyle` 装饰层画在实际拿到键盘焦点的元素上�
 
 ## 键盘焦点约定写在样式上，新窗口要进焦点核对
 
-键盘焦点只画一套：模板自己画焦点的样式在样式里把 `FocusVisualStyle` 设成 `{x:Null}`，焦点环由 `FocusVisualState.IsKeyboardFocusVisible` 点亮，这个状态由 `App` 静态构造注册的类处理器替所有控件维护，控件不用逐个接线；焦点由宿主模板画的部件（日期框的打开日历按钮）标 `FocusVisualState.HostDrawsFocus`，不点亮自己的环。模板不画焦点的停靠点挂 `App.xaml` 的 2px 暖边 `MainKeyboardFocusVisual`；`ScrollViewer` 默认可获焦，列表滚动区也算。漏了 setter 的样式、没挂暖边的滚动区，WPF 在键盘获焦时都会另画一层系统默认虚线框。沿 Tab 走一圈的焦点核对能拦下这些问题，但只覆盖进了核对的窗口。
+键盘焦点只画一套：模板自己画焦点的样式在样式里把 `FocusVisualStyle` 设成 `{x:Null}`，焦点环由 `FocusVisualState.IsKeyboardFocusVisible` 点亮，这个状态由 `App` 静态构造注册的类处理器替所有控件维护，控件不用逐个接线；焦点由宿主模板画的部件（日期框的打开日历按钮）标 `FocusVisualState.HostDrawsFocus`，不点亮自己的环。模板不画焦点的停靠点挂 `App.xaml` 的 2px 暖边 `MainKeyboardFocusVisual`；`ScrollViewer` 默认可获焦，列表滚动区也算。漏了 setter 的样式、没挂暖边的滚动区，WPF 在键盘获焦时都会另画一层系统默认虚线框。XAML 样式漏写 setter 由 Tooling 的 `xaml:focus-visual-style-null` 静态拦下；代码里建的样式和滚动区靠沿 Tab 走一圈的焦点核对，它只覆盖进了核对的窗口。
 
 - diff 新增窗口、弹层，或在没有核对的界面里新增可 Tab 控件时，确认它进了某条焦点核对（主窗 Tab 路径、`FloatingKeyboardFocusDrawnOnce`、`SecondaryWindowKeyboardFocusDrawnOnce`）；没进的记为缺陷。
 - diff 为焦点给单个控件接线（订阅获焦或鼠标事件改 `IsKeyboardFocusVisible`、在代码里清 `FocusVisualStyle`）时，确认这是样式表达不了的特例，并写明原因。
 
 反例：基础按钮、分段、勾选与单选这些 `App.xaml` 样式原先没清 `FocusVisualStyle`，焦点环也只在逐个调用 `FocusVisualState.Attach` 的控件上点亮。主窗靠 `ConfigureControls` 逐个接线，代码里新建的行内编辑 / 删除按钮一度漏接；悬浮窗、提醒中心、提醒规则编辑器、设置恢复与激活失败窗没有接线，按钮和勾选框显示系统默认虚线框，悬浮窗有的按钮清了装饰层却点不亮焦点环，几个窗口的滚动列表停在 Tab 上也显示系统虚线框。焦点核对当时只覆盖主窗，这些都没被拦下。改成全局点亮时，日期框打开日历按钮自己的环又会和整框边界叠成两层，原先只看宿主边界的判定看不出来。
+
+## 验证探针收尾复原它改过的窗口状态
+
+同一个窗口的验证探针按顺序跑，共用一份窗口状态：工作区、展开态、筛选、键盘焦点、打开的弹层和滚动偏移。探针改了状态却不复原，后面的探针就从错的起点开始，失败报在别的探针里，离原因很远。`ScrollViewer` 的偏移最容易漏：内容收起时显示的偏移归零，请求偏移却还记着，内容再展开就回到旧位置（WPF 的 `ScrollContentPresenter.CoerceOffsets` 只重算 `_computedOffset`）。
+
+- diff 新增或改动探针时，逐项核对它改过的状态都在 `finally` 里复原；滚动过的 `ScrollViewer`（包括 Tab 走过、`BringIntoView` 带动的）先滚回原位，再收起内容。
+- 探针收尾漏掉的状态记为缺陷，即使按当前顺序后面的探针碰巧通过。
+
+反例：悬浮窗 `ProbeKeyboardFocusScenarios` 在展开的快速新增表单里沿 Tab 走一圈，命令区 `FloatingNotesCommandScroller` 被带着滚下约 78 DIP，收尾只调了 `SetQuickAddExpanded(false)`。下一个探针 `ProbeBottomCommandScenarios` 点开表单时，命令区回到旧偏移，表单顶部卷出视口，`ToggleExpandsWithFilterTags` 报错；v68 基线因此连败两次，最后在收尾先调 `ScrollToHome()` 才修好。

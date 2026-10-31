@@ -59,7 +59,7 @@ try {
         '--diagnostic-log-path' (Join-Path $runDirectory 'application.jsonl') 2> $stderrPath |
         Set-Content -LiteralPath $stdoutPath -Encoding utf8
     if ($LASTEXITCODE -ne 0) {
-        throw "基线生成失败（exit=$LASTEXITCODE）；保留已生成内容与诊断：$runDirectory"
+        throw "基线生成失败（exit=$LASTEXITCODE）；诊断：$runDirectory"
     }
     $report = Get-Content -LiteralPath $stdoutPath -Raw | ConvertFrom-Json
     if ($report.Valid -ne $true -or $report.MainReferenceBaselineValidated -ne $true -or
@@ -81,6 +81,26 @@ try {
         Manifests = @($manifestPaths)
         ValidationReport = $stdoutPath
     } | ConvertTo-Json -Depth 4
+}
+catch {
+    # 应用先写帧与 manifest 再自检：失败时把这次新建的版本目录整体移进诊断目录，assets 里不留半成品，
+    # 重跑不用先清理（生成器拒绝覆盖已有目录），现场仍和诊断放在一起。
+    $failure = $_
+    $moved = foreach ($manifestPath in $manifestPaths) {
+        $directory = Split-Path -Parent $manifestPath
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+        $destination = Join-Path $runDirectory (Join-Path 'partial' ([System.IO.Path]::GetRelativePath($repoRoot, $directory)))
+        try {
+            [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
+            Move-Item -LiteralPath $directory -Destination $destination
+            $destination
+        }
+        catch {
+            "（未能移走，仍在原处：$directory；$($_.Exception.Message)）"
+        }
+    }
+    if (@($moved).Count -eq 0) { throw $failure }
+    throw "$($failure.Exception.Message)；半成品版本目录已移出 assets：$(@($moved) -join '、')"
 }
 finally {
     foreach ($name in $previousEnvironment.Keys) {

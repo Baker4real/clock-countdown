@@ -396,6 +396,83 @@ $controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnum
 $controlNameLookupDetail = if ($controlNameLookupFailures.Count -eq 0) { $controlNameLookupCounts -join '; ' } else { $controlNameLookupFailures -join ' | ' }
 Add-ToolingCheck -Name 'validation:control-name-lookups' -Passed ($controlNameLookupFailures.Count -eq 0) -Detail $controlNameLookupDetail
 
+# 模板自己画焦点的样式要在样式里清掉 FocusVisualStyle，否则键盘获焦时 WPF 另画一层系统默认虚线框（DESIGN.md §4 常驻焦点环）。
+# 运行时判定只在本机窗口套件里跑，这里静态拦漏写的 setter：Template 里有 FocusRing、或按 FocusVisualState.IsKeyboardFocusVisible
+# 触发的样式，本身或 BasedOn 链上要有 FocusVisualStyle={x:Null}。代码里建的样式不在扫描范围，仍靠运行时判定。
+function Get-FocusVisualStyleLeaks {
+    param([Parameter(Mandatory)] [System.Collections.IDictionary] $XamlByName)
+    $presentation = 'http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+    $xamlNamespace = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $styles = @(foreach ($entry in $XamlByName.GetEnumerator()) {
+            foreach ($style in ([xml] $entry.Value).GetElementsByTagName('Style', $presentation)) {
+                [pscustomobject]@{ File = $entry.Key; Element = $style }
+            }
+        })
+    # BasedOn 只能是 StaticResource：按 x:Key 解析，隐式样式按 TargetType。跨文件解析，主窗样式可以基于 App.xaml 的样式。
+    $stylesByKey = @{}
+    foreach ($style in $styles) {
+        $key = $style.Element.GetAttribute('Key', $xamlNamespace)
+        if (-not $key) { $key = $style.Element.GetAttribute('TargetType') -replace '^\{x:Type\s+|\}$', '' }
+        if ($key) { $stylesByKey[$key] = $style.Element }
+    }
+    $setters = { param($element) @($element.ChildNodes | Where-Object { $_.LocalName -eq 'Setter' }) }
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $selfDrawing = 0
+    foreach ($style in $styles) {
+        $template = @(& $setters $style.Element | Where-Object { $_.GetAttribute('Property') -eq 'Template' } |
+            ForEach-Object { $_.GetElementsByTagName('ControlTemplate', $presentation) } | Select-Object -First 1)
+        if ($template.Count -eq 0) { continue }
+        $drawsFocus = @($template[0].SelectNodes('.//*') | Where-Object {
+                $_.GetAttribute('Name', $xamlNamespace) -eq 'FocusRing' -or
+                $_.GetAttribute('Property') -match 'FocusVisualState\.IsKeyboardFocusVisible$'
+            }).Count -gt 0
+        if (-not $drawsFocus) { continue }
+        $selfDrawing++
+        $cleared = $false
+        $current = $style.Element
+        for ($depth = 0; $null -ne $current -and -not $cleared -and $depth -lt 16; $depth++) {
+            $cleared = @(& $setters $current | Where-Object {
+                    $_.GetAttribute('Property') -eq 'FocusVisualStyle' -and $_.GetAttribute('Value') -eq '{x:Null}'
+                }).Count -gt 0
+            $basedOn = [regex]::Match($current.GetAttribute('BasedOn'), '^\{StaticResource\s+(?:\{x:Type\s+)?([^\s{}]+)\}?\}$')
+            $current = if ($basedOn.Success) { $stylesByKey[$basedOn.Groups[1].Value] } else { $null }
+        }
+        if (-not $cleared) {
+            $name = $style.Element.GetAttribute('Key', $xamlNamespace)
+            if (-not $name) { $name = "TargetType=$($style.Element.GetAttribute('TargetType'))" }
+            $leaks.Add("$($style.File) 的样式 $name 模板自己画焦点，却没清掉 FocusVisualStyle")
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); SelfDrawing = $selfDrawing }
+}
+
+$focusXamlRoot = '<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" ' +
+    'xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:focus="clr-namespace:MinminCountdown">{0}</ResourceDictionary>'
+$focusRingTemplate = '<Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="FocusRing" /></ControlTemplate></Setter.Value></Setter>'
+$focusTriggerTemplate = '<Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox"><Border x:Name="Box" />' +
+    '<ControlTemplate.Triggers><MultiTrigger><MultiTrigger.Conditions><Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />' +
+    '</MultiTrigger.Conditions></MultiTrigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>'
+$focusNullSetter = '<Setter Property="FocusVisualStyle" Value="{x:Null}" />'
+$focusVisualSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'missing-setter'; Leaks = 1; Body = "<Style x:Key=""A"" TargetType=""Button"">$focusRingTemplate</Style>" },
+        @{ Name = 'has-setter'; Leaks = 0; Body = "<Style x:Key=""A"" TargetType=""Button"">$focusNullSetter$focusRingTemplate</Style>" },
+        @{ Name = 'trigger-only'; Leaks = 1; Body = "<Style TargetType=""{x:Type CheckBox}"">$focusTriggerTemplate</Style>" },
+        @{ Name = 'based-on'; Leaks = 0; Body = "<Style x:Key=""Base"" TargetType=""Button"">$focusNullSetter</Style><Style x:Key=""Derived"" TargetType=""Button"" BasedOn=""{StaticResource Base}"">$focusRingTemplate</Style>" },
+        @{ Name = 'element-binding'; Leaks = 0; Body = '<Style TargetType="Border"><Style.Triggers><MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding Path=(focus:FocusVisualState.IsKeyboardFocusVisible), ElementName=Income}" Value="True" /></MultiDataTrigger.Conditions></MultiDataTrigger></Style.Triggers></Style>' }
+    )) {
+    $caseLeaks = @((Get-FocusVisualStyleLeaks -XamlByName @{ 'case.xaml' = ($focusXamlRoot -f $case.Body) }).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $focusVisualSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+$focusXaml = [ordered]@{}
+foreach ($xamlFile in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown') -Filter '*.xaml' -File) {
+    $focusXaml[$xamlFile.Name] = [System.IO.File]::ReadAllText($xamlFile.FullName)
+}
+$focusVisualScan = Get-FocusVisualStyleLeaks -XamlByName $focusXaml
+$focusVisualProblems = @($focusVisualSelfTestFailures) + @($focusVisualScan.Leaks)
+$focusVisualDetail = if ($focusVisualProblems.Count -eq 0) { "扫描 $($focusXaml.Count) 个 XAML，$($focusVisualScan.SelfDrawing) 个自画焦点的样式都清了 FocusVisualStyle；自检 5 例通过" } else { $focusVisualProblems -join ' | ' }
+Add-ToolingCheck -Name 'xaml:focus-visual-style-null' -Passed ($focusVisualProblems.Count -eq 0) -Detail $focusVisualDetail
+
 # Move-Item -Force 第一次改名撞上读句柄就先删目标再改名：失败时旧文件已经没了（安装 journal 与启动回执都这样坏过）。
 # 生产脚本里的存量只减不增；替换文件用 [System.IO.File]::Move(源, 目标, $true) 一次改名，撞上占用时有界退避重试。
 function Get-ForcedMoveItemCount {

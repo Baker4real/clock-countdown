@@ -1204,11 +1204,13 @@ internal static partial class ValidationReport
                 floatingWindowScenarios.NoteSearch.AllPassed &&
                 mainUiPolish.NoteSearchSyncsFromSharedFilter,
                 "悬浮窗折叠搜索主链路、空态、Ctrl+F 与主题 token 通过"),
-            ["FloatingBottomCommandScenariosPass"] = Must(floatingWindowScenarios.BottomCommand.AllPassed, "悬浮窗便签底部命令区：默认收起、展开/收起、提交收起、设置按钮全链路通过"),
+            ["FloatingBottomCommandScenariosPass"] = Must(floatingWindowScenarios.BottomCommand, floatingWindowScenarios.BottomCommand.AllPassed, "悬浮窗便签底部命令区：默认收起、展开/收起、提交收起、设置按钮全链路通过"),
             ["FloatingQuickAddToggleScenariosPass"] = Must(
+                floatingWindowScenarios.BottomCommand,
                 floatingWindowScenarios.BottomCommand.QuickAddTogglePass,
                 "悬浮窗＋添加便签默认收起、点击原地展开并按筛选标签初始化、再次点击收起、提交后收起、展开态切换钮降级次级收起（#149）"),
             ["FloatingNoteOverflowMenuScenariosPass"] = Must(
+                floatingWindowScenarios.BottomCommand,
                 floatingWindowScenarios.BottomCommand.OverflowMenuPass,
                 "悬浮窗便签…菜单提供编辑（复用主窗口编辑流程）与删除（确认后删除，取消保留）"),
             ["FloatingQuickAddPlaceholderMirrorsManager"] = Must(
@@ -1233,6 +1235,7 @@ internal static partial class ValidationReport
                 "悬浮筛选约束空态提供「清除筛选」且与「清除搜索」互斥，点击还原全量列表（#149）"),
             ["FloatingStableRefreshScenarios"] = floatingWindowScenarios.StableRefresh,
             ["FloatingStableRefreshScenariosPass"] = Must(
+                floatingWindowScenarios.StableRefresh,
                 floatingWindowScenarios.StableRefresh.AllPassed,
                 "悬浮窗渲染签名稳定刷新：tick 就地更新、角色焦点恢复、隐藏/最小化门控全链路通过（#212）"),
             ["FloatingStableRefreshFocusStaysOnOverflowTrigger"] = Must(
@@ -1315,7 +1318,7 @@ internal static partial class ValidationReport
             ["FloatingNextReminderTextAlwaysCorrect"] = Must(
                 floatingNextReminderCache.DisplayedTextAlwaysCorrect,
                 "悬浮窗便签卡「下次提醒」文字在缓存命中与重算前后始终正确（#240）"),
-            ["FloatingDateStampPastelRotationMatches"] = Must(floatingWindowScenarios.BottomCommand.PastelIndexPass, "悬浮窗日期印记按列表顺序粉/蓝/绿轮换且卡底暖黄与白纸交替"),
+            ["FloatingDateStampPastelRotationMatches"] = Must(floatingWindowScenarios.BottomCommand, floatingWindowScenarios.BottomCommand.PastelIndexPass, "悬浮窗日期印记按列表顺序粉/蓝/绿轮换且卡底暖黄与白纸交替"),
             ["FloatingNotesHandwrittenDecorationPass"] = Must(
                 floatingWindowScenarios.BottomCommand.HandwrittenDecorationLands,
                 "悬浮窗便签工作区右下手写体装饰落地且不可命中不可聚焦"),
@@ -1731,7 +1734,7 @@ internal static partial class ValidationReport
                 "提醒中心验证门禁"),
             ["NoteReminderDispatchWorks"] = Must(reminderBehavior, "便签提醒按到期区间恰好派发一次（#129 自 U1 迁移）"),
             ["ReminderCenterIsThemed"] = Must(reminderThemed, "提醒中心验证门禁"),
-            ["ReminderCenterSupportsKeyboardNavigation"] = Must(reminderCenterKeyboardGates.AllPassed, "提醒中心验证门禁"),
+            ["ReminderCenterSupportsKeyboardNavigation"] = Must(reminderCenterKeyboardGates, reminderCenterKeyboardGates.AllPassed, "提醒中心验证门禁"),
             ["ReminderCenterShowPreservesFocusAndAccessibleName"] = Must(
                 reminderCenterKeyboardGates.ShowPreservesFocusAndAccessibleName,
                 "提醒中心出现时不抢焦点且保留可访问名称"),
@@ -1860,7 +1863,7 @@ internal static partial class ValidationReport
                 {
                     AccessibleNamesHaveNoLineBreaks = accessibleNameWhitespaceIsolationBehavior
                 },
-            ["MainNoteCompletionStyleScoped"] = Must(mainNoteCompletionGates.AllPassed, "兼容便签完成样式门保持通过"),
+            ["MainNoteCompletionStyleScoped"] = Must(mainNoteCompletionGates, mainNoteCompletionGates.AllPassed, "兼容便签完成样式门保持通过"),
             ["TransientPanelsOnDemand"] = Must(main.HasOnDemandPanels, "筛选、标签选择与标签管理按需交互（#129 自 U1 迁移）"),
             ["TransientPanelsStartClosed"] = main.HasOnDemandPanels,
             ["CountdownTagPickerOpensOnDemand"] = !selector.IsPopupOpen,

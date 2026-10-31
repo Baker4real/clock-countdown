@@ -17,6 +17,15 @@ internal static partial class ValidationReport
     // 必须为真的验证事实：报告字段仍输出 bool，Seal 按声明派生 Valid 与失败清单。
     private static ValidationFact Must(bool passed, string meaning) => new(passed, meaning);
 
+    // 由场景记录汇总的事实：失败时在含义后列出记录里为假的 bool 子项（与手写的「；未通过：」同一格式），
+    // 失败清单直接指出是哪一项；基线生成失败时不写报告，否则只能临时加诊断重拍。
+    private static ValidationFact Must(object scenarios, bool passed, string meaning) =>
+        Must(passed, passed
+            ? meaning
+            : meaning + "；未通过：" + string.Join('/', scenarios.GetType().GetProperties()
+                .Where(property => property.PropertyType == typeof(bool) && property.GetValue(scenarios) is false)
+                .Select(property => property.Name)));
+
     internal static object RunWindowPreflight(ResourceDictionary resources, string assetRoot)
     {
         var theme = new ApplicationTheme(resources);

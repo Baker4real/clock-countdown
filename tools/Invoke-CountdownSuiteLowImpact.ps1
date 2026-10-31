@@ -16,6 +16,8 @@ param(
     [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800,
     # 单实例锁按会话共享（含别的 worktree）。默认被占即拒绝；给秒数则最多等这么久。
     [ValidateRange(0, 86400)] [int] $WaitForLockSeconds = 0,
+    # 后台负载预检报忙、用户确认仍要照跑时才加。
+    [switch] $SkipLoadPreflight,
     [string] $TauriExecutable,
     [string] $TauriEvidenceDirectory,
     [string] $AppPath,
@@ -72,6 +74,57 @@ function Format-SuiteLauncherHolders {
     return "疑似持有者 PID $($holders -join ', ')"
 }
 
+# 后台负载采样三次取平均：CPU 总占用，GPU 取最忙的引擎类型（同类引擎跨进程求和），并记下各自最忙的进程。
+# GPU 引擎实例随进程增减，偶发 PDH 缓冲区错误，重取即可；计数器一直读不到时返回 $null，不挡运行。
+function Measure-SuiteBackgroundLoad {
+    $sampleCount = 3
+    $cpuPercent = 0.0
+    $engineTotals = @{}
+    $engineByPid = @{}
+    $cpuByProcess = @{}
+    for ($sample = 0; $sample -lt $sampleCount; $sample++) {
+        $counterSet = $null
+        for ($attempt = 1; $null -eq $counterSet; $attempt++) {
+            try {
+                $counterSet = Get-Counter -ErrorAction Stop -Counter @(
+                    '\Processor(_Total)\% Processor Time', '\GPU Engine(*)\Utilization Percentage', '\Process(*)\% Processor Time')
+            }
+            catch { if ($attempt -ge 3) { return $null } }
+        }
+        foreach ($counter in $counterSet.CounterSamples) {
+            if ($counter.Path -match '\\processor\(_total\)\\') {
+                $cpuPercent += $counter.CookedValue / $sampleCount
+            }
+            elseif ($counter.InstanceName -match '^pid_(\d+)_.*_engtype_(.+)$') {
+                $engine = $Matches[2]
+                $engineTotals[$engine] += $counter.CookedValue / $sampleCount
+                if (-not $engineByPid.ContainsKey($engine)) { $engineByPid[$engine] = @{} }
+                $engineByPid[$engine][[int] $Matches[1]] += $counter.CookedValue / $sampleCount
+            }
+            elseif ($counter.Path -match '\\process\(' -and $counter.InstanceName -notin @('_total', 'idle')) {
+                $cpuByProcess[$counter.InstanceName] += $counter.CookedValue / $sampleCount / [Environment]::ProcessorCount
+            }
+        }
+    }
+    $busiest = @($engineTotals.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+    $formatTop = {
+        param([hashtable] $byOwner, [scriptblock] $name)
+        @($byOwner.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 |
+            Where-Object Value -ge 1 | ForEach-Object { '{0} {1:N0}%' -f (& $name $_.Key), $_.Value }) -join '、'
+    }
+    [pscustomobject]@{
+        CpuPercent = $cpuPercent
+        CpuTop = & $formatTop $cpuByProcess { param($key) $key }
+        GpuEngine = if ($busiest.Count -gt 0) { $busiest[0].Key } else { '3d' }
+        GpuPercent = if ($busiest.Count -gt 0) { $busiest[0].Value } else { 0.0 }
+        GpuTop = if ($busiest.Count -gt 0) {
+            & $formatTop $engineByPid[$busiest[0].Key] {
+                param($key) $process = Get-Process -Id $key -ErrorAction Ignore; if ($process) { $process.ProcessName } else { "PID $key" }
+            }
+        } else { '' }
+    }
+}
+
 $suiteMutex = [System.Threading.Mutex]::new($false, 'Local\MinminCountdown.SuiteLowImpact')
 $mutexHeld = $false
 try {
@@ -92,6 +145,25 @@ try {
     }
     try { [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' }
     catch { Write-Warning "无法设置 BelowNormal 优先级：$($_.Exception.Message)" }
+
+    # 挖矿或游戏吃满 CPU/GPU 时，窗口阶段的参考帧 300ms 超时会被误报成回归：开跑前采样，超阈值就列出最忙的进程
+    # 并停下。只报告，不结束任何进程；CI 机器专用，不查。
+    if (-not $SkipLoadPreflight -and $env:GITHUB_ACTIONS -ne 'true' -and
+        @($Stage | Where-Object { $_ -notin @('Build', 'Tooling') }).Count -gt 0) {
+        $load = Measure-SuiteBackgroundLoad
+        if ($null -eq $load) {
+            Write-Host '[suite] 读不到 CPU/GPU 性能计数器，跳过后台负载预检。'
+        }
+        elseif ($load.CpuPercent -ge 80 -or $load.GpuPercent -ge 50) {
+            throw ("后台负载过高，窗口阶段可能把参考帧超时误报成回归：CPU {0:N0}%（{1}），GPU {2} 引擎 {3:N0}%（{4}）。" +
+                '请先暂停这些程序再跑；确认照跑时加 -SkipLoadPreflight。启动器不会结束任何进程。') -f
+                $load.CpuPercent, $load.CpuTop, $load.GpuEngine, $load.GpuPercent, $load.GpuTop
+        }
+        else {
+            # 放行也留一行：之后某阶段报超时，可以对照开跑时的负载。
+            Write-Host ('[suite] 后台负载：CPU {0:N0}%，GPU {1} 引擎 {2:N0}%。' -f $load.CpuPercent, $load.GpuEngine, $load.GpuPercent)
+        }
+    }
 
     $repoRoot = Split-Path -Parent $PSScriptRoot
     $pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source

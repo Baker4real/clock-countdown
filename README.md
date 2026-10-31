@@ -101,7 +101,7 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate
 ```
 
-启动器的单实例锁按登录会话共享，别的 worktree 里的启动器也算在内。默认被占即拒绝，并列出疑似持有者 PID；加 `-WaitForLockSeconds <秒>` 则最多排队这么久。阶段失败时，启动器在结尾打印该阶段 err 日志的摘要：取最后一个 PowerShell 错误块，UTF-8 与 936 逐行解码。完整日志仍在 `logs\suite-runs\`。Build 的受管清理遇到删除门锁被别的会话占用（`deployment-mutex-acquire-timeout`，门每次等 2 分钟）时最多尝试 5 次；其余清理失败立即报错。
+启动器的单实例锁按登录会话共享，别的 worktree 里的启动器也算在内。默认被占即拒绝，并列出疑似持有者 PID；加 `-WaitForLockSeconds <秒>` 则最多排队这么久。阶段失败时，启动器在结尾打印该阶段 err 日志的摘要：取最后一个 PowerShell 错误块，UTF-8 与 936 逐行解码。完整日志仍在 `logs\suite-runs\`。Build 的受管清理遇到删除门锁被别的会话占用（`deployment-mutex-acquire-timeout`，门每次等 2 分钟）时最多尝试 5 次；其余清理失败立即报错。含 Build、Tooling 以外阶段的运行，开跑前先采样三次后台负载：CPU 总占用不低于 80%，或 GPU 最忙的引擎类型不低于 50% 时，列出最忙的进程并拒绝开跑，因为挖矿或游戏吃满资源时参考帧 300ms 超时会被误报成回归。启动器只报告、不结束任何进程，CI 不做这项检查；确认要照跑时加 `-SkipLoadPreflight`。
 
 源码树模式下改了视觉源码而尚未重拍时，参考基线必然失配。CSharp / Ui 不在第一个基线断言处中止：应用把失配项记进套件给的延后记录、照常输出报告，套件跑完其余断言后在 err 日志末尾列出延后项，并以 75 退出。启动器把 75 记为该阶段失败，但不触发红即停，其余阶段照常跑完；整轮仍判失败（“参考基线待重拍：…”），办公室部署要求的同一提交全绿证据不变。安装验证和基线生成后的自检始终严格。视觉源码没改却失配时，先按 [DESIGN.md](DESIGN.md) 视觉基线节核对显示缩放，不为过门禁重拍。
 
@@ -132,7 +132,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 `ValidationHarness` 的生产动效检查必须在 300 ms 内取得真实的 10%–90% 中间帧，终态或缺帧都不算通过。只有某场景唯一的失败与实测卡顿重合时，才重跑该场景。卡顿指以下任一情况：采样窗口内最长无帧间隔不短于最短 90 ms token 的 10%–90% 区间（约 37 ms）；或反转后的首帧到达时，整段动效时长已经过去。每个场景最多重跑 2 次，每轮最多 4 次。每次因卡顿失败的尝试都记入 `Motion.Results[].StarvedAttempts`；阈值、实际用量、注入卡顿自检和判定对照见 `Motion.StallRetry`。最终判定仍取自一次完整的真实通过。
 
-视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），按其提示重算 `IntegrityHashes` 并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖，失败时保留生成现场。生成完成后还须另行运行 CSharp / Ui 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹，把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
+视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），按其提示重算 `IntegrityHashes` 并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。生成完成后还须另行运行 CSharp / Ui 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹，把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate

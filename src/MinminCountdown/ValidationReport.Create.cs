@@ -895,7 +895,8 @@ internal static partial class ValidationReport
             desktopWorkspace,
             initialFocusedAutomationId);
         var mainShortcutScopeIsSafe = main.MainShortcutScopeIsSafe;
-        var mainKeyboardPathNegativeFixtures = ValidateMainKeyboardPathNegativeFixtures();
+        var mainKeyboardPathNegativeFixtures =
+            ValidateMainKeyboardPathNegativeFixtures() && MainFocusVisualNegativeFixturesRejected(main);
         var mainShortcutGates = ValidationExercises.EvaluateMainShortcutGates(
             new MainShortcutGateInputs(
                 new[]
@@ -1441,7 +1442,7 @@ internal static partial class ValidationReport
                         ? string.Empty
                         : "；未通过：" + string.Join('/', mainKeyboardImmediateMotion.FailedChecks))),
             ["MainKeyboardImmediateMotionChecks"] = mainKeyboardImmediateMotion,
-            ["MainKeyboardPathNegativeFixtures"] = Must(mainKeyboardPathNegativeFixtures, "完整 Tab 路径负夹具可击穿缺失标签、换序、非对称和不可见焦点"),
+            ["MainKeyboardPathNegativeFixtures"] = Must(mainKeyboardPathNegativeFixtures, "完整 Tab 路径负夹具可击穿缺失标签、换序、非对称、不可见焦点、系统默认虚线框与叠层焦点"),
             ["MainStructuralAnnouncements"] = mainStructuralAnnouncements,
             ["MainEmptyStateGuidance"] = mainStructuralAnnouncements.EmptyStateGuidance,
             ["MainStructuralAnnouncementGates"] = mainStructuralAnnouncementGates,

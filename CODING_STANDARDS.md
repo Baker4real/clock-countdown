@@ -26,3 +26,11 @@ WPF 把 `FocusVisualStyle` 装饰层画在实际拿到键盘焦点的元素上�
 - 评审时对 diff 里新增或改动的每条焦点断言，确认被检查的元素就是焦点会落到的那个；对不上就记为缺陷。
 
 反例：`ValidationReport.KeyboardAndDialogs.cs` 的 Tab 路径焦点可见判定原先读日期框自身的 `FocusVisualStyle`，日期框挂着装饰层样式就通过了；装饰层实际画在 `PART_Button` 上，双层描边因此没被拦下。`8b18cb0f` 把这条判定改为读 `PART_TextBox` 的边框，`WindowValidationScenarios.cs` 的单层描边检查也加上了两个日期框的 `PART_Button`。
+
+## 代码里新建的可获焦控件要接上焦点约定
+
+主窗 XAML 里的键盘路径控件由 `ConfigureControls` 统一接焦点：模板自己画焦点的清掉 `FocusVisualStyle`，其余套 `MainKeyboardFocusVisual`，都挂 `FocusVisualState`。代码里新建的控件不经过这一步，WPF 就给它画系统默认虚线框；基础按钮模板的 `FocusRing` 只在 `FocusVisualState` 点亮后才亮，这时也不会亮。
+
+- diff 在代码里新建按钮、勾选框等可获焦控件时，确认它经过主窗的 `ApplyKeyboardFocusVisual`，或所在窗口的同等接线；没有的记为缺陷。
+
+反例：倒计时行、便签行与标签管理行的编辑 / 删除按钮由 `MainWindow.xaml.cs` 的 `ActionButton`、`NoteActionButton` 在代码里创建，原先没接焦点，键盘进入时显示系统默认虚线框。Tab 路径的焦点可见判定只看 `FocusVisualStyle` 非空，同样放过了它，直到焦点态实拍证据的裁图才暴露出来。现在两个函数都调用 `ApplyKeyboardFocusVisual`，焦点可见判定也只认 `MainKeyboardFocusVisual`。

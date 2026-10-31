@@ -575,9 +575,12 @@ internal static partial class ValidationReport
             return false;
         }
 
-        if (focusOwner.FocusVisualStyle is not null)
+        // 装饰层只认主窗的 2px 暖边 MainKeyboardFocusVisual，而且只给模板不画焦点的控件：系统默认虚线框、
+        // 模板焦点上再挂一层装饰，都不算可见的键盘焦点（DESIGN.md §4 常驻焦点环）。
+        if (focusOwner.FocusVisualStyle is { } focusVisualStyle)
         {
-            return true;
+            return ReferenceEquals(focusVisualStyle, target.Element.TryFindResource("MainKeyboardFocusVisual")) &&
+                !(focusOwner is Control styledControl && FocusVisualState.DrawsOwnKeyboardFocus(styledControl));
         }
 
         if (focusOwner is not Control control || control.Template is null)
@@ -635,6 +638,23 @@ internal static partial class ValidationReport
                 notes, notes, notes.Reverse().Skip(1).ToArray(), true).AllPassed &&
             !EvaluateMainWorkspaceTabPath(
                 notes, notes, notes.Reverse().ToArray(), false).AllPassed;
+    }
+
+    // 焦点可见判定的负夹具：行内按钮修复前的形态（次级按钮带系统默认 FocusVisualStyle），以及模板焦点上
+    // 再挂 2px 暖边装饰层，都必须判为不可见。
+    private static bool MainFocusVisualNegativeFixturesRejected(MainWindow main)
+    {
+        var listTarget = new MainTabTarget("CountdownListRegion", main);
+        var secondaryButton = (Style)main.FindResource("SecondaryButton");
+        var systemDottedFocus = new Button { Style = secondaryButton };
+        var stackedFocus = new Button
+        {
+            Style = secondaryButton,
+            FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual")
+        };
+        return systemDottedFocus.FocusVisualStyle is not null &&
+            !HasVisibleMainKeyboardFocus(listTarget, systemDottedFocus) &&
+            !HasVisibleMainKeyboardFocus(listTarget, stackedFocus);
     }
 
     private static MainTabTarget ResolveMainTabTarget(MainWindow main, DependencyObject focused)

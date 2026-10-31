@@ -1171,7 +1171,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ConfigureControls()
     {
-        var keyboardFocusVisual = (Style)FindResource("MainKeyboardFocusVisual");
         for (var hour = 0; hour < 24; hour++)
         {
             var text = hour.ToString("D2", CultureInfo.InvariantCulture);
@@ -1238,8 +1237,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             if (element is Control control)
             {
-                control.FocusVisualStyle = FocusVisualState.DrawsOwnKeyboardFocus(control) ? null : keyboardFocusVisual;
-                FocusVisualState.Attach(control);
+                ApplyKeyboardFocusVisual(control);
             }
         }
 
@@ -3774,6 +3772,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     "DangerBrush");
         }
 
+        ApplyKeyboardFocusVisual(button);
         return button;
     }
 
@@ -3804,7 +3803,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private Button ActionButton(string content, string id, string accessibleName)
     {
-        return UiAccessibility.Name(
+        var button = UiAccessibility.Name(
             new Button
             {
                 Content = content,
@@ -3816,6 +3815,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
+        ApplyKeyboardFocusVisual(button);
+        return button;
+    }
+
+    // 键盘焦点只画一套（#152，见 ConfigureControls）：模板自己画焦点的控件清掉 FocusVisualStyle，
+    // 其余套 2px 暖边 MainKeyboardFocusVisual，两类都接 FocusVisualState。代码里新建的行内按钮也走这里，
+    // 否则 WPF 给它画系统默认虚线框，模板的 FocusRing 也不会亮。
+    private void ApplyKeyboardFocusVisual(Control control)
+    {
+        control.FocusVisualStyle = FocusVisualState.DrawsOwnKeyboardFocus(control)
+            ? null
+            : (Style)FindResource("MainKeyboardFocusVisual");
+        FocusVisualState.Attach(control);
     }
 
     private IEnumerable<FrameworkElement> FindCoreControls()

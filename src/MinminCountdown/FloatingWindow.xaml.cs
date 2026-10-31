@@ -581,10 +581,12 @@ public sealed partial class FloatingWindow : Window
 
     /// <summary>
     ///     底部“＋ 添加便签”主按钮的展开/收起：默认收起；展开时按当前筛选标签初始化并保持日期默认值，
-    ///     列表滚动偏移不受影响（表单位于外层滚动容器之外）。
+    ///     列表滚动偏移不受影响（表单位于外层滚动容器之外）。每次从收起展开都从表单顶部开始：命令区
+    ///     ScrollViewer 收起后仍记着上次的请求偏移，不复位就回到旧位置，表单顶部卷出视口。
     /// </summary>
     internal void SetQuickAddExpanded(bool expanded)
     {
+        var opening = expanded && !_quickAddExpanded;
         _quickAddExpanded = expanded;
         FloatingNoteEntry.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         // The command bar remains reachable while the in-place editor is open;
@@ -595,6 +597,11 @@ public sealed partial class FloatingWindow : Window
         if (!expanded)
         {
             return;
+        }
+
+        if (opening)
+        {
+            FloatingNotesCommandScroller.ScrollToHome();
         }
 
         var snapshot = _desktopWorkspace.Snapshot;

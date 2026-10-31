@@ -1208,7 +1208,8 @@ internal static partial class ValidationReport
             ["FloatingQuickAddToggleScenariosPass"] = Must(
                 floatingWindowScenarios.BottomCommand,
                 floatingWindowScenarios.BottomCommand.QuickAddTogglePass,
-                "悬浮窗＋添加便签默认收起、点击原地展开并按筛选标签初始化、再次点击收起、提交后收起、展开态切换钮降级次级收起（#149）"),
+                "悬浮窗＋添加便签默认收起、点击原地展开并按筛选标签初始化、再次点击收起、提交后收起、展开态切换钮降级次级收起（#149），" +
+                    "表单滚动后经收起或提交收起，再展开从表单顶部开始"),
             ["FloatingNoteOverflowMenuScenariosPass"] = Must(
                 floatingWindowScenarios.BottomCommand,
                 floatingWindowScenarios.BottomCommand.OverflowMenuPass,

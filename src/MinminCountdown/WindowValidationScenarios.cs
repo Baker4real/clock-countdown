@@ -4791,6 +4791,8 @@ public sealed partial class FloatingWindow
                 UpdateLayout();
             }
 
+            var quickAddReopensAtTop = ProbeQuickAddReopensAtTop(createdNoteIds);
+
             return new FloatingBottomCommandScenarios(
                 defaultCollapsedInNotes,
                 countdownsHideCommandArea,
@@ -4807,7 +4809,8 @@ public sealed partial class FloatingWindow
                 quickAddPlaceholderMirrorsManager,
                 quickAddToggleSecondaryWhenExpanded,
                 noteMenuKeyboardLifecycle,
-                settingsGearConcentric);
+                settingsGearConcentric,
+                quickAddReopensAtTop);
         }
         finally
         {
@@ -4832,6 +4835,80 @@ public sealed partial class FloatingWindow
                 WindowValidationInput.Pump(Dispatcher);
             }
         }
+    }
+
+    // 用户在展开的快速新增表单里滚动后收起（点「收起」或提交成功），再点「＋ 添加便签」，表单顶部要贴着命令区顶部。
+    // 命令区 FloatingNotesCommandScroller 收起后显示的偏移归零，请求偏移却还记着，不复位就回到旧位置。两条收起路径
+    // 各走一遍；再展开后填入长正文，内容一定超出限高，偏移没复位时看得出来。
+    private bool ProbeQuickAddReopensAtTop(List<string> createdNoteIds)
+    {
+        var longText = new string('敏', 60);
+        try
+        {
+            var reopensAfterToggle = QuickAddReopensAtTopAfter(
+                longText,
+                longText,
+                () => FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)));
+            var submitText = $"快速新增复位探针-{Guid.NewGuid():N}{longText}";
+            var reopensAfterSubmit = QuickAddReopensAtTopAfter(
+                submitText,
+                longText,
+                () => FloatingAddNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)));
+            var submitted = _desktopWorkspace.Snapshot.Settings.Notes.FirstOrDefault(note =>
+                string.Equals(note.Text, submitText, StringComparison.Ordinal));
+            if (submitted is not null)
+            {
+                createdNoteIds.Add(submitted.Id);
+            }
+
+            return reopensAfterToggle && reopensAfterSubmit && submitted is not null;
+        }
+        finally
+        {
+            FloatingNotesCommandScroller.ScrollToHome();
+            SetQuickAddExpanded(false);
+            FloatingNoteText.Text = string.Empty;
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+        }
+    }
+
+    // 从收起态点开表单、填入正文并把命令区滚到底，执行收起动作，再点开并填入长正文，最后点「收起」回到收起态。
+    private bool QuickAddReopensAtTopAfter(string textBeforeCollapse, string textAfterReopen, Action collapse)
+    {
+        FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        FloatingNoteText.Text = textBeforeCollapse;
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        FloatingNotesCommandScroller.ScrollToBottom();
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var scrolledDown =
+            FloatingNoteEntry.IsVisible &&
+            FloatingNotesCommandScroller.VerticalOffset > 0.5;
+
+        collapse();
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var collapsed = FloatingNoteEntry.Visibility == Visibility.Collapsed;
+
+        FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        FloatingNoteText.Text = textAfterReopen;
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        var reopenedAtTop =
+            FloatingNoteEntry.IsVisible &&
+            FloatingNotesCommandScroller.ScrollableHeight > 0.5 &&
+            FloatingNotesCommandScroller.VerticalOffset <= 0.5 &&
+            Math.Abs(ValidationBounds(FloatingNoteEntry).Top - ValidationBounds(FloatingNotesCommandScroller).Top) <= 0.5;
+
+        FloatingAddNoteToggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        FloatingNoteText.Text = string.Empty;
+        WindowValidationInput.Pump(Dispatcher);
+        UpdateLayout();
+        return scrolledDown && collapsed && reopenedAtTop;
     }
 
     // 「设置」按钮图标：15x15 框内齿轮外轮廓的几何中心、孔的中心与框中心三者重合。容差 0.5 DIP：
@@ -5515,7 +5592,8 @@ internal sealed record FloatingBottomCommandScenarios(
     bool QuickAddPlaceholderMirrorsManager,
     bool QuickAddToggleSecondaryWhenExpanded,
     bool NoteMenuKeyboardLifecycle,
-    bool SettingsGearConcentric)
+    bool SettingsGearConcentric,
+    bool QuickAddReopensAtTop)
 {
     public bool QuickAddTogglePass =>
         DefaultCollapsedInNotes &&
@@ -5523,7 +5601,8 @@ internal sealed record FloatingBottomCommandScenarios(
         ToggleCollapses &&
         SubmitCollapsesAfterSuccess &&
         ExpandedQuickAddScrollable &&
-        QuickAddToggleSecondaryWhenExpanded;
+        QuickAddToggleSecondaryWhenExpanded &&
+        QuickAddReopensAtTop;
 
     public bool OverflowMenuPass =>
         NoteMenuProvidesEdit &&

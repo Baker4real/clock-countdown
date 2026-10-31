@@ -192,6 +192,13 @@ internal static partial class ValidationReport
         public bool FloatingTypographyUnchanged => Gates.FloatingTypographyUnchanged;
     }
 
+    private sealed record SecondaryWindowKeyboardFocusResult(
+        IReadOnlyList<string> Failures,
+        bool NegativeFixturesRejected)
+    {
+        public bool AllPassed => Failures.Count == 0 && NegativeFixturesRejected;
+    }
+
     private sealed record FloatingTrayInteractionExerciseResult(
         bool ProductionControllerActive,
         bool MinimizeHidesWindowAndShowsIcon,

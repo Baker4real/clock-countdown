@@ -27,10 +27,11 @@ WPF 把 `FocusVisualStyle` 装饰层画在实际拿到键盘焦点的元素上�
 
 反例：`ValidationReport.KeyboardAndDialogs.cs` 的 Tab 路径焦点可见判定原先读日期框自身的 `FocusVisualStyle`，日期框挂着装饰层样式就通过了；装饰层实际画在 `PART_Button` 上，双层描边因此没被拦下。`8b18cb0f` 把这条判定改为读 `PART_TextBox` 的边框，`WindowValidationScenarios.cs` 的单层描边检查也加上了两个日期框的 `PART_Button`。
 
-## 代码里新建的可获焦控件要接上焦点约定
+## 键盘焦点约定写在样式上，新窗口要进焦点核对
 
-主窗 XAML 里的键盘路径控件由 `ConfigureControls` 统一接焦点：模板自己画焦点的清掉 `FocusVisualStyle`，其余套 `MainKeyboardFocusVisual`，都挂 `FocusVisualState`。代码里新建的控件不经过这一步，WPF 就给它画系统默认虚线框；基础按钮模板的 `FocusRing` 只在 `FocusVisualState` 点亮后才亮，这时也不会亮。
+键盘焦点只画一套：模板自己画焦点的样式在样式里把 `FocusVisualStyle` 设成 `{x:Null}`，焦点环由 `FocusVisualState.IsKeyboardFocusVisible` 点亮，这个状态由 `App` 静态构造注册的类处理器替所有控件维护，控件不用逐个接线；焦点由宿主模板画的部件（日期框的打开日历按钮）标 `FocusVisualState.HostDrawsFocus`，不点亮自己的环。模板不画焦点的停靠点挂 `App.xaml` 的 2px 暖边 `MainKeyboardFocusVisual`；`ScrollViewer` 默认可获焦，列表滚动区也算。漏了 setter 的样式、没挂暖边的滚动区，WPF 在键盘获焦时都会另画一层系统默认虚线框。沿 Tab 走一圈的焦点核对能拦下这些问题，但只覆盖进了核对的窗口。
 
-- diff 在代码里新建按钮、勾选框等可获焦控件时，确认它经过主窗的 `ApplyKeyboardFocusVisual`，或所在窗口的同等接线；没有的记为缺陷。
+- diff 新增窗口、弹层，或在没有核对的界面里新增可 Tab 控件时，确认它进了某条焦点核对（主窗 Tab 路径、`FloatingKeyboardFocusDrawnOnce`、`SecondaryWindowKeyboardFocusDrawnOnce`）；没进的记为缺陷。
+- diff 为焦点给单个控件接线（订阅获焦或鼠标事件改 `IsKeyboardFocusVisible`、在代码里清 `FocusVisualStyle`）时，确认这是样式表达不了的特例，并写明原因。
 
-反例：倒计时行、便签行与标签管理行的编辑 / 删除按钮由 `MainWindow.xaml.cs` 的 `ActionButton`、`NoteActionButton` 在代码里创建，原先没接焦点，键盘进入时显示系统默认虚线框。Tab 路径的焦点可见判定只看 `FocusVisualStyle` 非空，同样放过了它，直到焦点态实拍证据的裁图才暴露出来。现在两个函数都调用 `ApplyKeyboardFocusVisual`，焦点可见判定也只认 `MainKeyboardFocusVisual`。
+反例：基础按钮、分段、勾选与单选这些 `App.xaml` 样式原先没清 `FocusVisualStyle`，焦点环也只在逐个调用 `FocusVisualState.Attach` 的控件上点亮。主窗靠 `ConfigureControls` 逐个接线，代码里新建的行内编辑 / 删除按钮一度漏接；悬浮窗、提醒中心、提醒规则编辑器、设置恢复与激活失败窗没有接线，按钮和勾选框显示系统默认虚线框，悬浮窗有的按钮清了装饰层却点不亮焦点环，几个窗口的滚动列表停在 Tab 上也显示系统虚线框。焦点核对当时只覆盖主窗，这些都没被拦下。改成全局点亮时，日期框打开日历按钮自己的环又会和整框边界叠成两层，原先只看宿主边界的判定看不出来。

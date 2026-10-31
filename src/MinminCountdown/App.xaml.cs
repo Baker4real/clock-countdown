@@ -15,6 +15,7 @@ public sealed partial class App : Application
         TextBoxBase.IsReadOnlyProperty.OverrideMetadata(
             typeof(DatePickerTextBox),
             new FrameworkPropertyMetadata(true));
+        FocusVisualState.RegisterClassHandlers();
     }
 
     private readonly CancellationTokenSource _shutdownCancellation = new();

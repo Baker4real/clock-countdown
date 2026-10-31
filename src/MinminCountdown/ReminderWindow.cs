@@ -143,6 +143,7 @@ internal sealed class ReminderCenterWindow : Window
             CanContentScroll = false
         };
         AutomationProperties.SetName(scroller, "提醒条目列表");
+        scroller.SetResourceReference(FocusVisualStyleProperty, "MainKeyboardFocusVisual");
 
         var layout = new Grid { Margin = new Thickness(14) };
         layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");

@@ -665,12 +665,14 @@ internal sealed class TagSelector : Grid
         _items = new StackPanel();
         var panel = new StackPanel { Margin = new Thickness(10) };
         panel.Children.Add(_search);
-        panel.Children.Add(new ScrollViewer
+        var itemsScroller = new ScrollViewer
         {
             Content = _items,
             MaxHeight = 220,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-        });
+        };
+        itemsScroller.SetResourceReference(FocusVisualStyleProperty, "MainKeyboardFocusVisual");
+        panel.Children.Add(itemsScroller);
         panel.Children.Add(_create);
 
         _surface = new Border

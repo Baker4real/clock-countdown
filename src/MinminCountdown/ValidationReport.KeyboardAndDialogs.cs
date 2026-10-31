@@ -575,34 +575,9 @@ internal static partial class ValidationReport
             return false;
         }
 
-        // 装饰层只认主窗的 2px 暖边 MainKeyboardFocusVisual，而且只给模板不画焦点的控件：系统默认虚线框、
-        // 模板焦点上再挂一层装饰，都不算可见的键盘焦点（DESIGN.md §4 常驻焦点环）。
-        if (focusOwner.FocusVisualStyle is { } focusVisualStyle)
-        {
-            return ReferenceEquals(focusVisualStyle, target.Element.TryFindResource("MainKeyboardFocusVisual")) &&
-                !(focusOwner is Control styledControl && FocusVisualState.DrawsOwnKeyboardFocus(styledControl));
-        }
-
-        if (focusOwner is not Control control || control.Template is null)
-        {
-            return false;
-        }
-
-        // 日期框的焦点边界画在 PART_TextBox（DatePickerTextBox）的边框属性上，不在具名 Border 上。
-        control.ApplyTemplate();
-        return new[] { "FocusRing", "Box", "Surface", "PART_TextBox" }
-            .Select(name => control.Template.FindName(name, control))
-            .Any(part => part switch
-            {
-                Border border => IsFocusStroke(border.IsVisible, border.BorderBrush, border.BorderThickness),
-                Control inner => IsFocusStroke(inner.IsVisible, inner.BorderBrush, inner.BorderThickness),
-                _ => false
-            });
-
-        static bool IsFocusStroke(bool visible, Brush? brush, Thickness thickness) =>
-            visible &&
-            HasVisibleBrush(brush) &&
-            new[] { thickness.Left, thickness.Top, thickness.Right, thickness.Bottom }.Max() >= 2;
+        // 与悬浮窗、次级窗口同一条判定：装饰层只认 2px 暖边 MainKeyboardFocusVisual，而且只给模板不画焦点的控件；
+        // 判定读实际获焦的元素，日期框读打开日历按钮（DESIGN.md §4 常驻焦点环）。
+        return WindowValidationInput.KeyboardFocusDrawnOnce(focused);
     }
 
     private static bool ValidateMainKeyboardPathNegativeFixtures()
@@ -640,13 +615,17 @@ internal static partial class ValidationReport
                 notes, notes, notes.Reverse().ToArray(), false).AllPassed;
     }
 
-    // 焦点可见判定的负夹具：行内按钮修复前的形态（次级按钮带系统默认 FocusVisualStyle），以及模板焦点上
+    // 焦点可见判定的负夹具：行内按钮修复前的形态（模板自己画焦点的次级按钮挂着系统默认虚线框），以及模板焦点上
     // 再挂 2px 暖边装饰层，都必须判为不可见。
     private static bool MainFocusVisualNegativeFixturesRejected(MainWindow main)
     {
         var listTarget = new MainTabTarget("CountdownListRegion", main);
         var secondaryButton = (Style)main.FindResource("SecondaryButton");
-        var systemDottedFocus = new Button { Style = secondaryButton };
+        var systemDottedFocus = new Button
+        {
+            Style = secondaryButton,
+            FocusVisualStyle = (Style)main.FindResource(SystemParameters.FocusVisualStyleKey)
+        };
         var stackedFocus = new Button
         {
             Style = secondaryButton,
@@ -1262,6 +1241,102 @@ internal static partial class ValidationReport
             activation.Close();
             PumpDispatcher();
         }
+    }
+
+    // 键盘焦点只画一套（DESIGN.md §4 常驻焦点环）：提醒中心（带一条便签提醒）、提醒规则编辑器（带一条规则，
+    // 行内有编辑 / 复制 / 删除）、设置恢复窗与激活失败窗各沿 Tab 走一圈，每个停靠点只亮模板焦点，列表滚动区
+    // 只挂统一的 2px 暖边。确认框的按钮取自它局部合并的 WPF-UI 样式，不在这条约定里。
+    private static SecondaryWindowKeyboardFocusResult ValidateSecondaryWindowKeyboardFocus(MainWindow owner)
+    {
+        var now = new DateTimeOffset(2031, 4, 5, 0, 0, 0, TimeSpan.Zero);
+        var reminderCenter = new ReminderCenterWindow();
+        reminderCenter.AddEntry(new ReminderCenterItem(
+            new ActiveReminderOccurrenceKey("focus-validation-rule", now.AddHours(1)),
+            new NoteRecord(
+                "focus-validation-note",
+                "焦点验证便签",
+                "2031-04-05",
+                false,
+                Array.Empty<string>(),
+                NoReminder.Instance),
+            0,
+            0));
+        var editor = new ReminderRulesEditorWindow(
+            new ReminderRule[]
+            {
+                new CalendarReminderRule(
+                    "focus-validation-daily",
+                    CalendarFrequency.Daily,
+                    1,
+                    new DateOnly(2031, 4, 5),
+                    new TimeOnly(9, 0),
+                    new DailyCalendarSelector())
+            },
+            new ValidationClock(now))
+        {
+            Owner = owner
+        };
+        var recovery = SettingsRecoveryWindow.CreateForValidation("设置恢复焦点验证正文", canRecover: true);
+        var activation = InstanceActivationFailureWindow.CreateForValidation();
+        var windows = new (string Name, Window Window)[]
+        {
+            ("提醒中心", reminderCenter),
+            ("提醒规则编辑器", editor),
+            ("设置恢复", recovery),
+            ("激活失败", activation)
+        };
+        foreach (var (_, window) in windows)
+        {
+            window.ShowInTaskbar = false;
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = -20_000;
+            window.Top = -20_000;
+            window.Opacity = 0;
+        }
+
+        var failures = new List<string>();
+        try
+        {
+            foreach (var (name, window) in windows)
+            {
+                window.Show();
+                PumpDispatcher();
+                failures.AddRange(WindowValidationInput.KeyboardFocusFailuresInWindow(window)
+                    .Select(failure => $"{name}：{failure}"));
+            }
+        }
+        finally
+        {
+            reminderCenter.ForceClose();
+            editor.Close();
+            recovery.Close();
+            activation.Close();
+            PumpDispatcher();
+        }
+
+        return new SecondaryWindowKeyboardFocusResult(failures, KeyboardFocusNegativeFixturesRejected(owner));
+    }
+
+    // KeyboardFocusDrawnOnce 的负夹具：模板自己画焦点的按钮挂系统默认虚线框、焦点环没被点亮、文本框再挂一层
+    // 装饰、列表滚动区留着系统默认虚线框，都必须判为不合格。次级按钮靠样式清掉装饰层，这一条也在这里核对。
+    private static bool KeyboardFocusNegativeFixturesRejected(MainWindow main)
+    {
+        var secondaryButton = (Style)main.FindResource("SecondaryButton");
+        var systemFocusVisual = (Style)main.FindResource(SystemParameters.FocusVisualStyleKey);
+        var systemDottedFocus = new Button
+        {
+            Style = secondaryButton,
+            FocusVisualStyle = systemFocusVisual
+        };
+        var unlitRing = new Button { Style = secondaryButton };
+        var stackedInput = new TextBox { FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual") };
+        var systemDottedList = new ScrollViewer { FocusVisualStyle = systemFocusVisual };
+        return systemDottedFocus.FocusVisualStyle is not null &&
+            unlitRing.FocusVisualStyle is null &&
+            !WindowValidationInput.KeyboardFocusDrawnOnce(systemDottedFocus) &&
+            !WindowValidationInput.KeyboardFocusDrawnOnce(unlitRing) &&
+            !WindowValidationInput.KeyboardFocusDrawnOnce(stackedInput) &&
+            !WindowValidationInput.KeyboardFocusDrawnOnce(systemDottedList);
     }
 
     private static SecondaryWindowTypographyMeasurement MeasureSecondaryTypography(

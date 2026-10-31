@@ -14,21 +14,6 @@
         ResizeMode="CanResize"
         Topmost="{Binding IsChecked, ElementName=TopmostCheck, Mode=OneWay}"
         Background="{DynamicResource BackgroundBrush}">
-  <Window.Resources>
-    <Style x:Key="MainKeyboardFocusVisual">
-      <Setter Property="Control.Template">
-        <Setter.Value>
-          <ControlTemplate>
-            <!-- #152：常规键盘焦点为 2px 暖边（§13.3 FocusBorderThickness），不再是 3px 第二套描边。 -->
-            <Border Margin="-2"
-                    BorderBrush="{DynamicResource ActiveBrush}"
-                    BorderThickness="2"
-                    CornerRadius="6" />
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
-  </Window.Resources>
   <shell:WindowChrome.WindowChrome>
     <!-- #211：标题拖动区覆盖整个身份区（行高 130）的空白；身份区内置顶/最小化/关闭
          控件以 IsHitTestVisibleInChrome 保持可点击。 -->

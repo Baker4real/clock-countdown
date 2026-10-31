@@ -3553,6 +3553,7 @@ public sealed partial class FloatingWindow
             var noteSearch = ProbeNoteSearchScenarios();
             // #212：渲染签名稳定刷新探针（焦点/实例保留、隐藏与最小化门控）。
             var stableRefresh = ProbeStableRefreshScenarios();
+            var keyboardFocus = ProbeKeyboardFocusScenarios();
             // 放在最后：设置按钮与“…”编辑会揭示管理窗口，避免扰动前面的聚焦类探针。
             var bottomCommand = ProbeBottomCommandScenarios();
             var structure = ProbeStructureScenarios();
@@ -3568,7 +3569,8 @@ public sealed partial class FloatingWindow
                 noteSearch,
                 stableRefresh,
                 bottomCommand,
-                structure);
+                structure,
+                keyboardFocus);
         }
         finally
         {
@@ -4855,6 +4857,94 @@ public sealed partial class FloatingWindow
         return (outlineCenter - holeCenter).Length <= 0.5 && (outlineCenter - boxCenter).Length <= 0.5;
     }
 
+    // 键盘焦点只画一套（DESIGN.md §4 常驻焦点环）：倒计时工作区沿 Tab 走完悬浮窗一圈；便签工作区展开快速新增后
+    // 再走一圈，然后从键盘打开一条便签的「…」菜单和快速新增的标签选择器，各在弹层里走一圈。代码新建的行内控件
+    // 与弹层按钮都在内。
+    private FloatingKeyboardFocusScenarios ProbeKeyboardFocusScenarios()
+    {
+        var originalWorkspace = _workspace;
+        var createdNoteIds = new List<string>();
+        string? createdTagId = null;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var countdownsFailures = WindowValidationInput.KeyboardFocusFailuresInWindow(this);
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            EnsureProbeNotes(createdNoteIds, 1);
+            // 标签选择器弹层要有标签才有勾选框。
+            if (_desktopWorkspace.Snapshot.Settings.Tags.Count == 0 &&
+                _desktopWorkspace.Apply(new CreateTagChange($"焦点探针-{Guid.NewGuid():N}"[..17], "#F4B6A6")) is
+                    { Succeeded: true, CreatedTag: { } createdTag })
+            {
+                createdTagId = createdTag.Id;
+            }
+
+            SetQuickAddExpanded(true);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var notesFailures = WindowValidationInput.KeyboardFocusFailuresInWindow(this);
+
+            IReadOnlyList<string> overflowMenuFailures = ["没有便签「…」触发按钮"];
+            var trigger = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
+                Equals(button.GetValue(NoteControlRoleProperty), NoteControlRoleOverflow));
+            if (trigger is not null && NoteRowOverflowMenuBehavior.GetPopup(trigger) is { } overflowMenu)
+            {
+                overflowMenuFailures = OpenFromKeyboardAndTraverse(trigger, overflowMenu, "「…」菜单");
+            }
+
+            var tagSelectorFailures = OpenFromKeyboardAndTraverse(
+                FloatingTags.PopupTrigger,
+                FloatingTags.Popup,
+                "标签选择器");
+            return new FloatingKeyboardFocusScenarios(
+                countdownsFailures, notesFailures, overflowMenuFailures, tagSelectorFailures);
+        }
+        finally
+        {
+            // Tab 走过展开的表单会把命令区滚下去；ScrollViewer 收起后仍记着这个请求偏移，下次展开回到原处、
+            // 表单顶部卷出视口，所以先滚回顶部再收起，不把滚动状态留给后面的探针。
+            FloatingNotesCommandScroller.ScrollToHome();
+            SetQuickAddExpanded(false);
+            foreach (var id in createdNoteIds)
+            {
+                _desktopWorkspace.Apply(new DeleteNoteChange(id));
+            }
+
+            if (createdTagId is not null)
+            {
+                _desktopWorkspace.Apply(new DeleteTagChange(createdTagId));
+            }
+
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+        }
+
+        IReadOnlyList<string> OpenFromKeyboardAndTraverse(Button opener, Popup popup, string name)
+        {
+            try
+            {
+                Keyboard.Focus(opener);
+                WindowValidationInput.Pump(Dispatcher);
+                opener.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                var focusEntered = WindowValidationInput.WaitUntil(Dispatcher, () =>
+                    popup is { IsOpen: true, Child: { } root } &&
+                    Keyboard.FocusedElement is Visual focused &&
+                    root.IsAncestorOf(focused));
+                return focusEntered && Keyboard.FocusedElement is UIElement first
+                    ? WindowValidationInput.KeyboardFocusFailuresAlongTabCycle(first)
+                    : [$"{name}没有从键盘打开并接住焦点"];
+            }
+            finally
+            {
+                WindowValidationInput.ClosePopupForCleanup(popup);
+            }
+        }
+    }
+
     /// <summary>“…”菜单删除：确认弹层取消则保留便签，确认则删除；弹层经 Dispatcher 队列驱动。</summary>
     private bool ProbeNoteOverflowMenuDelete(Button trigger, Popup popup, string noteId)
     {
@@ -5357,7 +5447,25 @@ internal sealed record FloatingWindowValidationScenarios(
     FloatingNoteSearchValidationScenarios NoteSearch,
     FloatingStableRefreshScenarios StableRefresh,
     FloatingBottomCommandScenarios BottomCommand,
-    FloatingStructureScenarios Structure);
+    FloatingStructureScenarios Structure,
+    FloatingKeyboardFocusScenarios KeyboardFocus);
+
+internal sealed record FloatingKeyboardFocusScenarios(
+    IReadOnlyList<string> CountdownsWorkspaceFailures,
+    IReadOnlyList<string> NotesWorkspaceFailures,
+    IReadOnlyList<string> OverflowMenuFailures,
+    IReadOnlyList<string> TagSelectorFailures)
+{
+    public IReadOnlyList<string> Failures =>
+    [
+        .. CountdownsWorkspaceFailures.Select(failure => $"悬浮窗倒计时：{failure}"),
+        .. NotesWorkspaceFailures.Select(failure => $"悬浮窗便签：{failure}"),
+        .. OverflowMenuFailures.Select(failure => $"「…」菜单：{failure}"),
+        .. TagSelectorFailures.Select(failure => $"标签选择器：{failure}")
+    ];
+
+    public bool AllPassed => Failures.Count == 0;
+}
 
 internal sealed record FloatingStructureScenarios(
     bool ShellLargeShadowRemoved,
@@ -5947,6 +6055,139 @@ internal static class WindowValidationInput
             new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
     }
+
+    // 键盘焦点只画一套（DESIGN.md §4 常驻焦点环），判定读实际获焦的元素。模板不画焦点的停靠点（列表滚动区、
+    // 状态文字）只认统一的 2px 暖边装饰层 MainKeyboardFocusVisual；系统默认虚线框、模板焦点上再挂装饰层都不算。
+    // 其余停靠点不挂装饰层：按钮、分段、勾选与单选的焦点环要 FocusVisualState 已点亮；文本框、下拉框与日期框
+    // 获焦时由模板换成 2px 输入面边界。日期框的 Tab 焦点落在模板里的打开日历按钮上，描边画在包住它的日期框上，
+    // 按钮自己的焦点环再亮就叠成两层。
+    public static bool KeyboardFocusDrawnOnce(DependencyObject focused)
+    {
+        if (focused is not FrameworkElement element)
+        {
+            return false;
+        }
+
+        if (element.FocusVisualStyle is { } focusVisualStyle)
+        {
+            return ReferenceEquals(focusVisualStyle, element.TryFindResource("MainKeyboardFocusVisual")) &&
+                !(element is Control styledControl && FocusVisualState.DrawsOwnKeyboardFocus(styledControl));
+        }
+
+        // 悬浮窗的金额文字不是 Control，焦点环是旁边的 FloatingIncomeFocusRing，跟随它自己维护的 IsKeyboardFocusVisible。
+        if (element is AutomationOptionalTextBlock)
+        {
+            return FocusVisualState.GetIsKeyboardFocusVisible(element);
+        }
+
+        if (element is not Control control)
+        {
+            return false;
+        }
+
+        Control? inputHost = null;
+        for (DependencyObject? node = control; node is not null && inputHost is null; node = VisualTreeHelper.GetParent(node))
+        {
+            inputHost = node as DatePicker ?? (Control?)(node as ComboBox);
+        }
+
+        inputHost ??= control as TextBox;
+        return inputHost is not null
+            ? TemplateDrawsFocusStroke(inputHost) &&
+                (ReferenceEquals(inputHost, control) || !TemplatePartsDrawFocusStroke(control, "FocusRing"))
+            : FocusVisualState.GetIsKeyboardFocusVisible(control) && TemplateDrawsFocusStroke(control);
+    }
+
+    // 模板里画焦点的部件（常驻焦点环 FocusRing、勾选框 Box、输入面 Surface、日期框 PART_TextBox）至少一个可见，
+    // 而且边宽不小于 2px。
+    public static bool TemplateDrawsFocusStroke(Control control) =>
+        TemplatePartsDrawFocusStroke(control, "FocusRing", "Box", "Surface", "PART_TextBox");
+
+    private static bool TemplatePartsDrawFocusStroke(Control control, params string[] partNames)
+    {
+        if (control.Template is null)
+        {
+            return false;
+        }
+
+        control.ApplyTemplate();
+        return partNames
+            .Select(name => control.Template.FindName(name, control))
+            .Any(part => part switch
+            {
+                Border border => IsFocusStroke(border.IsVisible, border.BorderBrush, border.BorderThickness),
+                Control inner => IsFocusStroke(inner.IsVisible, inner.BorderBrush, inner.BorderThickness),
+                _ => false
+            });
+
+        static bool IsFocusStroke(bool visible, Brush? brush, Thickness thickness) =>
+            visible &&
+            brush is not (null or SolidColorBrush { Color.A: 0 }) &&
+            new[] { thickness.Left, thickness.Top, thickness.Right, thickness.Bottom }.Max() >= 2;
+    }
+
+    // 激活窗口后从第一个 Tab 停靠点出发走一圈，见 KeyboardFocusFailuresAlongTabCycle。
+    public static IReadOnlyList<string> KeyboardFocusFailuresInWindow(Window window)
+    {
+        window.Activate();
+        Pump(window.Dispatcher);
+        window.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+        Pump(window.Dispatcher);
+        return Keyboard.FocusedElement is UIElement first && !ReferenceEquals(first, window)
+            ? KeyboardFocusFailuresAlongTabCycle(first)
+            : ["窗口里没有可 Tab 到的控件"];
+    }
+
+    // 从起点沿 Tab 顺序走一圈（窗口与弹层的 Tab 都循环），记下不满足 KeyboardFocusDrawnOnce 的停靠点；
+    // 走不回起点或停在原地也记一条。焦点由程序移交，FocusVisualState 照样点亮，与真实按 Tab 一致。
+    public static IReadOnlyList<string> KeyboardFocusFailuresAlongTabCycle(UIElement start, int maxStops = 80)
+    {
+        Keyboard.Focus(start);
+        Pump(start.Dispatcher);
+        if (Keyboard.FocusedElement is not UIElement first)
+        {
+            return ["起点拿不到键盘焦点"];
+        }
+
+        var failures = new List<string>();
+        var current = first;
+        for (var stop = 0; stop < maxStops; stop++)
+        {
+            if (!KeyboardFocusDrawnOnce(current))
+            {
+                failures.Add(DescribeFocusStop(current));
+            }
+
+            current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            Pump(start.Dispatcher);
+            if (Keyboard.FocusedElement is not UIElement next)
+            {
+                failures.Add($"Tab 离开 {DescribeFocusStop(current)} 后焦点落空");
+                return failures;
+            }
+
+            if (ReferenceEquals(next, first))
+            {
+                return failures;
+            }
+
+            if (ReferenceEquals(next, current))
+            {
+                failures.Add($"Tab 停在 {DescribeFocusStop(current)}");
+                return failures;
+            }
+
+            current = next;
+        }
+
+        failures.Add($"Tab 走了 {maxStops} 步没有回到起点");
+        return failures;
+    }
+
+    private static string DescribeFocusStop(UIElement element) =>
+        $"{element.GetType().Name}「{AutomationProperties.GetName(element)}」" +
+        (element is FrameworkElement { FocusVisualStyle: not null } ? "挂着装饰层" : string.Empty) +
+        (element is Control control && !FocusVisualState.GetIsKeyboardFocusVisible(control) ? "焦点环未点亮" : string.Empty);
 
     // #239/#240：两窗剩余时间分格里秒位的数值文字。分格是「数值格（Border 包 TextBlock）＋单位」
     // 两个子元素的 StackPanel，单位为「秒」的那一对即秒位。

@@ -218,6 +218,7 @@
 
         <ScrollViewer x:Name="FloatingBodyScroller"
                       Grid.Row="2"
+                      FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
           <ScrollViewer.Resources>

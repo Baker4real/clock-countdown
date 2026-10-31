@@ -953,6 +953,7 @@ internal static partial class ValidationReport
             floatingTypographyMeasurements.FirstOrDefault()?.ReminderFontSize ?? 0);
         var secondaryWindowTypographyGateIsolationBehavior =
             ValidationExercises.RunSecondaryWindowTypographyGateIsolationBehavior();
+        var secondaryWindowKeyboardFocus = ValidateSecondaryWindowKeyboardFocus(main);
 
         var countdownName = Required<TextBox>(main, "CountdownName");
         var countdownDate = Required<DatePicker>(main, "CountdownDate");
@@ -1219,6 +1220,13 @@ internal static partial class ValidationReport
             ["FloatingNoteOverflowMenuKeyboardWorks"] = Must(
                 floatingWindowScenarios.BottomCommand.NoteMenuKeyboardLifecycle,
                 "悬浮便签…菜单键盘可走完：打开聚焦编辑、Tab 进入删除、Esc 关闭并回触发器（#149）"),
+            ["FloatingKeyboardFocusDrawnOnce"] = Must(
+                floatingWindowScenarios.KeyboardFocus.AllPassed,
+                "悬浮窗两个工作区沿 Tab 一圈、便签…菜单与标签选择器弹层里，每个停靠点只亮模板焦点或统一的 2px 暖边、" +
+                    "不挂系统虚线框，日期框的打开日历按钮不另亮焦点环" +
+                    (floatingWindowScenarios.KeyboardFocus.AllPassed
+                        ? string.Empty
+                        : "；未通过：" + string.Join('/', floatingWindowScenarios.KeyboardFocus.Failures))),
             ["FloatingSettingsGearConcentric"] = Must(floatingWindowScenarios.BottomCommand.SettingsGearConcentric, "悬浮「设置」齿轮外轮廓与孔同心、在 15x15 图标框内居中"),
             ["FloatingConstrainedEmptyStateProvidesAction"] = Must(
                 floatingWindowScenarios.NoteSearch.ConstrainedEmptyProvidesAction,
@@ -1449,6 +1457,13 @@ internal static partial class ValidationReport
             ["MainStructuralAnnouncementGateIsolationBehavior"] = Must(mainStructuralAnnouncementGateIsolationBehavior, "结构变化通知三门负向夹具可独立失败"),
             ["SecondaryWindowTypography"] = secondaryWindowTypography,
             ["SecondaryWindowTypographyGateIsolationBehavior"] = Must(secondaryWindowTypographyGateIsolationBehavior, "次级窗口字号三门负向夹具可独立失败"),
+            ["SecondaryWindowKeyboardFocusDrawnOnce"] = Must(
+                secondaryWindowKeyboardFocus.AllPassed,
+                "提醒中心、提醒规则编辑器、设置恢复与激活失败窗沿 Tab 一圈，每个停靠点只亮模板焦点或统一的 2px 暖边、" +
+                    "不挂系统虚线框；系统虚线框、焦点环未点亮、叠层装饰与列表区虚线框负夹具都判不合格" +
+                    (secondaryWindowKeyboardFocus.AllPassed
+                        ? string.Empty
+                        : "；未通过：" + string.Join('/', secondaryWindowKeyboardFocus.Failures.DefaultIfEmpty("负夹具未判出")))),
             ["CompactActionTargetsAreUsable"] = Must(
                 Required<Button>(main, "SaveCountdownButton").MinHeight >= 32,
                 "紧凑标签与便签动作达到桌面交互目标尺寸（#129 自 U1 迁移）"),

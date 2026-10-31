@@ -1557,8 +1557,6 @@ public sealed partial class FloatingWindow : Window
         FloatingTags.SetTags(_desktopWorkspace.Snapshot.Settings.Tags);
         AutomationProperties.SetName(FloatingCountdownsButton, "显示悬浮倒计时");
         AutomationProperties.SetName(FloatingNotesButton, "显示悬浮便签");
-        FocusVisualState.Attach(FloatingCountdownsButton);
-        FocusVisualState.Attach(FloatingNotesButton);
         AutomationProperties.SetName(MinimizeToTrayButton, "缩小到系统托盘");
         AutomationProperties.SetName(OpenManagerButton, "打开管理窗口");
         AutomationProperties.SetName(CloseFloatingButton, "退出应用");

@@ -294,6 +294,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             Margin = new Thickness(0, 14, 0, 0)
         };
         AutomationProperties.SetName(scroller, "已配置提醒规则");
+        scroller.SetResourceReference(FocusVisualStyleProperty, "MainKeyboardFocusVisual");
 
         var form = new Grid { Margin = new Thickness(0, 14, 0, 0) };
         form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });

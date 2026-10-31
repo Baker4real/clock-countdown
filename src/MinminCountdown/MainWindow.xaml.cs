@@ -1171,6 +1171,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ConfigureControls()
     {
+        var keyboardFocusVisual = (Style)FindResource("MainKeyboardFocusVisual");
         for (var hour = 0; hour < 24; hour++)
         {
             var text = hour.ToString("D2", CultureInfo.InvariantCulture);
@@ -1229,23 +1230,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
         AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
         AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
-        // #152：模板自己画键盘焦点的控件（页签、次级 / 图标按钮、提醒帮助与单选、标签触发按钮的
-        // 常驻 FocusRing，文本框、下拉框与日期框获焦时的 2px 输入面边界）不再套 FocusVisualStyle——
-        // 那是被禁止的第二套描边，而且 WPF 在 Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它。
-        // 模板不画焦点的键盘路径控件继续用 2px 暖边 FocusVisualStyle。主按钮与置顶开关不在本列表，见下方。
+        // #152：模板自己画键盘焦点的控件（页签、各类按钮、复选与单选的常驻焦点环，文本框、下拉框与日期框
+        // 获焦时的 2px 输入面边界）由样式清掉 FocusVisualStyle——那是被禁止的第二套描边，而且 WPF 在
+        // Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它；焦点环由 FocusVisualState 的类处理器点亮。
+        // 只有模板不画焦点的键盘路径控件在这里挂 2px 暖边 FocusVisualStyle。
         foreach (var element in KeyboardPathControls)
         {
-            if (element is Control control)
+            if (element is Control control && !FocusVisualState.DrawsOwnKeyboardFocus(control))
             {
-                ApplyKeyboardFocusVisual(control);
+                control.FocusVisualStyle = keyboardFocusVisual;
             }
         }
-
-        FocusVisualState.Attach(SaveCountdownButton);
-        FocusVisualState.Attach(SaveNoteButton);
-        FocusVisualState.Attach(TopmostCheck);
-        FocusVisualState.Attach(ActiveNotesSegment);
-        FocusVisualState.Attach(CompletedNotesSegment);
 
         ConfigureReminderHelpFocusHelpText();
 
@@ -2331,7 +2326,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     isCompleted,
                     chevronRotation)
             };
-            FocusVisualState.Attach(sectionToggle);
             SetNoteDateSectionState(
                 sectionToggle,
                 sectionRows,
@@ -2534,7 +2528,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");
-        FocusVisualState.Attach(completion);
         completion.Checked += OnNoteCompletionChanged;
         completion.Unchecked += OnNoteCompletionChanged;
         _noteCompletionBoxes[note.Id] = completion;
@@ -3772,7 +3765,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     "DangerBrush");
         }
 
-        ApplyKeyboardFocusVisual(button);
         return button;
     }
 
@@ -3803,7 +3795,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private Button ActionButton(string content, string id, string accessibleName)
     {
-        var button = UiAccessibility.Name(
+        return UiAccessibility.Name(
             new Button
             {
                 Content = content,
@@ -3815,19 +3807,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
-        ApplyKeyboardFocusVisual(button);
-        return button;
-    }
-
-    // 键盘焦点只画一套（#152，见 ConfigureControls）：模板自己画焦点的控件清掉 FocusVisualStyle，
-    // 其余套 2px 暖边 MainKeyboardFocusVisual，两类都接 FocusVisualState。代码里新建的行内按钮也走这里，
-    // 否则 WPF 给它画系统默认虚线框，模板的 FocusRing 也不会亮。
-    private void ApplyKeyboardFocusVisual(Control control)
-    {
-        control.FocusVisualStyle = FocusVisualState.DrawsOwnKeyboardFocus(control)
-            ? null
-            : (Style)FindResource("MainKeyboardFocusVisual");
-        FocusVisualState.Attach(control);
     }
 
     private IEnumerable<FrameworkElement> FindCoreControls()
@@ -4211,9 +4190,9 @@ internal sealed record ReminderModeClickResult(
 /// </summary>
 internal static class FocusVisualState
 {
-    private static readonly DependencyProperty IsAttachedProperty =
+    private static readonly DependencyProperty MouseFocusPendingProperty =
         DependencyProperty.RegisterAttached(
-            "IsAttached",
+            "MouseFocusPending",
             typeof(bool),
             typeof(FocusVisualState),
             new FrameworkPropertyMetadata(false));
@@ -4231,6 +4210,21 @@ internal static class FocusVisualState
     internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
         (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
 
+    // 模板部件的键盘焦点由宿主画时置真，类处理器不点亮它自己的焦点环：日期框的打开日历按钮套基础按钮样式，
+    // 模板里有常驻 FocusRing，可整框 2px 输入面边界由日期框模板画（App.xaml），按钮的环再亮就叠成两层。
+    public static readonly DependencyProperty HostDrawsFocusProperty =
+        DependencyProperty.RegisterAttached(
+            "HostDrawsFocus",
+            typeof(bool),
+            typeof(FocusVisualState),
+            new FrameworkPropertyMetadata(false));
+
+    public static void SetHostDrawsFocus(DependencyObject target, bool value) =>
+        target.SetValue(HostDrawsFocusProperty, value);
+
+    public static bool GetHostDrawsFocus(DependencyObject target) =>
+        (bool)target.GetValue(HostDrawsFocusProperty);
+
     // 模板自己画键盘焦点的控件不能再叠 FocusVisualStyle 装饰层：模板里有常驻 FocusRing 的控件，
     // 以及获焦时由模板把输入面边界换成 2px ActiveBrush 的文本框、下拉框与日期框（App.xaml）。
     internal static bool DrawsOwnKeyboardFocus(Control control)
@@ -4240,29 +4234,42 @@ internal static class FocusVisualState
         return control.Template?.FindName("FocusRing", control) is Border;
     }
 
-    internal static void Attach(Control control)
+    // App 静态构造里注册一次：所有窗口与弹层里的控件，不论 XAML 声明还是代码新建，都按同一规则维护
+    // IsKeyboardFocusVisible——指针在控件上按下随后获焦不点亮，Tab、方向键与程序移交的获焦一律点亮，
+    // 标了 HostDrawsFocus 的模板部件除外。模板据此点亮自己的焦点环，不必逐个控件接线（DESIGN.md §4 常驻焦点环）。
+    internal static void RegisterClassHandlers()
     {
-        if ((bool)control.GetValue(IsAttachedProperty))
-        {
-            return;
-        }
+        EventManager.RegisterClassHandler(
+            typeof(Control),
+            UIElement.PreviewMouseLeftButtonDownEvent,
+            new MouseButtonEventHandler(OnPreviewMouseLeftButtonDown),
+            handledEventsToo: true);
+        EventManager.RegisterClassHandler(
+            typeof(Control),
+            UIElement.GotKeyboardFocusEvent,
+            new KeyboardFocusChangedEventHandler(OnGotKeyboardFocus),
+            handledEventsToo: true);
+    }
 
-        control.SetValue(IsAttachedProperty, true);
-        var mouseFocusPending = false;
-        control.PreviewMouseLeftButtonDown += (_, _) =>
+    private static void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var control = (Control)sender;
+        control.SetValue(MouseFocusPendingProperty, true);
+        SetIsKeyboardFocusVisible(control, false);
+        control.Dispatcher.BeginInvoke(
+            DispatcherPriority.Input,
+            new Action(() => control.ClearValue(MouseFocusPendingProperty)));
+    }
+
+    private static void OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // 获焦事件沿祖先冒泡，只给实际获焦的控件点亮。
+        var control = (Control)sender;
+        if (ReferenceEquals(sender, e.NewFocus) &&
+            !(bool)control.GetValue(MouseFocusPendingProperty) &&
+            !GetHostDrawsFocus(control))
         {
-            mouseFocusPending = true;
-            SetIsKeyboardFocusVisible(control, false);
-            control.Dispatcher.BeginInvoke(
-                DispatcherPriority.Input,
-                new Action(() => mouseFocusPending = false));
-        };
-        control.GotKeyboardFocus += (_, _) =>
-        {
-            if (!mouseFocusPending)
-            {
-                SetIsKeyboardFocusVisible(control, true);
-            }
-        };
+            SetIsKeyboardFocusVisible(control, true);
+        }
     }
 }

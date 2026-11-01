@@ -75,27 +75,46 @@ function Format-SuiteLauncherHolders {
 }
 
 # 后台负载采样三次取平均：CPU 总占用，GPU 取最忙的引擎类型（同类引擎跨进程求和），并记下各自最忙的进程。
-# GPU 引擎实例随进程增减，偶发 PDH 缓冲区错误，重取即可；计数器一直读不到时返回 $null，不挡运行。
+# 进程不停起落时（上一轮启动器的子进程刚退出就是这样），Get-Counter 先报一条非终止的 CounterApiError，再照样输出整组
+# 样本：展开通配符后退出的进程，实例状态非零，丢掉这几条即可；展开时实例数恰好在变，会缺掉整类样本，隔一秒重取。
+# 连取五次仍缺就返回带错误原文的 Error，调用方跳过预检，不挡运行。
 function Measure-SuiteBackgroundLoad {
     $sampleCount = 3
+    $maxAttempts = 5
+    $gpuEngineInstance = '^pid_(\d+)_.*_engtype_(.+)$'
     $cpuPercent = 0.0
     $engineTotals = @{}
     $engineByPid = @{}
     $cpuByProcess = @{}
     for ($sample = 0; $sample -lt $sampleCount; $sample++) {
-        $counterSet = $null
-        for ($attempt = 1; $null -eq $counterSet; $attempt++) {
+        for ($attempt = 1; ; $attempt++) {
+            $counterErrors = @()
+            $samples = @()
             try {
-                $counterSet = Get-Counter -ErrorAction Stop -Counter @(
-                    '\Processor(_Total)\% Processor Time', '\GPU Engine(*)\Utilization Percentage', '\Process(*)\% Processor Time')
+                $samples = @(Get-Counter -ErrorAction SilentlyContinue -ErrorVariable counterErrors -Counter @(
+                        '\Processor(_Total)\% Processor Time', '\GPU Engine(*)\Utilization Percentage', '\Process(*)\% Processor Time') |
+                    ForEach-Object CounterSamples | Where-Object Status -eq 0)
             }
-            catch { if ($attempt -ge 3) { return $null } }
+            catch { $counterErrors = @($_) }
+            $missing = @(
+                if ($samples.Where({ $_.Path -match '\\processor\(_total\)\\' }, 'First').Count -eq 0) { 'CPU 总量' }
+                if ($samples.Where({ $_.InstanceName -match $gpuEngineInstance }, 'First').Count -eq 0) { 'GPU 引擎' }
+                if ($samples.Where({ $_.Path -match '\\process\(' }, 'First').Count -eq 0) { '进程' })
+            if ($missing.Count -eq 0) { break }
+            if ($attempt -ge $maxAttempts) {
+                $reasons = @($counterErrors | ForEach-Object { $_.Exception.Message } | Select-Object -Unique)
+                return [pscustomobject]@{
+                    Error = '连取 {0} 次都缺{1}样本（{2}）' -f $maxAttempts, ($missing -join '、'),
+                        $(if ($reasons.Count -gt 0) { $reasons -join '；' } else { '没有错误输出' })
+                }
+            }
+            Start-Sleep -Seconds 1
         }
-        foreach ($counter in $counterSet.CounterSamples) {
+        foreach ($counter in $samples) {
             if ($counter.Path -match '\\processor\(_total\)\\') {
                 $cpuPercent += $counter.CookedValue / $sampleCount
             }
-            elseif ($counter.InstanceName -match '^pid_(\d+)_.*_engtype_(.+)$') {
+            elseif ($counter.InstanceName -match $gpuEngineInstance) {
                 $engine = $Matches[2]
                 $engineTotals[$engine] += $counter.CookedValue / $sampleCount
                 if (-not $engineByPid.ContainsKey($engine)) { $engineByPid[$engine] = @{} }
@@ -106,22 +125,21 @@ function Measure-SuiteBackgroundLoad {
             }
         }
     }
-    $busiest = @($engineTotals.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+    $busiest = $engineTotals.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
     $formatTop = {
         param([hashtable] $byOwner, [scriptblock] $name)
         @($byOwner.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 |
             Where-Object Value -ge 1 | ForEach-Object { '{0} {1:N0}%' -f (& $name $_.Key), $_.Value }) -join '、'
     }
     [pscustomobject]@{
+        Error = ''
         CpuPercent = $cpuPercent
         CpuTop = & $formatTop $cpuByProcess { param($key) $key }
-        GpuEngine = if ($busiest.Count -gt 0) { $busiest[0].Key } else { '3d' }
-        GpuPercent = if ($busiest.Count -gt 0) { $busiest[0].Value } else { 0.0 }
-        GpuTop = if ($busiest.Count -gt 0) {
-            & $formatTop $engineByPid[$busiest[0].Key] {
-                param($key) $process = Get-Process -Id $key -ErrorAction Ignore; if ($process) { $process.ProcessName } else { "PID $key" }
-            }
-        } else { '' }
+        GpuEngine = $busiest.Key
+        GpuPercent = $busiest.Value
+        GpuTop = & $formatTop $engineByPid[$busiest.Key] {
+            param($key) $process = Get-Process -Id $key -ErrorAction Ignore; if ($process) { $process.ProcessName } else { "PID $key" }
+        }
     }
 }
 
@@ -151,8 +169,8 @@ try {
     if (-not $SkipLoadPreflight -and $env:GITHUB_ACTIONS -ne 'true' -and
         @($Stage | Where-Object { $_ -notin @('Build', 'Tooling') }).Count -gt 0) {
         $load = Measure-SuiteBackgroundLoad
-        if ($null -eq $load) {
-            Write-Host '[suite] 读不到 CPU/GPU 性能计数器，跳过后台负载预检。'
+        if ($load.Error) {
+            Write-Host "[suite] 性能计数器读不全，跳过后台负载预检：$($load.Error)"
         }
         elseif ($load.CpuPercent -ge 80 -or $load.GpuPercent -ge 50) {
             throw ("后台负载过高，窗口阶段可能把参考帧超时误报成回归：CPU {0:N0}%（{1}），GPU {2} 引擎 {3:N0}%（{4}）。" +

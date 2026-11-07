@@ -54,6 +54,7 @@ internal static partial class ValidationReport
             }
         }
 
+        Check("CountdownRowActionGeometry", ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior);
         if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
         {
             Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));

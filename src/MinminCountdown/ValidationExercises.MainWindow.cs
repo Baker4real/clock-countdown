@@ -1516,6 +1516,7 @@ internal static partial class ValidationExercises
             main.Show();
             WindowValidationInput.Pump(main.Dispatcher);
             var rows = (Panel)main.FindName("CountdownRows");
+            var edit = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "编辑"));
             Must(VisualDescendants<TextBlock>(rows).Any(text => text.IsVisible && text.Text == "7 月 8 日 09:30 截止"),
                 "#221：倒计时列表应显示北京时区的月日时分截止行。");
             var delete = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "删除"));
@@ -1523,6 +1524,23 @@ internal static partial class ValidationExercises
                  delete.BorderBrush is SolidColorBrush border && border.Color.A == 0 &&
                  VisualDescendants<System.Windows.Shapes.Path>(delete).Any(path => path.IsVisible),
                 "#221：行删除为危险色文字加图标，不使用红色边框。");
+            foreach (var button in new[] { edit, delete })
+            {
+                var presenter = VisualDescendants<ContentPresenter>(button).Single();
+                var label = VisualDescendants<TextBlock>(presenter).Single();
+                var buttonBounds = new Rect(button.RenderSize);
+                var labelBounds = label.TransformToAncestor(button).TransformBounds(new Rect(label.RenderSize));
+                Must(Math.Abs(button.ActualHeight - button.DesiredSize.Height) <= 1,
+                    "#247：倒计时行动作不得被跨行内容拉伸为竖长按钮。");
+                Must(button.ActualHeight >= 24 &&
+                     Math.Abs(buttonBounds.Top + (buttonBounds.Height - labelBounds.Height) / 2 - labelBounds.Top) <= 1,
+                    "#247：倒计时行编辑与删除须保持紧凑命中高度及文字垂直居中。");
+            }
+            var baseline = VisualDescendants<TextBlock>(edit).Single().BaselineOffset;
+            var deleteBaseline = VisualDescendants<TextBlock>(delete).Single().BaselineOffset;
+            Must(Math.Abs(edit.PointToScreen(new Point(0, baseline)).Y -
+                         delete.PointToScreen(new Point(0, deleteBaseline)).Y) <= 1,
+                "#247：倒计时行编辑与删除的文字基线须一致。");
             return true;
         }
         finally

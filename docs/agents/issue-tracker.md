@@ -13,6 +13,7 @@ intent: 规定本仓库问题、PRD 和 ticket 的 GitHub Issues 操作方式。
 
 - 创建：`gh issue create`
 - 读取：`gh issue view <number> --comments`
+- JSON 读取（含评论）：`gh issue view <number> --json 'number,title,body,comments'`；`--comments` 与 `--json` 互斥，不叠加。
 - 列出：`gh issue list`
 - 评论：`gh issue comment <number>`
 - 标签：`gh issue edit <number> --add-label/--remove-label`

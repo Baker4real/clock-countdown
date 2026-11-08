@@ -124,6 +124,107 @@ internal static partial class ValidationReport
         }
     }
 
+    // #247：倒计时行关键状态实拍，不进门禁。一次性主窗口载入行几何探针的同一份夹具，按首选 864×1000 截取倒计时页
+    // 四种排布（七行时滚动条在顶部与底部、百万天主项、到期主项）和便签页（次级动作对照），写进本次运行实拍证据目录的
+    // countdown-rows\，供人工核对主阅读轴、辅助带与动作。失败只写 countdown-rows.error.txt，并在报告里记下原因，
+    // 不影响其余断言。
+    private static CountdownRowEvidenceResult CaptureCountdownRowStateEvidence(string assetRoot, string referenceCapturePath)
+    {
+        // 发布包模式不写实拍证据，参考帧路径为空，这里同样不请求。
+        if (string.IsNullOrEmpty(referenceCapturePath))
+        {
+            return new CountdownRowEvidenceResult(string.Empty, string.Empty);
+        }
+
+        const int captureWidth = 864;
+        const int captureHeight = 1000;
+        var evidenceDirectory = Path.Combine(Path.GetDirectoryName(referenceCapturePath)!, "countdown-rows");
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-countdown-row-evidence-{Guid.NewGuid():N}.settings.json");
+        MainWindow? window = null;
+        try
+        {
+            Directory.CreateDirectory(evidenceDirectory);
+            var workspace = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(clock: new ValidationClock(ValidationExercises.CountdownRowFixtureUtc)));
+            var fixture = ValidationExercises.SeedCountdownRowStates(workspace);
+            using var calendar = new HolidayCalendar(assetRoot);
+            var probe = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(settingsPath + ".diagnostic.jsonl"),
+                assetRoot)
+            {
+                Width = captureWidth,
+                Height = captureHeight,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000
+            };
+            window = probe;
+            probe.Show();
+            PumpDispatcher();
+            if (probe.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("主窗口根视觉不可用于捕获。");
+            }
+
+            var entries = new List<object>();
+            void Capture(string captureId, string state)
+            {
+                PumpDispatcher();
+                ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+                ClearCaptureKeyboardFocus(root);
+                WaitForMainReferenceMotion(probe, root);
+                var path = Path.Combine(evidenceDirectory, $"{captureId}.png");
+                var sha256 = WriteNewPng(path, CaptureOpaqueMainSurface(root, captureWidth, captureHeight));
+                entries.Add(new { captureId, state, path, sha256 });
+            }
+
+            probe.ShowWorkspace(WorkspaceKind.Countdowns);
+            Capture("countdown-rows-top", "七行，纵向滚动条在顶部：普通主项、30 字名称、五枚标签、999 天");
+            probe.CountdownListRegionForValidation.ScrollToEnd();
+            Capture("countdown-rows-bottom", "七行滚到底部：北京时区截止行、百万天、已到期次项");
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [fixture.LongestTagId] });
+            Capture("countdown-rows-longest-primary", "「长期」筛选：百万天主项与已到期次项，无滚动条");
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [fixture.ExpiredTagId] });
+            Capture("countdown-rows-expired-primary", "「收尾」筛选：已到期主项");
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+            probe.ShowWorkspace(WorkspaceKind.Notes);
+            Capture("note-row-actions", "便签行：与倒计时行同一套编辑/删除");
+
+            var manifestPath = Path.Combine(evidenceDirectory, "countdown-rows.json");
+            WriteNewBytes(
+                manifestPath,
+                JsonSerializer.SerializeToUtf8Bytes(
+                    new
+                    {
+                        schemaVersion = 1,
+                        captureKind = "main-window countdown row states at 864x1000 for #247; not gated",
+                        referenceUtc = ValidationExercises.CountdownRowFixtureUtc,
+                        entries
+                    },
+                    new JsonSerializerOptions { WriteIndented = true }));
+            return new CountdownRowEvidenceResult(manifestPath, string.Empty);
+        }
+        catch (Exception exception)
+        {
+            Directory.CreateDirectory(evidenceDirectory);
+            WriteCaptureFailureEvidence(evidenceDirectory, "countdown-rows", exception);
+            return new CountdownRowEvidenceResult(string.Empty, $"{exception.GetType().Name}: {exception.Message}");
+        }
+        finally
+        {
+            window?.Close();
+            PumpDispatcher();
+            TryDeleteSettingsFiles(settingsPath);
+            TryDeleteFile(settingsPath + ".diagnostic.jsonl");
+        }
+    }
+
     private static object SaveMainFocusCrop(
         MainWindow window,
         string evidenceDirectory,

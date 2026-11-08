@@ -954,11 +954,12 @@ internal static partial class ValidationReport
                 panel.Children.OfType<Button>()
                     .Select(button => button.Content?.ToString() ?? string.Empty)
                     .SequenceEqual(new[] { "编辑", "删除" }, StringComparer.Ordinal));
+        // #247：剩余时间与名称同在首行主阅读轴，名称不得压进剩余时间列。
         var remaining = FindVisualAncestor<Grid>(title) is Grid layout
             ? layout.Children.OfType<TextBlock>().SingleOrDefault(candidate =>
                 !ReferenceEquals(candidate, title) &&
                 Grid.GetColumn(candidate) == 1 &&
-                Grid.GetRow(candidate) == 1)
+                Grid.GetRow(candidate) == 0)
             : null;
         var scrollViewer = FindVisualAncestor<ScrollViewer>(rows);
         var viewport = scrollViewer is null

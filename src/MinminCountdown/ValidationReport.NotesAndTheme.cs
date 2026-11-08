@@ -612,15 +612,23 @@ internal static partial class ValidationReport
                 return false;
             }
 
-            var bodies = grid.Children
+            // #247：倒计时行的截止与标签收在辅助带网格里，检查随之下钻一层。
+            var children = grid.Children
+                .OfType<UIElement>()
+                .Concat(grid.Children
+                    .OfType<Grid>()
+                    .Where(band => string.Equals(band.Uid, "CountdownRowAuxiliaryBand", StringComparison.Ordinal))
+                    .SelectMany(band => band.Children.OfType<UIElement>()))
+                .ToArray();
+            var bodies = children
                 .OfType<StackPanel>()
                 .Where(panel => !requirePrimaryColumn || Grid.GetColumn(panel) is 0 or 1)
                 .ToArray();
-            var directTexts = grid.Children
+            var directTexts = children
                 .OfType<TextBlock>()
                 .Where(text => !requirePrimaryColumn || Grid.GetColumn(text) is 0 or 1)
                 .ToArray();
-            var directTagTexts = grid.Children
+            var directTagTexts = children
                 .OfType<WrapPanel>()
                 .Where(panel => !requirePrimaryColumn || Grid.GetColumn(panel) is 0 or 1)
                 .SelectMany(panel => panel.Children.OfType<Border>())

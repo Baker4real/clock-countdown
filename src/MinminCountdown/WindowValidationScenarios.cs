@@ -3523,6 +3523,9 @@ public sealed partial class MainWindow
 
     // 焦点态证据要让时分秒下拉框与提醒单选也进 Tab 路径。
     internal void ExpandCountdownEditorForValidation() => SetCountdownEditorExpanded(true);
+
+    // #247：倒计时行实拍要把列表滚到底部；按字段取滚动区，不经按名查找。
+    internal ScrollViewer CountdownListRegionForValidation => CountdownListRegion;
 }
 
 public sealed partial class FloatingWindow

@@ -1978,7 +1978,7 @@ internal static partial class ValidationExercises
     // #249：便签卡围绕内容组织。完成勾选、正文首行与编辑/删除同一首行中线；正文与提醒摘要连成一个内容列，吸收动作槽
     // 以左的全部宽度；标签在内容下方就近换行、与正文左对齐，不伸进动作槽；编辑与删除停在每张卡同一个右上动作槽，不随
     // 正文高度、选择或提醒来源强调移动。未完成（出现滚动条）、搜索、多选、提醒来源与已完成五种排布逐卡检查，选择前后
-    // 卡内几何逐项相同，Esc 收起批量操作条。违反项汇总后一次报出。
+    // 卡内几何逐项相同，Esc 收起批量操作条，打开提醒来源把整张来源卡滚进列表视口。违反项汇总后一次报出。
     public static bool RunNoteRowContentGeometryBehavior()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-row-geometry-{Guid.NewGuid():N}.json");
@@ -2087,6 +2087,9 @@ internal static partial class ValidationExercises
                 violations.Add("多选：Esc 须取消选择并收起批量操作条");
             }
 
+            // 来源卡在列表末尾：先回到顶部，打开来源时必须真的把它滚进视口。
+            parts.ListRegion.ScrollToTop();
+            WindowValidationInput.Pump(main.Dispatcher);
             Must(main.OpenReminderSource(ReminderSourceKind.Note, fixture.ReminderSourceNoteId),
                 "#249：须真实打开提醒来源便签。");
             VerifyPass("提醒来源", parts.ActiveRows, expectedCards: 5, expectScrollBar: true);
@@ -2097,6 +2100,19 @@ internal static partial class ValidationExercises
                 AutomationProperties.GetName(sourceCard)?.StartsWith("当前提醒来源便签：", StringComparison.Ordinal) != true)
             {
                 violations.Add("提醒来源：来源卡须以 2 DIP ActiveBrush 边界强调并报出来源身份");
+            }
+
+            // 来源卡比视口矮时，打开来源要让整张卡（正文、摘要与标签）都在视口里，而不只是获焦的编辑按钮所在的首行带。
+            if (sourceCard is not null)
+            {
+                var listViewport = viewport!;
+                var revealed = BoundsOn(sourceCard, listViewport);
+                if (revealed.Height <= listViewport.ActualHeight &&
+                    (revealed.Top < -0.5 || revealed.Bottom > listViewport.ActualHeight + 0.5))
+                {
+                    violations.Add(FormattableString.Invariant(
+                        $"提醒来源（卡片 {revealed.Top:0.#}～{revealed.Bottom:0.#}，视口高 {listViewport.ActualHeight:0.#} DIP）：打开提醒来源须把整张来源卡滚进列表视口"));
+                }
             }
 
             parts.CompletedSegment.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));

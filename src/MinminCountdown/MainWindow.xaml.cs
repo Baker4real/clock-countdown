@@ -162,6 +162,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     // #247：倒计时行与便签行共用的次级动作最小高度（紧凑命中 53×33）。#249 便签卡以它为首行带：
     // 勾选框、正文首行与编辑/删除在这条带内共用同一中线。
     private const double RowActionMinHeight = 33;
+    // #152/#208：便签完成勾选的真实 DIP 命中槽，与 MainNoteCompletionCheck 模板 Surface 同为 28×28。
+    private const double NoteCompletionHitSlot = 28;
     // #249：便签卡标签在正文与提醒摘要下方 6 DIP 处起排，折行后的芯片行之间留 4 DIP。
     private const double NoteCardTagTopGap = 6;
     private const double NoteCardTagRowGap = 4;
@@ -1008,7 +1010,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Activate();
             if (_noteSourceRows.TryGetValue(note.Id, out var row))
             {
+                // #249：ScrollViewer 会把排队中相邻的 MakeVisible 合并成最后一个。来源卡的滚动若和随后编辑按钮
+                // 获焦时的滚动排在同一队，就只剩编辑那一次，只把右上动作所在的首行带滚进视口，摘要与标签留在视口外。
+                // 先排版（刚重建的卡才有整卡尺寸），按整张卡滚动并让它落定，再交焦点。
+                UpdateLayout();
                 row.BringIntoView();
+                UpdateLayout();
             }
 
             if (_noteSourceFocusTargets.TryGetValue(note.Id, out var focusTarget))
@@ -2570,10 +2577,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 IsChecked = note.IsCompleted,
                 Tag = note.Id,
-                // 模板的 28 DIP 命中槽在首行带内居中，可见勾选框中线落在动作中线上；命中区不变。
-                Height = RowActionMinHeight,
+                // 28×28 命中槽以上边距在首行带内居中，可见勾选框中线落在正文首行与动作的中线上；
+                // 控件本身仍是 28×28，命中区与槽位合同（MainCheckboxHitCoversSlot）不变。
                 VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 0, 7, 0),
+                Margin = new Thickness(0, (RowActionMinHeight - NoteCompletionHitSlot) / 2, 7, 0),
                 Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
             },
             note.IsCompleted ? $"恢复便签 {note.Text}" : $"完成便签 {note.Text}");

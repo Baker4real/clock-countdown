@@ -230,17 +230,30 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     // #240：剩余时间分格按现有排版与适配算法（重新）构建的累计次数；跳过与就地更新都不计入。
     internal long CountdownRemainingBlocksBuildCountForValidation { get; private set; }
 
-    internal static (string Message, bool ShowReset) CountdownEmptyStatePresentation(bool hasSavedCountdowns) =>
+    // #248：空态的文案与动作。首次无数据给说明与填写引导（只聚焦表单），筛选无结果只给重置；
+    // 每页的添加入口只有表单里的实心主行动。
+    internal sealed record EmptyStatePresentation(string Message, string? Hint, bool ShowGuide, bool ShowReset);
+
+    internal static EmptyStatePresentation CountdownEmptyStatePresentation(bool hasSavedCountdowns) =>
         hasSavedCountdowns
-            ? ("没有符合当前筛选条件的倒计时。", true)
-            : ("还没有倒计时", false);
+            ? new("没有符合当前筛选条件的倒计时。", null, ShowGuide: false, ShowReset: true)
+            : new("还没有倒计时", CountdownEmptyStateHint, ShowGuide: true, ShowReset: false);
 
     internal const string CountdownEmptyStateHint = "把重要的时刻记下来，从一个目标开始吧。";
 
-    internal static (string Message, bool ShowReset) NoteEmptyStatePresentation(bool hasSavedNotes) =>
-        hasSavedNotes
-            ? ("没有符合当前筛选条件的便签。", true)
-            : ("还没有便签", false);
+    // 便签多一种「当前分段无内容」：分段里一条已保存的便签都没有时，筛选重置也找不回来，
+    // 所以说明记录在另一分段，不说成筛选无结果、也不给重置。
+    internal static EmptyStatePresentation NoteEmptyStatePresentation(
+        bool hasSavedNotes,
+        bool segmentHasSavedNotes,
+        bool completedSegment) =>
+        !hasSavedNotes
+            ? new("还没有便签", NoteEmptyStateHint, ShowGuide: true, ShowReset: false)
+            : segmentHasSavedNotes
+                ? new("没有符合当前筛选条件的便签。", null, ShowGuide: false, ShowReset: true)
+                : completedSegment
+                    ? new("还没有已完成的便签", "完成的便签会出现在这里。", ShowGuide: false, ShowReset: false)
+                    : new("没有未完成的便签", "便签都已完成，可以在「已完成」里查看。", ShowGuide: false, ShowReset: false);
 
     internal const string NoteEmptyStateHint = "先写下一件想记住的事。";
 
@@ -1222,8 +1235,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NameControl(CloseButton, "关闭窗口");
         NameControl(ManageNoteReminderRulesButton, "管理便签提醒规则");
         NameControl(SaveNoteButton, "保存便签");
-        NameControl(AddEmptyCountdownButton, "添加倒计时");
-        NameControl(AddEmptyNoteButton, "添加便签");
+        NameControl(AddEmptyCountdownButton, "填写倒计时名称");
+        NameControl(AddEmptyNoteButton, "填写便签内容");
         NameControl(ResetEmptyNotesFiltersButton, "重置便签筛选");
         NameControl(ResetEmptyCountdownFiltersButton, "重置倒计时筛选");
         AutomationProperties.SetName(CountdownEmptyMascot, string.Empty);
@@ -1407,7 +1420,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownEditorExpandButton.Click += (_, _) =>
             SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible);
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
-        AddEmptyCountdownButton.Click += (_, _) => BeginCountdownAddFromEmptyState();
+        AddEmptyCountdownButton.Click += (_, _) => FocusCountdownNameFromEmptyState();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
         foreach (var field in new[] { MonthlySalary, WorkStart, WorkEnd })
             AttachSingleLineSubmit(field, SavePreferences, () => IsEnabled && PreferencesPopup.IsOpen);
@@ -1435,7 +1448,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
-        AddEmptyNoteButton.Click += (_, _) => BeginNoteAddFromEmptyState();
+        AddEmptyNoteButton.Click += (_, _) => FocusNoteTextFromEmptyState();
         ManageNoteReminderRulesButton.Click += (_, _) => OpenNoteReminderRulesEditor();
         NoteText.TextChanged += (_, _) => ClearNoteFieldError(NoteTextError);
         MainStatusUndoButton.Click += (_, _) => CommitMainUndo();
@@ -1654,11 +1667,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             AutomationProperties.SetLiveSetting(EmptyCountdownMessage, AutomationLiveSetting.Polite);
             UiAccessibility.Announce(EmptyCountdownMessage, emptyState.Message);
             EmptyCountdownMessage.Visibility = Visibility.Visible;
-            EmptyCountdownHint.Text = CountdownEmptyStateHint;
-            EmptyCountdownHint.Visibility = isFirstUse
+            if (emptyState.Hint is { } countdownHint)
+            {
+                EmptyCountdownHint.Text = countdownHint;
+            }
+
+            EmptyCountdownHint.Visibility = emptyState.Hint is not null
                 ? Visibility.Visible
                 : Visibility.Collapsed;
-            AddEmptyCountdownButton.Visibility = isFirstUse
+            AddEmptyCountdownButton.Visibility = emptyState.ShowGuide
                 ? Visibility.Visible
                 : Visibility.Collapsed;
             ResetEmptyCountdownFiltersButton.Visibility = emptyState.ShowReset
@@ -2232,11 +2249,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var showCompleted = revealNoteId is not null ? revealCompleted : _completedSegmentSelected;
         ApplyNotesSegmentState(showCompleted, active.Length, completed.Length);
 
-        var noVisibleNotes = records.Count == 0;
-        var segmentHasNotes = showCompleted ? completed.Length > 0 : active.Length > 0;
-        var emptyState = NoteEmptyStatePresentation(snapshot.Settings.Notes.Count > 0);
+        var showEmpty = (showCompleted ? completed.Length : active.Length) == 0;
         var isFirstUse = snapshot.Settings.Notes.Count == 0;
-        NotesEmptyStateContent.Visibility = noVisibleNotes || !segmentHasNotes
+        var emptyState = NoteEmptyStatePresentation(
+            !isFirstUse,
+            snapshot.Settings.Notes.Any(note => note.IsCompleted == showCompleted),
+            showCompleted);
+        NotesEmptyStateContent.Visibility = showEmpty
             ? Visibility.Visible
             : Visibility.Collapsed;
         NotesEmptyMascot.Visibility = isFirstUse && !ApplicationTheme.HighContrastEnabled
@@ -2244,17 +2263,21 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             : Visibility.Collapsed;
         AutomationProperties.SetLiveSetting(EmptyNotesMessage, AutomationLiveSetting.Polite);
         UiAccessibility.Announce(EmptyNotesMessage, emptyState.Message);
-        EmptyNotesMessage.Visibility = noVisibleNotes || !segmentHasNotes
+        EmptyNotesMessage.Visibility = showEmpty
             ? Visibility.Visible
             : Visibility.Collapsed;
-        EmptyNotesHint.Text = NoteEmptyStateHint;
-        EmptyNotesHint.Visibility = isFirstUse && (noVisibleNotes || !segmentHasNotes)
+        if (emptyState.Hint is { } noteHint)
+        {
+            EmptyNotesHint.Text = noteHint;
+        }
+
+        EmptyNotesHint.Visibility = showEmpty && emptyState.Hint is not null
             ? Visibility.Visible
             : Visibility.Collapsed;
-        AddEmptyNoteButton.Visibility = isFirstUse && (noVisibleNotes || !segmentHasNotes)
+        AddEmptyNoteButton.Visibility = showEmpty && emptyState.ShowGuide
             ? Visibility.Visible
             : Visibility.Collapsed;
-        ResetEmptyNotesFiltersButton.Visibility = (noVisibleNotes || !segmentHasNotes) && emptyState.ShowReset
+        ResetEmptyNotesFiltersButton.Visibility = showEmpty && emptyState.ShowReset
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
@@ -3157,14 +3180,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
-    private void BeginCountdownAddFromEmptyState()
-    {
-        ShowWorkspace(WorkspaceKind.Countdowns);
-        ResetCountdownEditor();
+    // #248：空态填写引导只把焦点交给表单的名称输入：不重置编辑器、不清草稿、不新增记录。
+    private void FocusCountdownNameFromEmptyState() =>
         Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
             new Action(() => Keyboard.Focus(CountdownName)));
-    }
 
     private void ResetNoteEditor()
     {
@@ -3185,14 +3205,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.Announce(NoteMessage, string.Empty);
     }
 
-    private void BeginNoteAddFromEmptyState()
-    {
-        ShowWorkspace(WorkspaceKind.Notes);
-        ResetNoteEditor();
+    // #248：同上，只聚焦表单的正文输入。
+    private void FocusNoteTextFromEmptyState() =>
         Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
             new Action(() => Keyboard.Focus(NoteText)));
-    }
 
     private void SetCountdownTarget(DateTimeOffset beijing)
     {

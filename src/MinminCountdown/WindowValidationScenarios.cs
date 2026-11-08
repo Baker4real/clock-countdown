@@ -777,8 +777,8 @@ public sealed partial class MainWindow
                 NoteTags.PopupInitialFocus,
                 NoteSearch);
 
-            var firstUse = NoteEmptyStatePresentation(false);
-            var noResults = NoteEmptyStatePresentation(true);
+            var firstUse = NoteEmptyStatePresentation(false, false, false);
+            var noResults = NoteEmptyStatePresentation(true, true, false);
             var emptyStatesDistinguished =
                 !string.Equals(firstUse.Message, noResults.Message, StringComparison.Ordinal) &&
                 !firstUse.ShowReset &&

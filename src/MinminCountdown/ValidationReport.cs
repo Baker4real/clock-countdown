@@ -601,6 +601,33 @@ internal static partial class ValidationReport
             $"{DateTimeOffset.UtcNow:yyyyMMddTHHmmssfff}-{runKind}");
     }
 
+    // #248：空态与筛选状态实拍。空态块滚进可视区后按窗口实际尺寸捕获整个管理窗口，每种状态一张
+    // <尺寸>-<工作区>-<状态>.png，落在本次运行的 empty-states 证据目录；发布包模式返回 null，不请求实拍。
+    private static Action<MainWindow, string>? CreateEmptyStateEvidenceWriter()
+    {
+        var directory = ResolveDefaultVisualEvidenceDirectory("empty-states");
+        if (directory is null)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(directory);
+        return (window, label) =>
+        {
+            if (window.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("空态实拍缺少管理窗口根视觉。");
+            }
+
+            // 等页签与分段指示条动效走到终态再拍，证据帧里不留半截指示条；这里只出证据、不设门禁，到点未到终态也照拍。
+            _ = WindowValidationInput.PumpRenderedFrames(
+                root.Dispatcher,
+                1000,
+                () => window.VisibleSegmentIndicatorsSettledForCapture);
+            WriteNewBytes(Path.Combine(directory, label + ".png"), EncodePng(CaptureVisual(root)));
+        };
+    }
+
     private static readonly string[] FloatingReferenceBaselineNegativeFixtures =
     {
         "malformed-manifest",

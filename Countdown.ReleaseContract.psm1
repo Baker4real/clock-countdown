@@ -150,6 +150,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\UiControls.cs',
     'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',
     'src\MinminCountdown\ValidationExercises.ConfirmationAndUndo.cs',
+    'src\MinminCountdown\ValidationExercises.EmptyStates.cs',
     'src\MinminCountdown\ValidationExercises.LayoutProbes.cs',
     'src\MinminCountdown\ValidationExercises.MainWindow.cs',
     'src\MinminCountdown\ValidationExercises.Narrator.cs',
@@ -176,6 +177,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\ValidationReportContract.cs',
     'src\MinminCountdown\VisualReferenceBaseline.cs',
     'src\MinminCountdown\WindowValidationInput.cs',
+    'src\MinminCountdown\WindowValidationScenarios.EmptyStates.cs',
     'src\MinminCountdown\WindowValidationScenarios.cs',
     'src\MinminCountdown\WindowWorkAreaGeometry.cs'
 )

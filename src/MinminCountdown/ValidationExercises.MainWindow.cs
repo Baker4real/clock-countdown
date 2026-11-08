@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -1502,45 +1503,157 @@ internal static partial class ValidationExercises
         }
     }
 
+    // #247：倒计时行关键状态夹具。七行覆盖普通主项、30 字名称、五枚标签（含超长标签）、999 天、北京时区截止行、
+    // 百万天与已到期，首选尺寸下必出纵向滚动条；「长期」筛选只留百万天主项与到期次项（无滚动条），「收尾」筛选
+    // 只留到期主项。行几何探针与 validate-only 实拍共用这一份夹具，另带一条便签供次级动作对照。
+    internal sealed record CountdownRowStateFixture(string LongestTagId, string ExpiredTagId);
+
+    internal static readonly DateTimeOffset CountdownRowFixtureUtc = new(2032, 5, 18, 2, 15, 30, TimeSpan.Zero);
+
+    private const string CountdownRowFixtureLongName = "极长倒计时名称验证主阅读轴在滚动条出现时仍完整显示不挤压动作";
+
+    private static readonly string[] CountdownRowFixtureOrder =
+        ["季度复盘", CountdownRowFixtureLongName, "多标签行", "九百九十九天", "截止行验证", "百万天", "已到期行"];
+
+    internal static CountdownRowStateFixture SeedCountdownRowStates(DesktopWorkspace workspace)
+    {
+        var nowUtc = workspace.Snapshot.UtcNow;
+        string Tag(string name, string? color) =>
+            MustApply(workspace, new CreateTagChange(name, color)).CreatedTag?.Id ??
+            throw new InvalidOperationException($"#247：未取得夹具标签「{name}」。");
+        void Countdown(string name, DateTimeOffset targetUtc, params string[] tagIds) =>
+            MustApply(workspace, new SaveCountdownChange(null, name, targetUtc, tagIds, Array.Empty<ReminderRule>()));
+
+        var work = Tag("工作", "#F4B6A6");
+        var life = Tag("生活", "#A8D5BA");
+        var longTag = Tag("超长标签名称用于验证芯片先折行再省略", "#A8C7E8");
+        var focus = Tag("专注", null);
+        var family = Tag("家庭聚会安排", null);
+        var longest = Tag("长期", null);
+        var closing = Tag("收尾", null);
+        Countdown("季度复盘", nowUtc.AddDays(2).AddHours(3).AddMinutes(4).AddSeconds(5), work);
+        Countdown(CountdownRowFixtureLongName, nowUtc.AddDays(18).AddHours(7), work, life);
+        Countdown("多标签行", nowUtc.AddDays(30).AddHours(6), work, life, longTag, focus, family);
+        Countdown("九百九十九天", nowUtc.AddDays(999).AddHours(13).AddMinutes(18).AddSeconds(59));
+        Countdown("截止行验证", new DateTimeOffset(2038, 7, 8, 1, 30, 0, TimeSpan.Zero));
+        Countdown("百万天", nowUtc.AddDays(2_000_000), longest);
+        Countdown("已到期行", nowUtc.AddHours(-5), life, longest, closing);
+        MustApply(workspace, new SaveNoteChange(null, "动作对照便签", workspace.Snapshot.BeijingNow.Date, false,
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        return new CountdownRowStateFixture(longest, closing);
+    }
+
+    // #221/#247：截止行与危险色删除保持；名称与剩余分格同一主阅读轴，截止与标签成辅助带，
+    // 七行滚动条、百万天主项与到期主项三种排布下文本、分格、芯片与动作都不裁切、不重叠、不挤压命中区，
+    // 编辑与删除和便签行同一套次级动作几何与状态语言。违反项汇总后一次报出。
     public static bool RunCountdownRowDeadlineAndSecondaryDeleteBehavior()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-row-deadline-{Guid.NewGuid():N}.json");
-        var workspace = DesktopWorkspace.Load(path);
+        var workspace = DesktopWorkspace.Load(
+            path,
+            new SettingsStore(clock: new AdvancingValidationClock(CountdownRowFixtureUtc)));
         using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        MustApply(workspace, new SaveCountdownChange(null, "截止行验证", new DateTimeOffset(2038, 7, 8, 1, 30, 0, TimeSpan.Zero),
-            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        var fixture = SeedCountdownRowStates(workspace);
+        Must(CountdownRowFixtureLongName.Length == 30, "#247：极长名称夹具须顶到 30 字上限。");
+        // 与列表优先探针同一口径固定首选 864×1000：七行必出纵向滚动条，两行以内不出。
+        using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
         var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
         try
         {
             PrepareOffscreenValidationWindow(main);
+            using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
             main.Show();
             WindowValidationInput.Pump(main.Dispatcher);
             var rows = (Panel)main.FindName("CountdownRows");
-            var edit = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "编辑"));
-            Must(VisualDescendants<TextBlock>(rows).Any(text => text.IsVisible && text.Text == "7 月 8 日 09:30 截止"),
-                "#221：倒计时列表应显示北京时区的月日时分截止行。");
-            var delete = VisualDescendants<Button>(rows).Single(button => Equals(button.Content, "删除"));
-            Must(delete.Foreground is SolidColorBrush foreground && foreground.Color == (Color)main.FindResource("DangerColor") &&
-                 delete.BorderBrush is SolidColorBrush border && border.Color.A == 0 &&
-                 VisualDescendants<System.Windows.Shapes.Path>(delete).Any(path => path.IsVisible),
-                "#221：行删除为危险色文字加图标，不使用红色边框。");
-            foreach (var button in new[] { edit, delete })
+            var list = VisualAncestor<ScrollViewer>(rows);
+            var viewport = list is null ? null : VisualDescendants<ScrollContentPresenter>(list).FirstOrDefault();
+            Must(list is not null && viewport is not null, "#247：倒计时列表须在滚动区域内。");
+            var violations = new List<string>();
+            string[] countdownActionSignatures = [];
+            void VerifyPass(string pass, string[] expectedOrder, bool expectScrollBar)
             {
-                var presenter = VisualDescendants<ContentPresenter>(button).Single();
-                var label = VisualDescendants<TextBlock>(presenter).Single();
-                var buttonBounds = new Rect(button.RenderSize);
-                var labelBounds = label.TransformToAncestor(button).TransformBounds(new Rect(label.RenderSize));
-                Must(Math.Abs(button.ActualHeight - button.DesiredSize.Height) <= 1,
-                    "#247：倒计时行动作不得被跨行内容拉伸为竖长按钮。");
-                Must(button.ActualHeight >= 24 &&
-                     Math.Abs(buttonBounds.Top + (buttonBounds.Height - labelBounds.Height) / 2 - labelBounds.Top) <= 1,
-                    "#247：倒计时行编辑与删除须保持紧凑命中高度及文字垂直居中。");
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                var snapshot = workspace.Snapshot;
+                var cards = rows.Children.OfType<Border>().ToArray();
+                var titles = cards
+                    .Select(card => VisualDescendants<TextBlock>(card)
+                        .FirstOrDefault(text => text.Uid == "CountdownRowTitleText")?.Text ?? "?")
+                    .ToArray();
+                if (!titles.SequenceEqual(expectedOrder, StringComparer.Ordinal))
+                {
+                    violations.Add($"{pass}：行序须未到期按截止升序、已到期在后，实为 {string.Join("/", titles)}");
+                }
+
+                if ((list!.ComputedVerticalScrollBarVisibility == Visibility.Visible) != expectScrollBar)
+                {
+                    violations.Add($"{pass}：夹具须{(expectScrollBar ? "出现" : "不出现")}纵向滚动条");
+                }
+
+                for (var index = 0; index < cards.Length && index < snapshot.VisibleCountdowns.Count; index++)
+                {
+                    var record = snapshot.VisibleCountdowns[index];
+                    violations.AddRange(CountdownRowViolations(
+                            main,
+                            cards[index],
+                            record,
+                            isPrimary: index == 0,
+                            isExpired: record.TargetUtc <= snapshot.UtcNow,
+                            CountdownFormatting.FormatRemaining(record.TargetUtc, snapshot.UtcNow, "Second"),
+                            viewport!)
+                        .Select(item => $"{pass}·{item}"));
+                }
+
+                if (countdownActionSignatures.Length == 0 && cards.Length > 0)
+                {
+                    countdownActionSignatures = VisualDescendants<Button>(cards[0])
+                        .Select(button => RowActionSignature(main, button))
+                        .ToArray();
+                }
             }
-            var baseline = VisualDescendants<TextBlock>(edit).Single().BaselineOffset;
-            var deleteBaseline = VisualDescendants<TextBlock>(delete).Single().BaselineOffset;
-            Must(Math.Abs(edit.PointToScreen(new Point(0, baseline)).Y -
-                         delete.PointToScreen(new Point(0, deleteBaseline)).Y) <= 1,
-                "#247：倒计时行编辑与删除的文字基线须一致。");
+
+            VerifyPass("七行滚动", CountdownRowFixtureOrder, expectScrollBar: true);
+            if (!VisualDescendants<TextBlock>(rows).Any(text => text.IsVisible && text.Text == "7 月 8 日 09:30 截止"))
+            {
+                violations.Add("#221：倒计时列表应显示北京时区的月日时分截止行");
+            }
+
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [fixture.LongestTagId] });
+            VerifyPass("百万天主项", ["百万天", "已到期行"], expectScrollBar: false);
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [fixture.ExpiredTagId] });
+            VerifyPass("到期主项", ["已到期行"], expectScrollBar: false);
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            var noteEdit = VisualDescendants<Button>(main).SingleOrDefault(button => button.Uid == "NoteRowEdit");
+            var noteActions = noteEdit?.Parent is Panel panel
+                ? panel.Children.OfType<Button>().ToArray()
+                : Array.Empty<Button>();
+            var noteActionSignatures = noteActions.Select(button => RowActionSignature(main, button)).ToArray();
+            if (noteActionSignatures.Length != 2 ||
+                !countdownActionSignatures.SequenceEqual(noteActionSignatures, StringComparer.Ordinal))
+            {
+                violations.Add(
+                    "倒计时行与便签行的编辑/删除须同一几何与状态语言——倒计时 " +
+                    string.Join(" ‖ ", countdownActionSignatures) + " / 便签 " + string.Join(" ‖ ", noteActionSignatures));
+            }
+
+            // 同一条规则在多行违反时合并成一项，并列出所在排布与行。
+            var failed = violations
+                .Select(item => item.Split('：', 2))
+                .GroupBy(pieces => pieces[^1], StringComparer.Ordinal)
+                .Select(group =>
+                {
+                    var where = group.Where(pieces => pieces.Length == 2).Select(pieces => pieces[0]).Distinct().ToArray();
+                    return where.Length == 0
+                        ? group.Key
+                        : $"{group.Key}（{string.Join("、", where.Take(4))}{(where.Length > 4 ? $" 等 {where.Length} 处" : string.Empty)}）";
+                })
+                .ToArray();
+            Must(failed.Length == 0, $"#247：倒计时行几何 {failed.Length} 类未通过：" + string.Join("；", failed));
             return true;
         }
         finally
@@ -1549,6 +1662,261 @@ internal static partial class ValidationExercises
             DeleteSettingsFiles(path);
             DeleteFileIfPresent(path + ".log");
         }
+    }
+
+    // #247：单行合同。名称与剩余分格同一主阅读轴（中线差不超过 1 DIP）；截止与标签位于主轴下方的辅助带，
+    // 与编辑、删除共用一条中线；各部件不出行界、不相互重叠，单行文字与分格数值不被裁切；
+    // 编辑与删除按固有尺寸呈现、不低于紧凑命中下限且不被滚动条遮挡，文字垂直居中、基线一致；
+    // 主项、到期与危险色删除的表达保持。
+    private static IEnumerable<string> CountdownRowViolations(
+        MainWindow main,
+        Border card,
+        CountdownRecord record,
+        bool isPrimary,
+        bool isExpired,
+        string expectedRemaining,
+        FrameworkElement viewport)
+    {
+        var label = record.Name.Length > 6 ? record.Name[..6] + "…" : record.Name;
+        if (card.Child is not Grid layout)
+        {
+            yield return $"{label}：行根须为网格";
+            yield break;
+        }
+
+        var texts = VisualDescendants<TextBlock>(card).ToArray();
+        var title = texts.SingleOrDefault(text => text.Uid == "CountdownRowTitleText");
+        var deadline = texts.SingleOrDefault(text => text.Uid == "CountdownRowDeadlineText");
+        var remaining = layout.Children.OfType<TextBlock>().SingleOrDefault(text => text.Tag is MainCountdownBlocksHost);
+        var surface = (remaining?.Tag as MainCountdownBlocksHost)?.Surface;
+        var blocks = surface?.Children.OfType<FrameworkElement>().SingleOrDefault();
+        var buttons = VisualDescendants<Button>(card).ToArray();
+        var edit = buttons.SingleOrDefault(button => Equals(button.Content, "编辑"));
+        var delete = buttons.SingleOrDefault(button => Equals(button.Content, "删除"));
+        var chips = VisualDescendants<Border>(card)
+            .Where(border => record.TagIds.Contains(border.Uid, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        if (title is null || deadline is null || remaining is null || surface is null || blocks is null ||
+            edit is null || delete is null || buttons.Length != 2 || chips.Length != record.TagIds.Count)
+        {
+            yield return $"{label}：行内须有标题、截止、剩余分格、{record.TagIds.Count} 枚标签与编辑/删除两项动作";
+            yield break;
+        }
+
+        static double Middle(Rect bounds) => (bounds.Top + bounds.Bottom) / 2;
+        // DesiredSize 含外边距；固有尺寸扣掉外边距后才能与实测尺寸比较。
+        static Size Intrinsic(FrameworkElement element) => new(
+            Math.Max(0, element.DesiredSize.Width - element.Margin.Left - element.Margin.Right),
+            Math.Max(0, element.DesiredSize.Height - element.Margin.Top - element.Margin.Bottom));
+        static bool Inside(Rect outer, Rect inner) =>
+            inner.Left >= outer.Left - 0.5 && inner.Top >= outer.Top - 0.5 &&
+            inner.Right <= outer.Right + 0.5 && inner.Bottom <= outer.Bottom + 0.5;
+        static bool SingleLineFits(TextBlock text)
+        {
+            var glyphs = new FormattedText(text.Text, CultureInfo.CurrentCulture, text.FlowDirection,
+                new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+                text.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+            return text.TextWrapping == TextWrapping.NoWrap && text.TextTrimming == TextTrimming.None &&
+                glyphs.WidthIncludingTrailingWhitespace + Math.Max(0, glyphs.OverhangTrailing) <= text.ActualWidth + 0.5 &&
+                glyphs.Height <= text.ActualHeight + 0.5;
+        }
+
+        var titleBounds = BoundsOn(title, layout);
+        var blocksBounds = BoundsOn(blocks, layout);
+        var deadlineBounds = BoundsOn(deadline, layout);
+        var editBounds = BoundsOn(edit, layout);
+        var deleteBounds = BoundsOn(delete, layout);
+        var chipBounds = chips.Select(chip => BoundsOn(chip, layout)).ToArray();
+
+        var axisOffset = Math.Abs(Middle(titleBounds) - Middle(blocksBounds));
+        if (axisOffset > 1)
+        {
+            yield return $"{label}：名称与剩余分格须同一主阅读轴，中线相差 {axisOffset:0.#} DIP";
+        }
+
+        var axisBottom = Math.Max(titleBounds.Bottom, blocksBounds.Bottom);
+        if (deadlineBounds.Top < axisBottom - 0.5 || chipBounds.Any(bounds => bounds.Top < axisBottom - 0.5))
+        {
+            yield return $"{label}：截止与标签须位于主阅读轴下方的辅助带";
+        }
+
+        if (chipBounds.Length > 0 &&
+            Math.Abs((chipBounds.Min(bounds => bounds.Top) + chipBounds.Max(bounds => bounds.Bottom)) / 2 -
+                     Middle(deadlineBounds)) > 1)
+        {
+            yield return $"{label}：截止与标签须同一辅助带中线";
+        }
+
+        if (Math.Abs(Middle(editBounds) - Middle(deadlineBounds)) > 1 ||
+            Math.Abs(Middle(deleteBounds) - Middle(deadlineBounds)) > 1)
+        {
+            yield return $"{label}：编辑与删除须与辅助带同一中线";
+        }
+
+        (string Name, Rect Bounds)[] parts =
+        [
+            ("名称", titleBounds), ("剩余分格", blocksBounds), ("截止", deadlineBounds),
+            ("编辑", editBounds), ("删除", deleteBounds),
+            .. chipBounds.Select((bounds, index) => (Name: $"标签{index + 1}", Bounds: bounds))
+        ];
+        var layoutBounds = new Rect(layout.RenderSize);
+        for (var first = 0; first < parts.Length; first++)
+        {
+            if (!Inside(layoutBounds, parts[first].Bounds))
+            {
+                yield return $"{label}：{parts[first].Name}超出行界";
+            }
+
+            for (var second = first + 1; second < parts.Length; second++)
+            {
+                var overlap = Rect.Intersect(parts[first].Bounds, parts[second].Bounds);
+                if (!overlap.IsEmpty && overlap.Width > 0.5 && overlap.Height > 0.5)
+                {
+                    yield return $"{label}：{parts[first].Name}与{parts[second].Name}重叠";
+                }
+            }
+        }
+
+        foreach (var (text, name) in new[] { (title, "名称"), (deadline, "截止") })
+        {
+            if (!SingleLineFits(text) ||
+                VisualTreeHelper.GetParent(text) is not FrameworkElement host ||
+                !Inside(BoundsOn(host, layout), BoundsOn(text, layout)))
+            {
+                yield return $"{label}：{name}文字被裁切或折行";
+            }
+        }
+
+        if (!Inside(BoundsOn(surface, layout), blocksBounds) ||
+            VisualDescendants<TextBlock>(blocks).Prepend(blocks as TextBlock).OfType<TextBlock>()
+                .Any(text => !SingleLineFits(text)))
+        {
+            yield return $"{label}：剩余分格或数值被裁切";
+        }
+
+        if (!string.Equals(remaining.Text, expectedRemaining, StringComparison.Ordinal))
+        {
+            yield return $"{label}：剩余时间应为「{expectedRemaining}」，实为「{remaining.Text}」";
+        }
+
+        if (chips.Any(chip => chip.ActualWidth > 148.5 || chip.ActualWidth < Intrinsic(chip).Width - 0.5))
+        {
+            yield return $"{label}：标签芯片超出 148 DIP 上限或被挤压";
+        }
+
+        if (!ReferenceEquals(card.Background, main.FindResource(isExpired ? "ExpiredBrush" : "CardBrush")))
+        {
+            yield return $"{label}：{(isExpired ? "到期行须用 ExpiredBrush" : "未到期行须用 CardBrush")}";
+        }
+
+        if (isExpired
+                ? blocks is not TextBlock { Text: "已到期" } fallback ||
+                  !ReferenceEquals(fallback.Foreground, main.FindResource(isPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush"))
+                : !VisualDescendants<Border>(blocks).All(block =>
+                    ReferenceEquals(block.Background, main.FindResource(isPrimary ? "PinkBlockBrush" : "SecondaryBlockBrush"))))
+        {
+            yield return $"{label}：{(isPrimary ? "主项" : "次项")}{(isExpired ? "到期" : "分格")}表达不符";
+        }
+
+        var dangerColor = (Color)main.FindResource("DangerColor");
+        if (delete.Foreground is not SolidColorBrush { Color: var deleteColor } || deleteColor != dangerColor ||
+            delete.BorderBrush is not SolidColorBrush { Color.A: 0 } ||
+            !VisualDescendants<System.Windows.Shapes.Path>(delete).Any(icon =>
+                icon.IsVisible && ReferenceEquals(icon.Stroke, main.FindResource("DangerBrush"))))
+        {
+            yield return $"{label}：删除须为危险色文字加垃圾桶图标且无红框";
+        }
+
+        if (!VisualDescendants<System.Windows.Shapes.Path>(edit).Any(icon =>
+                icon.IsVisible && ReferenceEquals(icon.Stroke, main.FindResource("InkBrush"))))
+        {
+            yield return $"{label}：编辑须为 InkBrush 铅笔图标加文字";
+        }
+
+        var baselines = new List<double>();
+        foreach (var (button, name) in new[] { (edit, "编辑"), (delete, "删除") })
+        {
+            var intrinsic = Intrinsic(button);
+            if (button.ActualWidth < Math.Max(24, Math.Max(button.MinWidth, intrinsic.Width)) - 0.5 ||
+                button.ActualHeight < Math.Max(24, Math.Max(button.MinHeight, intrinsic.Height)) - 0.5)
+            {
+                yield return $"{label}：{name}命中区被挤压（{button.ActualWidth:0.#}×{button.ActualHeight:0.#}）";
+            }
+
+            if (Math.Abs(button.ActualHeight - intrinsic.Height) > 1)
+            {
+                yield return $"{label}：{name}不得被跨行内容拉伸为竖长按钮";
+            }
+
+            var inViewport = BoundsOn(button, viewport);
+            if (inViewport.Left < -0.5 || inViewport.Right > viewport.ActualWidth + 0.5)
+            {
+                yield return $"{label}：{name}越出列表视口（滚动条遮挡）";
+            }
+
+            var presenter = VisualDescendants<ContentPresenter>(button).SingleOrDefault();
+            var caption = presenter is null ? null : VisualDescendants<TextBlock>(presenter).SingleOrDefault();
+            if (caption is null)
+            {
+                yield return $"{label}：{name}缺少文字";
+                continue;
+            }
+
+            var captionBounds = caption.TransformToAncestor(button).TransformBounds(new Rect(caption.RenderSize));
+            if (Math.Abs((button.ActualHeight - captionBounds.Height) / 2 - captionBounds.Top) > 1)
+            {
+                yield return $"{label}：{name}文字须垂直居中";
+            }
+
+            baselines.Add(caption.TransformToAncestor(layout).Transform(new Point(0, caption.BaselineOffset)).Y);
+        }
+
+        if (baselines.Count == 2 && Math.Abs(baselines[0] - baselines[1]) > 1)
+        {
+            yield return $"{label}：编辑与删除的文字基线须一致";
+        }
+    }
+
+    // #247：次级行内动作的几何与状态语言签名——样式、最小尺寸、外边距、内边距、字号、实测尺寸、
+    // 图标描边、前景、边框与 Delete 提示；倒计时行与便签行逐项相同才算同一套。
+    private static string RowActionSignature(FrameworkElement scope, Button button)
+    {
+        string Role(object? brush) =>
+            new[] { "InkBrush", "BodyBrush", "MutedBrush", "DangerBrush" }
+                .FirstOrDefault(key => ReferenceEquals(brush, scope.TryFindResource(key))) ??
+            (brush is SolidColorBrush solid ? solid.Color.ToString(CultureInfo.InvariantCulture) : "无");
+        var icon = VisualDescendants<System.Windows.Shapes.Path>(button).SingleOrDefault(path => path.IsVisible);
+        var tip = button.ToolTip switch
+        {
+            null => "无提示",
+            string text when text.EndsWith("（Delete）", StringComparison.Ordinal) => "Delete 提示",
+            _ => "其他提示"
+        };
+        return string.Join(
+            "|",
+            $"{button.Content}",
+            ReferenceEquals(button.Style, scope.TryFindResource("SecondaryButton")) ? "SecondaryButton" : "其他样式",
+            FormattableString.Invariant(
+                $"最小 {button.MinWidth:0.#}×{button.MinHeight:0.#} 外边距 {button.Margin} 内边距 {button.Padding} 字号 {button.FontSize:0.#}"),
+            FormattableString.Invariant($"实测 {button.ActualWidth:0.#}×{button.ActualHeight:0.#}"),
+            $"图标 {(icon is null ? "无" : Role(icon.Stroke))}",
+            $"前景 {Role(button.Foreground)}",
+            $"边框 {Role(button.BorderBrush)}",
+            tip);
+    }
+
+    private static T? VisualAncestor<T>(DependencyObject node)
+        where T : DependencyObject
+    {
+        for (var current = VisualTreeHelper.GetParent(node); current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
     }
 
     public static bool RunMainWindowNoteMinuteRefreshBehavior()

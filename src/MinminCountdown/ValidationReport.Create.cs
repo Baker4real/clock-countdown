@@ -1083,6 +1083,10 @@ internal static partial class ValidationReport
                 Required<Button>(floating, "FloatingManageReminderRules"));
         // 焦点态证据在一次性窗口里截，放在全部窗口断言之后，不改动被测窗口的状态。
         var mainFocusEvidence = CaptureMainFocusEvidence(assetRoot, legacyMainReferenceCapture.CountdownCapturePath);
+        // #247：倒计时行关键状态实拍同样在一次性窗口里截。
+        var countdownRowEvidence = CaptureCountdownRowStateEvidence(
+            assetRoot,
+            legacyMainReferenceCapture.CountdownCapturePath);
 
         var report = new ValidationReportProjection
         {
@@ -1712,7 +1716,7 @@ internal static partial class ValidationReport
             ["MainNoteRowsSimplified"] = Must(mainNoteRowsSimplified, "主便签行仅保留编辑删除、正文摘要层级和跨分组交替底色（#227）"),
             ["CountdownPreferencesPopupBehavior"] = Must(countdownPreferencesPopup, "设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）"),
             ["CountdownEditorExpansionBehavior"] = Must(countdownEditorExpansion, "展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）"),
-            ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = Must(countdownRowPresentation, "倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）"),
+            ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = Must(countdownRowPresentation, "倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）；名称与剩余分格同一主阅读轴，截止与标签成辅助带，七种关键状态不裁切不重叠，编辑删除与便签行同一套次级动作（#247）"),
             ["MainWindowIdentityZoneDragRegion"] = Must(mainWindowIdentityZoneDrag, "身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）"),
             ["FloatingWindowStaysOnSecondaryMonitor"] = Must(floatingSecondaryMonitor, "#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP"),
             ["OwnerDialogsFitSecondaryMonitor"] = Must(ownerDialogsFitSecondaryMonitor, "#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达"),
@@ -1790,6 +1794,8 @@ internal static partial class ValidationReport
             ["MainReferenceCaptureManifestPath"] = legacyMainReferenceCapture.ManifestPath,
             ["MainFocusEvidenceManifestPath"] = mainFocusEvidence.ManifestPath,
             ["MainFocusEvidenceError"] = mainFocusEvidence.Error,
+            ["CountdownRowEvidenceManifestPath"] = countdownRowEvidence.ManifestPath,
+            ["CountdownRowEvidenceError"] = countdownRowEvidence.Error,
             ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
             ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
             ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,

@@ -109,6 +109,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 参考帧捕获前会清掉键盘焦点，焦点描边因此不在任何基线里。源码树模式下 validate-only 另开一个一次性主窗口，沿两个工作区的 Tab 路径逐个停靠点截取放大裁图，连同 `focus-evidence.json` 写进本次运行实拍证据目录的 `focus\` 子目录（报告字段 `MainFocusEvidenceManifestPath`，失败原因在 `MainFocusEvidenceError`）。截取时最近输入设备临时设为键盘，裁图含焦点装饰层，和真实按 Tab 时一致。它们不进门禁，只供核对单层描边，结论以裁图为准。`focusVisualAdorner` 表示挂着 FocusVisualStyle 装饰层；`templateDrawsFocus` 取自 `FocusVisualState.DrawsOwnKeyboardFocus`（模板带 `FocusRing`，或是文本框、下拉框、日期框），勾选框这类用别的模板部件画焦点的控件为假。两项同时为真，说明按约定自己画焦点的控件又挂了装饰层：裁图上要么叠成两层描边，要么是系统默认虚线框顶替了没点亮的模板焦点。
 
+倒计时行的关键状态同样另开一次性主窗口实拍（#247），不进门禁：载入行几何探针 `CountdownRowDeadlineAndSecondaryDeleteBehavior` 的同一份夹具（普通主项、30 字名称、五枚标签、999 天、截止行、百万天、已到期），按 864×1000 截取七行时滚动条在顶部与底部、百万天主项、到期主项四张倒计时页和一张便签页，连同 `countdown-rows.json` 写进实拍证据目录的 `countdown-rows\` 子目录（报告字段 `CountdownRowEvidenceManifestPath`，失败原因在 `CountdownRowEvidenceError`）。几何结论以探针为准，截图供人工核对主阅读轴、辅助带与动作。
+
 候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
 
 ```powershell

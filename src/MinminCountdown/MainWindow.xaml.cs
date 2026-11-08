@@ -1719,25 +1719,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var record = records[recordIndex];
             var active = record.TargetUtc > effectiveNowUtc;
             var isPrimary = recordIndex == 0;
-            var edit = ActionButton("编辑", record.Id, $"编辑倒计时 {record.Name}");
+            var edit = RowEditAction(record.Id, $"编辑倒计时 {record.Name}");
             edit.Click += OnEditCountdown;
-            var delete = ActionButton("删除", record.Id, $"删除倒计时 {record.Name}");
-            delete.ToolTip = "删除倒计时（Delete）";
-            delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
-            delete.BorderBrush = Brushes.Transparent;
-            delete.ContentTemplate = CreateGlyphButtonTemplate(
-                "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
-                "DangerBrush");
+            var delete = RowDeleteAction(record.Id, $"删除倒计时 {record.Name}", "倒计时");
             delete.Click += OnDeleteCountdown;
+            // #247：主阅读轴与辅助带之间按 8px 基准间距分开；辅助带与动作取同一上边距，两者中线保持一致。
+            var bandGap = (double)FindResource("SpacingUnit");
             var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, bandGap, 0, 0)
             };
             actions.Children.Add(edit);
             actions.Children.Add(delete);
 
+            // #247：两行两列。首行是主阅读轴：名称（左列）与剩余分格（右侧 228 列）同一中线；
+            // 次行是辅助带：截止与标签（左列）和编辑、删除（右列右对齐）同一中线。
+            // 动作不再与名称抢同一行，30 字名称在出现滚动条时仍单行完整显示。
             var layout = new Grid();
             layout.ColumnDefinitions.Add(new ColumnDefinition());
             layout.ColumnDefinitions.Add(new ColumnDefinition
@@ -1746,8 +1746,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 MinWidth = CountdownRemainingColumnWidth,
                 MaxWidth = CountdownRemainingColumnWidth
             });
-            layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var name = new TextBlock
@@ -1769,13 +1767,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             title.Children.Add(name);
             var remaining = new TextBlock
             {
-                Margin = new Thickness(CountdownRemainingLeftMargin, 4, 0, 0),
+                Margin = new Thickness(CountdownRemainingLeftMargin, 0, 0, 0),
                 TextAlignment = TextAlignment.Right,
                 TextWrapping = TextWrapping.NoWrap,
                 TextTrimming = TextTrimming.None,
                 FontSize = CountdownRemainingBaseFontSize,
                 FontWeight = FontWeights.SemiBold,
                 HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Center,
                 MaxWidth = CountdownRemainingColumnWidth - CountdownRemainingLeftMargin,
                 Opacity = 0,
                 IsHitTestVisible = false
@@ -1804,32 +1803,40 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             remaining.SetResourceReference(
                 TextBlock.ForegroundProperty,
                 active ? "BodyBrush" : isPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
-            var tagChips = CreateTagChips(record.TagIds);
             var deadline = new TextBlock
             {
                 Uid = "CountdownRowDeadlineText",
                 Text = $"{DateDisplay.Deadline(record.TargetUtc)} 截止",
-                Margin = new Thickness(0, 4, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
                 FontSize = (double)FindResource("TypeCaptionFontSize")
             };
             deadline.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             Typography.SetNumeralAlignment(deadline, FontNumeralAlignment.Tabular);
-            Grid.SetRow(deadline, 2);
-            Grid.SetColumnSpan(deadline, 2);
-            Grid.SetColumnSpan(title, 2);
-            Grid.SetRow(tagChips, 1);
+            // 截止列宽随内容；标签芯片在其余宽度内先折行再省略，与截止共用辅助带中线。
+            var tagChips = CreateTagChips(record.TagIds);
+            tagChips.VerticalAlignment = VerticalAlignment.Center;
+            tagChips.Margin = new Thickness(bandGap, 0, 0, 0);
+            var band = new Grid
+            {
+                Uid = "CountdownRowAuxiliaryBand",
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, bandGap, 0, 0)
+            };
+            band.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            band.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(tagChips, 1);
+            band.Children.Add(deadline);
+            band.Children.Add(tagChips);
             Grid.SetColumn(remaining, 1);
-            Grid.SetRow(remaining, 1);
             Grid.SetColumn(blocksHost.Surface, 1);
-            Grid.SetRow(blocksHost.Surface, 1);
-            Grid.SetColumn(actions, 2);
-            Grid.SetRowSpan(actions, 3);
+            Grid.SetRow(band, 1);
+            Grid.SetRow(actions, 1);
+            Grid.SetColumn(actions, 1);
             layout.Children.Add(title);
-            layout.Children.Add(tagChips);
             layout.Children.Add(remaining);
             layout.Children.Add(blocksHost.Surface);
+            layout.Children.Add(band);
             layout.Children.Add(actions);
-            layout.Children.Add(deadline);
             var card = Card(layout, active ? "CardBrush" : "ExpiredBrush");
             AttachRowDeleteShortcut(card, delete);
             _countdownSourceRows[record.Id] = card;
@@ -2030,6 +2037,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
         {
             pairGap = 4;
+        }
+
+        if (host.IsPrimary && RequiredWidth(minimumValueFontSize, blockPadding, pairGap) > availableWidth)
+        {
+            // #247：百万天主项在 13 DIP 下限仍放不进 228 列时，与悬浮窗同口径先把分格内边距与组间距压至零，
+            // 再适配数值字号；色块最小宽度、13 DIP 单位字与 228 列保持不变。
+            blockPadding = 0;
+            pairGap = 0;
         }
 
         var required = RequiredWidth(valueFontSize, blockPadding, pairGap);
@@ -2556,13 +2571,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         completion.Unchecked += OnNoteCompletionChanged;
         _noteCompletionBoxes[note.Id] = completion;
 
-        var edit = NoteActionButton("编辑", note.Id, $"编辑便签 {note.Text}", "pencil");
+        var edit = RowEditAction(note.Id, $"编辑便签 {note.Text}");
         edit.Uid = "NoteRowEdit";
         edit.Click += OnEditNote;
-        var delete = NoteActionButton("删除", note.Id, $"删除便签 {note.Text}", "trash");
-        delete.ToolTip = "删除便签（Delete）";
-        delete.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
-        delete.BorderBrush = Brushes.Transparent;
+        var delete = RowDeleteAction(note.Id, $"删除便签 {note.Text}", "便签");
         delete.Click += OnDeleteNote;
         var actions = new StackPanel
         {
@@ -3756,9 +3768,33 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return card;
     }
 
-    private Button NoteActionButton(string content, string id, string accessibleName, string? glyph = null)
+    // #227/#247：倒计时行与便签行共用的次级行内动作，同一几何与同一状态语言：SecondaryButton、
+    // 紧凑命中 53×33、caption 字号、4 DIP 间距；编辑为 InkBrush 铅笔加文字，删除为 DangerBrush 文字加垃圾桶、
+    // 透明边框与「（Delete）」提示。Content 保持可见字符串（渲染探针、焦点描述与自动化名称依赖它），
+    // 图标经 ContentTemplate 注入，不改按钮语义内容。
+    private Button RowEditAction(string id, string accessibleName)
     {
-        var button = UiAccessibility.Name(
+        var button = RowAction("编辑", id, accessibleName);
+        button.ContentTemplate = CreateGlyphButtonTemplate(
+            "M 2.5,13.2 L 3.2,10.4 L 11.6,2 C 12.2,1.4 13.2,1.4 13.8,2 C 14.4,2.6 14.4,3.6 13.8,4.2 L 5.4,12.6 L 2.5,13.2 Z",
+            "InkBrush");
+        return button;
+    }
+
+    private Button RowDeleteAction(string id, string accessibleName, string recordKind)
+    {
+        var button = RowAction("删除", id, accessibleName);
+        button.ToolTip = $"删除{recordKind}（Delete）";
+        button.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
+        button.BorderBrush = Brushes.Transparent;
+        button.ContentTemplate = CreateGlyphButtonTemplate(
+            "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
+            "DangerBrush");
+        return button;
+    }
+
+    private Button RowAction(string content, string id, string accessibleName) =>
+        UiAccessibility.Name(
             new Button
             {
                 Content = content,
@@ -3770,21 +3806,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Style = (Style)FindResource("SecondaryButton")
             },
             accessibleName);
-        if (glyph is not null)
-        {
-            // Content 保持可见字符串（编辑/删除渲染探针与自动化名称依赖它），
-            // 图标经 ContentTemplate 注入，不改按钮语义内容。
-            button.ContentTemplate = glyph == "pencil"
-                ? CreateGlyphButtonTemplate(
-                    "M 2.5,13.2 L 3.2,10.4 L 11.6,2 C 12.2,1.4 13.2,1.4 13.8,2 C 14.4,2.6 14.4,3.6 13.8,4.2 L 5.4,12.6 L 2.5,13.2 Z",
-                    "InkBrush")
-                : CreateGlyphButtonTemplate(
-                    "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
-                    "DangerBrush");
-        }
-
-        return button;
-    }
 
     private DataTemplate CreateGlyphButtonTemplate(string glyphData, string glyphBrushKey)
     {

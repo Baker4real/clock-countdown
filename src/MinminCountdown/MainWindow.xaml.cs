@@ -1715,7 +1715,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var actions = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center
             };
             actions.Children.Add(edit);
             actions.Children.Add(delete);

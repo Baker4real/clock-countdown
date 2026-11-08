@@ -225,6 +225,134 @@ internal static partial class ValidationReport
         }
     }
 
+    // #249：便签卡关键状态实拍，不进门禁。一次性主窗口载入卡片几何探针的同一份夹具，按首选 864×1000 截取便签页
+    // 六种排布（未完成五张时滚动条在顶部与底部、「复盘」搜索、多选两张与批量操作条、提醒来源强调、已完成段），
+    // 写进本次运行实拍证据目录的 note-rows\，供人工核对内容列、标签邻近与右上动作槽。提醒来源一张保留打开来源后
+    // 编辑按钮的真实焦点，其余清掉焦点。失败只写 note-rows.error.txt，并在报告里记下原因，不影响其余断言。
+    private static NoteRowEvidenceResult CaptureNoteRowStateEvidence(string assetRoot, string referenceCapturePath)
+    {
+        // 发布包模式不写实拍证据，参考帧路径为空，这里同样不请求。
+        if (string.IsNullOrEmpty(referenceCapturePath))
+        {
+            return new NoteRowEvidenceResult(string.Empty, string.Empty);
+        }
+
+        const int captureWidth = 864;
+        const int captureHeight = 1000;
+        var evidenceDirectory = Path.Combine(Path.GetDirectoryName(referenceCapturePath)!, "note-rows");
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-note-row-evidence-{Guid.NewGuid():N}.settings.json");
+        MainWindow? window = null;
+        try
+        {
+            Directory.CreateDirectory(evidenceDirectory);
+            var workspace = DesktopWorkspace.Load(
+                settingsPath,
+                new SettingsStore(clock: new ValidationClock(ValidationExercises.NoteRowFixtureUtc)));
+            var fixture = ValidationExercises.SeedNoteRowStates(workspace);
+            using var calendar = new HolidayCalendar(assetRoot);
+            var probe = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(settingsPath + ".diagnostic.jsonl"),
+                assetRoot)
+            {
+                Width = captureWidth,
+                Height = captureHeight,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000
+            };
+            window = probe;
+            probe.Show();
+            PumpDispatcher();
+            if (probe.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("主窗口根视觉不可用于捕获。");
+            }
+
+            var entries = new List<object>();
+            void Capture(string captureId, string state, bool keepFocus = false)
+            {
+                PumpDispatcher();
+                ArrangeForReferenceCapture(root, captureWidth, captureHeight);
+                if (!keepFocus)
+                {
+                    ClearCaptureKeyboardFocus(root);
+                }
+
+                WaitForMainReferenceMotion(probe, root);
+                var path = Path.Combine(evidenceDirectory, $"{captureId}.png");
+                var sha256 = WriteNewPng(path, CaptureOpaqueMainSurface(root, captureWidth, captureHeight));
+                entries.Add(new { captureId, state, path, sha256 });
+            }
+
+            var parts = probe.NoteListPartsForValidation;
+            probe.ShowWorkspace(WorkspaceKind.Notes);
+            Capture("note-rows-top", "未完成五张，纵向滚动条在顶部：无标签短正文、140 字长正文、五枚标签与两条提醒");
+            parts.ListRegion.ScrollToEnd();
+            Capture("note-rows-bottom", "未完成滚到底部：每 15 分钟提醒的来源卡与单标签短卡");
+            parts.ListRegion.ScrollToHome();
+            parts.Search.Text = fixture.SearchTerm;
+            Capture("note-rows-search", "「复盘」搜索：长正文与五标签两张");
+            parts.Search.Clear();
+            PumpDispatcher();
+            var chosen = Descendants<NoteSelectionCard>(parts.ActiveRows).Where(card => card.IsVisible).Take(2).ToArray();
+            foreach (var card in chosen)
+            {
+                Keyboard.Focus(card);
+                WindowValidationInput.RaisePreviewKey(card, Key.Space, ModifierKeys.Control);
+            }
+
+            PumpDispatcher();
+            if (parts.SelectedCount.Text != "已选择 2 条")
+            {
+                throw new InvalidOperationException("#249 多选实拍必须真实选中两张卡并显示批量操作条。");
+            }
+
+            Capture("note-rows-selected", "多选两张：批量操作条与选中卡底色，卡内几何不变");
+            Keyboard.Focus(chosen[0]);
+            WindowValidationInput.RaisePreviewKey(chosen[0], Key.Escape);
+            if (!probe.OpenReminderSource(ReminderSourceKind.Note, fixture.ReminderSourceNoteId))
+            {
+                throw new InvalidOperationException("#249 提醒来源实拍必须真实打开来源便签。");
+            }
+
+            Capture("note-rows-reminder-source", "打开提醒来源：来源卡 2 DIP ActiveBrush 强调、编辑按钮获焦", keepFocus: true);
+            parts.CompletedSegment.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Capture("note-rows-completed", "已完成段：删除线、弱化正文与暂停的提醒摘要");
+
+            var manifestPath = Path.Combine(evidenceDirectory, "note-rows.json");
+            WriteNewBytes(
+                manifestPath,
+                JsonSerializer.SerializeToUtf8Bytes(
+                    new
+                    {
+                        schemaVersion = 1,
+                        captureKind = "main-window note card states at 864x1000 for #249; not gated",
+                        referenceUtc = ValidationExercises.NoteRowFixtureUtc,
+                        entries
+                    },
+                    new JsonSerializerOptions { WriteIndented = true }));
+            return new NoteRowEvidenceResult(manifestPath, string.Empty);
+        }
+        catch (Exception exception)
+        {
+            Directory.CreateDirectory(evidenceDirectory);
+            WriteCaptureFailureEvidence(evidenceDirectory, "note-rows", exception);
+            return new NoteRowEvidenceResult(string.Empty, $"{exception.GetType().Name}: {exception.Message}");
+        }
+        finally
+        {
+            window?.Close();
+            PumpDispatcher();
+            TryDeleteSettingsFiles(settingsPath);
+            TryDeleteFile(settingsPath + ".diagnostic.jsonl");
+        }
+    }
+
     private static object SaveMainFocusCrop(
         MainWindow window,
         string evidenceDirectory,

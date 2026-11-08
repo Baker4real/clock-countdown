@@ -452,6 +452,8 @@ internal static partial class ValidationReport
     // #247 倒计时行关键状态实拍的落盘结果，口径同焦点态证据。
     private sealed record CountdownRowEvidenceResult(string ManifestPath, string Error);
 
+    private sealed record NoteRowEvidenceResult(string ManifestPath, string Error);
+
     // #134 真实运行态 UI 捕获 seam 的单帧证据条目与 DPI 变更遥测。
     private sealed record MainUiCaptureSeamEntry(
         string CaptureId,

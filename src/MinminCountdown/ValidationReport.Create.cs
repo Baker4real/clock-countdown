@@ -139,6 +139,7 @@ internal static partial class ValidationReport
         var countdownPreferencesPopup = ValidationExercises.RunCountdownPreferencesPopupBehavior();
         var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
         var countdownRowPresentation = ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior();
+        var noteRowContentGeometry = ValidationExercises.RunNoteRowContentGeometryBehavior();
         var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
@@ -1083,6 +1084,10 @@ internal static partial class ValidationReport
         var countdownRowEvidence = CaptureCountdownRowStateEvidence(
             assetRoot,
             legacyMainReferenceCapture.CountdownCapturePath);
+        // #249：便签卡关键状态实拍同样在一次性窗口里截。
+        var noteRowEvidence = CaptureNoteRowStateEvidence(
+            assetRoot,
+            legacyMainReferenceCapture.CountdownCapturePath);
 
         var report = new ValidationReportProjection
         {
@@ -1699,6 +1704,7 @@ internal static partial class ValidationReport
             ["CountdownPreferencesPopupBehavior"] = Must(countdownPreferencesPopup, "设置弹层焦点、Tab/Esc、草稿、字段错误、持久化及浮窗双宿主入口（#221）"),
             ["CountdownEditorExpansionBehavior"] = Must(countdownEditorExpansion, "展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）"),
             ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = Must(countdownRowPresentation, "倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）；名称与剩余分格同一主阅读轴，截止与标签成辅助带，七种关键状态不裁切不重叠，编辑删除与便签行同一套次级动作（#247）"),
+            ["NoteRowContentGeometryBehavior"] = Must(noteRowContentGeometry, "便签卡正文与提醒摘要连成内容列，标签在内容下方就近换行，编辑删除停在稳定的右上动作槽；未完成滚动、搜索、多选、提醒来源与已完成五种排布不裁切不重叠，选择不改变卡内几何（#249）"),
             ["MainWindowIdentityZoneDragRegion"] = Must(mainWindowIdentityZoneDrag, "身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）"),
             ["FloatingWindowStaysOnSecondaryMonitor"] = Must(floatingSecondaryMonitor, "#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP"),
             ["OwnerDialogsFitSecondaryMonitor"] = Must(ownerDialogsFitSecondaryMonitor, "#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达"),
@@ -1778,6 +1784,8 @@ internal static partial class ValidationReport
             ["MainFocusEvidenceError"] = mainFocusEvidence.Error,
             ["CountdownRowEvidenceManifestPath"] = countdownRowEvidence.ManifestPath,
             ["CountdownRowEvidenceError"] = countdownRowEvidence.Error,
+            ["NoteRowEvidenceManifestPath"] = noteRowEvidence.ManifestPath,
+            ["NoteRowEvidenceError"] = noteRowEvidence.Error,
             ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
             ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
             ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,

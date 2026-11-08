@@ -103,7 +103,7 @@ public static class CountdownWindowPreflightNative
     $report.WindowChecksCompleted = [int]$result.Total
     $report.Checks = @($result.Checks)
     $report.Failures = @($result.Failures)
-    $report.Valid = $result.Passed -eq 3 -and $result.Total -eq 3 -and $result.Failed -eq 0
+    $report.Valid = $result.Passed -eq 4 -and $result.Total -eq 4 -and $result.Failed -eq 0
     if ($report.Valid) { $report.FailureCode = $null }
 }
 catch {

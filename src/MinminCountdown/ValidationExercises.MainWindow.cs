@@ -1641,18 +1641,7 @@ internal static partial class ValidationExercises
                     string.Join(" ‖ ", countdownActionSignatures) + " / 便签 " + string.Join(" ‖ ", noteActionSignatures));
             }
 
-            // 同一条规则在多行违反时合并成一项，并列出所在排布与行。
-            var failed = violations
-                .Select(item => item.Split('：', 2))
-                .GroupBy(pieces => pieces[^1], StringComparer.Ordinal)
-                .Select(group =>
-                {
-                    var where = group.Where(pieces => pieces.Length == 2).Select(pieces => pieces[0]).Distinct().ToArray();
-                    return where.Length == 0
-                        ? group.Key
-                        : $"{group.Key}（{string.Join("、", where.Take(4))}{(where.Length > 4 ? $" 等 {where.Length} 处" : string.Empty)}）";
-                })
-                .ToArray();
+            var failed = SummarizeRowViolations(violations);
             Must(failed.Length == 0, $"#247：倒计时行几何 {failed.Length} 类未通过：" + string.Join("；", failed));
             return true;
         }
@@ -1917,6 +1906,452 @@ internal static partial class ValidationExercises
         }
 
         return null;
+    }
+
+    // 违反项写成「排布·行（数值）：规则」；同一条规则在多行违反时合并成一项，并列出所在排布与行。
+    private static string[] SummarizeRowViolations(IEnumerable<string> violations) =>
+        violations
+            .Select(item => item.Split('：', 2))
+            .GroupBy(pieces => pieces[^1], StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var where = group.Where(pieces => pieces.Length == 2).Select(pieces => pieces[0]).Distinct().ToArray();
+                return where.Length == 0
+                    ? group.Key
+                    : $"{group.Key}（{string.Join("、", where.Take(4))}{(where.Length > 4 ? $" 等 {where.Length} 处" : string.Empty)}）";
+            })
+            .ToArray();
+
+    // #249：便签卡关键状态夹具。未完成两组五张卡：无标签无提醒的短正文、140 字长正文（一次提醒、两枚标签）、
+    // 五枚标签（含 30 字长标签）加两条提醒、每 15 分钟提醒的来源卡、只带一枚标签的短卡，首选尺寸下必出纵向滚动条；
+    // 已完成两张卡带删除线与暂停摘要；「复盘」搜索只留长正文与五标签两张。卡片几何探针与 validate-only 实拍共用这一份夹具。
+    internal sealed record NoteRowStateFixture(string ReminderSourceNoteId, string SearchTerm);
+
+    // 北京时间 2032 年 5 月 18 日 10:15:30；夹具提醒都落在它之后。
+    internal static readonly DateTimeOffset NoteRowFixtureUtc = new(2032, 5, 18, 2, 15, 30, TimeSpan.Zero);
+
+    private const string NoteRowFixtureLongBody =
+        "周一上午先整理季度复盘材料，汇总各组进度与风险，再把会议纪要和待办同步到共享文档；下午和设计一起讨论便签卡排版，" +
+        "确认正文、提醒摘要与标签的阅读顺序和间距，最后检查长正文在列表出现纵向滚动条时仍然按可用宽度自然换行，" +
+        "不被独立的标签列挤成窄条，也不会遮挡卡片右侧的编辑和删除两个按钮。";
+
+    private const string NoteRowFixtureLongTag = "超长标签名称用于验证便签卡芯片在省略之后仍然可以查看完整名称";
+
+    internal static NoteRowStateFixture SeedNoteRowStates(DesktopWorkspace workspace)
+    {
+        var today = workspace.Snapshot.BeijingNow.Date;
+        var yesterday = today.AddDays(-1);
+        string Tag(string name, string? color) =>
+            MustApply(workspace, new CreateTagChange(name, color)).CreatedTag?.Id ??
+            throw new InvalidOperationException($"#249：未取得夹具标签「{name}」。");
+        string Note(string text, DateTime date, string[] tagIds, params ReminderRule[] rules)
+        {
+            MustApply(workspace, new SaveNoteChange(null, text, date, false, tagIds, rules));
+            return workspace.Snapshot.Settings.Notes
+                .Single(note => string.Equals(note.Text, text, StringComparison.Ordinal)).Id;
+        }
+
+        var work = Tag("工作", "#F4B6A6");
+        var life = Tag("生活", "#A8D5BA");
+        var longTag = Tag(NoteRowFixtureLongTag, "#A8C7E8");
+        var focus = Tag("专注", null);
+        var family = Tag("家庭聚会安排", null);
+        var onceUtc = new DateTimeOffset(2032, 5, 18, 3, 30, 0, TimeSpan.Zero);
+        Note("买牛奶", today, []);
+        Note(NoteRowFixtureLongBody, today, [work, life], new AbsoluteOnceReminderRule("note-row-once", onceUtc));
+        Note("整理季度复盘材料并同步给团队", today, [work, life, longTag, focus, family],
+            new AbsoluteOnceReminderRule("note-row-first", onceUtc),
+            new AbsoluteOnceReminderRule("note-row-second", onceUtc.AddDays(1)));
+        var source = Note("每隔一刻钟起身喝水", yesterday, [life], new FixedIntervalReminderRule(
+            "note-row-interval", new DateTimeOffset(2032, 5, 18, 2, 30, 0, TimeSpan.Zero), new ReminderInterval(15)));
+        Note("周报草稿", yesterday, [focus]);
+        MustApply(workspace, new SetNotesCompletionChange(
+            [
+                Note("已完成的便签保留删除线与弱化颜色", yesterday, [work, longTag],
+                    new AbsoluteOnceReminderRule("note-row-paused", onceUtc.AddDays(2))),
+                Note("已完成短便签", yesterday, [])
+            ],
+            true));
+        return new NoteRowStateFixture(source, "复盘");
+    }
+
+    // #249：便签卡围绕内容组织。完成勾选、正文首行与编辑/删除同一首行中线；正文与提醒摘要连成一个内容列，吸收动作槽
+    // 以左的全部宽度；标签在内容下方就近换行、与正文左对齐，不伸进动作槽；编辑与删除停在每张卡同一个右上动作槽，不随
+    // 正文高度、选择或提醒来源强调移动。未完成（出现滚动条）、搜索、多选、提醒来源与已完成五种排布逐卡检查，选择前后
+    // 卡内几何逐项相同，Esc 收起批量操作条。违反项汇总后一次报出。
+    public static bool RunNoteRowContentGeometryBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-row-geometry-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(
+            path,
+            new SettingsStore(clock: new AdvancingValidationClock(NoteRowFixtureUtc)));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var fixture = SeedNoteRowStates(workspace);
+        Must(NoteRowFixtureLongBody.Length == 140 && NoteRowFixtureLongTag.Length == 30,
+            "#249：长正文与长标签夹具须顶到 140 字与 30 字上限。");
+        // 与倒计时行几何探针同一口径固定首选 864×1000。
+        using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
+            main.Show();
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var parts = main.NoteListPartsForValidation;
+            var viewport = VisualDescendants<ScrollContentPresenter>(parts.ListRegion).FirstOrDefault();
+            Must(viewport is not null, "#249：便签列表须在滚动区域内。");
+            var violations = new List<string>();
+            var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Point? referenceSlot = null;
+            Dictionary<string, string> VerifyPass(string pass, StackPanel rows, int expectedCards, bool? expectScrollBar)
+            {
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                var cards = VisualDescendants<NoteSelectionCard>(rows).Where(card => card.IsVisible).ToArray();
+                if (cards.Length != expectedCards)
+                {
+                    violations.Add($"{pass}：夹具须显示 {expectedCards} 张便签卡，实为 {cards.Length} 张");
+                }
+
+                if (expectScrollBar is bool expected &&
+                    (parts.ListRegion.ComputedVerticalScrollBarVisibility == Visibility.Visible) != expected)
+                {
+                    violations.Add($"{pass}：夹具须{(expected ? "出现" : "不出现")}纵向滚动条");
+                }
+
+                var signatures = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var card in cards)
+                {
+                    var note = workspace.Snapshot.AllNotes.Single(item =>
+                        string.Equals(item.Id, card.Tag as string, StringComparison.OrdinalIgnoreCase));
+                    var label = note.Text.Length > 6 ? note.Text[..6] + "…" : note.Text;
+                    labels[note.Id] = label;
+                    if (MeasureNoteRow(main, card, note, workspace.Snapshot.Settings, viewport!, $"{pass}·{label}", violations)
+                        is not { } row)
+                    {
+                        continue;
+                    }
+
+                    signatures[note.Id] = row.Signature;
+                    referenceSlot ??= row.Slot;
+                    var drift = row.Slot - referenceSlot.Value;
+                    if (Math.Abs(drift.X) > 0.5 || Math.Abs(drift.Y) > 0.5)
+                    {
+                        violations.Add(FormattableString.Invariant(
+                            $"{pass}·{label}（右距差 {drift.X:0.#}、上距差 {drift.Y:0.#} DIP）：编辑与删除须停在每张卡同一右上动作槽"));
+                    }
+                }
+
+                return signatures;
+            }
+
+            var unselected = VerifyPass("未完成", parts.ActiveRows, expectedCards: 5, expectScrollBar: true);
+            parts.Search.Text = fixture.SearchTerm;
+            VerifyPass("搜索", parts.ActiveRows, expectedCards: 2, expectScrollBar: null);
+            parts.Search.Clear();
+            WindowValidationInput.Pump(main.Dispatcher);
+
+            var chosen = VisualDescendants<NoteSelectionCard>(parts.ActiveRows).Where(card => card.IsVisible).Take(2).ToArray();
+            foreach (var card in chosen)
+            {
+                Keyboard.Focus(card);
+                WindowValidationInput.RaisePreviewKey(card, Key.Space, ModifierKeys.Control);
+            }
+
+            var selected = VerifyPass("多选", parts.ActiveRows, expectedCards: 5, expectScrollBar: true);
+            if (chosen.Length != 2 || chosen.Any(card => !card.IsSelected) ||
+                parts.SelectedCount.Text != "已选择 2 条" || !parts.BatchActions.IsVisible)
+            {
+                violations.Add("多选：Ctrl+空格选中两张卡后须显示批量操作条与「已选择 2 条」");
+            }
+
+            foreach (var (id, signature) in unselected)
+            {
+                if (selected.TryGetValue(id, out var after) && !string.Equals(after, signature, StringComparison.Ordinal))
+                {
+                    violations.Add($"多选·{labels[id]}：选择不得改变卡内几何");
+                }
+            }
+
+            if (Keyboard.FocusedElement is NoteSelectionCard focusedCard)
+            {
+                WindowValidationInput.RaisePreviewKey(focusedCard, Key.Escape);
+                WindowValidationInput.Pump(main.Dispatcher);
+            }
+
+            if (parts.SelectedCount.Text != "已选择 0 条" || parts.BatchActions.IsVisible)
+            {
+                violations.Add("多选：Esc 须取消选择并收起批量操作条");
+            }
+
+            Must(main.OpenReminderSource(ReminderSourceKind.Note, fixture.ReminderSourceNoteId),
+                "#249：须真实打开提醒来源便签。");
+            VerifyPass("提醒来源", parts.ActiveRows, expectedCards: 5, expectScrollBar: true);
+            var sourceCard = VisualDescendants<NoteSelectionCard>(parts.ActiveRows).SingleOrDefault(card =>
+                string.Equals(card.Tag as string, fixture.ReminderSourceNoteId, StringComparison.OrdinalIgnoreCase));
+            if (sourceCard is null || sourceCard.BorderThickness.Left < 1.5 ||
+                !ReferenceEquals(sourceCard.BorderBrush, main.FindResource("ActiveBrush")) ||
+                AutomationProperties.GetName(sourceCard)?.StartsWith("当前提醒来源便签：", StringComparison.Ordinal) != true)
+            {
+                violations.Add("提醒来源：来源卡须以 2 DIP ActiveBrush 边界强调并报出来源身份");
+            }
+
+            parts.CompletedSegment.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            VerifyPass("已完成", parts.CompletedRows, expectedCards: 2, expectScrollBar: null);
+
+            var failed = SummarizeRowViolations(violations);
+            Must(failed.Length == 0, $"#249：便签卡几何 {failed.Length} 类未通过：" + string.Join("；", failed));
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
+    // #249：单卡合同。卡根网格直接含完成勾选；勾选框、正文首行与编辑/删除中线相差不超过 1 DIP；正文右缘离编辑
+    // 不超过 12.5 DIP（没有独立标签列）；提醒摘要紧接正文、与正文左对齐，换行完整显示，时钟图标对齐摘要首行；
+    // 标签在内容下方 8.5 DIP 内起排、与正文左对齐，单行、不超过 148 DIP，省略时提示全文；内容不伸进动作槽、
+    // 各部件不出卡片内容区、不相互重叠；编辑与删除按固有尺寸呈现且不被滚动条遮挡；完成与未完成正文的颜色与删除线
+    // 保持。返回动作槽相对卡片外框的右距与上距，以及卡内各部件的几何签名。
+    private static (Point Slot, string Signature)? MeasureNoteRow(
+        MainWindow main,
+        NoteSelectionCard card,
+        NoteRecord note,
+        CountdownSettings settings,
+        FrameworkElement viewport,
+        string where,
+        List<string> violations)
+    {
+        void Fail(string rule, string? detail = null) =>
+            violations.Add(detail is null ? $"{where}：{rule}" : $"{where}（{detail}）：{rule}");
+        if (card.Child is not Grid layout)
+        {
+            Fail("卡根须为网格");
+            return null;
+        }
+
+        var completion = layout.Children.OfType<CheckBox>().SingleOrDefault();
+        var box = completion is null ? null : VisualDescendants<Border>(completion).FirstOrDefault();
+        var texts = VisualDescendants<TextBlock>(card).ToArray();
+        var body = texts.SingleOrDefault(text => text.Uid == "NoteRowBodyText");
+        var summary = texts.SingleOrDefault(text =>
+            AutomationProperties.GetAutomationId(text) == MainWindow.NoteCardReminderSummaryAutomationId);
+        var glyph = summary is null
+            ? null
+            : (VisualTreeHelper.GetParent(summary) as Panel)?.Children.OfType<System.Windows.Shapes.Path>().SingleOrDefault();
+        var buttons = VisualDescendants<Button>(card).ToArray();
+        var edit = buttons.SingleOrDefault(button => Equals(button.Content, "编辑"));
+        var delete = buttons.SingleOrDefault(button => Equals(button.Content, "删除"));
+        var chips = VisualDescendants<Border>(card)
+            .Where(border => note.TagIds.Contains(border.Uid, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        var expectSummary = note.ReminderRules.Count > 0;
+        if (completion is null || box is null || body is null || edit is null || delete is null || buttons.Length != 2 ||
+            chips.Length != note.TagIds.Count || (expectSummary ? summary is null || glyph is null : summary is not null))
+        {
+            Fail($"卡内须有完成勾选、正文、{note.TagIds.Count} 枚标签{(expectSummary ? "、提醒摘要与时钟图标" : string.Empty)}与编辑/删除两项动作");
+            return null;
+        }
+
+        static double Middle(Rect bounds) => (bounds.Top + bounds.Bottom) / 2;
+        static double FirstLineHeight(TextBlock text) =>
+            double.IsNaN(text.LineHeight) ? text.FontFamily.LineSpacing * text.FontSize : text.LineHeight;
+        // DesiredSize 含外边距；固有尺寸扣掉外边距后才能与实测尺寸比较。
+        static Size Intrinsic(FrameworkElement element) => new(
+            Math.Max(0, element.DesiredSize.Width - element.Margin.Left - element.Margin.Right),
+            Math.Max(0, element.DesiredSize.Height - element.Margin.Top - element.Margin.Bottom));
+        static bool Inside(Rect outer, Rect inner) =>
+            inner.Left >= outer.Left - 0.5 && inner.Top >= outer.Top - 0.5 &&
+            inner.Right <= outer.Right + 0.5 && inner.Bottom <= outer.Bottom + 0.5;
+        static FormattedText Format(TextBlock text) => new(text.Text, CultureInfo.CurrentCulture, text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+        // 按实测宽度重排一遍：行数与行高都放得下、且没有越出宿主容器（被布局裁切）才算完整显示。
+        static bool WrappedTextFits(TextBlock text)
+        {
+            var formatted = Format(text);
+            formatted.MaxTextWidth = Math.Max(1, text.ActualWidth);
+            if (!double.IsNaN(text.LineHeight))
+            {
+                formatted.LineHeight = text.LineHeight;
+            }
+
+            return text.TextWrapping == TextWrapping.Wrap &&
+                formatted.Height <= text.ActualHeight + 0.5 &&
+                formatted.MinWidth <= text.ActualWidth + 0.5 &&
+                (VisualTreeHelper.GetParent(text) is not FrameworkElement host ||
+                 Inside(new Rect(host.RenderSize), BoundsOn(text, host)));
+        }
+
+        var completionBounds = BoundsOn(completion, layout);
+        var boxBounds = BoundsOn(box, layout);
+        var bodyBounds = BoundsOn(body, layout);
+        var editBounds = BoundsOn(edit, layout);
+        var deleteBounds = BoundsOn(delete, layout);
+        var summaryBounds = summary is null ? Rect.Empty : BoundsOn(summary, layout);
+        var glyphBounds = glyph is null ? Rect.Empty : BoundsOn(glyph, layout);
+        var chipBounds = chips.Select(chip => BoundsOn(chip, layout)).ToArray();
+
+        var firstLine = bodyBounds.Top + FirstLineHeight(body) / 2;
+        var axisOffsets = new[] { ("勾选框", Middle(boxBounds)), ("编辑", Middle(editBounds)), ("删除", Middle(deleteBounds)) }
+            .Where(item => Math.Abs(item.Item2 - firstLine) > 1)
+            .Select(item => FormattableString.Invariant($"{item.Item1}差 {item.Item2 - firstLine:0.#}"))
+            .ToArray();
+        if (axisOffsets.Length > 0)
+        {
+            Fail("完成勾选、正文首行与编辑/删除须同一首行中线", string.Join("、", axisOffsets));
+        }
+
+        var bodyGap = editBounds.Left - bodyBounds.Right;
+        if (bodyGap > 12.5)
+        {
+            Fail("正文须吸收动作槽以左的全部宽度，不再让出独立标签列",
+                FormattableString.Invariant($"正文右缘离编辑 {bodyGap:0.#} DIP"));
+        }
+
+        var content = new List<(string Name, Rect Bounds)> { ("正文", bodyBounds) };
+        if (summary is not null)
+        {
+            content.Add(("提醒摘要", summaryBounds));
+            content.Add(("时钟图标", glyphBounds));
+        }
+
+        content.AddRange(chipBounds.Select((bounds, index) => ($"标签{index + 1}", bounds)));
+        var intruding = content.Where(part => part.Bounds.Right > editBounds.Left - 11.5).Select(part => part.Name).ToArray();
+        if (intruding.Length > 0)
+        {
+            Fail("正文、提醒摘要与标签不得伸进编辑/删除动作槽", string.Join("、", intruding));
+        }
+
+        if (!WrappedTextFits(body))
+        {
+            Fail("正文须按内容列宽度完整换行，不被裁切");
+        }
+
+        var struck = body.TextDecorations is { Count: > 0 } decorations &&
+            decorations.All(decoration => decoration.Location == TextDecorationLocation.Strikethrough);
+        if (!ReferenceEquals(body.Foreground, main.FindResource(note.IsCompleted ? "MutedBrush" : "InkBrush")) ||
+            struck != note.IsCompleted)
+        {
+            Fail(note.IsCompleted ? "已完成正文须 MutedBrush 加删除线" : "未完成正文须 InkBrush 且无删除线");
+        }
+
+        if (summary is not null)
+        {
+            var rowTop = Math.Min(summaryBounds.Top, glyphBounds.Top);
+            if (rowTop < bodyBounds.Bottom - 0.5 || rowTop > bodyBounds.Bottom + 4.5 ||
+                Math.Abs(glyphBounds.Left - bodyBounds.Left) > 0.5 || glyphBounds.Right > summaryBounds.Left + 0.5)
+            {
+                Fail("提醒摘要须紧接正文下方、与正文左对齐，连成同一内容列");
+            }
+
+            if (!WrappedTextFits(summary))
+            {
+                Fail("提醒摘要须在内容列内换行完整显示，不被裁切");
+            }
+
+            var summaryFirstLine = summaryBounds.Top + FirstLineHeight(summary) / 2;
+            if (Math.Abs(Middle(glyphBounds) - summaryFirstLine) > 1)
+            {
+                Fail("时钟图标须与提醒摘要首行同一中线",
+                    FormattableString.Invariant($"差 {Middle(glyphBounds) - summaryFirstLine:0.#} DIP"));
+            }
+
+            if (summary.FontSize > body.FontSize + 0.01 ||
+                !ReferenceEquals(summary.Foreground, main.FindResource("MutedBrush")))
+            {
+                Fail("提醒摘要须用 MutedBrush 且不大于正文");
+            }
+        }
+
+        if (chipBounds.Length > 0)
+        {
+            var above = summary is null ? bodyBounds : Rect.Union(summaryBounds, glyphBounds);
+            var gap = chipBounds.Min(bounds => bounds.Top) - above.Bottom;
+            if (gap < -0.5 || gap > 8.5 || Math.Abs(chipBounds.Min(bounds => bounds.Left) - bodyBounds.Left) > 0.5)
+            {
+                Fail("标签须在正文与提醒摘要下方就近排列、与正文左对齐",
+                    FormattableString.Invariant($"距上方内容 {gap:0.#} DIP"));
+            }
+
+            for (var index = 0; index < chips.Length; index++)
+            {
+                var chip = chips[index];
+                var tag = settings.Tags.Single(item => string.Equals(item.Id, chip.Uid, StringComparison.OrdinalIgnoreCase));
+                var chipText = chip.Child as TextBlock;
+                var trimmed = chipText is not null &&
+                    Format(chipText).WidthIncludingTrailingWhitespace > chipText.ActualWidth + 0.5;
+                if (chipText is null || chipText.TextWrapping != TextWrapping.NoWrap ||
+                    chip.ActualWidth > MainWindow.TagChipMaxWidth + 0.5 || chip.ActualWidth < Intrinsic(chip).Width - 0.5)
+                {
+                    Fail("标签芯片须单行、不超过 148 DIP 上限且不被挤压", $"标签{index + 1}");
+                }
+
+                if (trimmed && (chipText!.TextTrimming != TextTrimming.CharacterEllipsis ||
+                                !string.Equals(chip.ToolTip as string, tag.Name, StringComparison.Ordinal)))
+                {
+                    Fail("被省略的标签须以省略号收尾并以提示给出完整名称", $"标签{index + 1}");
+                }
+
+                if (tag.Name.Length >= 30 && !trimmed)
+                {
+                    Fail("30 字长标签须在 148 DIP 上限内省略", $"标签{index + 1}");
+                }
+            }
+        }
+
+        var parts = new List<(string Name, Rect Bounds)> { ("完成勾选", completionBounds) };
+        parts.AddRange(content);
+        parts.Add(("编辑", editBounds));
+        parts.Add(("删除", deleteBounds));
+        var layoutBounds = new Rect(layout.RenderSize);
+        for (var first = 0; first < parts.Count; first++)
+        {
+            if (!Inside(layoutBounds, parts[first].Bounds))
+            {
+                Fail($"{parts[first].Name}超出卡片内容区");
+            }
+
+            for (var second = first + 1; second < parts.Count; second++)
+            {
+                var overlap = Rect.Intersect(parts[first].Bounds, parts[second].Bounds);
+                if (!overlap.IsEmpty && overlap.Width > 0.5 && overlap.Height > 0.5)
+                {
+                    Fail($"{parts[first].Name}与{parts[second].Name}重叠");
+                }
+            }
+        }
+
+        foreach (var (button, name) in new[] { (edit, "编辑"), (delete, "删除") })
+        {
+            var intrinsic = Intrinsic(button);
+            if (button.ActualWidth < Math.Max(24, Math.Max(button.MinWidth, intrinsic.Width)) - 0.5 ||
+                button.ActualHeight < Math.Max(24, Math.Max(button.MinHeight, intrinsic.Height)) - 0.5 ||
+                Math.Abs(button.ActualHeight - intrinsic.Height) > 1)
+            {
+                Fail($"{name}须按固有尺寸呈现，不被挤压或纵向拉伸",
+                    FormattableString.Invariant($"{button.ActualWidth:0.#}×{button.ActualHeight:0.#}"));
+            }
+
+            var inViewport = BoundsOn(button, viewport);
+            if (inViewport.Left < -0.5 || inViewport.Right > viewport.ActualWidth + 0.5)
+            {
+                Fail($"{name}越出列表视口（被滚动条遮挡）");
+            }
+        }
+
+        static string Rounded(Rect bounds) =>
+            FormattableString.Invariant($"{bounds.Left:0.#},{bounds.Top:0.#},{bounds.Width:0.#},{bounds.Height:0.#}");
+        var editOnCard = BoundsOn(edit, card);
+        var deleteOnCard = BoundsOn(delete, card);
+        return (new Point(card.ActualWidth - deleteOnCard.Right, editOnCard.Top),
+            string.Join(";", parts.Select(part => part.Name + "=" + Rounded(part.Bounds))));
     }
 
     public static bool RunMainWindowNoteMinuteRefreshBehavior()

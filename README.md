@@ -111,7 +111,9 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 倒计时行的关键状态同样另开一次性主窗口实拍（#247），不进门禁：载入行几何探针 `CountdownRowDeadlineAndSecondaryDeleteBehavior` 的同一份夹具（普通主项、30 字名称、五枚标签、999 天、截止行、百万天、已到期），按 864×1000 截取七行时滚动条在顶部与底部、百万天主项、到期主项四张倒计时页和一张便签页，连同 `countdown-rows.json` 写进实拍证据目录的 `countdown-rows\` 子目录（报告字段 `CountdownRowEvidenceManifestPath`，失败原因在 `CountdownRowEvidenceError`）。几何结论以探针为准，截图供人工核对主阅读轴、辅助带与动作。
 
-候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
+便签卡的关键状态也这样实拍（#249），不进门禁：载入卡片几何探针 `NoteRowContentGeometryBehavior` 的同一份夹具（无标签短正文、140 字长正文、五枚标签与 30 字长标签、两条提醒、每 15 分钟提醒的来源卡、已完成），按 864×1000 截取未完成五张时滚动条在顶部与底部、「复盘」搜索、多选两张与批量操作条、提醒来源强调、已完成段六张便签页，连同 `note-rows.json` 写进实拍证据目录的 `note-rows\` 子目录（报告字段 `NoteRowEvidenceManifestPath`，失败原因在 `NoteRowEvidenceError`）。几何结论同样以探针为准，截图供人工核对内容列、标签邻近与右上动作槽。
+
+候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区、倒计时行与便签卡几何和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
 
 ```powershell
 $appPath = Join-Path $PWD 'app'

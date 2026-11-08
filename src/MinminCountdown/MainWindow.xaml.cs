@@ -159,6 +159,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private const double NoteCardBodyLineHeight = 18;
     // #153：标签芯片单行不折字，集合由 WrapPanel 先折行；超长芯片按此上限省略并以 ToolTip 提供全文。
     internal const double TagChipMaxWidth = 148;
+    // #247：倒计时行与便签行共用的次级动作最小高度（紧凑命中 53×33）。#249 便签卡以它为首行带：
+    // 勾选框、正文首行与编辑/删除在这条带内共用同一中线。
+    private const double RowActionMinHeight = 33;
+    // #249：便签卡标签在正文与提醒摘要下方 6 DIP 处起排，折行后的芯片行之间留 4 DIP。
+    private const double NoteCardTagTopGap = 6;
+    private const double NoteCardTagRowGap = 4;
 
     private static readonly string[] TagColors =
     {
@@ -2534,11 +2540,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private FrameworkElement CreateNoteRow(NoteRecord note, DateTimeOffset nowUtc, int visibleIndex)
     {
+        // #249：便签卡围绕内容组织为三列——完成勾选、内容列、右上动作槽。内容列自上而下连续排列正文、提醒摘要与标签；
+        // 勾选框、正文首行与编辑/删除在 33 DIP 首行带内共用同一中线，动作槽顶对齐，不随正文高度移动。
         var completion = UiAccessibility.Name(
             new CheckBox
             {
                 IsChecked = note.IsCompleted,
                 Tag = note.Id,
+                // 模板的 28 DIP 命中槽在首行带内居中，可见勾选框中线落在动作中线上；命中区不变。
+                Height = RowActionMinHeight,
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 0, 7, 0),
                 Style = (Style)MainContentProjection.FindResource("MainNoteCompletionCheck")
@@ -2556,12 +2566,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var actions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Top
         };
         actions.Children.Add(edit);
         actions.Children.Add(delete);
 
-        var body = new StackPanel();
+        // 内容列右缘留 SpacingUnit，加上动作自带的 4 DIP 左间距，内容与动作槽相隔 12。
+        var content = new StackPanel { Margin = new Thickness(0, 0, (double)FindResource("SpacingUnit"), 0) };
         var noteText = new TextBlock
         {
             Uid = "NoteRowBodyText",
@@ -2571,18 +2582,24 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             // #153：正文行距足够分开正文与提醒摘要（NoteCardBodyLineHeight 注释推导）。
             LineHeight = NoteCardBodyLineHeight,
             LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            // #249：首行在首行带内居中。
+            Margin = new Thickness(0, (RowActionMinHeight - NoteCardBodyLineHeight) / 2, 0, 0),
             TextDecorations = note.IsCompleted ? TextDecorations.Strikethrough : null
         };
         noteText.SetResourceReference(
             TextBlock.ForegroundProperty,
             note.IsCompleted ? "MutedBrush" : "InkBrush");
-        body.Children.Add(noteText);
+        content.Children.Add(noteText);
         var details = FormatNoteDetails(_desktopWorkspace.Snapshot.Settings, note, nowUtc);
         if (!string.IsNullOrWhiteSpace(details))
         {
             var detailText = new TextBlock
             {
-                Text = details
+                Text = details,
+                // #249：摘要随内容列宽度换行，行高与正文同为 18，时钟图标对齐首行。
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = NoteCardBodyLineHeight,
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight
             };
             // #227：摘要不得大于正文，仍保留真实 DIP 可读下限。
             detailText.SetResourceReference(TextBlock.FontSizeProperty, "TypeCaptionFontSize");
@@ -2590,32 +2607,35 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             AutomationProperties.SetAutomationId(detailText, NoteCardReminderSummaryAutomationId);
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
             _noteReminderSummaryTexts[note.Id] = detailText;
-            var detailRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 0) };
             var clockGlyph = CreateNoteRowGlyph(
                 "M 9,2.6 C 5.9,2.6 3.4,5.1 3.4,8.2 C 3.4,11.3 5.9,13.8 9,13.8 C 12.1,13.8 14.6,11.3 14.6,8.2 C 14.6,5.1 12.1,2.6 9,2.6 Z M 9,5.2 L 9,8.2 L 11.2,9.6",
                 "MutedBrush");
+            var detailRow = new Grid { Margin = new Thickness(0, 3, 0, 0) };
+            detailRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            detailRow.ColumnDefinitions.Add(new ColumnDefinition());
+            Grid.SetColumn(detailText, 1);
             detailRow.Children.Add(clockGlyph);
             detailRow.Children.Add(detailText);
-            body.Children.Add(detailRow);
+            content.Children.Add(detailRow);
         }
 
-        // #136 便签卡空间关系对齐目标图：标签芯片是独立的中列并垂直居中，
-        // 不再换行堆叠在正文下方。
-        var tagChips = CreateTagChips(note.TagIds, hashPrefix: true);
-        tagChips.VerticalAlignment = VerticalAlignment.Center;
-        tagChips.Margin = new Thickness(6, 0, 6, 0);
+        // #249：标签紧跟正文与提醒摘要、与正文左对齐，在内容列内先折行再省略（#153）；
+        // 不再占用与正文争宽的独立中列，也不贴近右侧动作。
+        var tagChips = CreateTagChips(note.TagIds, hashPrefix: true, rowGap: NoteCardTagRowGap);
+        if (tagChips.Children.Count > 0)
+        {
+            tagChips.Margin = new Thickness(0, NoteCardTagTopGap - NoteCardTagRowGap, 0, 0);
+            content.Children.Add(tagChips);
+        }
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition());
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(body, 1);
-        Grid.SetColumn(tagChips, 2);
-        Grid.SetColumn(actions, 3);
+        Grid.SetColumn(content, 1);
+        Grid.SetColumn(actions, 2);
         grid.Children.Add(completion);
-        grid.Children.Add(body);
-        grid.Children.Add(tagChips);
+        grid.Children.Add(content);
         grid.Children.Add(actions);
         var card = NoteCard(grid, note.IsCompleted || visibleIndex % 2 == 1);
         NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
@@ -2632,7 +2652,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _noteSourceFocusTargets[note.Id] = edit;
         if (string.Equals(note.Id, _reminderSourceNoteId, StringComparison.OrdinalIgnoreCase))
         {
+            // #249：来源强调边界加粗 1 DIP，内边距同步收 1 DIP，内容与动作槽不随强调位移。
             card.BorderThickness = new Thickness(2);
+            card.Padding = new Thickness((double)FindResource("SpacingCardPadding") - 1);
             card.SetResourceReference(Border.BorderBrushProperty, "ActiveBrush");
             UiAccessibility.Name(card, $"当前提醒来源便签：{note.Text}；{(_selectedNoteIds.Contains(note.Id) ? "已选择" : "未选择")}");
         }
@@ -2642,18 +2664,20 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private WpfPath CreateNoteRowGlyph(string data, string brushKey)
     {
+        const double size = 13;
         var glyph = new WpfPath
         {
-            Width = 13,
-            Height = 13,
-            Margin = new Thickness(0, 1, 5, 0),
+            Width = size,
+            Height = size,
+            // #249：摘要可换行，图标顶对齐并居中在摘要首行（行高 NoteCardBodyLineHeight）上。
+            Margin = new Thickness(0, (NoteCardBodyLineHeight - size) / 2, 5, 0),
             Data = Geometry.Parse(data),
             Stretch = Stretch.Uniform,
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             StrokeLineJoin = PenLineJoin.Round,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Top
         };
         glyph.SetResourceReference(WpfPath.StrokeProperty, brushKey);
         return glyph;
@@ -3653,9 +3677,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _settingDefaultDate = false;
     }
 
-    private FrameworkElement CreateTagChips(IReadOnlyList<string> tagIds, bool hashPrefix = false)
+    // 调用方自定外边距与对齐；rowGap 给折行后的芯片行之间留出间距（#249 便签卡传入，倒计时辅助带保持 0）。
+    private WrapPanel CreateTagChips(IReadOnlyList<string> tagIds, bool hashPrefix = false, double rowGap = 0)
     {
-        var panel = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var panel = new WrapPanel();
         foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags.Where(tag => tagIds.Contains(
                      tag.Id,
                      StringComparer.OrdinalIgnoreCase)))
@@ -3675,7 +3700,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 Uid = tag.Id,
                 MaxWidth = TagChipMaxWidth,
-                Margin = new Thickness(0, 0, 4, 0),
+                Margin = new Thickness(0, rowGap, 4, 0),
                 Padding = new Thickness(5, 2, 5, 2),
                 CornerRadius = new CornerRadius(7),
                 Child = chipText,
@@ -3783,7 +3808,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 Content = content,
                 Tag = id,
                 MinWidth = 53,
-                MinHeight = 33,
+                MinHeight = RowActionMinHeight,
                 FontSize = (double)FindResource("TypeCaptionFontSize"),
                 Margin = new Thickness(4, 0, 0, 0),
                 Style = (Style)FindResource("SecondaryButton")

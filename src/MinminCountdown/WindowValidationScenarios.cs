@@ -3526,6 +3526,16 @@ public sealed partial class MainWindow
 
     // #247：倒计时行实拍要把列表滚到底部；按字段取滚动区，不经按名查找。
     internal ScrollViewer CountdownListRegionForValidation => CountdownListRegion;
+
+    // #249：便签卡几何探针与实拍要动列表、搜索、分段与批量操作栏；同样按字段取。
+    internal NoteListValidationParts NoteListPartsForValidation => new(
+        NotesListRegion,
+        ActiveNoteRows,
+        CompletedNoteRows,
+        NoteSearch,
+        CompletedNotesSegment,
+        NoteBatchActions,
+        SelectedNotesCount);
 }
 
 public sealed partial class FloatingWindow
@@ -5512,6 +5522,15 @@ internal sealed record UndatedNoteEditProbe(
     bool UndatedEditSavesWithoutDate,
     bool DatedEditRejectsClearedDate,
     bool ValidationMessagesDistinguished);
+
+internal sealed record NoteListValidationParts(
+    ScrollViewer ListRegion,
+    StackPanel ActiveRows,
+    StackPanel CompletedRows,
+    TextBox Search,
+    ToggleButton CompletedSegment,
+    FrameworkElement BatchActions,
+    TextBlock SelectedCount);
 
 internal sealed record FloatingWindowValidationScenarios(
     bool CrossDayReminderAdded,

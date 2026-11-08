@@ -3536,11 +3536,199 @@ public sealed partial class MainWindow
         CompletedNotesSegment,
         NoteBatchActions,
         SelectedNotesCount);
+
+    // #250：共享表面圆角探针按 DESIGN.md §13.3 的角色取样：区块表面与弹层（Section）、条目卡（Card）、
+    // 按钮、输入与分段（Control）、芯片与复选框（Chip）。按字段与模板部件取，不经按名查找；
+    // 派生圆角（胶囊、数字色块、指示条、强调轨、徽章与装饰）不取样。
+    internal IReadOnlyList<SurfaceRadiusSample> SharedSurfaceRadiiForValidation()
+    {
+        var samples = new List<SurfaceRadiusSample>();
+        void Surface(string role, string element, object? candidate) =>
+            samples.Add(new SurfaceRadiusSample(role, element, (candidate as Border)?.CornerRadius));
+        void Part(string role, string element, Control control, string part)
+        {
+            control.ApplyTemplate();
+            Surface(role, $"{element}.{part}", control.Template?.FindName(part, control));
+        }
+
+        Surface("Section", nameof(CountdownWorkspaceBackdrop), CountdownWorkspaceBackdrop);
+        Surface("Section", nameof(CountdownEditorSurface), CountdownEditorSurface);
+        Surface("Section", nameof(NoteEditorPanel), NoteEditorPanel);
+        Surface("Section", nameof(NoteEditorSurface), NoteEditorSurface);
+        Surface("Section", nameof(NotesListSurface), NotesListSurface);
+        Surface("Section", nameof(MainStatusBarSurface), MainStatusBarSurface);
+        Surface("Section", nameof(CountdownPreferencesSurface), CountdownPreferencesSurface);
+        Surface("Section", "FilterPopup.Child", FilterPopup.Child);
+        Surface("Section", "TagManagerPopup.Child", TagManagerPopup.Child);
+        Surface("Section", "CountdownTags.Popup.Child", CountdownTags.Popup.Child);
+        Surface("Section", "NoteTags.Popup.Child", NoteTags.Popup.Child);
+
+        foreach (var card in CountdownRows.Children.OfType<Border>())
+        {
+            Surface("Card", "CountdownRows.Card", card);
+        }
+
+        foreach (var card in MainValidationDescendants<NoteSelectionCard>(ActiveNoteRows))
+        {
+            Surface("Card", "ActiveNoteRows.Card", card);
+        }
+
+        var tagIds = _desktopWorkspace.Snapshot.Settings.Tags
+            .Select(tag => tag.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var chip in MainValidationDescendants<Border>(CountdownRows)
+                     .Concat(MainValidationDescendants<Border>(ActiveNoteRows))
+                     .Where(border => tagIds.Contains(border.Uid)))
+        {
+            Surface("Chip", "TagChip", chip);
+        }
+
+        Part("Control", nameof(SaveCountdownButton), SaveCountdownButton, "FocusRing");
+        Part("Control", nameof(SaveCountdownButton), SaveCountdownButton, "Surface");
+        Part("Control", nameof(SaveNoteButton), SaveNoteButton, "Surface");
+        Part("Control", nameof(SavePreferencesButton), SavePreferencesButton, "FocusRing");
+        Part("Control", nameof(SavePreferencesButton), SavePreferencesButton, "Surface");
+        Part("Control", nameof(FilterButton), FilterButton, "Surface");
+        Part("Control", nameof(CountdownName), CountdownName, "Surface");
+        Part("Control", nameof(CountdownReminderNoRadio), CountdownReminderNoRadio, "FocusRing");
+        Surface("Control", "MainWorkspaceTabHost.Parent", MainWorkspaceTabHost.Parent);
+        Surface("Control", "NotesSegmentHost.Parent", NotesSegmentHost.Parent);
+        var disclosureStyle = MainContentProjection.TryFindResource("MainNoteDateDisclosureButton") as Style;
+        foreach (var disclosure in MainValidationDescendants<Button>(ActiveNoteRows)
+                     .Where(button => disclosureStyle is not null && ReferenceEquals(button.Style, disclosureStyle)))
+        {
+            Part("Control", "NoteDateDisclosure", disclosure, "FocusRing");
+            Part("Control", "NoteDateDisclosure", disclosure, "Surface");
+        }
+
+        Part("Chip", nameof(TopmostCheck), TopmostCheck, "Box");
+        var completionStyle = MainContentProjection.TryFindResource("MainNoteCompletionCheck") as Style;
+        foreach (var completion in MainValidationDescendants<CheckBox>(ActiveNoteRows)
+                     .Where(check => completionStyle is not null && ReferenceEquals(check.Style, completionStyle)))
+        {
+            Part("Chip", "NoteCompletionCheck", completion, "Box");
+        }
+
+        return samples;
+    }
+
+    // #250：共享表面实拍要走到真实的字段错误与设置错误，并打开各个弹层；按字段取，不经按名查找。
+    internal MainSurfaceEvidenceParts SurfaceEvidencePartsForValidation => new(
+        SaveCountdownButton,
+        PreferencesPopup,
+        FilterPopup,
+        TagManagerPopup,
+        CountdownTags);
+
+    internal void ShowCountdownFieldErrorForValidation()
+    {
+        SetCountdownEditorExpanded(true);
+        CountdownName.Text = string.Empty;
+        SaveCountdownButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+    }
+
+    // 与偏好字段探针同一入口：激活窗口后由设置按钮真实打开弹层，否则保存失败把焦点交回月薪框时
+    // 非活动窗口上的 StaysOpen=False 弹层会丢失捕获并自行关闭。
+    internal void ShowPreferencesSalaryErrorForValidation()
+    {
+        WindowValidationInput.ClosePopupForCleanup(PreferencesPopup);
+        Activate();
+        Keyboard.Focus(PreferencesButton);
+        PreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+        MonthlySalary.Text = "-500";
+        SavePreferencesButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+    }
 }
 
 public sealed partial class FloatingWindow
 {
     internal WorkspaceKind CurrentWorkspaceForValidation => _workspace;
+
+    // #250：悬浮窗共享表面圆角取样——倒计时行底色与便签卡（Card）、「…」菜单弹层（Section）。
+    // 悬浮外壳、快速新增、滚动条、强调轨、徽章与数字色块按各自章节派生，不在取样范围。
+    internal IReadOnlyList<SurfaceRadiusSample> SharedSurfaceRadiiForValidation()
+    {
+        var originalWorkspace = _workspace;
+        var samples = new List<SurfaceRadiusSample>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(Dispatcher);
+            foreach (var root in FloatingRows.Children.OfType<Border>().Select(row => row.Child).OfType<Grid>())
+            {
+                if (root.Children.OfType<Border>().FirstOrDefault() is { } tint)
+                {
+                    samples.Add(new SurfaceRadiusSample("Card", "FloatingCountdownRowTint", tint.CornerRadius));
+                }
+            }
+
+            ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(Dispatcher);
+            foreach (var card in FloatingRows.Children.OfType<Border>())
+            {
+                samples.Add(new SurfaceRadiusSample("Card", "FloatingNoteCard", card.CornerRadius));
+            }
+
+            foreach (var trigger in NoteOverflowTriggersForValidation())
+            {
+                samples.Add(new SurfaceRadiusSample(
+                    "Section",
+                    "FloatingNoteOverflowMenu",
+                    (NoteRowOverflowMenuBehavior.GetPopup(trigger)?.Child as Border)?.CornerRadius));
+            }
+        }
+        finally
+        {
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+
+        return samples;
+    }
+
+    private IEnumerable<Button> NoteOverflowTriggersForValidation() =>
+        ValidationDescendants<Button>(FloatingRows)
+            .Where(button => Equals(button.GetValue(NoteControlRoleProperty), NoteControlRoleOverflow));
+
+    // #250：共享表面实拍的悬浮窗状态——真实快速新增字段错误、首条便签「…」菜单与快速新增入口焦点。
+    internal Button QuickAddToggleForValidation => FloatingAddNoteToggle;
+
+    internal void ShowQuickAddTextErrorForValidation()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        SetQuickAddExpanded(true);
+        UpdateLayout();
+        WindowValidationInput.Pump(Dispatcher);
+        FloatingNoteText.Text = string.Empty;
+        FloatingAddNote.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        WindowValidationInput.Pump(Dispatcher);
+    }
+
+    internal void CollapseQuickAddForValidation()
+    {
+        ClearNoteFieldErrors();
+        SetNoteMessage(string.Empty);
+        SetQuickAddExpanded(false);
+        WindowValidationInput.Pump(Dispatcher);
+    }
+
+    internal Popup? OpenFirstNoteOverflowMenuForValidation()
+    {
+        ShowWorkspace(WorkspaceKind.Notes);
+        WindowValidationInput.Pump(Dispatcher);
+        if (NoteOverflowTriggersForValidation().FirstOrDefault() is not { } trigger ||
+            NoteRowOverflowMenuBehavior.GetPopup(trigger) is not { } popup)
+        {
+            return null;
+        }
+
+        popup.IsOpen = true;
+        WindowValidationInput.Pump(Dispatcher);
+        return popup;
+    }
 
     internal FloatingWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd)
     {
@@ -5531,6 +5719,17 @@ internal sealed record NoteListValidationParts(
     ToggleButton CompletedSegment,
     FrameworkElement BatchActions,
     TextBlock SelectedCount);
+
+// #250：共享表面圆角取样——Role 是 DESIGN.md §13.3 的角色（Section/Card/WindowShell/Control/Chip），
+// Element 指明取样点；取不到 Border 时 Radius 为空，探针按违反项报出。
+internal sealed record SurfaceRadiusSample(string Role, string Element, CornerRadius? Radius);
+
+internal sealed record MainSurfaceEvidenceParts(
+    Button SaveCountdown,
+    Popup Preferences,
+    Popup Filter,
+    Popup TagManager,
+    TagSelector CountdownTags);
 
 internal sealed record FloatingWindowValidationScenarios(
     bool CrossDayReminderAdded,

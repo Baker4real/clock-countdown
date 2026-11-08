@@ -500,7 +500,7 @@ internal static class ValidationReportContract
                  {
                      "CountdownListFirstBehavior", "CountdownPreferencesPopupBehavior",
                      "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior",
-                     "NoteRowContentGeometryBehavior",
+                     "NoteRowContentGeometryBehavior", "SharedSurfaceRadiiFollowTokens",
                      "MainTopmostStateSynchronization", "MainRedundancyCleanup",
                      "MainNoteEditorSeparation", "MainNoteRowsSimplified", "MainNoteRowActionsKeyboardWorks",
                      "NoteGroupingSelectorAbsent", "MainTextShortcutBehavior", "SingleLineEnterSubmission",

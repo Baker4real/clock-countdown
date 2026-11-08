@@ -169,11 +169,12 @@ public sealed partial class FloatingWindow
             Margin = new Thickness(0, 0, 0, 8),
             HorizontalAlignment = HorizontalAlignment.Left,
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
             ClipToBounds = true,
             SnapsToDevicePixels = true,
             UseLayoutRounding = true
         };
+        // #250：悬浮便签卡与主窗条目卡同用 §13.3 RadiusCard。
+        card.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         NoteCompletionExit.SetCompletionIdentity(card, NoteCompletionExit.NoteIdentity(note.Id));
         card.SetResourceReference(Border.BorderBrushProperty, theme.BorderBrushKey);
         card.PreviewKeyDown += (_, args) =>
@@ -348,10 +349,10 @@ public sealed partial class FloatingWindow
         {
             MinWidth = 132,
             Padding = new Thickness(6),
-            CornerRadius = new CornerRadius(12),
             BorderThickness = new Thickness(1),
             Child = items
         };
+        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusOverlay");
         surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         var popup = new Popup

@@ -374,9 +374,10 @@ internal sealed class ReminderRulesEditorWindow : Window
         var surface = new Border
         {
             Child = layout,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8)
+            BorderThickness = new Thickness(1)
         };
+        // #250：次级窗口外壳与规则行同用 §13.3 RadiusCard。
+        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         return surface;
@@ -591,9 +592,9 @@ internal sealed class ReminderRulesEditorWindow : Window
                 Child = row,
                 Padding = new Thickness(12),
                 Margin = new Thickness(0, 0, 0, 8),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8)
+                BorderThickness = new Thickness(1)
             };
+            surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
             surface.SetResourceReference(Border.BackgroundProperty, "NoteBrush");
             surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
             _rulesHost.Children.Add(surface);

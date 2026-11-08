@@ -157,9 +157,10 @@ internal sealed class ReminderCenterWindow : Window
         var surface = new Border
         {
             Child = layout,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8)
+            BorderThickness = new Thickness(1)
         };
+        // #250：次级窗口外壳与条目卡同用 §13.3 RadiusCard。
+        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BackgroundProperty, "ReminderPageBrush");
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         Content = surface;
@@ -365,20 +366,25 @@ internal sealed class ReminderCenterWindow : Window
         };
         body.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        // #250：计划时间行按卡片内容宽度换行（与正文同样逐字折行）。横向 StackPanel 不限宽，出现纵向滚动条时
+        // 「（北京时间）」会被卡片右缘裁掉。时钟对齐首行：16px 正文行高约 21，13px 图标顶部留 4。
         var scheduled = new TextBlock
         {
             Text = $"计划：{DateDisplay.FullMoment(item.Key.ScheduledUtc)}（北京时间）",
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap
         };
         scheduled.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
         var scheduledClock = CreateClockIcon("MutedBrush", 13);
-        scheduledClock.Margin = new Thickness(0, 0, 5, 0);
-        scheduledClock.VerticalAlignment = VerticalAlignment.Center;
-        var scheduledRow = new StackPanel
+        scheduledClock.Margin = new Thickness(0, 4, 5, 0);
+        scheduledClock.VerticalAlignment = VerticalAlignment.Top;
+        var scheduledRow = new Grid
         {
-            Orientation = Orientation.Horizontal,
             Margin = new Thickness(0, 6, 0, 0)
         };
+        scheduledRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        scheduledRow.ColumnDefinitions.Add(new ColumnDefinition());
+        Grid.SetColumn(scheduled, 1);
         scheduledRow.Children.Add(scheduledClock);
         scheduledRow.Children.Add(scheduled);
         var error = new TextBlock
@@ -648,9 +654,9 @@ internal sealed class ReminderCenterWindow : Window
             Padding = new Thickness(14),
             Margin = new Thickness(0, 0, 0, 8),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
             DataContext = viewModel
         };
+        row.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         row.SetResourceReference(Border.BackgroundProperty, "ReminderCardBrush");
         row.SetResourceReference(Border.BorderBrushProperty, "NoteLineBrush");
         UiAccessibility.Name(

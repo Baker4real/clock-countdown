@@ -73,10 +73,11 @@ public sealed partial class FloatingWindow
             var tint = new Border
             {
                 Margin = new Thickness(0, 0, CountdownMascotSafeInset, 1),
-                CornerRadius = new CornerRadius(8),
                 Opacity = 0.8,
                 IsHitTestVisible = false
             };
+            // #250：主次倒计时行底色同用 §13.3 RadiusCard（次行不再另写 6）。
+            tint.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
             tint.SetResourceReference(Border.BackgroundProperty, "PinkTintSoftBrush");
             root.Children.Add(tint);
             var accent = new Border
@@ -97,10 +98,10 @@ public sealed partial class FloatingWindow
             var tint = new Border
             {
                 Margin = new Thickness(0, 0, CountdownMascotSafeInset, 1),
-                CornerRadius = new CornerRadius(6),
                 Opacity = 0.72,
                 IsHitTestVisible = false
             };
+            tint.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
             tint.SetResourceReference(Border.BackgroundProperty, "CardAltBrush");
             root.Children.Add(tint);
         }

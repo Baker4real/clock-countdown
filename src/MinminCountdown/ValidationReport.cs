@@ -56,6 +56,7 @@ internal static partial class ValidationReport
 
         Check("CountdownRowActionGeometry", ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior);
         Check("NoteRowContentGeometry", ValidationExercises.RunNoteRowContentGeometryBehavior);
+        Check("SharedSurfaceRadii", ValidationExercises.RunSharedSurfaceRadiusBehavior);
         if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
         {
             Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));

@@ -479,12 +479,13 @@ internal static partial class ValidationExercises
 
     public static bool ProbeReminderCenterEntryVisualIdentity()
     {
+        // #250：计划时间取两位月与两位日（最宽的完整日期），两条提醒让列表出现纵向滚动条。
         var noteKey = new ActiveReminderOccurrenceKey(
             "identity-note-rule",
-            new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2031, 12, 25, 1, 0, 0, TimeSpan.Zero));
         var countdownKey = new ActiveReminderOccurrenceKey(
             "identity-countdown-rule",
-            new DateTimeOffset(2031, 4, 5, 2, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2031, 12, 25, 2, 0, 0, TimeSpan.Zero));
         var window = new ReminderCenterWindow();
         PrepareOffscreenValidationWindow(window);
         window.AddEntry(new ReminderCenterItem(
@@ -586,9 +587,14 @@ internal static partial class ValidationExercises
 
                 var scheduledText = VisualDescendants<TextBlock>(row).Single(text =>
                     text.Text.StartsWith("计划：", StringComparison.Ordinal));
-                var scheduledRow = scheduledText.Parent as StackPanel;
+                var scheduledRow = scheduledText.Parent as Panel;
                 var scheduledClock = scheduledRow is not null &&
                     VisualDescendants<System.Windows.Shapes.Ellipse>(scheduledRow).Any();
+                // #250：「计划：…（北京时间）」整行落在卡片内容区内，不被卡片右缘裁掉（DESIGN §4 稳定显示原计划北京时间）。
+                var scheduledFitsCard =
+                    scheduledText.ActualWidth > 0 &&
+                    scheduledText.TranslatePoint(new Point(scheduledText.ActualWidth, 0), row).X <=
+                        row.ActualWidth - row.BorderThickness.Right - row.Padding.Right + 0.5;
                 var divider = VisualDescendants<Border>(row).Any(border =>
                     border.Child is null &&
                     Math.Abs(border.Height - 1) < 0.01);
@@ -608,7 +614,7 @@ internal static partial class ValidationExercises
                         !icon.IsHitTestVisible &&
                         VisualDescendants<System.Windows.Shapes.Ellipse>(icon).Any(ring =>
                             ReferenceEquals(ring.Stroke, inkBrush)));
-                if (!scheduledClock || !divider || !snoozeChoiceFrameMatches)
+                if (!scheduledClock || !scheduledFitsCard || !divider || !snoozeChoiceFrameMatches)
                 {
                     return false;
                 }
@@ -1680,5 +1686,131 @@ internal static partial class ValidationExercises
         element.UpdateLayout();
         return element.TransformToVisual(ancestor).TransformBounds(
             new Rect(0, 0, element.ActualWidth, element.ActualHeight));
+    }
+
+    // #250：区块表面、条目卡、输入与按钮、芯片的圆角归并到 DESIGN.md §13.3 的既有 token。期望值抄自 §13.3 的表：
+    // 区块表面与弹层 RadiusOverlay 12，条目卡与次级窗口外壳 RadiusCard 8，按钮、输入与分段 RadiusControl 9，
+    // 芯片与复选框 RadiusChip 5。在管理窗口、悬浮窗、提醒中心与规则编辑器的真实视觉树上逐个取样，每类都要取到样本；
+    // 胶囊、数字色块、指示条、强调轨、徽章与装饰按各自章节派生，不在取样范围。违反项汇总后一次报出。
+    public static bool RunSharedSurfaceRadiusBehavior()
+    {
+        var expected = new Dictionary<string, double>(StringComparer.Ordinal)
+        {
+            ["Section"] = 12,
+            ["Card"] = 8,
+            ["WindowShell"] = 8,
+            ["Control"] = 9,
+            ["Chip"] = 5
+        };
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-surface-radius-{Guid.NewGuid():N}.json");
+        var workspace = DesktopWorkspace.Load(
+            path,
+            new SettingsStore(clock: new AdvancingValidationClock(CountdownRowFixtureUtc)));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var tag = MustApply(workspace, new CreateTagChange("工作", "#F4B6A6")).CreatedTag?.Id ??
+            throw new InvalidOperationException("#250：未取得夹具标签。");
+        var nowUtc = workspace.Snapshot.UtcNow;
+        MustApply(workspace, new SaveCountdownChange(null, "季度复盘", nowUtc.AddDays(2), [tag], Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveCountdownChange(null, "年度旅行", nowUtc.AddDays(40), [tag], Array.Empty<ReminderRule>()));
+        MustApply(workspace, new SaveNoteChange(null, "整理周报", workspace.Snapshot.BeijingNow.Date, false,
+            [tag], Array.Empty<ReminderRule>()));
+        using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        FloatingWindow? floating = null;
+        ReminderCenterWindow? center = null;
+        ReminderRulesEditorWindow? editor = null;
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var samples = new List<SurfaceRadiusSample>();
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
+            WindowValidationInput.Pump(main.Dispatcher);
+            samples.AddRange(main.SharedSurfaceRadiiForValidation().Where(sample => sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            samples.AddRange(main.SharedSurfaceRadiiForValidation().Where(sample => !sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
+
+            floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(floating);
+            floating.Show();
+            WindowValidationInput.Pump(floating.Dispatcher);
+            samples.AddRange(floating.SharedSurfaceRadiiForValidation());
+
+            var dueUtc = new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero);
+            center = new ReminderCenterWindow();
+            PrepareOffscreenValidationWindow(center);
+            center.AddEntry(new ReminderCenterItem(
+                new ActiveReminderOccurrenceKey("surface-radius-note-rule", dueUtc),
+                new NoteRecord("surface-radius-note", "共享表面圆角探针便签", "2031-04-05", false,
+                    Array.Empty<string>(), NoReminder.Instance),
+                0,
+                0));
+            center.Show();
+            WindowValidationInput.Pump(center.Dispatcher);
+            samples.Add(new SurfaceRadiusSample("WindowShell", "ReminderCenter.Shell", (center.Content as Border)?.CornerRadius));
+            samples.AddRange(VisualDescendants<Border>(center)
+                .Where(border => border.Tag is ActiveReminderOccurrenceKey)
+                .Select(border => new SurfaceRadiusSample("Card", "ReminderCenter.Entry", border.CornerRadius)));
+
+            editor = new ReminderRulesEditorWindow(
+                [
+                    new CalendarReminderRule(
+                        "surface-radius-weekly",
+                        CalendarFrequency.Weekly,
+                        1,
+                        new DateOnly(2031, 4, 5),
+                        new TimeOnly(9, 0),
+                        new WeeklyCalendarSelector([DayOfWeek.Monday, DayOfWeek.Thursday]))
+                ],
+                new AdvancingValidationClock(dueUtc));
+            PrepareOffscreenValidationWindow(editor);
+            editor.Show();
+            WindowValidationInput.Pump(editor.Dispatcher);
+            var noteBrush = editor.FindResource("NoteBrush");
+            samples.Add(new SurfaceRadiusSample("WindowShell", "RulesEditor.Shell", (editor.Content as Border)?.CornerRadius));
+            samples.AddRange(VisualDescendants<Border>(editor)
+                .Where(border => ReferenceEquals(border.Background, noteBrush) && border.Child is Grid)
+                .Select(border => new SurfaceRadiusSample("Card", "RulesEditor.RuleRow", border.CornerRadius)));
+
+            var violations = samples
+                .Where(sample => sample.Radius is not { } radius ||
+                    new[] { radius.TopLeft, radius.TopRight, radius.BottomRight, radius.BottomLeft }
+                        .Any(corner => Math.Abs(corner - expected[sample.Role]) > 0.01))
+                .GroupBy(sample => $"{sample.Element}={(sample.Radius is { } radius ? radius.ToString() : "缺失")}")
+                .Select(group => $"{group.Key}（{group.First().Role} 应为 {expected[group.First().Role]}，{group.Count()} 处）")
+                .ToArray();
+            // 覆盖下限：每个取样点都要真的取到，避免夹具变化后空集合放过。
+            var requiredElements = new[]
+            {
+                "CountdownRows.Card", "ActiveNoteRows.Card", "TagChip", "FilterPopup.Child", "TagManagerPopup.Child",
+                "CountdownPreferencesSurface", "CountdownTags.Popup.Child", "SaveCountdownButton.Surface",
+                "SavePreferencesButton.Surface", "NoteDateDisclosure.Surface", "NoteCompletionCheck.Box", "TopmostCheck.Box",
+                "MainWorkspaceTabHost.Parent", "NotesSegmentHost.Parent", "FloatingCountdownRowTint", "FloatingNoteCard",
+                "FloatingNoteOverflowMenu", "ReminderCenter.Shell", "ReminderCenter.Entry", "RulesEditor.Shell",
+                "RulesEditor.RuleRow"
+            };
+            var missing = requiredElements
+                .Where(element => !samples.Any(sample => string.Equals(sample.Element, element, StringComparison.Ordinal)))
+                .ToArray();
+            Must(
+                violations.Length == 0 && missing.Length == 0,
+                $"#250：共享表面圆角 {violations.Length} 类不在 token 上" +
+                (violations.Length == 0 ? string.Empty : "：" + string.Join("；", violations)) +
+                (missing.Length == 0 ? string.Empty : $"；未取到样本：{string.Join("、", missing)}"));
+            return true;
+        }
+        finally
+        {
+            editor?.Close();
+            center?.ForceClose();
+            floating?.Close();
+            main.Close();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
     }
 }

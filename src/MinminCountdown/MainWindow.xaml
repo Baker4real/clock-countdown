@@ -187,14 +187,14 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="5">
+                              CornerRadius="{DynamicResource RadiusControl}">
                         <Border x:Name="Surface"
                                 Margin="2"
                                 Padding="{TemplateBinding Padding}"
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3"
+                                CornerRadius="{DynamicResource RadiusControl}"
                                 RenderTransformOrigin="0.5,0.5">
                           <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                             VerticalAlignment="Center"
@@ -260,13 +260,13 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="12" />
+                              CornerRadius="{DynamicResource RadiusControl}" />
                       <Border x:Name="Surface"
                               Margin="2"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="10"
+                              CornerRadius="{DynamicResource RadiusControl}"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -330,13 +330,13 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="12" />
+                              CornerRadius="{DynamicResource RadiusControl}" />
                       <Border x:Name="Surface"
                               Margin="3"
                               Background="{TemplateBinding Background}"
                               BorderBrush="{TemplateBinding BorderBrush}"
                               BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="9"
+                              CornerRadius="{DynamicResource RadiusControl}"
                               Padding="{TemplateBinding Padding}"
                               RenderTransformOrigin="0.5,0.5">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -545,7 +545,7 @@
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource ControlBorderBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="6"
+                              CornerRadius="{DynamicResource RadiusChip}"
                               VerticalAlignment="Center">
                         <Path x:Name="Tick"
                               Width="11"
@@ -622,7 +622,7 @@
                               Background="{DynamicResource CanvasBrush}"
                               BorderBrush="{DynamicResource ControlBorderBrush}"
                               BorderThickness="{DynamicResource FocusBorderThickness}"
-                              CornerRadius="4">
+                              CornerRadius="{DynamicResource RadiusChip}">
                         <Path x:Name="Tick"
                               Width="10"
                               Height="7"
@@ -729,7 +729,7 @@
                               Background="Transparent"
                               BorderBrush="Transparent"
                               BorderThickness="2"
-                              CornerRadius="9" />
+                              CornerRadius="{DynamicResource RadiusControl}" />
                       <StackPanel Orientation="Horizontal"
                                   HorizontalAlignment="Left"
                                   Margin="9,0,0,0"
@@ -1079,7 +1079,7 @@
                         Height="51"
                         Padding="4,3,3,4"
                         Background="{DynamicResource CardAltBrush}"
-                        CornerRadius="10">
+                        CornerRadius="{DynamicResource RadiusControl}">
                   <Grid x:Name="MainWorkspaceTabHost">
                     <!-- #196：选中指示条只改变 RenderTransform，避免切换时重排同级页签。 -->
                     <Canvas x:Name="MainWorkspaceTabIndicatorLayer"
@@ -1195,14 +1195,14 @@
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="0"
-                            CornerRadius="12"
+                            CornerRadius="{DynamicResource RadiusOverlay}"
                             IsHitTestVisible="False" />
                     <Border x:Name="CountdownEditorSurface"
                             Grid.Row="0"
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="1"
-                            CornerRadius="12">
+                            CornerRadius="{DynamicResource RadiusOverlay}">
                       <Grid x:Name="CountdownEditorCard" Margin="18,13,18,13">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
@@ -1551,7 +1551,7 @@
                               Background="{DynamicResource WorkspacePanelBrush}"
                               BorderBrush="{DynamicResource WorkspacePanelLineBrush}"
                               BorderThickness="0"
-                              CornerRadius="30">
+                              CornerRadius="{DynamicResource RadiusOverlay}">
                         <!-- #136 便签页试点：目标图要求编辑区为装饰带下方的独立卡片。
                              NoteEditorPanel 的画刷被 MainWorkspaceResourcesFollowDayTheme 合同钉在
                              WorkspacePanel 透明角色上，卡片表面由内层 NoteEditorSurface 承担。 -->
@@ -1559,7 +1559,7 @@
                                 Background="{DynamicResource CardBrush}"
                                 BorderBrush="{DynamicResource PeachLineBrush}"
                                 BorderThickness="1"
-                                CornerRadius="12">
+                                CornerRadius="{DynamicResource RadiusOverlay}">
                           <StackPanel Margin="18,10,0,2">
                           <TextBlock x:Name="NoteEditorTitle" Text="编辑便签"
                                      Visibility="Collapsed" Margin="0,0,0,6"
@@ -1775,7 +1775,7 @@
                               Background="{DynamicResource CardBrush}"
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="1"
-                              CornerRadius="12" />
+                              CornerRadius="{DynamicResource RadiusOverlay}" />
                           <StackPanel Grid.Row="0" HorizontalAlignment="Right" Margin="15,9,15,0">
                             <StackPanel Orientation="Horizontal">
                               <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
@@ -1864,7 +1864,7 @@
                                下面的便签行不移位。 -->
                           <Border Padding="2,2,2,4"
                                   Background="Transparent"
-                                  CornerRadius="13">
+                                  CornerRadius="{DynamicResource RadiusControl}">
                             <Grid x:Name="NotesSegmentHost">
                               <!-- #196：状态分段与页签共用可中断的 160ms 指示条。 -->
                               <Canvas x:Name="NotesSegmentIndicatorLayer"
@@ -2157,7 +2157,7 @@
                            focus:PopupMotionBehavior.IsEnabled="True" PopupAnimation="None">
                       <Border x:Name="CountdownPreferencesSurface" Width="444" Margin="0,6,0,0" Padding="18"
                               Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource PeachLineBrush}"
-                              BorderThickness="1" CornerRadius="12">
+                              BorderThickness="1" CornerRadius="{DynamicResource RadiusOverlay}">
                         <Grid x:Name="CountdownPreferencesCard">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -2214,7 +2214,7 @@
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
-                      CornerRadius="9">
+                      CornerRadius="{DynamicResource RadiusOverlay}">
                 <ScrollViewer MaxHeight="480"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
@@ -2281,7 +2281,7 @@
                       Background="{DynamicResource CanvasBrush}"
                       BorderBrush="{DynamicResource PeachLineBrush}"
                       BorderThickness="1"
-                      CornerRadius="9">
+                      CornerRadius="{DynamicResource RadiusOverlay}">
                 <Grid>
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

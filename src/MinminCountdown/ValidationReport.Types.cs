@@ -454,6 +454,9 @@ internal static partial class ValidationReport
 
     private sealed record NoteRowEvidenceResult(string ManifestPath, string Error);
 
+    // #250 共享表面与次级窗口实拍的落盘结果：单帧失败只记进 Error，其余帧照常落盘。
+    private sealed record SurfaceEvidenceResult(string ManifestPath, string Error);
+
     // #134 真实运行态 UI 捕获 seam 的单帧证据条目与 DPI 变更遥测。
     private sealed record MainUiCaptureSeamEntry(
         string CaptureId,

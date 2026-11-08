@@ -3726,10 +3726,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 MaxWidth = TagChipMaxWidth,
                 Margin = new Thickness(0, rowGap, 4, 0),
                 Padding = new Thickness(5, 2, 5, 2),
-                CornerRadius = new CornerRadius(7),
                 Child = chipText,
                 ToolTip = tag.Name
             };
+            // #250：标签芯片消费 §13.3 RadiusChip，不再另写 7。
+            chip.SetResourceReference(Border.CornerRadiusProperty, "RadiusChip");
             var savedBackground = ParseBrush(tag.Color);
             if (savedBackground is null)
             {
@@ -3769,9 +3770,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Child = content,
             Margin = new Thickness(0, 0, 0, 9),
             Padding = new Thickness(16),
-            CornerRadius = new CornerRadius(13),
             BorderThickness = new Thickness(1)
         };
+        // #250：倒计时条目卡与便签卡同用 §13.3 RadiusCard（§5 卡片 8px 刻度）。
+        card.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         card.SetResourceReference(Border.BackgroundProperty, backgroundResource);
         card.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         return card;
@@ -3788,9 +3790,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             // 不再各写字面量。
             Margin = new Thickness(0, 0, 0, (double)FindResource("SpacingUnit")),
             Padding = new Thickness((double)FindResource("SpacingCardPadding")),
-            CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1)
         };
+        card.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         card.SetResourceReference(
             Border.BackgroundProperty,
             useWhiteSurface ? "NoteWhiteBrush" : "NoteBrush");

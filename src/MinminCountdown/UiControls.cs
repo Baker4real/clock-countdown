@@ -678,11 +678,12 @@ internal sealed class TagSelector : Grid
         _surface = new Border
         {
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
             Margin = new Thickness(0, 8, 0, 0),
             Child = panel,
             MinWidth = 230
         };
+        // #250：标签选择浮层与筛选、标签管理浮层同用 §13.3 RadiusOverlay。
+        _surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusOverlay");
         _surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
         _surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         _popup = new Popup
@@ -1354,9 +1355,9 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         var surface = new Border
         {
             Child = layout,
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8)
+            BorderThickness = new Thickness(1)
         };
+        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         Content = surface;
         ApplicationTheme.PaletteChanged += OnPaletteChanged;

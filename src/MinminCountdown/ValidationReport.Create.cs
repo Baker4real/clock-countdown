@@ -140,6 +140,7 @@ internal static partial class ValidationReport
         var countdownEditorExpansion = ValidationExercises.RunCountdownEditorExpansionBehavior();
         var countdownRowPresentation = ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior();
         var noteRowContentGeometry = ValidationExercises.RunNoteRowContentGeometryBehavior();
+        var sharedSurfaceRadii = ValidationExercises.RunSharedSurfaceRadiusBehavior();
         var mainStructuralAnnouncements = ValidateMainStructuralAnnouncements(assetRoot);
         var mainStructuralAnnouncementGates =
             ValidationExercises.EvaluateMainStructuralAnnouncementGates(
@@ -1092,6 +1093,10 @@ internal static partial class ValidationReport
         var noteRowEvidence = CaptureNoteRowStateEvidence(
             assetRoot,
             legacyMainReferenceCapture.CountdownCapturePath);
+        // #250：共享表面与次级窗口实拍同样在一次性窗口里截。
+        var surfaceEvidence = CaptureSurfaceStateEvidence(
+            assetRoot,
+            legacyMainReferenceCapture.CountdownCapturePath);
 
         var report = new ValidationReportProjection
         {
@@ -1409,7 +1414,7 @@ internal static partial class ValidationReport
             ["RuleEditorInlineDeleteUsesDangerButton"] = Must(ruleEditorInlineDeleteUsesDangerButton, "规则编辑器行内删除使用 DangerButton"),
             ["SettingsRecoverySecondaryUsesCanvas"] = Must(settingsRecoverySecondaryUsesCanvas, "设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB"),
             ["ReminderCenterTwoRowActionsLayout"] = Must(reminderCenterTwoRowActionsLayout, "提醒中心动作按 DESIGN 两行布局且按钮为图标加文字"),
-            ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识"),
+            ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识，计划时间整行在卡片内（#250）"),
             ["PopupAnimationIsInstant"] = Must(popupAnimationIsInstant, "五处生产弹层使用即时出现而不是系统淡入"),
             ["ActionForegroundsUseMainActionText"] = Must(actionForegroundsUseMainActionText, "主按钮、复选勾与日历选中前景使用 MainActionTextBrush"),
             ["DisabledSelectionControlsUseButtonOpacity"] = Must(
@@ -1723,6 +1728,7 @@ internal static partial class ValidationReport
             ["CountdownEditorExpansionBehavior"] = Must(countdownEditorExpansion, "展开保留草稿，编辑自动展开，取消回到折叠新增并保全持久记录（#221）"),
             ["CountdownRowDeadlineAndSecondaryDeleteBehavior"] = Must(countdownRowPresentation, "倒计时行有北京时区截止行，删除为危险色文字加图标且无红框（#221）；名称与剩余分格同一主阅读轴，截止与标签成辅助带，七种关键状态不裁切不重叠，编辑删除与便签行同一套次级动作（#247）"),
             ["NoteRowContentGeometryBehavior"] = Must(noteRowContentGeometry, "便签卡正文与提醒摘要连成内容列，标签在内容下方就近换行，编辑删除停在稳定的右上动作槽；未完成滚动、搜索、多选、提醒来源与已完成五种排布不裁切不重叠，选择不改变卡内几何（#249）"),
+            ["SharedSurfaceRadiiFollowTokens"] = Must(sharedSurfaceRadii, "区块表面与弹层、条目卡与次级窗口外壳、按钮输入与分段、芯片与复选框的圆角归并到 §13.3 既有 token（#250）"),
             ["MainWindowIdentityZoneDragRegion"] = Must(mainWindowIdentityZoneDrag, "身份区空白为标题拖动区（HTCAPTION）且区内控件仍可点击（HTCLIENT）（#211）"),
             ["FloatingWindowStaysOnSecondaryMonitor"] = Must(floatingSecondaryMonitor, "#219 悬浮窗保留副屏手动位置，键盘与托盘复位夹回当前屏，保持 520×390 DIP"),
             ["OwnerDialogsFitSecondaryMonitor"] = Must(ownerDialogsFitSecondaryMonitor, "#219 所有者弹窗装进副屏，规则编辑器底部按钮与缩放手柄可达"),
@@ -1804,6 +1810,8 @@ internal static partial class ValidationReport
             ["CountdownRowEvidenceError"] = countdownRowEvidence.Error,
             ["NoteRowEvidenceManifestPath"] = noteRowEvidence.ManifestPath,
             ["NoteRowEvidenceError"] = noteRowEvidence.Error,
+            ["SurfaceEvidenceManifestPath"] = surfaceEvidence.ManifestPath,
+            ["SurfaceEvidenceError"] = surfaceEvidence.Error,
             ["MainReferenceBaselineRequested"] = mainReferenceBaseline.Requested,
             ["MainReferenceBaselineManifestAvailable"] = mainReferenceBaseline.ManifestAvailable,
             ["MainReferenceBaselineValidated"] = mainReferenceBaseline.AllPassed,

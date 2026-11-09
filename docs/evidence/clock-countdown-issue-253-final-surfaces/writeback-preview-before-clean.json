@@ -1,0 +1,60 @@
+{
+  "Valid": true,
+  "Applied": false,
+  "OutputDirectory": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75",
+  "PlanPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\plan.json",
+  "LedgerPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\ledger.json",
+  "ResultPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\result.json",
+  "ParentSummaryPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\parent-246.md",
+  "Issues": [
+    {
+      "number": 247,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-247.md",
+      "bodySha256": "F1EC802EA43F311E84E457A96F1E666D6C6EC038450E1B060B3CB1643F157BFA"
+    },
+    {
+      "number": 248,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-248.md",
+      "bodySha256": "EA75E5AC2CB0BD3D1A999FEB14F49985339F1F686262EA1C47040044B1AF0B57"
+    },
+    {
+      "number": 249,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-249.md",
+      "bodySha256": "C623F9ACDF217B6FE192B9D5BD8C8CF615538D5D4F9A58626E19EB6599F9F202"
+    },
+    {
+      "number": 250,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-250.md",
+      "bodySha256": "5AAE01BDAEB6BEF7176E1D7E53742A9A19A64A6BBB0074F984384F4FCF955F58"
+    },
+    {
+      "number": 251,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-251.md",
+      "bodySha256": "ABDA53D78D6D6ABB66E8B9869CFD2C5B65A8D3A1B6E740164984AA03C9DD8144"
+    },
+    {
+      "number": 253,
+      "status": "processed",
+      "action": "dry-run-comment",
+      "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\issue-253.md",
+      "bodySha256": "C72F5821EEE716DCDB8CC008A0E36CE06E24CE3A8C4842544AA015E4B4FDEB46"
+    }
+  ],
+  "Parent": {
+    "number": 246,
+    "status": "processed",
+    "action": "dry-run-parent-summary",
+    "bodyPath": "D:\\agents\\run-evidence\\clock-countdown-takeover\\20261109T1525\\acceptance-dry-run-v75\\parent-246.md",
+    "bodySha256": "6657D37D6E45210A8822A630980047C31AA6EFEA8985874B51822AE65364263F"
+  }
+}

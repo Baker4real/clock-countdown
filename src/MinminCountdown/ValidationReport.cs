@@ -59,6 +59,8 @@ internal static partial class ValidationReport
         Check("SharedSurfaceRadii", ValidationExercises.RunSharedSurfaceRadiusBehavior);
         Check("MainWorkbenchDensity", ValidationExercises.RunMainWorkbenchDensityPreflight);
         Check("FloatingScrollContextHint", ValidationExercises.RunFloatingScrollContextHintPreflight);
+        Check("DisclosureArrowMotion", ValidationExercises.RunDisclosureArrowMotionBehavior);
+        Check("ReminderCenterEntryVisualIdentity", ValidationExercises.ProbeReminderCenterEntryVisualIdentity);
         if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
         {
             Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));

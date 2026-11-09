@@ -258,7 +258,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ### 提醒中心的条目与处置
 
-提醒中心是单一滚动列表，不再嵌套外层卡片。每项稳定显示“便签”或“倒计时”来源、来源正文/名称和原计划北京时间（#250：计划行按卡片内容宽度换行，列表出现纵向滚动条时「（北京时间）」也不被卡片右缘裁掉，`ReminderCenterEntryVisualIdentity` 以两位月日的最宽日期守住）；两类都提供“知道了 / 稍后提醒 / 打开来源”，只有便签提供“完成便签”，**任何条目都不提供删除**。稍后提醒使用选项菜单承载 10、30、60 分钟、明天 09:00 和自定义模式；仅自定义模式展开日期、小时和分钟控件，无效未来时间的错误紧邻这些来源控件。真实渲染和送达写盘完成前禁用处置，失败信息在条目内可见，但**打开来源始终可用**；Tab 导航必须覆盖该来源实际存在的动作和自定义控件，不能因失败态或长正文跳出当前条目。正文与来源标签均使用主文字 token（`InkBrush`），正文为 H2 半粗标题，来源为 caption 常规标签（#223）。提醒中心与规则编辑器可从窗口头部拖动；提醒中心首次显示贴齐工作区右上，之后保留手动位置。
+提醒中心是单一滚动列表，不再嵌套外层卡片。每项稳定显示“便签”或“倒计时”来源、来源正文/名称和原计划北京时间（#253：完整日期时间之后换行，「（北京时间）」整体位于下一行、不拆字、不改文案；列表出现纵向滚动条时也不被卡片右缘裁掉，`ReminderCenterEntryVisualIdentity` 以两位月日的最宽日期与完整时区标记的行宽守住）；两类都提供“知道了 / 稍后提醒 / 打开来源”，只有便签提供“完成便签”，**任何条目都不提供删除**。稍后提醒使用选项菜单承载 10、30、60 分钟、明天 09:00 和自定义模式；仅自定义模式展开日期、小时和分钟控件，无效未来时间的错误紧邻这些来源控件。真实渲染和送达写盘完成前禁用处置，失败信息在条目内可见，但**打开来源始终可用**；Tab 导航必须覆盖该来源实际存在的动作和自定义控件，不能因失败态或长正文跳出当前条目。正文与来源标签均使用主文字 token（`InkBrush`），正文为 H2 半粗标题，来源为 caption 常规标签（#223）。提醒中心与规则编辑器可从窗口头部拖动；提醒中心首次显示贴齐工作区右上，之后保留手动位置。
 
 “全部知道了”以单次事务批量写入处置 key，领域语义与逐条“知道了”一致：任一条失败则整体保留原条目，按既有退避节奏继续用单次事务重试原批次中仍活动的发生项；后续新到达的提醒不进入原失败批次，已失效的发生项不复活，不新增持久化状态字段（#223）。
 
@@ -328,7 +328,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 - 三种空态各有自己的文案与动作。首次无数据：角色、标题「还没有倒计时」/「还没有便签」、说明，加一枚填写引导。筛选无结果：只有「没有符合当前筛选条件的倒计时。」/「没有符合当前筛选条件的便签。」与「重置筛选」，重置后列表恢复结果。便签当前分段一条已保存的记录都没有（另一分段有）：说明是哪个分段空着，不提筛选、不给重置——已完成分段「还没有已完成的便签」+「完成的便签会出现在这里。」，未完成分段「没有未完成的便签」+「便签都已完成，可以在「已完成」里查看。」。分段里有记录、只是被筛选挡住时，仍按筛选无结果处理。
 - 每页的添加入口只有表单里的实心主行动（「＋ 添加倒计时」/「＋ 添加」），空态里没有写着「添加」的第二个按钮。首次空态的填写引导「填写倒计时名称」/「填写便签内容」用 `MainEmptyStateGuideButton`：基于 `MainSecondaryButton`，常态无底无边、只留文字，悬停底色与常驻焦点环沿用共享按钮模板；点击只把焦点交给表单的名称/正文输入框，不重置编辑器、不清已填的草稿、不新增记录。可访问名与可见文字相同。
-- 空态在列表实际视口里居中，不写死位置。便签列表内容是 `Auto/Auto/*` 三行 Grid：未完成行、已完成行各占一行，空态占最后的 `*` 行（#251 起状态分段移到视口上方的列表工具条，内容上边距 13 → 8）。ScrollViewer 以无限高度测量时 `*` 行按内容取高，排布时分到视口剩余高度，所以空态不靠最小高度补偿，也就没有虚假滚动范围，并在整个列表视口里水平、垂直居中。倒计时空态同样居中于整个列表视口；列表内容的 `MinHeight` 与 `UpdateCountdownListHeight` 的最小列表高度同源，最小尺寸下也不溢出。
+- 空态在列表实际视口里居中，不写死位置。便签列表内容是 `Auto/Auto/*` 三行 Grid：未完成行、已完成行各占一行，空态占最后的 `*` 行（#251 起状态分段移到视口上方的列表工具条，内容上边距 13 → 8；空态区上边距 8 → 0 与之相抵，空态上下各留 8 DIP）。ScrollViewer 以无限高度测量时 `*` 行按内容取高，排布时分到视口剩余高度，所以空态不靠最小高度补偿，也就没有虚假滚动范围，并在整个列表视口里水平、垂直居中。倒计时空态同样居中于整个列表视口；列表内容的 `MinHeight` 与 `UpdateCountdownListHeight` 的最小列表高度同源，最小尺寸下也不溢出。
 - 真实溢出照常滚动：内容超过视口时保留滚动条，滚轮、拖动 thumb、键盘 PageDown 与滚到底都可用，末行和每一行的操作都能滚进视口完整可见。
 - 验证：`MainEmptyStatesFitListViewport` 在首选 864×1000、工作区缩小（864×802 / 864×664）、最小 720×560 与真实 WM_DPICHANGED 五个隔离窗口里各量 6 种空态的可滚范围、滚动条、居中和滚进窗口后的完整可见；DPI 档同时覆盖文字放大（经典 WPF 按窗口 DPI 光栅化文字，见 #134）。`MainEmptyStatesGuideToSingleAddEntry` 守文案、动作、轻量引导与唯一添加入口，`MainListOverflowScrollsAndReachesActions` 守真实溢出。源码树模式下首选与最小尺寸的空态实拍写进本次运行证据目录 `logs\ui-captures\<时间戳>-empty-states\`，只供核对、不进门禁。
 
@@ -411,7 +411,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 暖粉日间的结构基因：
 
 1. 使用 1px 的 whisper 边界，映射为 `PeachLineBrush` / `NoteLineBrush`，让分隔线只承担结构职责。
-2. 使用 `8px` 卡片刻度与 `4px` 功能控件刻度；分段胶囊、数字色块、按钮胶囊使用全圆角（短边一半），卡片使用 `8px` 圆角。
+2. 卡片圆角使用 `RadiusCard`（8 DIP），常规按钮、输入与分段容器使用 `RadiusControl`（9 DIP）。只有分段与页签的激活胶囊、数字色块和底部命令胶囊使用全圆角（短边一半）；常规按钮不改成胶囊。芯片、弹层等其他角色按 §13.3 对应 token 执行（#253）。
 3. 使用 `8px` 基准间距与暖中性色层级；状态章节 10px、日期章节 12px、卡间 8px 都从该节奏派生。
 4. 采用低存在感的多层暖色深度：不堆灰阴影，优先用 1px 边界、背景角色和留白表达层级；主行动按钮允许一层极轻的暖色投影以表达可点击性。
 
@@ -453,6 +453,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 高频切换与收放保持短促反馈：按钮 hover 颜色以 120ms ease-out 过渡，按下的 `RenderTransform` 缩放到 `0.97` 以 100ms ease-out 完成，不触发重新布局。日历、下拉框、标签选择器和提示框由 `PopupMotionBehavior` 统一消费进入 140ms、退出 90ms token：进入从透明、触发点一侧 4px 处移入，退出朝触发点一侧收回 4px 并淡出（方向见下文 #244）；退出期间保留弹层打开，使打开中的关闭可以从当前值反向。所有动效时长和缓动集中在资源 token，并由 `ApplicationTheme.ClientAreaAnimationEnabled` 控制；系统关闭动画时 token 有效时长为 0，状态立即到达目标值。允许的属性只有颜色、透明度和 `RenderTransform`，单段上限 200ms；动画使用 `SnapshotAndReplace` 从当前值继续，快速 hover / 按下或弹层反向可被打断而不会闪回起点。键盘焦点反馈不增加额外动画。
 
+展开箭头反馈（#253）：倒计时新增/编辑选项与便签日期分组只在指针操作时消费既有 `MotionPressDuration`（100ms）与 `MotionEaseOut`，只旋转原箭头的 `RenderTransform`；面板显隐、列表布局和窗口尺寸即时改变、不挂动画。快速反向先读当前呈现角度，再用 `SnapshotAndReplace` 续接；初始构造、刷新、程序移交、键盘 Space/Enter 与系统关闭客户区动画均直接写入终态并移除旧时钟。`DisclosureMotion` 统一处理这两个入口的局部路由输入与角度变化，不读取最近输入设备；`DisclosureArrowMotionBehavior` 必须观察实际 Rendering 中间帧、反向首帧、键盘与减弱动画等价，不能仅查看源代码或动画时钟。活动旋转只在其生命周期内订阅既有配色/系统偏好通知，旋转中关闭客户区动画会立刻撤销时钟并落到基础终值；启用动画时的普通配色刷新不重启动画。自然完成、即时调用、快速反向与窗口卸载统一解绑。键盘先操作的 Space/Enter、稳定分钟刷新和运行中关闭动画均有真实窗口回归；断开偏好通知的负例必须单独报红。箭头新增的键盘即时规则独立于下文 #242 对原生弹层的既有边界。
+
 弹层方向随触发点（#244）：弹层或提示打开并完成定位后，`PopupMotionBehavior` 比较弹层表面与放置目标（没有显式目标时用模板父级）的纵向中心，判定弹层在触发点哪一侧；两者分属不同窗口，只比较屏幕坐标，无法判定时按「下方」处理。方向只在定位完成后判定。在下方时从 −4 DIP 移入到 0；在上方（含 WPF 因下方放不下而翻转）时从 +4 DIP 移入到 0。退出与进入镜像，朝触发点一侧收回并淡出，关闭后的静止位停在同一侧。时长、缓动和 token 不变，退出期间保留打开、从当前值反向续接的语义不变。
 
 ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不到上一个 ToolTip 所有者的 `BetweenShowDelay` 就打开的 ToolTip，或者另一个 ToolTip 仍在退出时打开的 ToolTip，即时出现：首帧即完全不透明、位移为 0，上一个的退出立即结束，任何一帧都不会同时看到两个。与 WPF 自己的快速显示一样，计时看关闭方所有者，不看新 ToolTip 的所有者。第一个 ToolTip 保持原有显示延迟和 140ms 进入。应用级只记录三件事：最近一次 ToolTip 关闭的时刻、关闭方所有者的 `BetweenShowDelay`，以及正在退出的那个 ToolTip；这些状态与连开判定放在一个专用类型里，各弹层的动效控制器只调用它。ToolTip 的进入与退出只由 `PopupMotionBehavior` 负责：应用资源把 `SystemParameters.ToolTipPopupAnimationKey` 设为 `None`，不再叠加 WPF 自带的 ToolTip 弹层淡入，因此连开能即时出现，系统关闭客户区动画时 ToolTip 也直达终态。
@@ -466,7 +468,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | 资源 token | 开启动效时长 | 缓动 | 使用落点 |
 | --- | ---: | --- | --- |
 | `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色 |
-| `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放 |
+| `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放；展开/收起箭头旋转 |
 | `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
 | `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
@@ -570,7 +572,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v71 基线 `assets/ui-references/floating-window/520x390/2026-11-09-v71/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v75 基线 `assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -644,11 +646,19 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 当前状态（2026-11-09，#250 共享表面圆角归并重拍）：#250 把区块表面、条目卡、输入与按钮、芯片的圆角归并到 §13.3 既有 token（逐项见 §13.3「#250」段），管理窗口倒计时条目卡 13 → `RadiusCard` 8、标签芯片 7 与置顶开关 6、便签完成勾选 4 → `RadiusChip` 5、主行动按钮焦点环与表面 12/10 → `RadiusControl` 9、页签容器 10 → 9、筛选浮层 9 → `RadiusOverlay` 12，悬浮窗次倒计时行底 6 → `RadiusCard` 8；提醒中心、规则编辑器与共享弹层的同版实拍见 `docs/evidence/clock-countdown-issue-250-surfaces/`。`MainWindow.xaml(.cs)` 与 `UiControls.cs` 在主窗 `sourceBinding` 内，`FloatingWindow.Countdowns.cs`、`FloatingWindow.Notes.cs` 与 `UiControls.cs` 在悬浮窗 `sourceBinding` 内，现役基线改为 `2026-11-09-v71`。BaselineGenerate `20261109T002658009-011560e7`（worktree 的增量构建：worktree 里启动器的干净 Build 只能成功一次）生成双 manifest：主窗源码绑定聚合 SHA-256 `28C0F5AB59ACBB0C100D35393AD10CDB2691EB49F20A9058FC5A95F789EC5F53`，悬浮窗 `97AE624AD7C102083B0157D6BEC8FDA65FFB36B830B3CFB0F58E7072F6DC5812`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。用 `tools/Compare-CountdownVisualBaseline.ps1` 比对，主窗 9 帧的 PNG 都有变化、状态指纹全部一致，差异只落在圆角处：各帧共有的置顶开关、页签容器与主行动按钮四角（`main-day-countdowns-empty` 275 px、`main-day-notes-empty` 282 px），倒计时条目卡四角与标签芯片（`main-day-countdowns-representative` 1321 px、`-stress` 1437 px），便签完成勾选与标签芯片（`main-day-notes-representative` 598 px、`-stress` 532 px、`-edit` 596 px、`-selected` 595 px），另加筛选浮层四角（`-filter-open` 594 px）；悬浮窗 `floating-countdowns-day`（61 px）与 `floating-workday-complete-day`（64 px）只在次倒计时行底四角变化，其余 3 帧与 v70 逐字节一致。v70 保留为历史捕获，不再作为现役门禁。
 
-1. #189 的 WPF 改版使用纯日间 **v71** 真实渲染系列，版本目录为 `2026-11-09-v71`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+当前状态（2026-11-09，#251 工作台密度与滚动上下文重拍）：管理窗口回收编辑卡、消息行与区块空白，便签状态分段与搜索并入固定列表工具条，空态继续按视口居中；悬浮窗只在实际仍有内容的一侧对正文呈现器施加 18 DIP 渐隐，正文内部不变，滚动条、命令区、菜单和玩偶不受遮罩。现役基线改为 `2026-11-09-v72`。BaselineGenerate `20261109T153328802-e84f216d`（当前 worktree 增量构建）生成双 manifest：主窗源码绑定聚合 SHA-256 `8BD3B32B8A28DAD0621DC8078651239A0D72F0F29D238806241A503DAE409A8A`，悬浮窗 `6283EB7D0913B3248E76FDFEF81067883A66FA278DC991DEC0AEE96C6A47EB5F`，`executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。与 v71 比较，14 帧状态指纹全部一致；主窗 9 帧因表单和列表重排产生预期像素变化，悬浮窗两个倒计时帧逐字节一致，便签顶部、底部与搜索展开三帧的主要差异在对应渐隐边缘。逐行核对发现边缘带以外仅正文呈现器左界 x=59 的单列边界像素变化，内部文字像素不变；没有整卡淡化或正文可读性回归。v71 保留为历史捕获，不再作为现役门禁；新基线的独立回归与 #253 集成候选一起完成后再判定本批验收。
 
-2. v71 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-09-v71/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v71 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64、v65、v66、v67、v68、v69 与 v70 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`、`2026-10-29-v66/`、`2026-10-31-v67/`、`2026-10-31-v68/`、`2026-11-01-v69/`、`2026-11-08-v70/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v71。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+当前状态（2026-11-09，#253 界面精致化最终集成重拍）：倒计时选项与便签日期组的箭头共用 100ms 指针旋转，键盘、程序移交与减弱动画即时；提醒中心的完整「（北京时间）」标记换到下一行，常规按钮仍按 `RadiusControl` 9 DIP，仅既定胶囊角色使用全圆角。集成分支 `feat/246-ui-polish` 在 `fb1b1477` 加本轮本地补丁上构建；BaselineGenerate `20261109T164950804-1444e87e` 退出 0，现役基线为 `2026-11-09-v73`。主窗源码绑定聚合 SHA-256 `995B983AA95E33CB09CD8FB1BC1EDF6C23C85E7E09AC32BF070E4FFB22DA25C4`，悬浮窗 `9C7EE58067BEF08B9659C59716BDD573D5A2393310862802443625E8052DA387`，双 manifest 的 `executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，同候选 DLL SHA-256 `F4A68D157E7B551A92DE155ABEB0AD2082A2BB0A9D4268569D7F0361FC43F25D`。v72→v73 的 14 帧 PNG 与状态指纹全部逐字节一致，源码变化仅为主窗展开接线与共享动效实现，静止布局保持不变；次级窗口的时区换行另由同版实拍与 `ReminderCenterEntryVisualIdentity` 验证。首次生成因同一次底部锚定采样的两个报告字段失败而未接受；增加只读位置诊断后，SourceValidation `20261109T164139801-40a49756` 与本次 EXE 生成均通过，各采样点底部间距为 12 DIP，未修改定位行为或放宽容差；首次失败和半成品保留，根因不冒称已证实。独立完整回归与双轴评审仍须通过后才判定本批完成。
+
+最终状态（2026-11-09，#253 评审修复后的 v74）：活动旋转在系统关闭动画通知、自然完成和卸载时统一清除时钟与订阅，补齐键盘先操作、Space/Enter 与稳定分钟刷新。GeometryPreflight `20261109T200227494-99daeb7d` 的临时断开通知负例仅此一项报红（8/9），恢复修复后最终候选 `20261109T200810855-0eb4f81e` 为 9/9。BaselineGenerate `20261109T200515625-1e237c47` 退出 0；主窗源码绑定聚合 SHA-256 `6CD667E9A9A51D200EE29A63867D023A7C6DBF0691E8F6AD162C34D571169795`，悬浮窗 `E7EA58B328F7CB11667B250CFCC212F06B3DBD7948854358C1BDB939AC63AE5F`，候选 DLL `1EF81F42A561C9BC39FC7C7DC71F019BD13B61394E4DD784E30D2FB96783A0C2`，双 manifest 的 EXE 哈希保持 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。v73→v74 的 14 帧 PNG 和状态指纹全部逐字节一致；新候选重新捕获的 41 张跨窗口实拍也与已逐张人工复核的 v73 帧逐字节一致，来源和当前源码逐项绑定见 `docs/evidence/clock-countdown-issue-253-final-surfaces/final-source-binding.json`。本版仍须按下述独立回归门验收，不以基线生成或截图代替完整行为检查。
+
+最终校准（2026-11-09，#251/#253 的 v75）：第一次完整回归 `20261109T200944350-81e3048a` 的 Core 通过，CSharp 捕获到 #237 单边框探针仍用旧坐标。#251 已将折叠标题前的 10 DIP 空白收回；独立逐像素核对 v71/v74 的 x=200 扫描线，所有 RGB 行与全部边线整体上移 10 DIP 后完全一致。只将倒计时扫描从 `[338,391]` 校准为 `[328,381]`、标签隔离同步上移并更新 CSharp 的精确序列；便签坐标、通道差阈值 30、完整边线、装饰带与三个负例均保持。没有改产品像素或放宽检测。BaselineGenerate `20261109T203340606-a12d0d4a` 生成 v75，`MainDaySingleBorderGate` 与负例隔离门均为 true；14 参考 PNG、状态指纹、22/27 项源码聚合及 41 张跨窗实拍均与 v74 一致。候选 DLL 为 `FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C`；当前来源记录在 `docs/evidence/clock-countdown-issue-253-final-surfaces/final-source-binding.json`，旧 v74 来源另存 `source-binding-v74.json`。随后同候选完整回归 `20261109T203840236-4ac76637` 的 Core、CSharp、Ui、SourceValidation、InstallValidate、ValidationHarness 与 Tooling 全部退出 0，独立 GeometryPreflight 为 9/9；正式受管全量 Clean + R2R 构建 `20261109T213159664-abb33ca5` 也退出 0，重建 EXE、DLL、核心 DLL、发布清单与验证程序五项均和已验收候选逐字节相同。本批 #246 界面精致化的本机实现与验收已完成。逐票记录、独立行为事实和正式回执见 `docs/evidence/clock-countdown-issue-253-final-surfaces/README.md`；未执行 commit、push、发布、部署或远端关票。
+
+1. #189 的 WPF 改版使用纯日间 **v75** 真实渲染系列，版本目录为 `2026-11-09-v75`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v75 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v75 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64、v65、v66、v67、v68、v69、v70、v71、v72、v73 与 v74 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`、`2026-10-29-v66/`、`2026-10-31-v67/`、`2026-10-31-v68/`、`2026-11-01-v69/`、`2026-11-08-v70/`、`2026-11-09-v71/`、`2026-11-09-v72/`、`2026-11-09-v73/`、`2026-11-09-v74/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v75。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

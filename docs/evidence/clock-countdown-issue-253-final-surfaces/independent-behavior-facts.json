@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "source_stage": "SourceValidation",
+  "run": "20261109T203840236-4ac76637",
+  "source_report_sha256": "85902683232D623317B64CC1ADFC1C264A1430514EFEF910E33CEBFF5A037264",
+  "candidate_dll_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+  "valid": true,
+  "facts": {
+    "CountdownRowDeadlineAndSecondaryDeleteBehavior": true,
+    "NoteRowContentGeometryBehavior": true,
+    "MainEmptyStatesFitListViewport": true,
+    "MainEmptyStatesGuideToSingleAddEntry": true,
+    "MainListOverflowScrollsAndReachesActions": true,
+    "SharedSurfaceRadiiFollowTokens": true,
+    "MainWorkbenchDensityReclaimed": true,
+    "FloatingScrollContextHintFollowsOverflow": true,
+    "DisclosureArrowMotionBehavior": true,
+    "ReminderCenterEntryVisualIdentity": true,
+    "NoteCompletionUndoFeedback": true,
+    "NoteCompletionExitTransition": true,
+    "NoteCompletionFlipTransition": true,
+    "MainNoteRowActionsKeyboardWorks": true,
+    "MainPrimaryAndPinSingleFocusStroke": true,
+    "FloatingKeyboardFocusDrawnOnce": true,
+    "SecondaryWindowKeyboardFocusDrawnOnce": true
+  },
+  "note": "投影来自最终独立SourceValidation原始JSON；生成阶段的记录与正式suite终态分开。"
+}

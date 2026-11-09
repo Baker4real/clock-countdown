@@ -913,12 +913,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         Canvas.SetTop(CountdownDecoTextBottom, CountdownWorkspace.Height - 20);
     }
 
-    private void SetCountdownEditorExpanded(bool expanded)
+    private void SetCountdownEditorExpanded(bool expanded, bool animateChevron = false)
     {
         CountdownEditorHeading.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         MainCountdownTimeTagRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         MainCountdownActionRow.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        CountdownEditorExpandChevronRotation.Angle = expanded ? 180 : 0;
+        DisclosureMotion.MoveTo(CountdownEditorExpandButton, CountdownEditorExpandChevronRotation,
+            expanded ? 180 : 0, animateChevron);
         var action = expanded ? "收起" : "展开";
         var mode = _editingCountdownId is null ? "新增" : "编辑";
         AutomationProperties.SetName(CountdownEditorExpandButton,
@@ -1427,8 +1428,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         AttachSingleLineSubmit(CountdownName, SaveCountdown, () => MainShortcutScopeIsSafe);
         PreferencesButton.Click += (_, _) => PreferencesPopup.IsOpen = !PreferencesPopup.IsOpen;
-        CountdownEditorExpandButton.Click += (_, _) =>
-            SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible);
+        DisclosureMotion.Bind(CountdownEditorExpandButton, animate =>
+            SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible, animate));
         CancelCountdownEdit.Click += (_, _) => ResetCountdownEditor();
         AddEmptyCountdownButton.Click += (_, _) => FocusCountdownNameFromEmptyState();
         SavePreferencesButton.Click += (_, _) => SavePreferences();
@@ -2389,7 +2390,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 groupedNotes.Length,
                 isCompleted,
                 isExpanded);
-            sectionToggle.Click += (_, _) =>
+            DisclosureMotion.Bind(sectionToggle, animate =>
             {
                 var expand = _collapsedNoteDateSections.Remove(sectionKey);
                 if (!expand)
@@ -2404,9 +2405,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     dateLabel,
                     groupedNotes.Length,
                     isCompleted,
-                    expand);
+                    expand,
+                    animate);
                 UpdateNoteSelection();
-            };
+            });
             var dateText = ((Grid)sectionToggle.Content).Children.OfType<TextBlock>()
                 .Single(text => text.Uid == "NoteDateLabel");
             _noteDateRefreshers.Add(currentUtc =>
@@ -2557,12 +2559,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         string dateLabel,
         int noteCount,
         bool isCompleted,
-        bool isExpanded)
+        bool isExpanded,
+        bool animateChevron = false)
     {
         var action = isExpanded ? "收起" : "展开";
         var status = isCompleted ? "已完成" : "未完成";
         var expansion = isExpanded ? "当前展开" : "当前收起";
-        chevronRotation.Angle = isExpanded ? 0 : -90;
+        DisclosureMotion.MoveTo(toggle, chevronRotation, isExpanded ? 0 : -90, animateChevron);
         toggle.ToolTip = $"{action}{dateLabel}的{status}便签";
         AutomationProperties.SetName(
             toggle,

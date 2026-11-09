@@ -366,11 +366,11 @@ internal sealed class ReminderCenterWindow : Window
         };
         body.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-        // #250：计划时间行按卡片内容宽度换行（与正文同样逐字折行）。横向 StackPanel 不限宽，出现纵向滚动条时
-        // 「（北京时间）」会被卡片右缘裁掉。时钟对齐首行：16px 正文行高约 21，13px 图标顶部留 4。
+        // #253：完整时区标记整体换到下一行，保留原文案，避免在卡片右缘把「（北京时间）」逐字拆开。
+        // 仍受卡片内容宽度约束；时钟对齐首行：16px 正文行高约 21，13px 图标顶部留 4。
         var scheduled = new TextBlock
         {
-            Text = $"计划：{DateDisplay.FullMoment(item.Key.ScheduledUtc)}（北京时间）",
+            Text = $"计划：{DateDisplay.FullMoment(item.Key.ScheduledUtc)}\n（北京时间）",
             VerticalAlignment = VerticalAlignment.Center,
             TextWrapping = TextWrapping.Wrap
         };

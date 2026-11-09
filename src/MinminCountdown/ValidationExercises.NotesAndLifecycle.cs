@@ -6,6 +6,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
@@ -14,6 +15,169 @@ namespace MinminCountdown;
 
 internal static partial class ValidationExercises
 {
+    // #253：走实际按钮的输入与 Click 路径，CompositionTarget.Rendering 必须捕获 10%–90% 的真实中间帧。
+    // 程序移交、键盘和关闭客户区动画均即时；这里只量箭头，展开的面板和窗口布局不执行动画。
+    public static bool RunDisclosureArrowMotionBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-disclosure-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(CountdownRowFixtureUtc);
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        MustApply(workspace, new SaveNoteChange(null, "展开箭头验证", workspace.Snapshot.BeijingNow.Date, false,
+            Array.Empty<string>(), Array.Empty<ReminderRule>()));
+        using var theme = new ApplicationTheme(Application.Current.Resources);
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            var countdown = main.CountdownEditorDisclosureForValidation;
+            var countdownArrow = VisualDescendants<System.Windows.Shapes.Path>(countdown).Single();
+            Exercise(countdown, (RotateTransform)countdownArrow.RenderTransform, 180, "倒计时新增选项");
+            main.ShowWorkspace(WorkspaceKind.Notes);
+            WindowValidationInput.Pump(main.Dispatcher);
+            var date = VisualDescendants<Button>(main).Single(button => button.IsVisible && button.Uid == "NoteDateDisclosure");
+            var dateArrow = VisualDescendants<System.Windows.Shapes.Path>(date).Single(arrow => arrow.Uid == "NoteDateChevron");
+            Exercise(date, (RotateTransform)dateArrow.RenderTransform, -90, "便签日期分组", closeWindow: true);
+            return true;
+        }
+        finally
+        {
+            main.Close();
+            WindowValidationInput.Pump(main.Dispatcher);
+            // 动效偏好作用域先退出，再按真实偏好复原 Apply 写过的资源与主题通知。
+            theme.Apply();
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+
+        void Exercise(Button button, RotateTransform rotation, double target, string label, bool closeWindow = false)
+        {
+            var origin = rotation.Angle;
+            var windowSize = new Size(main.ActualWidth, main.ActualHeight);
+            double Progress() => (rotation.Angle - origin) / (target - origin);
+            bool AtRest(double expected) => Math.Abs(rotation.Angle - expected) < 0.01 && !rotation.HasAnimatedProperties;
+            void AssertNoLayoutAnimation()
+            {
+                Must(new Size(main.ActualWidth, main.ActualHeight) == windowSize && !main.HasAnimatedProperties &&
+                    !VisualDescendants<FrameworkElement>(main).Any(element => element.HasAnimatedProperties),
+                    $"#253：{label}只允许箭头 RenderTransform 旋转，不得给面板布局或窗口尺寸挂动画。");
+            }
+            void AssertImmediate(double expected, string phase)
+            {
+                Must(AtRest(expected), $"#253：{label}{phase}未即时到达终态或遗留动画时钟。");
+                var firstFrame = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 300, () => true);
+                Must(firstFrame.Completed && AtRest(expected), $"#253：{label}{phase}首帧未保持无时钟终态。");
+                AssertNoLayoutAnimation();
+            }
+            void AssertMinuteRefresh(double expected)
+            {
+                var before = rotation.Angle;
+                clock.UtcNow = clock.UtcNow.AddMinutes(1);
+                main.UpdateTime(clock.UtcNow);
+                WindowValidationInput.Pump(main.Dispatcher);
+                Must(button.IsLoaded && ReferenceEquals(Window.GetWindow(button), main) && AtRest(expected) &&
+                    Math.Abs(rotation.Angle - before) < 0.01,
+                    $"#253：{label}稳定分钟刷新重建了按钮、改变了终态角度或重启了旋转。");
+                AssertNoLayoutAnimation();
+            }
+            void PointerClick()
+            {
+                button.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                {
+                    RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent
+                });
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            }
+            void KeyboardClick(Key key = Key.Space)
+            {
+                main.Activate();
+                Keyboard.Focus(button);
+                WindowValidationInput.RaisePreviewKey(button, key);
+                // 交给 Button 原生 KeyDown/KeyUp 产生 Click，不直接设置箭头或补发 Click。
+                WindowValidationInput.RaiseKey(button, key);
+            }
+            void AwaitIntermediate(string phase)
+            {
+                var sampled = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 300,
+                    () => Progress() is > 0.1 and < 0.9);
+                Must(sampled.Completed, $"#253：{label}{phase}未捕获 10%–90% 真实中间帧；角度 {rotation.Angle:0.###}。");
+                Console.Error.WriteLine($"DISCLOSURE_ARROW_FRAME: {label}; {phase}; angle={rotation.Angle:0.###}; elapsed={sampled.ElapsedMilliseconds:0.###}");
+                AssertNoLayoutAnimation();
+            }
+
+            using (ApplicationTheme.OverrideAnimationPreferenceForValidation(true))
+            {
+                theme.Apply();
+                Must(AtRest(origin), $"#253：{label}初始状态不应带动画时钟。");
+                KeyboardClick(Key.Space);
+                AssertImmediate(target, "首次键盘 Space");
+                AssertMinuteRefresh(target);
+                KeyboardClick(Key.Enter);
+                AssertImmediate(origin, "指针之前的键盘 Enter");
+                AssertMinuteRefresh(origin);
+                PointerClick();
+                AwaitIntermediate("指针展开/收起");
+                var beforePalette = rotation.Angle;
+                theme.Apply();
+                Must(rotation.HasAnimatedProperties && Math.Abs(rotation.Angle - beforePalette) < 0.01,
+                    $"#253：{label}仍启用动画时的配色刷新重启或中断了进行中的旋转。");
+                var beforeReverse = Progress();
+                PointerClick();
+                // BeginAnimation 的新时钟在下一次 Rendering 才取得首个时间值；同步读基础终值不能代表用户看到的帧。
+                var firstReverseProgress = double.NaN;
+                var firstReverseFrame = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 300, () =>
+                {
+                    firstReverseProgress = Progress();
+                    return true;
+                });
+                Must(firstReverseFrame.Completed && firstReverseProgress > 0 &&
+                    firstReverseProgress <= beforeReverse + 0.01,
+                    $"#253：{label}快速反向的首帧未从当前角度继续；前 {beforeReverse:0.###}，首帧 {firstReverseProgress:0.###}。");
+                Must(WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 300,
+                    () => AtRest(origin)).Completed,
+                    $"#253：{label}反向未到达原终态或完成后遗留动画时钟。");
+                PointerClick();
+                AwaitIntermediate("键盘 Space 中断前");
+                KeyboardClick(Key.Space);
+                AssertImmediate(origin, "键盘 Space 中断");
+                PointerClick();
+                AwaitIntermediate("键盘 Enter 中断前");
+                KeyboardClick(Key.Enter);
+                AssertImmediate(origin, "键盘 Enter 中断");
+                PointerClick();
+                AwaitIntermediate("运行中关闭动画前");
+            }
+            using (ApplicationTheme.OverrideAnimationPreferenceForValidation(false))
+            {
+                // 复用生产系统参数的 Apply → PaletteChanged 通知，不能只改测试偏好后等待自然结束。
+                theme.Apply();
+                AssertImmediate(target, "运行中关闭客户区动画");
+                AssertMinuteRefresh(target);
+                KeyboardClick(Key.Space);
+                AssertImmediate(origin, "关闭动画后的键盘 Space");
+                PointerClick();
+                AssertImmediate(target, "系统已关闭动画时的指针调用");
+                KeyboardClick(Key.Enter);
+                AssertImmediate(origin, "关闭动画后的键盘 Enter");
+            }
+            if (closeWindow)
+            {
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(true))
+                {
+                    theme.Apply();
+                    PointerClick();
+                    AwaitIntermediate("窗口卸载前");
+                    main.Close();
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    Must(!button.IsLoaded && AtRest(target),
+                        $"#253：{label}窗口卸载后未保留基础终值或遗留动画时钟。");
+                }
+            }
+        }
+    }
+
     public static bool RunNoteSelectionAccessibility()
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-note-selection-{Guid.NewGuid():N}.json");

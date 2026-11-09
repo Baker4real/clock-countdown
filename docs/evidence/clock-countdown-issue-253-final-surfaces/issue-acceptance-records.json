@@ -1,0 +1,348 @@
+{
+  "parentIssue": 246,
+  "localPrdAcceptance": "complete",
+  "issues": [
+    {
+      "number": 247,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "倒计时行主次阅读轴与次级动作：独立报告的 CountdownRowDeadlineAndSecondaryDeleteBehavior, MainNoteRowActionsKeyboardWorks 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "倒计时行主次阅读轴与次级动作已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    },
+    {
+      "number": 248,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "列表空态和真实溢出：独立报告的 MainEmptyStatesFitListViewport, MainEmptyStatesGuideToSingleAddEntry, MainListOverflowScrollsAndReachesActions 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "列表空态和真实溢出已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    },
+    {
+      "number": 249,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "便签卡正文、摘要与就近标签：独立报告的 NoteRowContentGeometryBehavior, MainNoteRowActionsKeyboardWorks 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "便签卡正文、摘要与就近标签已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    },
+    {
+      "number": 250,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "共享表面和次级窗口一致性：独立报告的 SharedSurfaceRadiiFollowTokens, MainPrimaryAndPinSingleFocusStroke, FloatingKeyboardFocusDrawnOnce, SecondaryWindowKeyboardFocusDrawnOnce 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "共享表面和次级窗口一致性已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    },
+    {
+      "number": 251,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "工作台密度和悬浮滚动上下文：独立报告的 MainWorkbenchDensityReclaimed, FloatingScrollContextHintFollowsOverflow 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "工作台密度和悬浮滚动上下文已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    },
+    {
+      "number": 253,
+      "taskType": "visual",
+      "requiredChecks": [
+        "diff-check",
+        "low-impact-suite",
+        "runtime-behavior",
+        "visual-baseline"
+      ],
+      "evidence": [
+        {
+          "check": "diff-check",
+          "status": "processed",
+          "detail": "最终集成源码 git diff --check 与 git diff --cached --check 退出0；整树改动保留在现有集成分支，不以脏树冒称已提交。"
+        },
+        {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "GeometryPreflight 20261109T203724144-7ef21308 0；完整七阶段 20261109T203840236-4ac76637 全部退出0，见 final-regression-summary.json。"
+        },
+        {
+          "check": "runtime-behavior",
+          "status": "processed",
+          "detail": "展开反馈和全窗口最终验收：独立报告的 DisclosureArrowMotionBehavior, ReminderCenterEntryVisualIdentity, NoteCompletionUndoFeedback, NoteCompletionExitTransition, NoteCompletionFlipTransition 均通过；见 independent-behavior-facts.json，绑定本次候选及正式SourceValidation原始JSON哈希。"
+        },
+        {
+          "check": "visual-baseline",
+          "status": "processed",
+          "detail": "v75主窗9帧、悬浮5帧与当前源码逐项绑定；主窗/悬浮/提醒/规则/确认及共享弹层41帧人工复核，最终同候选重拍逐字节一致；另有#251尺寸/DPI及18滚动状态证据。"
+        },
+        {
+          "check": "release-contract",
+          "status": "processed",
+          "detail": "Core发布/资产/源码闭包及InstallValidate通过；正式受管Build -Clean + R2R 20261109T213159664-abb33ca5退出0，五项产品字节与已经完整回归的候选相同；23个静态IntegrityHashes与暂存blob相符。本轮未发布或部署。"
+        },
+        {
+          "check": "docs-links",
+          "status": "processed",
+          "detail": "完整Tooling的docs:local-links及visual-baseline:design-anchors通过；最后新增的收口链接再独立回读。"
+        }
+      ],
+      "notApplicable": [
+        {
+          "check": "office-live",
+          "reason": "本票仅本机界面精致化；用户未授权部署、远端传输或办公室live验收。"
+        },
+        {
+          "check": "candidate-runtime",
+          "reason": "现役WPF界面改动，不涉及Tauri/替代运行时、离线路径或候选闸门推广。"
+        }
+      ],
+      "status": "candidate",
+      "localAcceptance": "complete",
+      "summary": "展开反馈和全窗口最终验收已完成本机实现与验收；远端状态保持原样。",
+      "missing": [],
+      "next": "本轮不执行commit、push、发布、部署或远端关票；如需发布另按授权流程。"
+    }
+  ]
+}

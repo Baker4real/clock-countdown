@@ -3006,7 +3006,7 @@ internal static partial class ValidationExercises
             WindowValidationInput.Pump(main.Dispatcher);
             Must(VisualDescendants<TextBlock>(floating).Any(text => text.IsVisible && text.Text == "下次提醒：7 月 8 日 09:02"),
                 "#225 浮窗便签下次提醒应使用带中文空格的截止时刻格式。");
-            Must(VisualDescendants<TextBlock>(center).Any(text => text.IsVisible && text.Text == "计划：2038 年 7 月 8 日 09:02（北京时间）") &&
+            Must(VisualDescendants<TextBlock>(center).Any(text => text.IsVisible && text.Text == "计划：2038 年 7 月 8 日 09:02\n（北京时间）") &&
                 VisualDescendants<FrameworkElement>(center).Any(element =>
                     AutomationProperties.GetName(element).Contains("计划 2038 年 7 月 8 日 09:02 北京时间", StringComparison.Ordinal)),
                 "#225 提醒中心可见计划与可访问名应使用同一完整北京时间。");

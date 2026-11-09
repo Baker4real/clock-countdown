@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "status": "completed",
+  "build_mode": "official low-impact Build -Clean + PublishReadyToRun=true",
+  "run_id": "20261109T213159664-abb33ca5",
+  "exit_code": 0,
+  "isolated": true,
+  "elapsed_seconds": 248,
+  "approved_scope": "用户明确批准8个精确可重建构建产物根登记和全量构建，未扩大到worktree根。",
+  "safety_fixture_exit_code": 0,
+  "clean_preflight_valid": true,
+  "policy_existing_entries_unchanged": true,
+  "registered_exact_build_roots": 8,
+  "rebuild_product_checks": [
+    {
+      "path": "app/MinminCountdown.dll",
+      "before_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+      "after_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+      "identical": true
+    },
+    {
+      "path": "app/MinminCountdown.Core.dll",
+      "before_sha256": "288C7AF5E7ECE76C9B368D9428523BFD0E1429D7B6E66C85E385E783ABDA75A5",
+      "after_sha256": "288C7AF5E7ECE76C9B368D9428523BFD0E1429D7B6E66C85E385E783ABDA75A5",
+      "identical": true
+    },
+    {
+      "path": "app/MinminCountdown.exe",
+      "before_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "after_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "identical": true
+    },
+    {
+      "path": "app/published-payload.json",
+      "before_sha256": "03F05D7867C280C975CD3E656202C3B543391916D49F7060445E981EC5878BE6",
+      "after_sha256": "03F05D7867C280C975CD3E656202C3B543391916D49F7060445E981EC5878BE6",
+      "identical": true
+    },
+    {
+      "path": "verification/MinminCountdown.Verification.exe",
+      "before_sha256": "2E599C68AFF463DC0BF56A805A5E3D19D49B4BD6030455B1CA9C0FF2428C986F",
+      "after_sha256": "2E599C68AFF463DC0BF56A805A5E3D19D49B4BD6030455B1CA9C0FF2428C986F",
+      "identical": true
+    }
+  ],
+  "regression_evidence_reused": "完整全量重建后产品EXE、DLL、核心DLL、发布清单和验证程序均与正式七阶段通过的候选逐字节相同；没有新源码改动、失败或失效证据，因此不重复整套回归。",
+  "regression_run": "20261109T203840236-4ac76637",
+  "summary_sha256": "A662B6D222AE834C3DBC40262F3A24B42AB2C3A648A9D1ED806D714A8D5D9F8F"
+}

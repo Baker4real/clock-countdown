@@ -590,7 +590,13 @@ internal static partial class ValidationExercises
                 var scheduledRow = scheduledText.Parent as Panel;
                 var scheduledClock = scheduledRow is not null &&
                     VisualDescendants<System.Windows.Shapes.Ellipse>(scheduledRow).Any();
-                // #250：「计划：…（北京时间）」整行落在卡片内容区内，不被卡片右缘裁掉（DESIGN §4 稳定显示原计划北京时间）。
+                // #253：时区标记整体位于下一行，完整宽度能放入卡片，不逐字拆开，也不改变原有文案。
+                var timezoneWidth = new FormattedText("（北京时间）", CultureInfo.CurrentCulture, scheduledText.FlowDirection,
+                    new Typeface(scheduledText.FontFamily, scheduledText.FontStyle, scheduledText.FontWeight, scheduledText.FontStretch),
+                    scheduledText.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(scheduledText).PixelsPerDip).WidthIncludingTrailingWhitespace;
+                Must(scheduledText.Text == $"计划：{DateDisplay.FullMoment(key.ScheduledUtc)}\n（北京时间）" &&
+                    timezoneWidth <= scheduledText.ActualWidth + 0.5,
+                    "#253：提醒中心必须将完整的「（北京时间）」放在下一行，且整段标记不拆字、不裁切。");
                 var scheduledFitsCard =
                     scheduledText.ActualWidth > 0 &&
                     scheduledText.TranslatePoint(new Point(scheduledText.ActualWidth, 0), row).X <=

@@ -10,6 +10,95 @@ using System.Windows.Threading;
 
 namespace MinminCountdown;
 
+// #253：展开箭头只表达低频指针操作的状态反馈。输入接线和角度过渡放在一起；键盘与程序移交不进入动效。
+// 两个现有展开入口共用短按压时长、缓出和可中断 RenderTransform，不给面板高度或业务布局挂动画。
+internal static class DisclosureMotion
+{
+    private static readonly DependencyProperty ActiveRotationProperty = DependencyProperty.RegisterAttached(
+        "ActiveRotation", typeof(ActiveRotation), typeof(DisclosureMotion), new PropertyMetadata(null));
+
+    internal static void Bind(Button button, Action<bool> activate)
+    {
+        var pointerInitiated = false;
+        button.PreviewMouseLeftButtonDown += (_, _) => pointerInitiated = true;
+        button.PreviewKeyDown += (_, _) => pointerInitiated = false;
+        button.LostKeyboardFocus += (_, _) => pointerInitiated = false;
+        button.Unloaded += (_, _) => pointerInitiated = false;
+        button.Click += (_, _) =>
+        {
+            var animate = pointerInitiated;
+            pointerInitiated = false;
+            activate(animate);
+        };
+    }
+
+    internal static void MoveTo(FrameworkElement owner, RotateTransform rotation, double target, bool animate)
+    {
+        // 先读当前呈现角度，再取消旧时钟与订阅并写入基础终值；快速反向不会跳回上一端点。
+        var current = rotation.Angle;
+        if (owner.ReadLocalValue(ActiveRotationProperty) is ActiveRotation active) active.Dispose();
+        rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        rotation.Angle = target;
+        var configured = owner.TryFindResource("MotionPressDuration") is Duration duration && duration.HasTimeSpan
+            ? duration.TimeSpan
+            : MotionTokens.PressDuration;
+        var effective = animate && owner.IsLoaded && owner.IsVisible
+            ? ApplicationTheme.GetEffectiveMotionDuration(configured)
+            : TimeSpan.Zero;
+        if (effective <= TimeSpan.Zero || Math.Abs(current - target) <= 0.0001)
+        {
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = current,
+            To = target,
+            Duration = new Duration(effective),
+            EasingFunction = owner.TryFindResource("MotionEaseOut") as IEasingFunction ?? MotionTokens.CreateEaseOut(),
+            FillBehavior = FillBehavior.Stop
+        };
+        var next = new ActiveRotation(owner, rotation, animation);
+        owner.SetValue(ActiveRotationProperty, next);
+        next.Start();
+    }
+
+    // 只有进行中的旋转订阅静态主题通知；完成、即时切换、反向与卸载共用同一清理路径。
+    private sealed class ActiveRotation(
+        FrameworkElement owner, RotateTransform rotation, DoubleAnimation animation) : IDisposable
+    {
+        private bool _disposed;
+
+        internal void Start()
+        {
+            owner.Unloaded += OnUnloaded;
+            ApplicationTheme.PaletteChanged += OnPaletteChanged;
+            animation.Completed += OnCompleted;
+            rotation.BeginAnimation(RotateTransform.AngleProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        }
+
+        private void OnPaletteChanged(object? sender, EventArgs args)
+        {
+            if (!ApplicationTheme.ClientAreaAnimationEnabled) Dispose();
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs args) => Dispose();
+        private void OnCompleted(object? sender, EventArgs args) => Dispose();
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            owner.Unloaded -= OnUnloaded;
+            ApplicationTheme.PaletteChanged -= OnPaletteChanged;
+            animation.Completed -= OnCompleted;
+            // MoveTo 已经写好目标基础值，移除时钟即落到该值，不重启动画。
+            rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+            owner.ClearValue(ActiveRotationProperty);
+        }
+    }
+}
+
 /// <summary>
 /// Applies the first motion slice to template surfaces without changing layout.
 /// The control templates keep their semantic state resources; this behavior only

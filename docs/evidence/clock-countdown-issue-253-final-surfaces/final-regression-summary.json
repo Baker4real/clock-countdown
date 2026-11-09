@@ -1,0 +1,195 @@
+[
+  {
+    "Stage": "Core",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 321,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-Core",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Core.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Core.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Core.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Core.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Core-process.json",
+    "Process": {
+      "ProcessId": 26712,
+      "StartedAtUtc": "2026-11-09T12:38:40.4579785Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 25540,
+      "StartedAtUtc": "2026-11-09T12:38:41.3215436Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T12:38:40.4237255Z",
+    "FinishedAtUtc": "2026-11-09T12:44:01.0583418Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "CSharp",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 667,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-CSharp",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-CSharp.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-CSharp.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-CSharp.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-CSharp.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-CSharp-process.json",
+    "Process": {
+      "ProcessId": 46984,
+      "StartedAtUtc": "2026-11-09T12:44:01.0694164Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 30628,
+      "StartedAtUtc": "2026-11-09T12:44:01.933841Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T12:44:01.0626009Z",
+    "FinishedAtUtc": "2026-11-09T12:55:07.8339680Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "Ui",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 451,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-Ui",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Ui.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Ui.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Ui.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Ui.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Ui-process.json",
+    "Process": {
+      "ProcessId": 63272,
+      "StartedAtUtc": "2026-11-09T12:55:07.8448028Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 22536,
+      "StartedAtUtc": "2026-11-09T12:55:08.6718278Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T12:55:07.8386830Z",
+    "FinishedAtUtc": "2026-11-09T13:02:39.0853711Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "SourceValidation",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 95,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-SourceValidation",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-SourceValidation.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-SourceValidation.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-SourceValidation.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-SourceValidation.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-SourceValidation-process.json",
+    "Process": {
+      "ProcessId": 47520,
+      "StartedAtUtc": "2026-11-09T13:02:39.0933809Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 25084,
+      "StartedAtUtc": "2026-11-09T13:02:39.8651085Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T13:02:39.0894682Z",
+    "FinishedAtUtc": "2026-11-09T13:04:14.0688017Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "InstallValidate",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 10,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-InstallValidate",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-InstallValidate.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-InstallValidate.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-InstallValidate.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-InstallValidate.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-InstallValidate-process.json",
+    "Process": {
+      "ProcessId": 65996,
+      "StartedAtUtc": "2026-11-09T13:04:14.0783857Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 21024,
+      "StartedAtUtc": "2026-11-09T13:04:14.9239354Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T13:04:14.0711533Z",
+    "FinishedAtUtc": "2026-11-09T13:04:24.5313249Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "ValidationHarness",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 26,
+    "Isolated": true,
+    "DesktopName": "MinminSuiteIso-ValidationHarness",
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-ValidationHarness.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-ValidationHarness.err.log",
+    "LauncherStdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-ValidationHarness.iso.out.log",
+    "LauncherStderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-ValidationHarness.iso.err.log",
+    "ChildIdentityPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-ValidationHarness-process.json",
+    "Process": {
+      "ProcessId": 13052,
+      "StartedAtUtc": "2026-11-09T13:04:24.5423494Z"
+    },
+    "ChildProcess": {
+      "ProcessId": 22804,
+      "StartedAtUtc": "2026-11-09T13:04:25.1239027Z"
+    },
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T13:04:24.5350000Z",
+    "FinishedAtUtc": "2026-11-09T13:04:50.2350965Z",
+    "Failure": ""
+  },
+  {
+    "Stage": "Tooling",
+    "ExitCode": 0,
+    "ProcessExitCode": 0,
+    "Status": "Completed",
+    "ElapsedSeconds": 65,
+    "Isolated": false,
+    "DesktopName": null,
+    "Stdout": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Tooling.out.log",
+    "Stderr": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\integration\\logs\\suite-runs\\20261109T203840236-4ac76637-Tooling.err.log",
+    "LauncherStdout": null,
+    "LauncherStderr": null,
+    "ChildIdentityPath": null,
+    "Process": {
+      "ProcessId": 53952,
+      "StartedAtUtc": "2026-11-09T13:04:50.2443940Z"
+    },
+    "ChildProcess": null,
+    "PreflightPath": null,
+    "Preflight": null,
+    "TimeoutSeconds": 1800,
+    "StartedAtUtc": "2026-11-09T13:04:50.2378951Z",
+    "FinishedAtUtc": "2026-11-09T13:05:54.9713656Z",
+    "Failure": ""
+  }
+]

@@ -3526,6 +3526,9 @@ public sealed partial class MainWindow
     // 焦点态证据要让时分秒下拉框与提醒单选也进 Tab 路径。
     internal void ExpandCountdownEditorForValidation() => SetCountdownEditorExpanded(true);
 
+    // #253：箭头行为探针沿真实展开按钮接线取入口，不新增按名查找。
+    internal Button CountdownEditorDisclosureForValidation => CountdownEditorExpandButton;
+
     // #247：倒计时行实拍要把列表滚到底部；按字段取滚动区，不经按名查找。
     internal ScrollViewer CountdownListRegionForValidation => CountdownListRegion;
 
@@ -3647,6 +3650,43 @@ public sealed partial class MainWindow
 
 public sealed partial class FloatingWindow
 {
+    // #253：为完整验收里的底部锚定失败保留有界的真实几何诊断；只读，不推进布局或改变定位标志。
+    internal void TraceAnchoringForValidation(string phase)
+    {
+        var area = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        Console.Error.WriteLine(FormattableString.Invariant(
+            $"FLOATING_ANCHOR_TRACE: phase={phase}; left={Left:0.###}; top={Top:0.###}; width={ActualWidth:0.###}; height={ActualHeight:0.###}; dpi={dpi.PixelsPerInchX:0.###}x{dpi.PixelsPerInchY:0.###}; work={area}; bottomMargin={area.Bottom - Top - ActualHeight:0.###}; manual={_hasManualWindowPlacement}; applying={_isApplyingBottomAnchor}; tracking={_trackManualWindowPlacement}; anchor={_bottomAnchorPosition}; visible={IsVisible}; state={WindowState}; workspace={_workspace}"));
+    }
+
+    internal IDisposable ObserveAnchoringForValidation() => new AnchoringObservation(this);
+
+    private sealed class AnchoringObservation : IDisposable
+    {
+        private readonly FloatingWindow _window;
+        private bool _previouslyManual;
+        private int _reported;
+
+        internal AnchoringObservation(FloatingWindow window)
+        {
+            _window = window;
+            _previouslyManual = window._hasManualWindowPlacement;
+            window.LocationChanged += OnLocationChanged;
+        }
+
+        private void OnLocationChanged(object? sender, EventArgs args)
+        {
+            var manual = _window._hasManualWindowPlacement;
+            if (!_previouslyManual && manual && _reported++ < 6)
+            {
+                _window.TraceAnchoringForValidation("manual-placement-set");
+            }
+            _previouslyManual = manual;
+        }
+
+        public void Dispose() => _window.LocationChanged -= OnLocationChanged;
+    }
+
     internal WorkspaceKind CurrentWorkspaceForValidation => _workspace;
 
     // #250：悬浮窗共享表面圆角取样——倒计时行底色与便签卡（Card）、「…」菜单弹层（Section）。

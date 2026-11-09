@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "issue": 253,
+  "prd": 246,
+  "status": "candidate",
+  "required_count": 41,
+  "copied_and_verified": 41,
+  "manually_reviewed_count": 41,
+  "reference_run": "20261109T164950804-1444e87e",
+  "baseline_version": "2026-11-09-v73",
+  "exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+  "dll_sha256": "F4A68D157E7B551A92DE155ABEB0AD2082A2BB0A9D4268569D7F0361FC43F25D",
+  "source_revision": "fb1b1477 + #253 WIP before final review fixes",
+  "source_manifest_sha256": "6F2FEABF28793A1E53DFB96122C5047993C6C3B7EBABEF250D6199BB5EE2687B",
+  "review_method": "当前主代理通过read_image逐张读取41张原始尺寸PNG，核对文字、边界、动作、单层焦点与高对比度；未以缩略图代替复核。",
+  "entries": [
+    {
+      "id": "main-countdowns-normal",
+      "path": "main-countdowns-normal.png",
+      "sha256": "D654A0D6C97D6A25F5F3C7A3B6E51529E66E32506EA8827F90D2E4FB0481D46F",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-notes-normal",
+      "path": "main-notes-normal.png",
+      "sha256": "DA8BBCE9620A2839D4A5A54EC73CCED0B667BC18605FD4EF30DF9019BAD84291",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-filter",
+      "path": "popup-filter.png",
+      "sha256": "EA47D5972E71BC5FF1DDBC0A71964FAE2A71E3CC9634611260C5C283B9924ABC",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-tag-manager",
+      "path": "popup-tag-manager.png",
+      "sha256": "9C4500BBEA24330584863197B53111CBA220C277D12A78B939FF573EAF969262",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-preferences",
+      "path": "popup-preferences.png",
+      "sha256": "019F5F04FAE77E9C4C0C704114E170BAE9B36077E56C03673225BA220A3DABF7",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-countdowns-high-contrast",
+      "path": "main-countdowns-high-contrast.png",
+      "sha256": "2FE6BFA7B1EC4B477321D3D4D83EEC42E7417F12B575FB614CAB22EDA40E9D07",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-notes-high-contrast",
+      "path": "main-notes-high-contrast.png",
+      "sha256": "5088F5E68F112ECA3E999C6D0B8E7B09FFA4E559EEA81A7D5954A3BA529FE753",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-filter-high-contrast",
+      "path": "popup-filter-high-contrast.png",
+      "sha256": "0D8976993B3759D5B78D75F755B18ED268FA0EC8BC60EFE2E8D0F05D96F97269",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-preferences-high-contrast",
+      "path": "popup-preferences-high-contrast.png",
+      "sha256": "3EA0F75EF7C76CEBC2044808145194937297AA91C377A1C212E1DDA904B14D04",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-tag-selector",
+      "path": "popup-tag-selector.png",
+      "sha256": "673BFBCBA8DA28E2DDDF9C2B64FD09236DE479CD67A6D39127129767355B1DE3",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-countdowns-focus",
+      "path": "main-countdowns-focus.png",
+      "sha256": "2218FF4D224D52B0C7B9CFB0D72E86EA72252FC5711C8A189D9D1CCFA216B947",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-countdowns-error",
+      "path": "main-countdowns-error.png",
+      "sha256": "66F30899128E4C85DFDF0E8FF47D452645EA602A47797EF1C772A3F090FBDDD6",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "popup-preferences-error",
+      "path": "popup-preferences-error.png",
+      "sha256": "229F222521BAB42C238F1DCBF82908FDF75ABD070C0B11482007455CB9B65FCF",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "confirmation-delete-long",
+      "path": "confirmation-delete-long.png",
+      "sha256": "2F446DDCC07C2109355810D3464839406221C5B48F75FEC0C836A530DB38FFC5",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "confirmation-delete-high-contrast",
+      "path": "confirmation-delete-high-contrast.png",
+      "sha256": "891CC12B4B9A46579095EC6E806CDDB11D5F322AF880B89C0324695681024DC0",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "confirmation-focus",
+      "path": "confirmation-focus.png",
+      "sha256": "535979B00021257E50B5724D4869750002FBE207F9646280ADF040E3087A0976",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-countdowns-long",
+      "path": "main-countdowns-long.png",
+      "sha256": "1AD1CE26E81758268FFC0F315B0E362F64D4EAF665A611421EFCCA9A8F2AE453",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "main-notes-long",
+      "path": "main-notes-long.png",
+      "sha256": "8765911EF7DAB70F5DAB88D15AE4FFBF2D094C16749DF86AFFEB2ADA12590F79",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-countdowns-normal",
+      "path": "floating-countdowns-normal.png",
+      "sha256": "431D2DE73CCA8B35705F0983CAEB0B8B66F37BEE95534AEE66FA05C47F06A3DC",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-notes-normal",
+      "path": "floating-notes-normal.png",
+      "sha256": "16D006582D1D2B481E23EC52FDEC7B03506C1EAA98DF22AE55C0BCAD44183307",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-countdowns-high-contrast",
+      "path": "floating-countdowns-high-contrast.png",
+      "sha256": "BF0D8BD2CAE89C67F11642003D5402E90CA6CA832DFE8BCD92CD2DEBF20DB5F7",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-notes-high-contrast",
+      "path": "floating-notes-high-contrast.png",
+      "sha256": "977480AA18CD403AFE3A622B50520C911AEDA14F959B6E8BBDBBB0A54634D32B",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-note-overflow-menu",
+      "path": "floating-note-overflow-menu.png",
+      "sha256": "42499B8EE48389A34F89FDE71B9257013E095B8012200AFC5A5673173A5E7B19",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-focus",
+      "path": "floating-focus.png",
+      "sha256": "91EE67979E4F348604D70CA276167372DDE2E1840654112BF76B1E016FB2C517",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-quick-add-error",
+      "path": "floating-quick-add-error.png",
+      "sha256": "258CA81D3337D32820B304B1C366BDF1239AF73E5D369BB734EA759D6C7AFBD9",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-countdowns-long",
+      "path": "floating-countdowns-long.png",
+      "sha256": "C85A81F852DBF2ED7276FF38C6189EF5DDA5546034DA577DC9CA46E3E971A009",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "floating-notes-long",
+      "path": "floating-notes-long.png",
+      "sha256": "B94775C0F88F19C2A6D6F3DD4ACCD350669242A1D07FA404DDE288AD472D0F14",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-disabled",
+      "path": "reminder-center-disabled.png",
+      "sha256": "68E98BFB1D3C9A74053F37D2A281CF57B9F5164D59FDCFB32FEB891818656E36",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-normal",
+      "path": "reminder-center-normal.png",
+      "sha256": "D91541952E222D6DA91D95EAD489EE37376336F1E53D56DE86878554E6C05E4A",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-high-contrast",
+      "path": "reminder-center-high-contrast.png",
+      "sha256": "9488DFCA8EBBFFEC076BFCABE849B5028DF34CCE5E1D341E5E0A38A3E7C64937",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-focus",
+      "path": "reminder-center-focus.png",
+      "sha256": "E9EBE63D3CB90EC2FD060EF58F7A827E39C56F3EB39CE7BC2B423171D88A5C69",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-error",
+      "path": "reminder-center-error.png",
+      "sha256": "B162B9994C44B3CFF5D9C2FE3E805C6D0B05682512EC545FBA60CCA092FF5339",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-delivery-failure",
+      "path": "reminder-center-delivery-failure.png",
+      "sha256": "103EC8DE9ADC24D9BE6DBD3546E899E6BB374EF39D69018CA575069210B14814",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "reminder-center-long",
+      "path": "reminder-center-long.png",
+      "sha256": "CF8673FF69D161D5392EBF13ADEE747E8763150D7553872072DC7C445FF328F6",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-normal",
+      "path": "rules-editor-normal.png",
+      "sha256": "0467D91A038CB95A7A79667185BB8367059E821C64E2555C251D3079D4D9373D",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-calendar-weekly",
+      "path": "rules-editor-calendar-weekly.png",
+      "sha256": "16F8706CD4A9B9C0CB9376870A2C81C1B0A4686C2DB42B5728EC15EF1C83A81C",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-high-contrast",
+      "path": "rules-editor-high-contrast.png",
+      "sha256": "3077501DF67A54F3715D45DB109EEF2ECE4BA04F7BF6D4D0693E9C65A0C28C50",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-focus",
+      "path": "rules-editor-focus.png",
+      "sha256": "3C5D54B6C11ECA8F668FC3205FEEE7DB443B8C67DB1A096A7EEC1C38B75087B2",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-error",
+      "path": "rules-editor-error.png",
+      "sha256": "19A5B68720203D42BEC20D510D4B3BA9954024387400180870919C51C8A8A281",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-calendar-yearly",
+      "path": "rules-editor-calendar-yearly.png",
+      "sha256": "AFF06D08430D6C91B27402EE9E46917809880EAF45E0174F30BBD363AAB2AC66",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    },
+    {
+      "id": "rules-editor-long",
+      "path": "rules-editor-long.png",
+      "sha256": "BBA10282D2453AD17DF1501198C8EB31CDCE07787529EC7F9C3244A1062DC544",
+      "required": true,
+      "manual_review": "reviewed",
+      "result": "pass",
+      "notes": "滚动视口内的自然裁切按既有设计保留；交互可达性仍以行为门禁为准。"
+    }
+  ],
+  "pending": "最终两轴评审修复、当前矿工高负载解除后的完整官方回归；不将本目录截图当作完整行为验收。"
+}

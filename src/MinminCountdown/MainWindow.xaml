@@ -2068,7 +2068,8 @@
                                   HorizontalScrollBarVisibility="Disabled">
                       <!-- #248：两组便签行与空态各占一行。ScrollViewer 以无限高度测量时 * 行按内容取高，排布时分到视口
                            剩余高度，空态因此在列表视口里居中，不靠最小高度补偿，也不产生虚假滚动范围。
-                           #251：状态分段移到上方工具条，内容上边距 13 → 8，首张卡离工具条 12 DIP；便签行几何不变。 -->
+                           #251：状态分段移到上方工具条，内容上边距 13 → 8，首张卡离工具条 12 DIP；便签行几何不变。
+                           空态区上边距 8 → 0，与内容上边距相抵，上下各 8，空态仍在整个列表视口里居中。 -->
                       <Grid Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                           <RowDefinition Height="Auto" />
@@ -2079,7 +2080,7 @@
                         <StackPanel x:Name="CompletedNoteRows" Grid.Row="1" Margin="21,4,9,16" Visibility="Collapsed" />
                         <Grid x:Name="NotesEmptyStateContent"
                               Grid.Row="2"
-                              Margin="15,8,15,8"
+                              Margin="15,0,15,8"
                               Visibility="Collapsed">
                           <StackPanel VerticalAlignment="Center"
                                       HorizontalAlignment="Center"

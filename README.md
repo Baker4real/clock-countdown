@@ -117,7 +117,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 工作台密度与悬浮窗滚动提示（#251）也这样实拍，不进门禁：密度探针 `MainWorkbenchDensityReclaimed` 在首选 864×1000、最小 720×560 与真实 WM_DPICHANGED 三个窗口里，各拍倒计时首屏、便签顶部、便签滚到底、搜索与多选五张 `<窗口档>-<工作区>[-<状态>].png`（前两档 96 DPI，DPI 档按注入后的窗口 DPI 光栅化），写进 `logs\ui-captures\<时间戳>-density\`；滚动提示探针 `FloatingScrollContextHintFollowsOverflow` 每个状态一张 520×390 的 `<状态>.png`，菜单态另拍弹层 `<状态>-popup.png`，写进 `logs\ui-captures\<时间戳>-scroll-hint\`。几何与提示方向以两项事实为准，截图供人工核对。
 
-候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区、倒计时行与便签卡几何、共享表面圆角（#250）、工作台密度与悬浮窗滚动提示（#251）和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
+候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区、倒计时行与便签卡几何、共享表面圆角（#250）、工作台密度与悬浮窗滚动提示（#251）、展开箭头真实中间帧与键盘/减弱动画即时等价、提醒中心完整时区标记换行（#253）和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
 
 ```powershell
 $appPath = Join-Path $PWD 'app'

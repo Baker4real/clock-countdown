@@ -1,0 +1,65 @@
+{
+  "status": "confirmed-calibration-only",
+  "old_version": "2026-11-09-v71",
+  "new_version": "2026-11-09-v74",
+  "old_png_sha256": "A1E9FC9C696FC1852674F367F764570A8BB36E7725E24EB2A27B7AEB4D790A08",
+  "new_png_sha256": "355C2111C2045858AB69680F1A22A45A6AF92BC65FF208DF554CD838EB2C92CA",
+  "x": 200,
+  "channel_delta_threshold": 30,
+  "old_scan": [
+    338,
+    391
+  ],
+  "new_scan": [
+    328,
+    381
+  ],
+  "old_edges": [
+    342,
+    343,
+    344,
+    359,
+    360,
+    363,
+    364,
+    366,
+    367,
+    368,
+    369,
+    370,
+    382,
+    383,
+    384
+  ],
+  "new_edges": [
+    332,
+    333,
+    334,
+    349,
+    350,
+    353,
+    354,
+    356,
+    357,
+    358,
+    359,
+    360,
+    372,
+    373,
+    374
+  ],
+  "vertical_shift_dip": -10,
+  "pixel_line_identical_after_translation": true,
+  "new_label_exclusion": [
+    309,
+    327
+  ],
+  "unchanged_contracts": [
+    "exact full edge sequence",
+    "delta>=30",
+    "label clearance",
+    "declared lower decoration",
+    "three existing negative fixtures"
+  ],
+  "cause": "#251已批准的表单空白回收使名称输入及对应扫描区域整体上移10DIP，旧#237/v57像素坐标尚未随布局更新；输入的像素行原样平移，无新增重复描边。"
+}

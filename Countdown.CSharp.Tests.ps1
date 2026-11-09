@@ -4894,7 +4894,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Notes-Day' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日间两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口两态控件边、标签隔离和声明下半装饰均由像素测量通过'
-    Assert-Equal 'Countdown-Day:342/343/344/359/360/363/364/366/367/368/369/370/382/383/384:338:799;Notes-Day:314/315/348/349/367/379/380:309:625' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（倒计时编辑卡移到装饰带下沿之下后按 v57 864x1000 实拍定位，便签沿用 v54 定位；装饰带按帧尺寸换算，#189 扫描阈值与负控不变）'
+    Assert-Equal 'Countdown-Day:332/333/334/349/350/353/354/356/357/358/359/360/372/373/374:328:799;Notes-Day:314/315/348/349/367/379/380:309:625' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#251 将折叠标题的 10 DIP 空白收回后，倒计时输入及扫描相对 v57 整体上移 10 DIP，按 v74 实拍逐像素核对；便签、装饰带换算、#189 阈值与负控不变）'
     }
     else {
         Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'

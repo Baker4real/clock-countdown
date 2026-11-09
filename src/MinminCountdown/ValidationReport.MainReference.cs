@@ -689,15 +689,15 @@ internal static partial class ValidationReport
         }
 
         var bands = ReadMainDecorationBands(sourceRoot);
-        // #221/#237: v54 shrinks the list-first management window to 864x1000. The opaque
-        // compact countdown form now starts below its top decoration band (TopBandEnd 395 ->
-        // 395 * 1000 / 1350 = 292.6, form top 300) so it no longer covers the plush characters;
-        // scan its actual bounds, independently sampled from the PNG at x=200; retain delta>=30
-        // and every #189 negative fixture. Notes still starts one row below its top decoration
-        // band scaled to the frame height (TopBandEnd 415 -> ceil(415 * 1000 / 1350) = 308).
+        // #221/#237: the 864x1000 form remains below its top decoration band (TopBandEnd 395 ->
+        // 395 * 1000 / 1350 = 292.6, form top 300). #251 moves the 10 DIP heading-to-fields gap
+        // onto the collapsed heading, so the countdown label/input and their scan shift up 10 DIP.
+        // Independently compare the immutable v71/v74 PNGs at x=200: every sampled RGB row and
+        // edge is identical after that translation. Keep delta>=30, exact edges and all #189
+        // negative fixtures; notes and the scaled lower decoration bands remain unchanged.
         var specs = new[]
         {
-            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 338, 391, new[] { 342, 343, 344, 359, 360, 363, 364, 366, 367, 368, 369, 370, 382, 383, 384 }, 319, 337),
+            new MainDaySingleBorderSpec("Countdown-Day", "countdown", "main-day-countdowns-empty.png", 328, 381, new[] { 332, 333, 334, 349, 350, 353, 354, 356, 357, 358, 359, 360, 372, 373, 374 }, 309, 327),
             new MainDaySingleBorderSpec("Notes-Day", "notes", "main-day-notes-empty.png", 309, 389, new[] { 314, 315, 348, 349, 367, 379, 380 }, 300, 313)
         };
         var measurements = specs.Select(spec =>

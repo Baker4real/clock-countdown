@@ -502,6 +502,7 @@ internal static class ValidationReportContract
                      "CountdownEditorExpansionBehavior", "CountdownRowDeadlineAndSecondaryDeleteBehavior",
                      "NoteRowContentGeometryBehavior", "SharedSurfaceRadiiFollowTokens",
                      "MainWorkbenchDensityReclaimed", "FloatingScrollContextHintFollowsOverflow",
+                     "DisclosureArrowMotionBehavior",
                      "MainTopmostStateSynchronization", "MainRedundancyCleanup",
                      "MainNoteEditorSeparation", "MainNoteRowsSimplified", "MainNoteRowActionsKeyboardWorks",
                      "NoteGroupingSelectorAbsent", "MainTextShortcutBehavior", "SingleLineEnterSubmission",

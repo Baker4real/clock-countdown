@@ -1,0 +1,482 @@
+{
+  "schemaVersion": 1,
+  "captureKind": "shared surfaces and secondary windows at 96 DPI for #250; not gated",
+  "referenceUtc": "2026-07-29T01:20:17+00:00",
+  "highContrastPalette": {
+    "window": "#FF000000",
+    "windowText": "#FFFFFFFF",
+    "control": "#FF000000",
+    "controlText": "#FFFFFFFF",
+    "highlight": "#FF1AEBFF",
+    "highlightText": "#FF000000",
+    "grayText": "#FF3FF23F"
+  },
+  "entries": [
+    {
+      "captureId": "main-countdowns-normal",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u5012\u8BA1\u65F6\u9875\uFF1A\u4E09\u6761\u5012\u8BA1\u65F6\u3001\u6807\u7B7E\u82AF\u7247\u3001\u6536\u8D77\u7684\u65B0\u589E\u533A\u4E0E\u72B6\u6001\u680F",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-countdowns-normal.png",
+      "sha256": "D654A0D6C97D6A25F5F3C7A3B6E51529E66E32506EA8827F90D2E4FB0481D46F"
+    },
+    {
+      "captureId": "main-notes-normal",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u4FBF\u7B7E\u9875\uFF1A\u4E09\u5F20\u4FBF\u7B7E\u3001\u65E5\u671F\u5206\u7EC4\u3001\u5B8C\u6210\u52FE\u9009\u4E0E\u65B0\u589E\u533A",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-notes-normal.png",
+      "sha256": "DA8BBCE9620A2839D4A5A54EC73CCED0B667BC18605FD4EF30DF9019BAD84291"
+    },
+    {
+      "captureId": "popup-filter",
+      "surface": "\u7B5B\u9009\u5F39\u5C42",
+      "state": "\u4FBF\u7B7E\u9875\u6253\u5F00\u7B5B\u9009\uFF1A\u6807\u7B7E\u5339\u914D\u3001\u72B6\u6001\u4E0E\u65E5\u671F",
+      "highContrast": false,
+      "pixelWidth": 388,
+      "pixelHeight": 303,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-filter.png",
+      "sha256": "EA47D5972E71BC5FF1DDBC0A71964FAE2A71E3CC9634611260C5C283B9924ABC"
+    },
+    {
+      "captureId": "popup-tag-manager",
+      "surface": "\u6807\u7B7E\u7BA1\u7406\u5F39\u5C42",
+      "state": "\u5012\u8BA1\u65F6\u9875\u6253\u5F00\u6807\u7B7E\u7BA1\u7406\uFF1A\u4E09\u679A\u6807\u7B7E\u4E0E\u65B0\u5EFA",
+      "highContrast": false,
+      "pixelWidth": 319,
+      "pixelHeight": 261,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-tag-manager.png",
+      "sha256": "9C4500BBEA24330584863197B53111CBA220C277D12A78B939FF573EAF969262"
+    },
+    {
+      "captureId": "popup-preferences",
+      "surface": "\u8BBE\u7F6E\u5F39\u5C42",
+      "state": "\u5012\u8BA1\u65F6\u9875\u6253\u5F00\u8BBE\u7F6E\uFF1A\u6708\u85AA\u3001\u4E0A\u4E0B\u73ED\u65F6\u95F4\u3001\u663E\u793A\u7CBE\u5EA6\u4E0E\u4FDD\u5B58",
+      "highContrast": false,
+      "pixelWidth": 444,
+      "pixelHeight": 268,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-preferences.png",
+      "sha256": "019F5F04FAE77E9C4C0C704114E170BAE9B36077E56C03673225BA220A3DABF7"
+    },
+    {
+      "captureId": "main-countdowns-high-contrast",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u5012\u8BA1\u65F6\u9875",
+      "highContrast": true,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-countdowns-high-contrast.png",
+      "sha256": "2FE6BFA7B1EC4B477321D3D4D83EEC42E7417F12B575FB614CAB22EDA40E9D07"
+    },
+    {
+      "captureId": "main-notes-high-contrast",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u4FBF\u7B7E\u9875",
+      "highContrast": true,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-notes-high-contrast.png",
+      "sha256": "5088F5E68F112ECA3E999C6D0B8E7B09FFA4E559EEA81A7D5954A3BA529FE753"
+    },
+    {
+      "captureId": "popup-filter-high-contrast",
+      "surface": "\u7B5B\u9009\u5F39\u5C42",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u6253\u5F00\u7B5B\u9009",
+      "highContrast": true,
+      "pixelWidth": 388,
+      "pixelHeight": 303,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-filter-high-contrast.png",
+      "sha256": "0D8976993B3759D5B78D75F755B18ED268FA0EC8BC60EFE2E8D0F05D96F97269"
+    },
+    {
+      "captureId": "popup-preferences-high-contrast",
+      "surface": "\u8BBE\u7F6E\u5F39\u5C42",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u6253\u5F00\u8BBE\u7F6E",
+      "highContrast": true,
+      "pixelWidth": 444,
+      "pixelHeight": 268,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-preferences-high-contrast.png",
+      "sha256": "3EA0F75EF7C76CEBC2044808145194937297AA91C377A1C212E1DDA904B14D04"
+    },
+    {
+      "captureId": "popup-tag-selector",
+      "surface": "\u6807\u7B7E\u9009\u62E9\u5F39\u5C42",
+      "state": "\u5C55\u5F00\u65B0\u589E\u533A\u540E\u6253\u5F00\u6807\u7B7E\u9009\u62E9\uFF1A\u641C\u7D22\u6846\u4E0E\u4E09\u679A\u6807\u7B7E",
+      "highContrast": false,
+      "pixelWidth": 230,
+      "pixelHeight": 142,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-tag-selector.png",
+      "sha256": "673BFBCBA8DA28E2DDDF9C2B64FD09236DE479CD67A6D39127129767355B1DE3"
+    },
+    {
+      "captureId": "main-countdowns-focus",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u5C55\u5F00\u65B0\u589E\u533A\uFF0C\u952E\u76D8\u7126\u70B9\u5728\u300C\uFF0B \u6DFB\u52A0\u5012\u8BA1\u65F6\u300D\u4E3B\u6309\u94AE",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-countdowns-focus.png",
+      "sha256": "2218FF4D224D52B0C7B9CFB0D72E86EA72252FC5711C8A189D9D1CCFA216B947"
+    },
+    {
+      "captureId": "main-countdowns-error",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u540D\u79F0\u7559\u7A7A\u540E\u6DFB\u52A0\uFF1A\u540D\u79F0\u4E0B\u65B9\u5B57\u6BB5\u9519\u8BEF\u4E0E\u8868\u5355\u6C47\u603B\u884C\uFF0C\u7126\u70B9\u56DE\u5230\u540D\u79F0\u8F93\u5165\u6846",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [
+        "\u8BF7\u5148\u586B\u5199\u5012\u8BA1\u65F6\u540D\u79F0\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-countdowns-error.png",
+      "sha256": "66F30899128E4C85DFDF0E8FF47D452645EA602A47797EF1C772A3F090FBDDD6"
+    },
+    {
+      "captureId": "popup-preferences-error",
+      "surface": "\u8BBE\u7F6E\u5F39\u5C42",
+      "state": "\u6708\u85AA\u586B -500 \u540E\u4FDD\u5B58\uFF1A\u5B57\u6BB5\u4E0B\u65B9\u9519\u8BEF\uFF0C\u7126\u70B9\u56DE\u5230\u6708\u85AA\u8F93\u5165\u6846",
+      "highContrast": false,
+      "pixelWidth": 444,
+      "pixelHeight": 292,
+      "visibleErrors": [
+        "\u6708\u85AA\u4E0D\u80FD\u5C0F\u4E8E 0\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\popup-preferences-error.png",
+      "sha256": "229F222521BAB42C238F1DCBF82908FDF75ABD070C0B11482007455CB9B65FCF"
+    },
+    {
+      "captureId": "confirmation-delete-long",
+      "surface": "\u5220\u9664\u786E\u8BA4",
+      "state": "\u957F\u4FBF\u7B7E\u6B63\u6587\u5220\u9664\u786E\u8BA4\uFF1A\u6807\u9898\u3001\u6298\u884C\u6B63\u6587\u4E0E\u300C\u53D6\u6D88 / \u786E\u8BA4\u5220\u9664\u300D",
+      "highContrast": false,
+      "pixelWidth": 390,
+      "pixelHeight": 343,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\confirmation-delete-long.png",
+      "sha256": "2F446DDCC07C2109355810D3464839406221C5B48F75FEC0C836A530DB38FFC5"
+    },
+    {
+      "captureId": "confirmation-delete-high-contrast",
+      "surface": "\u5220\u9664\u786E\u8BA4",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u957F\u4FBF\u7B7E\u5220\u9664\u786E\u8BA4",
+      "highContrast": true,
+      "pixelWidth": 390,
+      "pixelHeight": 343,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\confirmation-delete-high-contrast.png",
+      "sha256": "891CC12B4B9A46579095EC6E806CDDB11D5F322AF880B89C0324695681024DC0"
+    },
+    {
+      "captureId": "confirmation-focus",
+      "surface": "\u5220\u9664\u786E\u8BA4",
+      "state": "\u952E\u76D8\u7126\u70B9\u5728\u300C\u786E\u8BA4\u5220\u9664\u300D",
+      "highContrast": false,
+      "pixelWidth": 390,
+      "pixelHeight": 343,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\confirmation-focus.png",
+      "sha256": "535979B00021257E50B5724D4869750002FBE207F9646280ADF040E3087A0976"
+    },
+    {
+      "captureId": "main-countdowns-long",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u4E5D\u6761\u5012\u8BA1\u65F6\uFF0830 \u5B57\u6807\u9898\u3001\u5DF2\u5230\u671F\uFF09\uFF0C\u7EB5\u5411\u6EDA\u52A8\u6761",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-countdowns-long.png",
+      "sha256": "1AD1CE26E81758268FFC0F315B0E362F64D4EAF665A611421EFCCA9A8F2AE453"
+    },
+    {
+      "captureId": "main-notes-long",
+      "surface": "\u7BA1\u7406\u7A97\u53E3",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u56DB\u5F20\u672A\u5B8C\u6210\u4FBF\u7B7E\uFF0C\u6EDA\u5230\u957F\u6B63\u6587\u4FBF\u7B7E\uFF08\u4E24\u679A\u6807\u7B7E\u3001\u6BCF 15 \u5206\u949F\u63D0\u9192\u3001\u6628\u5929\u5206\u7EC4\uFF09",
+      "highContrast": false,
+      "pixelWidth": 864,
+      "pixelHeight": 1000,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\main-notes-long.png",
+      "sha256": "8765911EF7DAB70F5DAB88D15AE4FFBF2D094C16749DF86AFFEB2ADA12590F79"
+    },
+    {
+      "captureId": "floating-countdowns-normal",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u5012\u8BA1\u65F6\uFF1A\u8DDD\u79BB\u4E0B\u73ED\u4E3B\u9879\u4E0E\u4E09\u6761\u5012\u8BA1\u65F6",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-countdowns-normal.png",
+      "sha256": "431D2DE73CCA8B35705F0983CAEB0B8B66F37BEE95534AEE66FA05C47F06A3DC"
+    },
+    {
+      "captureId": "floating-notes-normal",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u4FBF\u7B7E\uFF1A\u4E09\u5F20\u4FBF\u7B7E\u5361",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-notes-normal.png",
+      "sha256": "16D006582D1D2B481E23EC52FDEC7B03506C1EAA98DF22AE55C0BCAD44183307"
+    },
+    {
+      "captureId": "floating-countdowns-high-contrast",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u5012\u8BA1\u65F6",
+      "highContrast": true,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-countdowns-high-contrast.png",
+      "sha256": "BF0D8BD2CAE89C67F11642003D5402E90CA6CA832DFE8BCD92CD2DEBF20DB5F7"
+    },
+    {
+      "captureId": "floating-notes-high-contrast",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u4FBF\u7B7E",
+      "highContrast": true,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-notes-high-contrast.png",
+      "sha256": "977480AA18CD403AFE3A622B50520C911AEDA14F959B6E8BBDBBB0A54634D32B"
+    },
+    {
+      "captureId": "floating-note-overflow-menu",
+      "surface": "\u4FBF\u7B7E\u300C\u2026\u300D\u83DC\u5355",
+      "state": "\u9996\u5F20\u4FBF\u7B7E\u6253\u5F00\u300C\u2026\u300D\uFF1A\u7F16\u8F91 / \u5220\u9664",
+      "highContrast": false,
+      "pixelWidth": 132,
+      "pixelHeight": 107,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-note-overflow-menu.png",
+      "sha256": "42499B8EE48389A34F89FDE71B9257013E095B8012200AFC5A5673173A5E7B19"
+    },
+    {
+      "captureId": "floating-focus",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u952E\u76D8\u7126\u70B9\u5728\u5FEB\u901F\u65B0\u589E\u5165\u53E3",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-focus.png",
+      "sha256": "91EE67979E4F348604D70CA276167372DDE2E1840654112BF76B1E016FB2C517"
+    },
+    {
+      "captureId": "floating-quick-add-error",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u5FEB\u901F\u65B0\u589E\u6B63\u6587\u7559\u7A7A\u540E\u6DFB\u52A0\uFF1A\u6B63\u6587\u4E0B\u65B9\u5B57\u6BB5\u9519\u8BEF\uFF0C\u7126\u70B9\u56DE\u5230\u6B63\u6587\u8F93\u5165\u6846",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [
+        "\u8BF7\u5148\u5199\u4E0B\u4FBF\u7B7E\u5185\u5BB9\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-quick-add-error.png",
+      "sha256": "258CA81D3337D32820B304B1C366BDF1239AF73E5D369BB734EA759D6C7AFBD9"
+    },
+    {
+      "captureId": "floating-countdowns-long",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u4E5D\u6761\u5012\u8BA1\u65F6\uFF0830 \u5B57\u6807\u9898\u3001\u5DF2\u5230\u671F\uFF09",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-countdowns-long.png",
+      "sha256": "C85A81F852DBF2ED7276FF38C6189EF5DDA5546034DA577DC9CA46E3E971A009"
+    },
+    {
+      "captureId": "floating-notes-long",
+      "surface": "\u60AC\u6D6E\u7A97",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u56DB\u5F20\u4FBF\u7B7E\uFF0C\u6EDA\u5230\u957F\u6B63\u6587\u4FBF\u7B7E\uFF08\u6298\u884C\u3001\u4E0B\u6B21\u63D0\u9192\u3001\u65E5\u671F\u5370\u8BB0\uFF09",
+      "highContrast": false,
+      "pixelWidth": 520,
+      "pixelHeight": 390,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\floating-notes-long.png",
+      "sha256": "B94775C0F88F19C2A6D6F3DD4ACCD350669242A1D07FA404DDE288AD472D0F14"
+    },
+    {
+      "captureId": "reminder-center-disabled",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u9001\u8FBE\u72B6\u6001\u672A\u843D\u76D8\uFF1A\u77E5\u9053\u4E86 / \u7A0D\u540E\u63D0\u9192 / \u5B8C\u6210\u4FBF\u7B7E\u7981\u7528\uFF0C\u6253\u5F00\u6765\u6E90\u53EF\u7528",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-disabled.png",
+      "sha256": "68E98BFB1D3C9A74053F37D2A281CF57B9F5164D59FDCFB32FEB891818656E36"
+    },
+    {
+      "captureId": "reminder-center-normal",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u4E24\u6761\u5DF2\u9001\u8FBE\u63D0\u9192\uFF1A\u6765\u6E90\u3001\u6B63\u6587\u3001\u76F8\u5BF9\u65F6\u95F4\u4E0E\u56DB\u4E2A\u5904\u7F6E",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-normal.png",
+      "sha256": "D91541952E222D6DA91D95EAD489EE37376336F1E53D56DE86878554E6C05E4A"
+    },
+    {
+      "captureId": "reminder-center-high-contrast",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u4E24\u6761\u5DF2\u9001\u8FBE\u63D0\u9192",
+      "highContrast": true,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-high-contrast.png",
+      "sha256": "9488DFCA8EBBFFEC076BFCABE849B5028DF34CCE5E1D341E5E0A38A3E7C64937"
+    },
+    {
+      "captureId": "reminder-center-focus",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u952E\u76D8\u7126\u70B9\u5728\u9996\u6761\u300C\u77E5\u9053\u4E86\u300D",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-focus.png",
+      "sha256": "E9EBE63D3CB90EC2FD060EF58F7A827E39C56F3EB39CE7BC2B423171D88A5C69"
+    },
+    {
+      "captureId": "reminder-center-error",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u4FBF\u7B7E\u6761\u76EE\u9009\u81EA\u5B9A\u4E49\u7A0D\u540E\u4F46\u7F3A\u65E5\u671F\u65F6\u95F4\uFF1A\u81EA\u5B9A\u4E49\u65E5\u671F\u4E0E\u65F6\u95F4\u63A7\u4EF6\u5C55\u5F00\uFF0C\u9519\u8BEF\u7D27\u90BB\u5176\u4E0B",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [
+        "\u8BF7\u9009\u62E9\u5B8C\u6574\u7684\u81EA\u5B9A\u4E49\u7A0D\u540E\u65E5\u671F\u548C\u65F6\u95F4\u3002",
+        "\u9001\u8FBE\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5\u3002\u6253\u5F00\u6765\u6E90\u4ECD\u7136\u53EF\u7528\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-error.png",
+      "sha256": "B162B9994C44B3CFF5D9C2FE3E805C6D0B05682512EC545FBA60CCA092FF5339"
+    },
+    {
+      "captureId": "reminder-center-delivery-failure",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u6EDA\u5230\u5012\u8BA1\u65F6\u6761\u76EE\uFF1A\u9001\u8FBE\u5931\u8D25\uFF0C\u77E5\u9053\u4E86 / \u7A0D\u540E\u63D0\u9192\u7981\u7528\uFF0C\u6253\u5F00\u6765\u6E90\u4ECD\u53EF\u7528",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [
+        "\u8BF7\u9009\u62E9\u5B8C\u6574\u7684\u81EA\u5B9A\u4E49\u7A0D\u540E\u65E5\u671F\u548C\u65F6\u95F4\u3002",
+        "\u9001\u8FBE\u72B6\u6001\u4FDD\u5B58\u5931\u8D25\uFF0C\u6B63\u5728\u81EA\u52A8\u91CD\u8BD5\u3002\u6253\u5F00\u6765\u6E90\u4ECD\u7136\u53EF\u7528\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-delivery-failure.png",
+      "sha256": "103EC8DE9ADC24D9BE6DBD3546E899E6BB374EF39D69018CA575069210B14814"
+    },
+    {
+      "captureId": "reminder-center-long",
+      "surface": "\u63D0\u9192\u4E2D\u5FC3",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u4E09\u6761\u63D0\u9192\uFF08\u957F\u4FBF\u7B7E\u6B63\u6587\u300130 \u5B57\u5012\u8BA1\u65F6\u6807\u9898\uFF09\uFF0C\u7EB5\u5411\u6EDA\u52A8",
+      "highContrast": false,
+      "pixelWidth": 460,
+      "pixelHeight": 520,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\reminder-center-long.png",
+      "sha256": "CF8673FF69D161D5392EBF13ADEE747E8763150D7553872072DC7C445FF328F6"
+    },
+    {
+      "captureId": "rules-editor-normal",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u56DB\u6761\u89C4\u5219\u5217\u8868\u4E0E\u65B0\u589E\u89C4\u5219\u8868\u5355",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-normal.png",
+      "sha256": "0467D91A038CB95A7A79667185BB8367059E821C64E2555C251D3079D4D9373D"
+    },
+    {
+      "captureId": "rules-editor-calendar-weekly",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u7F16\u8F91\u6BCF\u5468\u89C4\u5219\uFF1A\u65E5\u5386\u9891\u7387\u3001\u91CD\u590D\u95F4\u9694\u4E0E\u661F\u671F\u590D\u9009",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-calendar-weekly.png",
+      "sha256": "16F8706CD4A9B9C0CB9376870A2C81C1B0A4686C2DB42B5728EC15EF1C83A81C"
+    },
+    {
+      "captureId": "rules-editor-high-contrast",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u7CFB\u7EDF\u9AD8\u5BF9\u6BD4\u5EA6\uFF1A\u7F16\u8F91\u6BCF\u5468\u89C4\u5219",
+      "highContrast": true,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-high-contrast.png",
+      "sha256": "3077501DF67A54F3715D45DB109EEF2ECE4BA04F7BF6D4D0693E9C65A0C28C50"
+    },
+    {
+      "captureId": "rules-editor-focus",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u952E\u76D8\u7126\u70B9\u5728\u300C\u4FDD\u5B58\u89C4\u5219\u300D",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-focus.png",
+      "sha256": "3C5D54B6C11ECA8F668FC3205FEEE7DB443B8C67DB1A096A7EEC1C38B75087B2"
+    },
+    {
+      "captureId": "rules-editor-error",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u53D6\u6D88\u5168\u90E8\u661F\u671F\u3001\u91CD\u590D\u95F4\u9694\u586B 0 \u540E\u4FDD\u5B58\uFF1A\u5B57\u6BB5\u9519\u8BEF\u884C",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [
+        "\u65E5\u5386\u91CD\u590D\u95F4\u9694\u5FC5\u987B\u662F 1 \u5230 999\u3002"
+      ],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-error.png",
+      "sha256": "19A5B68720203D42BEC20D510D4B3BA9954024387400180870919C51C8A8A281"
+    },
+    {
+      "captureId": "rules-editor-calendar-yearly",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u7F16\u8F91\u6BCF\u5E74\u89C4\u5219\uFF1A\u6708\u4EFD\u4E0E\u65E5\u671F\u9009\u62E9",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-calendar-yearly.png",
+      "sha256": "AFF06D08430D6C91B27402EE9E46917809880EAF45E0174F30BBD363AAB2AC66"
+    },
+    {
+      "captureId": "rules-editor-long",
+      "surface": "\u63D0\u9192\u89C4\u5219\u7F16\u8F91\u5668",
+      "state": "\u957F\u5185\u5BB9\uFF1A\u516B\u6761\u89C4\u5219\u8FBE\u5230\u4E0A\u9650\uFF0C\u5217\u8868\u7EB5\u5411\u6EDA\u52A8",
+      "highContrast": false,
+      "pixelWidth": 640,
+      "pixelHeight": 790,
+      "visibleErrors": [],
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T085118921-validate-only\\surfaces\\rules-editor-long.png",
+      "sha256": "BBA10282D2453AD17DF1501198C8EB31CDCE07787529EC7F9C3244A1062DC544"
+    }
+  ],
+  "failures": []
+}

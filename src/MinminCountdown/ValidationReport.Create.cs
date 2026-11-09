@@ -21,6 +21,7 @@ internal static partial class ValidationReport
         HostOptions options,
         string assetRoot)
     {
+        using var anchorObservation = floating.ObserveAnchoringForValidation();
         using var persistenceExercisePath = options.ExercisePersistenceFailures
             ? new PersistenceExercisePathGate(desktopWorkspace.Snapshot.SettingsPath)
             : null;
@@ -53,8 +54,10 @@ internal static partial class ValidationReport
         floating.UpdateLayout();
         floating.Reanchor();
         PumpDispatcher();
+        floating.TraceAnchoringForValidation("initial-reanchor");
 
         var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
+        floating.TraceAnchoringForValidation("after-floating-scenarios");
         var floatingWorkspace = floatingWindowScenarios.Workspace;
         var floatingQuickAddTheme = ValidateFloatingQuickAddLocalTheme(
             theme,
@@ -326,6 +329,9 @@ internal static partial class ValidationReport
             ValidationExercises.RunMainWorkbenchDensityBehavior(CreateWorkbenchDensityEvidenceWriter());
         var floatingScrollContextHint =
             ValidationExercises.RunFloatingScrollContextHintBehavior(CreateFloatingScrollContextEvidenceWriter());
+        floating.TraceAnchoringForValidation("before-disclosure-probe");
+        var disclosureArrowMotion = ValidationExercises.RunDisclosureArrowMotionBehavior();
+        floating.TraceAnchoringForValidation("after-disclosure-probe");
         var mainWindowIdentityZoneDrag =
             ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
         var floatingSecondaryMonitor = MonitorGeometryValidation.FloatingWindowStaysOnSecondaryMonitor();
@@ -335,6 +341,7 @@ internal static partial class ValidationReport
         var mixedDpiPhysicalGeometry = MonitorGeometryValidation.MixedDpiUsesPhysicalMonitorGeometry();
         var productManifestPerMonitorV2 = MonitorGeometryValidation.ProductManifestDeclaresPerMonitorV2();
         var runtimeDpiLayout = MonitorGeometryValidation.RuntimeDpiChangeUpdatesWindowLayout();
+        floating.TraceAnchoringForValidation("after-monitor-probes");
         var mainWindowHiddenRefresh =
             ValidationExercises.RunMainWindowHiddenRefreshBehavior();
         var mainWindowNoteMinuteRefresh =
@@ -593,6 +600,7 @@ internal static partial class ValidationReport
         main.ApplyTheme();
         PumpDispatcher();
         main.UpdateLayout();
+        floating.TraceAnchoringForValidation("before-bottom-margin");
         var workArea = MonitorWorkAreaResolver.ResolveForWindow(floating).WorkAreaDip;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
@@ -716,6 +724,7 @@ internal static partial class ValidationReport
             floating.Left >= workArea.Left &&
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
+        floating.TraceAnchoringForValidation("before-bottom-verdict");
         var floatingBottomAnchored = floating.IsBottomAnchored;
         floating.ParkOffscreenForValidation();
         PumpDispatcher();
@@ -1420,7 +1429,7 @@ internal static partial class ValidationReport
             ["RuleEditorInlineDeleteUsesDangerButton"] = Must(ruleEditorInlineDeleteUsesDangerButton, "规则编辑器行内删除使用 DangerButton"),
             ["SettingsRecoverySecondaryUsesCanvas"] = Must(settingsRecoverySecondaryUsesCanvas, "设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB"),
             ["ReminderCenterTwoRowActionsLayout"] = Must(reminderCenterTwoRowActionsLayout, "提醒中心动作按 DESIGN 两行布局且按钮为图标加文字"),
-            ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN 视觉标识，计划时间整行在卡片内（#250）"),
+            ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN，计划时间在卡片内且完整北京时间标记下一行不拆字（#250/#253）"),
             ["PopupAnimationIsInstant"] = Must(popupAnimationIsInstant, "五处生产弹层使用即时出现而不是系统淡入"),
             ["ActionForegroundsUseMainActionText"] = Must(actionForegroundsUseMainActionText, "主按钮、复选勾与日历选中前景使用 MainActionTextBrush"),
             ["DisabledSelectionControlsUseButtonOpacity"] = Must(
@@ -1732,6 +1741,8 @@ internal static partial class ValidationReport
                 floatingScrollContextHint.Explain(
                     "悬浮列表只在真实可滚动且对应方向仍有内容时在正文边缘渐隐，到边界即消失；遮罩只挂在正文内容层，" +
                     "滚动条、命令区、玩偶与弹层不受影响，滚轮、thumb 与键盘照常滚动（#251）")),
+            ["DisclosureArrowMotionBehavior"] = Must(disclosureArrowMotion,
+                "两处展开箭头只在指针操作时短旋转，真实中间帧与快速反向连续；键盘、程序移交和减弱动画即时，面板及窗口几何不动画（#253）"),
             ["MainTopmostStateSynchronization"] = Must(mainTopmostStateSynchronization, "置顶首次打开与两次切换均由勾选状态单向驱动（#222）"),
             ["MainRedundancyCleanup"] = Must(mainRedundancyCleanup, "数量纯文字保留唯一直播区，删除主题与工作区冗余文字（#222）"),
             ["MainNoteEditorSeparation"] = Must(mainNoteEditorSeparation, "搜索属于列表区、编辑标题与规则字段对齐、Ctrl+F及取消行为正常（#227）"),

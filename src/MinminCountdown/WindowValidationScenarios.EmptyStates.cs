@@ -16,7 +16,7 @@ public sealed partial class MainWindow
     private const string EmptyStateProbeNoMatchSearch = "__empty_state_probe_no_match__";
 
     // 空态几何：量当前工作区空态所在列表的视口、内容范围与滚动条，空态块在列表视口里的位置和应居中的区域
-    // （倒计时是整个列表视口，便签是状态分段以下到视口底）；再把空态块滚进管理窗口可视区，量它是否完整可见。
+    // （两个列表都是整个列表视口；#251 起便签状态分段在视口上方的工具条里）；再把空态块滚进管理窗口可视区，量它是否完整可见。
     // 只测量、不判定；revealed 在空态块滚进可视区时调用（实拍用）。收尾先把列表与外层滚动偏移复原。
     internal MainEmptyStateGeometry MeasureEmptyStateGeometryForValidation(
         string label,
@@ -35,9 +35,8 @@ public sealed partial class MainWindow
         {
             SettleEmptyStateProbeLayout();
             var visible = content.IsVisible && block.ActualWidth > 0 && block.ActualHeight > 0;
-            var areaTop = countdowns
-                ? 0
-                : Math.Max(0, EmptyStateProbeBounds(NotesStatusHeader, list).Bottom);
+            // #251：便签状态分段移到列表上方的工具条，两个列表的空态都在整个列表视口里居中。
+            const double areaTop = 0;
             var geometry = new MainEmptyStateGeometry(
                 label,
                 visible,

@@ -1301,6 +1301,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (CancelNoteEdit, "CancelNoteEdit"),
             (ManageNoteReminderRulesButton, "ManageNoteReminderRulesButton"),
             (NoteTags.PopupTrigger, "NoteTags"),
+            // #251：状态分段移出列表滚动区后是独立 Tab 目标。
+            (ActiveNotesSegment, "ActiveNotesSegment"),
+            (CompletedNotesSegment, "CompletedNotesSegment"),
             (NoteSearch, "NoteSearch"),
             (NotesListRegion, "NotesListRegion"),
             (AddEmptyNoteButton, "AddEmptyNoteButton"),

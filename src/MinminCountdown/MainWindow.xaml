@@ -691,6 +691,15 @@
               <!-- #197：字段标签统一 13px SemiBold。 -->
               <Setter Property="FontSize" Value="{DynamicResource TypeCaptionFontSize}" />
             </Style>
+            <!-- #251：编辑卡唯一消息行（倒计时 / 便签）。文本为空时收起，不占行；所有写入都经
+                 UiAccessibility.Announce 改 Text，触发器跟着文本走，直播区照常播报。 -->
+            <Style x:Key="MainEditorMessage" TargetType="{x:Type TextBlock}">
+              <Style.Triggers>
+                <Trigger Property="Text" Value="">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                </Trigger>
+              </Style.Triggers>
+            </Style>
             <Style x:Key="MainCompactTextInput"
                    TargetType="{x:Type TextBox}"
                    BasedOn="{StaticResource {x:Type TextBox}}">
@@ -1176,14 +1185,16 @@
                         Width="864"
                         Height="738">
                   <!-- 编辑卡顶边落在装饰带下沿（画布 DIP 292.6）之下，与便签页同样留约 7 DIP：
-                       不透明编辑卡与列表底层不得盖住三只玩偶。高度由 UpdateCountdownListHeight 按 Margin.Top 重算。 -->
+                       不透明编辑卡与列表底层不得盖住三只玩偶。高度由 UpdateCountdownListHeight 按 Margin.Top 重算。
+                       #251：编辑卡到列表消费 §13.3 SpacingBlockGap（12），与便签页区块节奏一致；末行 21 DIP
+                       留给右下手写体装饰（画布 718），不回收。 -->
                   <Grid x:Name="CountdownWorkspaceBody"
                         Margin="28,84,29,0"
                         Width="807"
                         Height="654">
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
-                      <RowDefinition Height="18" />
+                      <RowDefinition Height="12" />
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="0" />
                       <RowDefinition Height="*" />
@@ -1211,7 +1222,9 @@
                           <RowDefinition Height="Auto" />
                           <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <Grid Grid.Row="0" x:Name="CountdownEditorHeading" Visibility="Collapsed">
+                        <!-- #251：标题与字段行之间的 SpacingFieldRow（10）挂在标题下沿，随标题一起收起：
+                             折叠新增态字段行贴着卡片内边距，不再多出 10 DIP 空白。 -->
+                        <Grid Grid.Row="0" x:Name="CountdownEditorHeading" Margin="0,0,0,10" Visibility="Collapsed">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -1225,8 +1238,9 @@
                           <!-- #154：原「每一个期待…」手写体已迁出表单（CountdownWorkspace 装饰层），
                                不再作为标题行列成员参与表单测量；用户故事 #147-55「只是情绪，不是布局成员」。 -->
                         </Grid>
-                        <!-- #151：字段行距消费 SpacingFieldRow（10，§5 区块内字段行节奏），替代随机 20。 -->
-                        <Grid x:Name="MainCountdownNameDateRow" Grid.Row="1" Margin="0,10,0,0">
+                        <!-- #151：字段行距消费 SpacingFieldRow（10，§5 区块内字段行节奏），替代随机 20；
+                             #251：首行上方的 10 改由 CountdownEditorHeading 下边距承担。 -->
+                        <Grid x:Name="MainCountdownNameDateRow" Grid.Row="1">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="12" />
@@ -1368,13 +1382,15 @@
                                                Margin="0,3,0,0" />
                           </StackPanel>
                         </Grid>
-                        <!-- #151：唯一错误行不再固定高度裁切或省略，长错误完整换行可见。 -->
+                        <!-- #151：唯一错误行不再固定高度裁切或省略，长错误完整换行可见。
+                             #251：没有消息时收起（MainEditorMessage），不再在折叠新增态底部占一行空白。 -->
                         <TextBlock x:Name="CountdownMessage"
                                    Grid.Row="3"
                                    Margin="0,8,0,0"
                                    FontSize="{DynamicResource TypeCaptionFontSize}"
                                    Foreground="{DynamicResource DangerBrush}"
-                                   TextWrapping="Wrap" />
+                                   TextWrapping="Wrap"
+                                   Style="{StaticResource MainEditorMessage}" />
                         <Grid Grid.Row="4" x:Name="MainCountdownActionRow" Margin="0,10,0,0" Visibility="Collapsed">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -1536,14 +1552,17 @@
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="NotesDecoText" />
+                  <!-- #251：编辑卡按内容取高（新增态无空行，编辑态标题与字段错误不再被固定 215 行裁切），
+                       编辑卡到列表卡、列表卡到状态栏都是 §13.3 SpacingBlockGap（12）：画布 99 + 634 止于状态栏上方 12 DIP，
+                       其余高度全给列表卡。 -->
                   <Grid x:Name="NotesWorkspaceBody"
                         Margin="34,99,35,0"
                         Width="795"
-                        Height="639">
+                        Height="634">
                     <Grid.RowDefinitions>
-                      <RowDefinition Height="215" />
-                      <RowDefinition Height="14" />
-                      <RowDefinition Height="399" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="12" />
+                      <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid Grid.Row="0" x:Name="NoteEditorCard">
                       <Border x:Name="NoteEditorPanel"
@@ -1560,7 +1579,7 @@
                                 BorderBrush="{DynamicResource PeachLineBrush}"
                                 BorderThickness="1"
                                 CornerRadius="{DynamicResource RadiusOverlay}">
-                          <StackPanel Margin="18,10,0,2">
+                          <StackPanel Margin="18,10,0,10">
                           <TextBlock x:Name="NoteEditorTitle" Text="编辑便签"
                                      Visibility="Collapsed" Margin="0,0,0,6"
                                      FontSize="{DynamicResource TypeH2FontSize}" FontWeight="SemiBold"
@@ -1763,7 +1782,8 @@
                                      Margin="0,2,0,0"
                                      FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource DangerBrush}"
-                                     TextWrapping="Wrap" />
+                                     TextWrapping="Wrap"
+                                     Style="{StaticResource MainEditorMessage}" />
                         </Grid>
                           </StackPanel>
                         </Border>
@@ -1776,92 +1796,17 @@
                               BorderBrush="{DynamicResource PeachLineBrush}"
                               BorderThickness="1"
                               CornerRadius="{DynamicResource RadiusOverlay}" />
-                          <StackPanel Grid.Row="0" HorizontalAlignment="Right" Margin="15,9,15,0">
-                            <StackPanel Orientation="Horizontal">
-                              <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
-                                   与悬浮窗「搜索便签」单一图标语言一致）。 -->
-                              <TextBlock x:Name="NoteSearchLabel"
-                                         Margin="6,0,0,0"
-                                         Text="搜索便签"
-                                         Style="{StaticResource MainCompactFieldLabel}" />
-                            </StackPanel>
-                            <Grid>
-                              <TextBox x:Name="NoteSearch"
-                                       Width="163"
-                                       MinHeight="36"
-                                       MaxLength="140"
-                                       Padding="36,0,12,0" />
-                              <!-- #154：输入框内搜索镜统一控件层描边语言（§4 单色描边、MutedBrush 1.6、
-                                   圆头），与铅笔/日历字段图标同规格；不再是唯一的实心填充图标。 -->
-                              <Path Width="15"
-                                    Height="15"
-                                    Margin="12,0,0,0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Data="M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38"
-                                    Stroke="{DynamicResource MutedBrush}"
-                                    StrokeThickness="1.6"
-                                    StrokeStartLineCap="Round"
-                                    StrokeEndLineCap="Round"
-                                    IsHitTestVisible="False" />
-                              <TextBlock Margin="36,0,0,0"
-                                         Height="21"
-                                         HorizontalAlignment="Left"
-                                         VerticalAlignment="Center"
-                                         FontSize="{DynamicResource TypeBodyFontSize}"
-                                         Foreground="{DynamicResource MutedBrush}"
-                                         IsHitTestVisible="False"
-                                         Text="搜索关键词…">
-                                <TextBlock.Style>
-                                  <Style TargetType="{x:Type TextBlock}">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                      <DataTrigger Binding="{Binding Text, ElementName=NoteSearch}" Value="">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                      </DataTrigger>
-                                    </Style.Triggers>
-                                  </Style>
-                                </TextBlock.Style>
-                              </TextBlock>
-                            </Grid>
-                          </StackPanel>
-                      <!-- #237：批量操作栏随管理窗口等比收缩，按钮改用 MainSecondaryButton（说明字号、28/30 最小命中）。 -->
-                      <WrapPanel x:Name="NoteBatchActions" Grid.Row="1" Margin="15,6,15,0" Visibility="Collapsed">
-                        <TextBlock x:Name="SelectedNotesCount" VerticalAlignment="Center" Margin="0,0,9,0"
-                                   FontSize="{DynamicResource TypeCaptionFontSize}" Foreground="{DynamicResource InkBrush}"
-                                   AutomationProperties.LiveSetting="Polite" />
-                        <Button x:Name="CompleteSelectedNotesButton" Content="完成所选" Style="{StaticResource MainSecondaryButton}"
-                                Click="OnCompleteSelectedNotes" ToolTip="完成所选便签（Enter）" Margin="0,0,6,0" />
-                        <Button x:Name="DeleteSelectedNotesButton" Content="删除所选" Style="{StaticResource MainSecondaryButton}"
-                                Foreground="{DynamicResource DangerBrush}" Click="OnDeleteSelectedNotes"
-                                ToolTip="删除所选便签（Delete）" Margin="0,0,6,0" />
-                        <Button x:Name="ClearSelectedNotesButton" Content="取消选择" Style="{StaticResource MainSecondaryButton}"
-                                Click="OnClearSelectedNotes" ToolTip="取消选择（Esc）" />
-                      </WrapPanel>
-                      <ScrollViewer x:Name="NotesListRegion" Grid.Row="2"
-                                  FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
-                                  Focusable="True"
-                                  IsTabStop="True"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled">
-                      <!-- #248：状态分段、两组便签行与空态各占一行。ScrollViewer 以无限高度测量时 * 行按内容取高，
-                           排布时分到视口剩余高度，空态因此在分段以下的可用区域居中，不靠最小高度补偿，也不产生虚假滚动范围。
-                           原外层 StackPanel 的左右 15/9 与上下 13/16 内边距逐项落到各行，便签行几何不变。 -->
-                      <Grid Margin="0,13,0,0">
-                        <Grid.RowDefinitions>
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="Auto" />
-                          <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <Grid x:Name="NotesStatusHeader" Grid.Row="0" Margin="15,0,9,1">
-                          <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                          </Grid.ColumnDefinitions>
-                          <!-- 分段下方留 4 DIP 给选中指示条（离焦点环 1 DIP，§9）；表头下边距同步减 2，
-                               下面的便签行不移位。 -->
+                      <!-- #251：列表工具条固定在滚动视口之上——状态分段靠左、搜索靠右同处一行。长列表滚动、搜索、
+                           筛选与多选时状态上下文始终可见；原搜索行左侧空着的宽度让给分段，分段不再占列表首行。
+                           Tab 顺序随视觉从左到右：未完成 → 已完成 → 搜索便签 → 列表。 -->
+                      <Grid x:Name="NotesListToolbar" Grid.Row="0" Margin="15,9,15,0">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid x:Name="NotesStatusHeader" Grid.Column="0">
+                          <!-- 分段下方留 4 DIP 给选中指示条（离焦点环 1 DIP，§9），也是工具条与列表视口之间的下沿。 -->
                           <Border Padding="2,2,2,4"
                                   Background="Transparent"
                                   CornerRadius="{DynamicResource RadiusControl}">
@@ -2051,10 +1996,89 @@
                             </Grid>
                           </Border>
                         </Grid>
-                        <StackPanel x:Name="ActiveNoteRows" Grid.Row="1" Margin="21,4,9,16" />
-                        <StackPanel x:Name="CompletedNoteRows" Grid.Row="2" Margin="21,4,9,16" Visibility="Collapsed" />
+                        <!-- 搜索与分段按钮同一水平带（上 2 下 4 与分段容器内边距对齐）；标签在输入框左侧，
+                             LabeledBy 关系不变。 -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,2,0,0">
+                          <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
+                               与悬浮窗「搜索便签」单一图标语言一致）。 -->
+                          <TextBlock x:Name="NoteSearchLabel"
+                                     Margin="0,0,8,0"
+                                     VerticalAlignment="Center"
+                                     Text="搜索便签"
+                                     Style="{StaticResource MainCompactFieldLabel}" />
+                          <Grid>
+                            <TextBox x:Name="NoteSearch"
+                                     Width="163"
+                                     MinHeight="36"
+                                     MaxLength="140"
+                                     Padding="36,0,12,0" />
+                            <!-- #154：输入框内搜索镜统一控件层描边语言（§4 单色描边、MutedBrush 1.6、
+                                 圆头），与铅笔/日历字段图标同规格；不再是唯一的实心填充图标。 -->
+                            <Path Width="15"
+                                  Height="15"
+                                  Margin="12,0,0,0"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Data="M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38"
+                                  Stroke="{DynamicResource MutedBrush}"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  IsHitTestVisible="False" />
+                            <TextBlock Margin="36,0,0,0"
+                                       Height="21"
+                                       HorizontalAlignment="Left"
+                                       VerticalAlignment="Center"
+                                       FontSize="{DynamicResource TypeBodyFontSize}"
+                                       Foreground="{DynamicResource MutedBrush}"
+                                       IsHitTestVisible="False"
+                                       Text="搜索关键词…">
+                              <TextBlock.Style>
+                                <Style TargetType="{x:Type TextBlock}">
+                                  <Setter Property="Visibility" Value="Collapsed" />
+                                  <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=NoteSearch}" Value="">
+                                      <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                  </Style.Triggers>
+                                </Style>
+                              </TextBlock.Style>
+                            </TextBlock>
+                          </Grid>
+                        </StackPanel>
+                      </Grid>
+                      <!-- #237：批量操作栏随管理窗口等比收缩，按钮改用 MainSecondaryButton（说明字号、28/30 最小命中）。 -->
+                      <WrapPanel x:Name="NoteBatchActions" Grid.Row="1" Margin="15,6,15,0" Visibility="Collapsed">
+                        <TextBlock x:Name="SelectedNotesCount" VerticalAlignment="Center" Margin="0,0,9,0"
+                                   FontSize="{DynamicResource TypeCaptionFontSize}" Foreground="{DynamicResource InkBrush}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="CompleteSelectedNotesButton" Content="完成所选" Style="{StaticResource MainSecondaryButton}"
+                                Click="OnCompleteSelectedNotes" ToolTip="完成所选便签（Enter）" Margin="0,0,6,0" />
+                        <Button x:Name="DeleteSelectedNotesButton" Content="删除所选" Style="{StaticResource MainSecondaryButton}"
+                                Foreground="{DynamicResource DangerBrush}" Click="OnDeleteSelectedNotes"
+                                ToolTip="删除所选便签（Delete）" Margin="0,0,6,0" />
+                        <Button x:Name="ClearSelectedNotesButton" Content="取消选择" Style="{StaticResource MainSecondaryButton}"
+                                Click="OnClearSelectedNotes" ToolTip="取消选择（Esc）" />
+                      </WrapPanel>
+                      <ScrollViewer x:Name="NotesListRegion" Grid.Row="2"
+                                  FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
+                                  Focusable="True"
+                                  IsTabStop="True"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                      <!-- #248：两组便签行与空态各占一行。ScrollViewer 以无限高度测量时 * 行按内容取高，排布时分到视口
+                           剩余高度，空态因此在列表视口里居中，不靠最小高度补偿，也不产生虚假滚动范围。
+                           #251：状态分段移到上方工具条，内容上边距 13 → 8，首张卡离工具条 12 DIP；便签行几何不变。 -->
+                      <Grid Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel x:Name="ActiveNoteRows" Grid.Row="0" Margin="21,4,9,16" />
+                        <StackPanel x:Name="CompletedNoteRows" Grid.Row="1" Margin="21,4,9,16" Visibility="Collapsed" />
                         <Grid x:Name="NotesEmptyStateContent"
-                              Grid.Row="3"
+                              Grid.Row="2"
                               Margin="15,8,15,8"
                               Visibility="Collapsed">
                           <StackPanel VerticalAlignment="Center"

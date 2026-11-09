@@ -1633,6 +1633,8 @@ public sealed partial class FloatingWindow : Window
         };
         // #149：滚动时把被裁切长卡的日期印记粘在卡片可见区域内（三行始终可见）。
         FloatingBodyScroller.ScrollChanged += (_, _) => UpdateNoteDateStampStickyOffsets();
+        // #251：偏移、视口或内容高度变化后同步边缘渐隐提示（FloatingWindow.ScrollContext）。
+        FloatingBodyScroller.ScrollChanged += (_, _) => UpdateScrollContextHint();
         FloatingNoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
         FloatingNoteSearchHintTerm.Click += (_, _) => ExpandNoteSearch(focus: true);
         FloatingNoteSearchHintClear.Click += (_, _) => ClearNoteSearch();
@@ -2629,6 +2631,8 @@ public sealed partial class FloatingWindow : Window
             FloatingBodyScroller.ScrollToVerticalOffset(restoredOffset);
             // #149：滚动位置恢复后同步日期印记粘性位移（ScrollToVerticalOffset 幅度相同时不触发 ScrollChanged）。
             UpdateNoteDateStampStickyOffsets();
+            // #251：同理，重建后内容高度不变时没有 ScrollChanged，滚动提示在这里按新内容重算。
+            UpdateScrollContextHint();
             _workspaceScrollOffsets[workspace] = FloatingBodyScroller.VerticalOffset;
         }), DispatcherPriority.Loaded);
     }

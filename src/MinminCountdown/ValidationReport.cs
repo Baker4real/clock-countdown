@@ -57,6 +57,8 @@ internal static partial class ValidationReport
         Check("CountdownRowActionGeometry", ValidationExercises.RunCountdownRowDeadlineAndSecondaryDeleteBehavior);
         Check("NoteRowContentGeometry", ValidationExercises.RunNoteRowContentGeometryBehavior);
         Check("SharedSurfaceRadii", ValidationExercises.RunSharedSurfaceRadiusBehavior);
+        Check("MainWorkbenchDensity", ValidationExercises.RunMainWorkbenchDensityPreflight);
+        Check("FloatingScrollContextHint", ValidationExercises.RunFloatingScrollContextHintPreflight);
         if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
         {
             Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));
@@ -626,6 +628,94 @@ internal static partial class ValidationReport
                 1000,
                 () => window.VisibleSegmentIndicatorsSettledForCapture);
             WriteNewBytes(Path.Combine(directory, label + ".png"), EncodePng(CaptureVisual(root)));
+        };
+    }
+
+    // #251：密度回收实拍。首选、最小与真实 DPI 变化三个窗口档各拍倒计时首屏、便签顶部、便签滚到底、搜索与多选，
+    // 每张 <窗口档>-<工作区>[-<状态>].png，落在本次运行的 density 证据目录。前两档按 96 DPI（1 px = 1 DIP），
+    // DPI 档按窗口注入后的 DPI 光栅化。只出证据、不设门禁；发布包模式返回 null，不请求实拍。
+    private static Action<MainWindow, string>? CreateWorkbenchDensityEvidenceWriter()
+    {
+        var directory = ResolveDefaultVisualEvidenceDirectory("density");
+        if (directory is null)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(directory);
+        return (window, label) =>
+        {
+            if (window.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("密度实拍缺少管理窗口根视觉。");
+            }
+
+            _ = WindowValidationInput.PumpRenderedFrames(
+                root.Dispatcher,
+                1000,
+                () => window.VisibleSegmentIndicatorsSettledForCapture);
+            // 先走 96 DPI 捕获路径（处理透明窗口与离屏合成），DPI 档再按窗口当前 DPI 直接渲染同一布局。
+            BitmapSource bitmap = CaptureVisual(root);
+            var dpi = VisualTreeHelper.GetDpi(root);
+            if (label.StartsWith("dpi-", StringComparison.Ordinal) &&
+                (Math.Abs(dpi.PixelsPerInchX - 96) > 0.5 || Math.Abs(dpi.PixelsPerInchY - 96) > 0.5))
+            {
+                var atDpi = new RenderTargetBitmap(
+                    Math.Max(1, (int)Math.Ceiling(root.ActualWidth * dpi.DpiScaleX)),
+                    Math.Max(1, (int)Math.Ceiling(root.ActualHeight * dpi.DpiScaleY)),
+                    dpi.PixelsPerInchX,
+                    dpi.PixelsPerInchY,
+                    PixelFormats.Pbgra32);
+                atDpi.Render(root);
+                atDpi.Freeze();
+                if (IsEntirelyTransparent(atDpi))
+                {
+                    throw new InvalidOperationException($"密度实拍 {label} 按 {dpi.PixelsPerInchX:0.#} DPI 渲染整幅透明。");
+                }
+
+                bitmap = atDpi;
+            }
+
+            WriteNewBytes(Path.Combine(directory, label + ".png"), EncodePng(bitmap));
+        };
+    }
+
+    // #251：悬浮窗滚动提示实拍。每个状态一张 <状态>.png（520×390 DIP，96 DPI，叠在不透明主题底色上）；
+    // 菜单态另拍弹层 <状态>-popup.png（真实弹层是独立顶层窗口，叠回宿主会被窗口右缘裁掉）。发布包模式返回 null。
+    private static Action<FloatingWindow, System.Windows.Controls.Primitives.Popup?, string>?
+        CreateFloatingScrollContextEvidenceWriter()
+    {
+        var directory = ResolveDefaultVisualEvidenceDirectory("scroll-hint");
+        if (directory is null)
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(directory);
+        return (window, popup, state) =>
+        {
+            if (window.Content is not FrameworkElement root)
+            {
+                throw new InvalidOperationException("滚动提示实拍缺少悬浮窗根视觉。");
+            }
+
+            if (Application.Current.FindResource("BackgroundBrush") is not SolidColorBrush background ||
+                background.Color.A != byte.MaxValue)
+            {
+                throw new InvalidOperationException("实拍底色必须是不透明主题画刷。");
+            }
+
+            PumpDispatcher();
+            WriteNewBytes(
+                Path.Combine(directory, state + ".png"),
+                EncodePng(CompositeOverOpaqueBackground(CaptureVisual(root), background.Color)));
+            if (popup is { IsOpen: true, Child: FrameworkElement child })
+            {
+                _ = WaitForRenderedCaptureState(child, () => child.Opacity == 1 && child.RenderTransform.Value.IsIdentity);
+                WriteNewBytes(
+                    Path.Combine(directory, state + "-popup.png"),
+                    EncodePng(CompositeOverOpaqueBackground(CaptureVisual(child), background.Color)));
+            }
         };
     }
 

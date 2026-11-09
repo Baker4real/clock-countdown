@@ -2034,7 +2034,9 @@ public sealed partial class MainWindow
             var editorTypographyTokens =
                 Math.Abs(CountdownEditorTitle.FontSize - blockTitleType) <= 0.01 &&
                 Math.Abs(CountdownPreferencesTitle.FontSize - blockTitleType) <= 0.01 &&
-                Math.Abs(MainCountdownNameDateRow.Margin.Top - spacingFieldRow) <= 0.01 &&
+                // #251：标题到首个字段行的 SpacingFieldRow 挂在标题下沿，折叠新增态随标题收起。
+                Math.Abs(CountdownEditorHeading.Margin.Bottom - spacingFieldRow) <= 0.01 &&
+                MainCountdownNameDateRow.Margin.Top <= 0.01 &&
                 Math.Abs(MainCountdownTimeTagRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(MainCountdownActionRow.Margin.Top - spacingFieldRow) <= 0.01 &&
                 Math.Abs(CountdownMessage.Margin.Top - spacingUnit) <= 0.01 &&

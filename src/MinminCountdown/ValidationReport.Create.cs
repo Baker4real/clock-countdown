@@ -322,6 +322,10 @@ internal static partial class ValidationReport
             ValidationExercises.RunMainEmptyStateViewportBehavior(CreateEmptyStateEvidenceWriter());
         var mainEmptyStateGuidance = ValidationExercises.RunMainEmptyStateGuidanceBehavior();
         var mainListOverflowScroll = ValidationExercises.RunMainListOverflowScrollBehavior();
+        var mainWorkbenchDensity =
+            ValidationExercises.RunMainWorkbenchDensityBehavior(CreateWorkbenchDensityEvidenceWriter());
+        var floatingScrollContextHint =
+            ValidationExercises.RunFloatingScrollContextHintBehavior(CreateFloatingScrollContextEvidenceWriter());
         var mainWindowIdentityZoneDrag =
             ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
         var floatingSecondaryMonitor = MonitorGeometryValidation.FloatingWindowStaysOnSecondaryMonitor();
@@ -488,12 +492,14 @@ internal static partial class ValidationReport
                     GetNoteDateLabel(section.Toggle)?.Text ?? string.Empty)) &&
             HasNoteRowActionAccessibleNames(activeNoteRows) &&
             HasNoteRowActionAccessibleNames(completedNoteRows);
+        // #251：状态分段在列表上方的固定工具条里，列表内容以未完成分组开头、已完成分组紧随其后。
         var notesStatusHeader = Required<Grid>(main, "NotesStatusHeader");
+        var notesListRegion = Required<ScrollViewer>(main, "NotesListRegion");
         var activeNotesGrouped =
             activeNoteRows.Parent is Panel noteSections &&
-            noteSections.Children.Contains(notesStatusHeader) &&
-            noteSections.Children.IndexOf(activeNoteRows) ==
-            noteSections.Children.IndexOf(notesStatusHeader) + 1 &&
+            Required<Grid>(main, "NotesListToolbar").Children.Contains(notesStatusHeader) &&
+            !notesListRegion.IsAncestorOf(notesStatusHeader) &&
+            noteSections.Children.IndexOf(activeNoteRows) == 0 &&
             noteSections.Children.IndexOf(completedNoteRows) ==
             noteSections.Children.IndexOf(activeNoteRows) + 1;
         var expectedActiveDateOrder = workspaceSnapshot.VisibleNotes
@@ -1716,6 +1722,16 @@ internal static partial class ValidationReport
                 mainListOverflowScroll.AllPassed,
                 mainListOverflowScroll.Explain(
                     "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）")),
+            ["MainWorkbenchDensityReclaimed"] = Must(
+                mainWorkbenchDensity.Passed,
+                mainWorkbenchDensity.Explain(
+                    "管理窗口回收编辑卡内空白与区块间距，首选尺寸两个列表首屏视口达到下限；便签状态分段、搜索与批量操作固定在列表上方，" +
+                    "在滚动、搜索、标签筛选与多选下可见、不重叠、不裁切，首选、工作区缩小、720×560 与 DPI 变化窗口都不缩放整窗（#251）")),
+            ["FloatingScrollContextHintFollowsOverflow"] = Must(
+                floatingScrollContextHint.Passed,
+                floatingScrollContextHint.Explain(
+                    "悬浮列表只在真实可滚动且对应方向仍有内容时在正文边缘渐隐，到边界即消失；遮罩只挂在正文内容层，" +
+                    "滚动条、命令区、玩偶与弹层不受影响，滚轮、thumb 与键盘照常滚动（#251）")),
             ["MainTopmostStateSynchronization"] = Must(mainTopmostStateSynchronization, "置顶首次打开与两次切换均由勾选状态单向驱动（#222）"),
             ["MainRedundancyCleanup"] = Must(mainRedundancyCleanup, "数量纯文字保留唯一直播区，删除主题与工作区冗余文字（#222）"),
             ["MainNoteEditorSeparation"] = Must(mainNoteEditorSeparation, "搜索属于列表区、编辑标题与规则字段对齐、Ctrl+F及取消行为正常（#227）"),

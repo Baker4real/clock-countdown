@@ -431,7 +431,7 @@ internal static partial class ValidationReport
                 "CountdownTab", "NotesTab", "PreferencesButton", "FilterButton", "TagManagerButton",
                 "NoteText", "NoteDate", "SaveNoteButton", "CancelNoteEdit",
                 "ManageNoteReminderRulesButton",
-                "NoteTags", "NoteSearch", "NotesListRegion", "StatusText"
+                "NoteTags", "ActiveNotesSegment", "CompletedNotesSegment", "NoteSearch", "NotesListRegion", "StatusText"
             };
         return ids.Where(id =>
         {
@@ -528,16 +528,6 @@ internal static partial class ValidationReport
 
         if (target.Id == "NotesListRegion")
         {
-            if (ReferenceEquals(focused, Required<ToggleButton>(main, "ActiveNotesSegment")))
-            {
-                return "NotesListRegion.ActiveSegment";
-            }
-
-            if (ReferenceEquals(focused, Required<ToggleButton>(main, "CompletedNotesSegment")))
-            {
-                return "NotesListRegion.CompletedSegment";
-            }
-
             if (focused is Button { Uid: "NoteDateDisclosure" })
             {
                 return "NotesListRegion.DateSection";

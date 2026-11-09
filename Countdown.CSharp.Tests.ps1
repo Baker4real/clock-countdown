@@ -5206,7 +5206,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [array]::Reverse($expectedCountdownFocusedTargetsBackward)
     Assert-Equal ($expectedCountdownFocusedTargetsBackward -join ',') ([string]::Join(',', @($countdownTabPath.BackwardFocusedTargets))) '倒计时每个实际焦点目标反向严格对称'
     $notesTabPath = $adapterValidation.MainKeyboardBehavior.NotesTabPath
-    $expectedNotesTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,NoteSearch,NotesListRegion,StatusText'
+    $expectedNotesTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,ActiveNotesSegment,CompletedNotesSegment,NoteSearch,NotesListRegion,StatusText'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ExpectedSequence))) '便签工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ForwardSequence))) '便签工作区真实正向 Tab 路径完整'
     $expectedNotesTabPathBackward = @($notesTabPath.ExpectedSequence)
@@ -5215,7 +5215,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $notesTabPath.FocusVisualsVisible) '便签工作区每个 Tab 目标都有可见焦点样式'
     $expectedNotesFocusedTargets = $expectedNotesTabPath.Replace(
         ',NotesListRegion,StatusText',
-        ',NotesListRegion,NotesListRegion.ActiveSegment,NotesListRegion.CompletedSegment,NotesListRegion.DateSection,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText')
+        ',NotesListRegion,NotesListRegion.DateSection,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText')
     Assert-Equal $expectedNotesFocusedTargets ([string]::Join(',', @($notesTabPath.ForwardFocusedTargets))) '便签动态分组、日期、完成框、编辑和删除均被真实遍历'
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)

@@ -115,7 +115,9 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 共享表面与次级窗口的同版实拍（#250）同样不进门禁：在一次性管理窗口、悬浮窗、提醒中心、规则编辑器与删除确认框里按 96 DPI（1 px = 1 DIP）渲染普通、长内容、错误/禁用、键盘焦点与系统高对比度五类状态，并单独渲染筛选、标签管理、设置、标签选择与悬浮便签 `…` 菜单弹层（叠回宿主会被窗口右缘裁掉），连同 `surfaces.json` 写进实拍证据目录的 `surfaces\` 子目录（报告字段 `SurfaceEvidenceManifestPath`，失败原因在 `SurfaceEvidenceError`；单帧失败写 `<帧名>.error.txt`，其余帧照常落盘）。错误与禁用走真实入口（空名称添加、负月薪保存、空正文快速新增、送达失败、自定义稍后缺日期时间、规则间隔为 0 时保存、送达未落盘），高对比度在验证作用域里注入经典「高对比黑」系统色，不读本机设置；节假日日历读临时缓存里的参考年份工作日表，不联网。圆角结论以 `SharedSurfaceRadiiFollowTokens` 为准，截图供人工核对层级、边界与单层焦点。
 
-候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区、倒计时行与便签卡几何、共享表面圆角（#250）和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
+工作台密度与悬浮窗滚动提示（#251）也这样实拍，不进门禁：密度探针 `MainWorkbenchDensityReclaimed` 在首选 864×1000、最小 720×560 与真实 WM_DPICHANGED 三个窗口里，各拍倒计时首屏、便签顶部、便签滚到底、搜索与多选五张 `<窗口档>-<工作区>[-<状态>].png`（前两档 96 DPI，DPI 档按注入后的窗口 DPI 光栅化），写进 `logs\ui-captures\<时间戳>-density\`；滚动提示探针 `FloatingScrollContextHintFollowsOverflow` 每个状态一张 520×390 的 `<状态>.png`，菜单态另拍弹层 `<状态>-popup.png`，写进 `logs\ui-captures\<时间戳>-scroll-hint\`。几何与提示方向以两项事实为准，截图供人工核对。
+
+候选构建完成后可先运行窗口短验证。`GeometryPreflight` 单独使用同一隔离启动器，复用主窗口工作区、倒计时行与便签卡几何、共享表面圆角（#250）、工作台密度与悬浮窗滚动提示（#251）和确认框的正式断言，并报告候选 DLL 哈希、会话、桌面与原生工作区。失败后先修复候选或环境，再启动完整回归；它不替代完整套件。
 
 ```powershell
 $appPath = Join-Path $PWD 'app'

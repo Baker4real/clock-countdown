@@ -52,6 +52,7 @@ if ('TauriGate' -in $Stage) {
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteBackgroundLoad.psm1') -Force
 $isolation = Resolve-SuiteLauncherIsolation `
     -IsolatedDesktopBound:($PSBoundParameters.ContainsKey('IsolatedDesktop')) `
     -IsolatedDesktop:([bool]$IsolatedDesktop) -AllowUnisolatedDesktop:([bool]$AllowUnisolatedDesktop)
@@ -72,75 +73,6 @@ function Format-SuiteLauncherHolders {
         ForEach-Object { $_.ProcessId })
     if ($holders.Count -eq 0) { return '未找到别的启动器进程' }
     return "疑似持有者 PID $($holders -join ', ')"
-}
-
-# 后台负载采样三次取平均：CPU 总占用，GPU 取最忙的引擎类型（同类引擎跨进程求和），并记下各自最忙的进程。
-# 进程不停起落时（上一轮启动器的子进程刚退出就是这样），Get-Counter 先报一条非终止的 CounterApiError，再照样输出整组
-# 样本：展开通配符后退出的进程，实例状态非零，丢掉这几条即可；展开时实例数恰好在变，会缺掉整类样本，隔一秒重取。
-# 连取五次仍缺就返回带错误原文的 Error，调用方跳过预检，不挡运行。
-function Measure-SuiteBackgroundLoad {
-    $sampleCount = 3
-    $maxAttempts = 5
-    $gpuEngineInstance = '^pid_(\d+)_.*_engtype_(.+)$'
-    $cpuPercent = 0.0
-    $engineTotals = @{}
-    $engineByPid = @{}
-    $cpuByProcess = @{}
-    for ($sample = 0; $sample -lt $sampleCount; $sample++) {
-        for ($attempt = 1; ; $attempt++) {
-            $counterErrors = @()
-            $samples = @()
-            try {
-                $samples = @(Get-Counter -ErrorAction SilentlyContinue -ErrorVariable counterErrors -Counter @(
-                        '\Processor(_Total)\% Processor Time', '\GPU Engine(*)\Utilization Percentage', '\Process(*)\% Processor Time') |
-                    ForEach-Object CounterSamples | Where-Object Status -eq 0)
-            }
-            catch { $counterErrors = @($_) }
-            $missing = @(
-                if ($samples.Where({ $_.Path -match '\\processor\(_total\)\\' }, 'First').Count -eq 0) { 'CPU 总量' }
-                if ($samples.Where({ $_.InstanceName -match $gpuEngineInstance }, 'First').Count -eq 0) { 'GPU 引擎' }
-                if ($samples.Where({ $_.Path -match '\\process\(' }, 'First').Count -eq 0) { '进程' })
-            if ($missing.Count -eq 0) { break }
-            if ($attempt -ge $maxAttempts) {
-                $reasons = @($counterErrors | ForEach-Object { $_.Exception.Message } | Select-Object -Unique)
-                return [pscustomobject]@{
-                    Error = '连取 {0} 次都缺{1}样本（{2}）' -f $maxAttempts, ($missing -join '、'),
-                        $(if ($reasons.Count -gt 0) { $reasons -join '；' } else { '没有错误输出' })
-                }
-            }
-            Start-Sleep -Seconds 1
-        }
-        foreach ($counter in $samples) {
-            if ($counter.Path -match '\\processor\(_total\)\\') {
-                $cpuPercent += $counter.CookedValue / $sampleCount
-            }
-            elseif ($counter.InstanceName -match $gpuEngineInstance) {
-                $engine = $Matches[2]
-                $engineTotals[$engine] += $counter.CookedValue / $sampleCount
-                if (-not $engineByPid.ContainsKey($engine)) { $engineByPid[$engine] = @{} }
-                $engineByPid[$engine][[int] $Matches[1]] += $counter.CookedValue / $sampleCount
-            }
-            elseif ($counter.Path -match '\\process\(' -and $counter.InstanceName -notin @('_total', 'idle')) {
-                $cpuByProcess[$counter.InstanceName] += $counter.CookedValue / $sampleCount / [Environment]::ProcessorCount
-            }
-        }
-    }
-    $busiest = $engineTotals.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
-    $formatTop = {
-        param([hashtable] $byOwner, [scriptblock] $name)
-        @($byOwner.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 |
-            Where-Object Value -ge 1 | ForEach-Object { '{0} {1:N0}%' -f (& $name $_.Key), $_.Value }) -join '、'
-    }
-    [pscustomobject]@{
-        Error = ''
-        CpuPercent = $cpuPercent
-        CpuTop = & $formatTop $cpuByProcess { param($key) $key }
-        GpuEngine = $busiest.Key
-        GpuPercent = $busiest.Value
-        GpuTop = & $formatTop $engineByPid[$busiest.Key] {
-            param($key) $process = Get-Process -Id $key -ErrorAction Ignore; if ($process) { $process.ProcessName } else { "PID $key" }
-        }
-    }
 }
 
 $suiteMutex = [System.Threading.Mutex]::new($false, 'Local\MinminCountdown.SuiteLowImpact')
@@ -164,8 +96,8 @@ try {
     try { [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' }
     catch { Write-Warning "无法设置 BelowNormal 优先级：$($_.Exception.Message)" }
 
-    # 挖矿或游戏吃满 CPU/GPU 时，窗口阶段的参考帧 300ms 超时会被误报成回归：开跑前采样，超阈值就列出最忙的进程
-    # 并停下。只报告，不结束任何进程；CI 机器专用，不查。
+    # 挖矿或游戏吃满 CPU/GPU 时，窗口阶段的参考帧 300ms 超时会被误报成回归：开跑前采样（Countdown.SuiteBackgroundLoad.psm1），
+    # 超阈值就列出最忙的进程并停下；计数器读不全时跳过预检，不挡运行。只报告，不结束任何进程；CI 机器专用，不查。
     if (-not $SkipLoadPreflight -and $env:GITHUB_ACTIONS -ne 'true' -and
         @($Stage | Where-Object { $_ -notin @('Build', 'Tooling') }).Count -gt 0) {
         $load = Measure-SuiteBackgroundLoad

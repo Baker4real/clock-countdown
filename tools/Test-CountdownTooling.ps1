@@ -263,7 +263,8 @@ Add-ToolingCheck -Name 'suite-run:state-write-retry' -Passed ($LASTEXITCODE -eq 
 $suiteStageExcerpt = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteStageFailureExcerpt.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:failure-excerpt' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteStageExcerpt -join ' ') -replace '\s+', ' ')
 
-# 启动器的后台负载预检：进程起落时只丢无效实例、缺整类样本才重取，读不全时带上错误原文；不读真实计数器，不开窗口。
+# 启动器后台负载预检用的采样 module：进程起落时只丢无效实例、缺整类样本才重取，读不全时带上错误原文；经 module 注入假计数器
+# 与假等待，不读真实计数器，不开窗口。
 $suiteLoadPreflight = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteLoadPreflight.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:load-preflight' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteLoadPreflight -join ' ') -replace '\s+', ' ')
 

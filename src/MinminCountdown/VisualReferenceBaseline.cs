@@ -928,6 +928,7 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown/FloatingBottomStatus.cs",
             "src/MinminCountdown/FloatingWindow.Countdowns.cs",
             "src/MinminCountdown/FloatingWindow.Notes.cs",
+            "src/MinminCountdown/FloatingWindow.ScrollContext.cs",
             "src/MinminCountdown/FloatingWindow.xaml",
             "src/MinminCountdown/FloatingWindow.xaml.cs",
             "src/MinminCountdown/HolidayCalendar.cs",

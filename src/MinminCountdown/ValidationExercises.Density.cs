@@ -55,7 +55,7 @@ internal static partial class ValidationExercises
     }
 
     // #251：悬浮窗滚动上下文提示。空便签列表（不可滚动）、七张长便签的顶部/首部空白/中段/尾部空白/底部，滚轮、
-    // thumb 与键盘 End/Home 改变偏移后的提示，搜索展开、快速新增展开与「…」菜单打开时的提示，以及十二条倒计时
+    // thumb 与键盘 PageDown/PageUp 改变偏移后的提示，搜索展开、快速新增展开与「…」菜单打开时的提示，以及十二条倒计时
     // 溢出的顶部与底部（到底时底部状态完整可见）。captureEvidence 在每个状态摆好后调用（实拍用，菜单态带弹层）。
     public static FloatingScrollContextProbe RunFloatingScrollContextHintBehavior(
         Action<FloatingWindow, System.Windows.Controls.Primitives.Popup?, string>? captureEvidence = null)
@@ -161,16 +161,26 @@ internal static partial class ValidationExercises
             window.SettleScrollContextForValidation();
             Must(scroller.VerticalOffset > 0.5, $"#251：拖动 thumb 未滚动悬浮列表；偏移 {scroller.VerticalOffset:0.##}。");
             Expect("notes-long-after-thumb", true, true);
+            // 键盘：ScrollViewer 原生的纵向翻页键（不带 Ctrl 的 Home / End 在 WPF 里是横向滚动）。PageDown 一路到底、
+            // PageUp 一路回顶，提示跟着到边界消失。
             scroller.Focus();
-            WindowValidationInput.RaiseKey(scroller, System.Windows.Input.Key.End);
-            window.SettleScrollContextForValidation();
+            for (var presses = 0; presses < 40 && scroller.VerticalOffset < scroller.ScrollableHeight - 0.5; presses++)
+            {
+                WindowValidationInput.RaiseKey(scroller, System.Windows.Input.Key.PageDown);
+                window.SettleScrollContextForValidation();
+            }
+
             Must(Math.Abs(scroller.VerticalOffset - scroller.ScrollableHeight) <= 0.5,
-                $"#251：End 未滚到悬浮列表底部；偏移 {scroller.VerticalOffset:0.##}/{scroller.ScrollableHeight:0.##}。");
-            Expect("notes-long-after-end", true, false);
-            WindowValidationInput.RaiseKey(scroller, System.Windows.Input.Key.Home);
-            window.SettleScrollContextForValidation();
-            Must(scroller.VerticalOffset <= 0.5, $"#251：Home 未回到悬浮列表顶部；偏移 {scroller.VerticalOffset:0.##}。");
-            Expect("notes-long-after-home", false, true);
+                $"#251：PageDown 未滚到悬浮列表底部；偏移 {scroller.VerticalOffset:0.##}/{scroller.ScrollableHeight:0.##}。");
+            Expect("notes-long-after-page-down", true, false);
+            for (var presses = 0; presses < 40 && scroller.VerticalOffset > 0.5; presses++)
+            {
+                WindowValidationInput.RaiseKey(scroller, System.Windows.Input.Key.PageUp);
+                window.SettleScrollContextForValidation();
+            }
+
+            Must(scroller.VerticalOffset <= 0.5, $"#251：PageUp 未回到悬浮列表顶部；偏移 {scroller.VerticalOffset:0.##}。");
+            Expect("notes-long-after-page-up", false, true);
 
             // 搜索展开：列表视口变矮，提示跟随新视口。
             window.SetNoteSearchExpandedForValidation(true);
@@ -220,7 +230,7 @@ internal static partial class ValidationExercises
                     $"#251：倒计时滚到底时底部状态应完整可见；{incomeBounds}，视口 {scroller.ViewportHeight:0.##}。");
             }
 
-            return new FloatingScrollContextProbe(checkedStates, 19, failures, details);
+            return new FloatingScrollContextProbe(checkedStates, 18, failures, details);
         }
         finally
         {

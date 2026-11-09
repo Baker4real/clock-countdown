@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "issue": 249,
+  "baseline_version": "2026-11-09-v75",
+  "capture_run": "20261109T203340606-a12d0d4a",
+  "reference_utc": "2032-05-18T02:15:30+00:00",
+  "candidate_dll_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+  "validation_report_sha256": "C47AB4EEE2645ACB5F8635A2639AF68F89C0226346BAD0005C08403BFC5E1DA9",
+  "original_manifest_sha256": "04359530E555F22EDD7FCF1EFAF8F4D3AF10324F44E8DF0F8B5C28ECDF75DA0D",
+  "behavior": "NoteRowContentGeometryBehavior",
+  "behavior_passed": true,
+  "required_count": 6,
+  "copied_and_verified": 6,
+  "manual_review": "发布关票前，主代理用read_image逐张查看原始864x1000图片；未改动像素。",
+  "entries": [
+    {
+      "id": "note-rows-top",
+      "path": "note-rows-top.png",
+      "state": "未完成五张，纵向滚动条在顶部：无标签短正文、140 字长正文、五枚标签与两条提醒",
+      "sha256": "1B5C169FEAF8167B9AAC6A0AEC97E3750283BF21FB98FD9EE9A21AE01BF6604E",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-rows-bottom",
+      "path": "note-rows-bottom.png",
+      "state": "未完成滚到底部：每 15 分钟提醒的来源卡与单标签短卡",
+      "sha256": "408FF4D51F0AEA0324B530319A360629D8B938FC43EBD97869F172FD4EE9B981",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-rows-search",
+      "path": "note-rows-search.png",
+      "state": "「复盘」搜索：长正文与五标签两张",
+      "sha256": "76971DEF8746833206568737EBF29F12608F5073407A71F021830CE3C4456FA8",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-rows-selected",
+      "path": "note-rows-selected.png",
+      "state": "多选两张：批量操作条与选中卡底色，卡内几何不变",
+      "sha256": "D0546996CB1D5B0922DFD8E7E06BDBDEA8DE35FA7DE2563C8884D8ABC7976FA1",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-rows-reminder-source",
+      "path": "note-rows-reminder-source.png",
+      "state": "打开提醒来源：来源卡 2 DIP ActiveBrush 强调、编辑按钮获焦",
+      "sha256": "9908B8E143E4B14C10812B66FE8C641AAC72743F1AA4B35A4DEF1EE0E1D762B6",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-rows-completed",
+      "path": "note-rows-completed.png",
+      "state": "已完成段：删除线、弱化正文与暂停的提醒摘要",
+      "sha256": "8F2518BA935C7BC5D5C1A4CE80FCD1224401BF6611D786428156439C7820F57A",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    }
+  ]
+}

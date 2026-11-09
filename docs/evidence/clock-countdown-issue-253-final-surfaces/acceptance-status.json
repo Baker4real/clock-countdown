@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "prd": 246,
+  "status": "local-acceptance-complete",
+  "clean_build": {
+    "status": "completed",
+    "run_id": "20261109T213159664-abb33ca5",
+    "exit_code": 0,
+    "mode": "official Clean + R2R",
+    "report": "final-clean-build.json",
+    "report_sha256": "0CBF7943790AA541C7085063B03D207A10861CC30828B30A4823FC199A02D832",
+    "product_bytes_match_validated_candidate": true,
+    "run_artifact_report_sha256": "D66E3DE0F74DABF4F3B0B07BAC858B6A2CD813C99EDE635779957784254477F8"
+  },
+  "current_branch": "feat/246-ui-polish",
+  "head": "fb1b1477 + staged final UI patch",
+  "candidate_dll_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+  "baseline_version": "2026-11-09-v75",
+  "regression_run": "20261109T203840236-4ac76637",
+  "geometry_run": "20261109T203724144-7ef21308",
+  "baseline_run": "20261109T203340606-a12d0d4a",
+  "suite_status": "Completed",
+  "stages": [
+    {
+      "stage": "Core",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 321,
+      "isolated": true
+    },
+    {
+      "stage": "CSharp",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 667,
+      "isolated": true
+    },
+    {
+      "stage": "Ui",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 451,
+      "isolated": true
+    },
+    {
+      "stage": "SourceValidation",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 95,
+      "isolated": true
+    },
+    {
+      "stage": "InstallValidate",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 10,
+      "isolated": true
+    },
+    {
+      "stage": "ValidationHarness",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 26,
+      "isolated": true
+    },
+    {
+      "stage": "Tooling",
+      "status": "Completed",
+      "exit_code": 0,
+      "elapsed_seconds": 65,
+      "isolated": false
+    }
+  ],
+  "required_stages_completed": 9,
+  "required_visual_frames": 41,
+  "current_source_frames_verified": 41,
+  "manual_review": "41张人工复核；最终候选重新捕获与逐帧PNG完全相同。",
+  "standard_review": "无confirmed defect，1条非阻断测试建议保留在评审记录。",
+  "spec_review": "原P2动态禁动画与P3键盘/刷新覆盖均已闭环；真实负例单项报红，恢复后绿色。",
+  "source_binding": {
+    "path": "final-source-binding.json",
+    "sha256": "C7C31234BFB964CC6EA2544C7141F0E1A17FCC7C138F127CFBA1AD30F417C499",
+    "run_artifact_sha256": "D9DF5C1821FFABE474193C652BFA0FE8A4EB57AD747893051F0D37295D3892CD"
+  },
+  "receipts": [
+    {
+      "path": "independent-behavior-facts.json",
+      "sha256": "65A7478F761AD291702FAA5ADF95626F77F008BA3E9B5B8D3078653449931BBB",
+      "run_artifact_sha256": "6EF57ACDD3DD78EFD9B250A14843689746EF69EAAEF16378FBE049866579612A"
+    },
+    {
+      "path": "final-regression-summary.json",
+      "sha256": "382E7EB654C8B2CF96085BC50D1EEBA4A4B22939B96A91F46BC5D55E45CDA573",
+      "run_artifact_sha256": "68939E7003490167BA0A5E698268F73EDCE993F84E3B84CB5FAC4AF88CAECBBC"
+    },
+    {
+      "path": "final-geometry-summary.json",
+      "sha256": "3700498600EF0CA5F1D9404636BE879309799259AE2FC6CB50DFFA8305F1B9C9",
+      "run_artifact_sha256": "CE4F90F72E68C498B6ADFA31166F3791BF2F702554F9360587579E38B59B23F9"
+    },
+    {
+      "path": "final-baseline-summary.json",
+      "sha256": "748E95C317B86A185D95989C8D83D4DC34ACD5440501BD50383F687BC904482B",
+      "run_artifact_sha256": "78A52F6BCBC03BC2C37ACDE79B9BD06B9CDD93EADEB1A91B55B877220D575A60"
+    },
+    {
+      "path": "final-clean-build-summary.json",
+      "sha256": "081C8EFD30DA3570EB437973B63999F275DFEB1BA22ADEFF3BF71F69E3A8DB24",
+      "run_artifact_sha256": "A662B6D222AE834C3DBC40262F3A24B42AB2C3A648A9D1ED806D714A8D5D9F8F"
+    }
+  ],
+  "published": false,
+  "deployed": false,
+  "office_live_verified": false,
+  "remote_issues_modified": false,
+  "git_commit_created": false,
+  "deferred_by_user": "PRD #252 / #255–#257 基础设施深化",
+  "known_history": "首次v73底部锚定采样失败已保留；后续源码/EXE/独立回归均通过，未放宽容差或用基线覆盖失败。",
+  "publication_hash_scope": "本文件中的当前文件SHA-256以Git发布的UTF-8/LF字节为准；run_artifact_*保留原始运行证据SHA-256。"
+}

@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "issue": 247,
+  "baseline_version": "2026-11-09-v75",
+  "capture_run": "20261109T203340606-a12d0d4a",
+  "reference_utc": "2032-05-18T02:15:30+00:00",
+  "candidate_dll_sha256": "FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C",
+  "validation_report_sha256": "C47AB4EEE2645ACB5F8635A2639AF68F89C0226346BAD0005C08403BFC5E1DA9",
+  "original_manifest_sha256": "1AA9E40EF77EDEE3DC51FBD9D62F389F3614592787D5AD5D29CC46805A82EC7C",
+  "behavior": "CountdownRowDeadlineAndSecondaryDeleteBehavior",
+  "behavior_passed": true,
+  "required_count": 5,
+  "copied_and_verified": 5,
+  "manual_review": "发布关票前，主代理用read_image逐张查看原始864x1000图片；未改动像素。",
+  "entries": [
+    {
+      "id": "countdown-rows-top",
+      "path": "countdown-rows-top.png",
+      "state": "七行，纵向滚动条在顶部：普通主项、30 字名称、五枚标签、999 天",
+      "sha256": "81BEFF6C4AC8DB3E143A0EB79B3CF4054661EBB6B6018C26068068EE17998282",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "countdown-rows-bottom",
+      "path": "countdown-rows-bottom.png",
+      "state": "七行滚到底部：北京时区截止行、百万天、已到期次项",
+      "sha256": "F35E78A3104F3CB86FE1BFD9EA54E3C8F1220BE6B182114F00AED7AE7B98B137",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "countdown-rows-longest-primary",
+      "path": "countdown-rows-longest-primary.png",
+      "state": "「长期」筛选：百万天主项与已到期次项，无滚动条",
+      "sha256": "4C447A848492FA02DB180FD48EEB56BE33F1A95D94FFC23C896D418B33025108",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "countdown-rows-expired-primary",
+      "path": "countdown-rows-expired-primary.png",
+      "state": "「收尾」筛选：已到期主项",
+      "sha256": "7BBEE1DED56B6941B036A12AB1F4BA12C2ACB45C35D9AF734DD2DE58A0CD98B3",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    },
+    {
+      "id": "note-row-actions",
+      "path": "note-row-actions.png",
+      "state": "便签行：与倒计时行同一套编辑/删除",
+      "sha256": "72D228A7E914F441F9202F38781523CDACBB79323CC96CB45E6944C9375861B6",
+      "manual_review": "reviewed",
+      "result": "pass",
+      "note": "只对视口内的卡片内容、动作和层级判定；视口外自然裁切沿用既有滚动合同。"
+    }
+  ]
+}

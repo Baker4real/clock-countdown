@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "reason": "Windows原始回执是CRLF；仓库.gitattributes要求JSON为LF。发布时明确区分两种字节口径，不把行尾转换当成运行结果改变。",
+  "product_and_pass_fail_results_unchanged": true,
+  "rebindings": [
+    {
+      "path": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
+      "run_artifact_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A",
+      "published_utf8_lf_sha256": "05D8DABC9BACCE5C15B33AFCC350250D9AD662A9040345A97E1467BF2B7FCE48",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json",
+      "run_artifact_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799",
+      "published_utf8_lf_sha256": "ECC3F946FE2509C88526D18B2DC2741512AD7E2E74EAF241CEC5C5733048D3A8",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/surfaces-v75.json",
+      "run_artifact_sha256": "A9BBDCD00B9E6B69B1DFE40D7A7B89055F3C26D10D45183879EF68C4D264FAB9",
+      "published_utf8_lf_sha256": "4EED7B21E691EB93C8348D3ED8AA39984D575AF8003E7771C8C7158A4427D7D2",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-clean-build-summary.json",
+      "run_artifact_sha256": "A662B6D222AE834C3DBC40262F3A24B42AB2C3A648A9D1ED806D714A8D5D9F8F",
+      "published_utf8_lf_sha256": "081C8EFD30DA3570EB437973B63999F275DFEB1BA22ADEFF3BF71F69E3A8DB24",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/independent-behavior-facts.json",
+      "run_artifact_sha256": "6EF57ACDD3DD78EFD9B250A14843689746EF69EAAEF16378FBE049866579612A",
+      "published_utf8_lf_sha256": "65A7478F761AD291702FAA5ADF95626F77F008BA3E9B5B8D3078653449931BBB",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-regression-summary.json",
+      "run_artifact_sha256": "68939E7003490167BA0A5E698268F73EDCE993F84E3B84CB5FAC4AF88CAECBBC",
+      "published_utf8_lf_sha256": "382E7EB654C8B2CF96085BC50D1EEBA4A4B22939B96A91F46BC5D55E45CDA573",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-geometry-summary.json",
+      "run_artifact_sha256": "CE4F90F72E68C498B6ADFA31166F3791BF2F702554F9360587579E38B59B23F9",
+      "published_utf8_lf_sha256": "3700498600EF0CA5F1D9404636BE879309799259AE2FC6CB50DFFA8305F1B9C9",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-baseline-summary.json",
+      "run_artifact_sha256": "78A52F6BCBC03BC2C37ACDE79B9BD06B9CDD93EADEB1A91B55B877220D575A60",
+      "published_utf8_lf_sha256": "748E95C317B86A185D95989C8D83D4DC34ACD5440501BD50383F687BC904482B",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-clean-build-summary.json",
+      "run_artifact_sha256": "A662B6D222AE834C3DBC40262F3A24B42AB2C3A648A9D1ED806D714A8D5D9F8F",
+      "published_utf8_lf_sha256": "081C8EFD30DA3570EB437973B63999F275DFEB1BA22ADEFF3BF71F69E3A8DB24",
+      "content_equivalent_after_lf_normalization": true
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-source-binding.json",
+      "run_artifact_sha256": "D9DF5C1821FFABE474193C652BFA0FE8A4EB57AD747893051F0D37295D3892CD",
+      "published_utf8_lf_sha256": "C7C31234BFB964CC6EA2544C7141F0E1A17FCC7C138F127CFBA1AD30F417C499",
+      "change": "只重绑定提交中的JSON文件字节哈希；原始运行结果、产品哈希及全部通过判定保持。"
+    },
+    {
+      "path": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-clean-build.json",
+      "run_artifact_sha256": "D66E3DE0F74DABF4F3B0B07BAC858B6A2CD813C99EDE635779957784254477F8",
+      "published_utf8_lf_sha256": "0CBF7943790AA541C7085063B03D207A10861CC30828B30A4823FC199A02D832",
+      "change": "只重绑定提交中的JSON文件字节哈希；原始运行结果、产品哈希及全部通过判定保持。"
+    }
+  ],
+  "published_acceptance_sha256": "DEBBBFB8D310EE9C7B38524A6CDC76A07F160BF129CFE946D1099A1A964A1502",
+  "original_acceptance_sha256": "F298D387D62F698A00C811D6B77E438F9C59D7C249EDED8698577220E2D3102B"
+}

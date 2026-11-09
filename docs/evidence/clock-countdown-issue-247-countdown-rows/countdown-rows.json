@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "captureKind": "main-window countdown row states at 864x1000 for #247; not gated",
+  "referenceUtc": "2032-05-18T02:15:30+00:00",
+  "entries": [
+    {
+      "captureId": "countdown-rows-top",
+      "state": "\u4E03\u884C\uFF0C\u7EB5\u5411\u6EDA\u52A8\u6761\u5728\u9876\u90E8\uFF1A\u666E\u901A\u4E3B\u9879\u300130 \u5B57\u540D\u79F0\u3001\u4E94\u679A\u6807\u7B7E\u3001999 \u5929",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\countdown-rows\\countdown-rows-top.png",
+      "sha256": "81BEFF6C4AC8DB3E143A0EB79B3CF4054661EBB6B6018C26068068EE17998282"
+    },
+    {
+      "captureId": "countdown-rows-bottom",
+      "state": "\u4E03\u884C\u6EDA\u5230\u5E95\u90E8\uFF1A\u5317\u4EAC\u65F6\u533A\u622A\u6B62\u884C\u3001\u767E\u4E07\u5929\u3001\u5DF2\u5230\u671F\u6B21\u9879",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\countdown-rows\\countdown-rows-bottom.png",
+      "sha256": "F35E78A3104F3CB86FE1BFD9EA54E3C8F1220BE6B182114F00AED7AE7B98B137"
+    },
+    {
+      "captureId": "countdown-rows-longest-primary",
+      "state": "\u300C\u957F\u671F\u300D\u7B5B\u9009\uFF1A\u767E\u4E07\u5929\u4E3B\u9879\u4E0E\u5DF2\u5230\u671F\u6B21\u9879\uFF0C\u65E0\u6EDA\u52A8\u6761",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\countdown-rows\\countdown-rows-longest-primary.png",
+      "sha256": "4C447A848492FA02DB180FD48EEB56BE33F1A95D94FFC23C896D418B33025108"
+    },
+    {
+      "captureId": "countdown-rows-expired-primary",
+      "state": "\u300C\u6536\u5C3E\u300D\u7B5B\u9009\uFF1A\u5DF2\u5230\u671F\u4E3B\u9879",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\countdown-rows\\countdown-rows-expired-primary.png",
+      "sha256": "7BBEE1DED56B6941B036A12AB1F4BA12C2ACB45C35D9AF734DD2DE58A0CD98B3"
+    },
+    {
+      "captureId": "note-row-actions",
+      "state": "\u4FBF\u7B7E\u884C\uFF1A\u4E0E\u5012\u8BA1\u65F6\u884C\u540C\u4E00\u5957\u7F16\u8F91/\u5220\u9664",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\countdown-rows\\note-row-actions.png",
+      "sha256": "72D228A7E914F441F9202F38781523CDACBB79323CC96CB45E6944C9375861B6"
+    }
+  ]
+}

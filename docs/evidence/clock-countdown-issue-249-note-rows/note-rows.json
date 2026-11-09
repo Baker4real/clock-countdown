@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "captureKind": "main-window note card states at 864x1000 for #249; not gated",
+  "referenceUtc": "2032-05-18T02:15:30+00:00",
+  "entries": [
+    {
+      "captureId": "note-rows-top",
+      "state": "\u672A\u5B8C\u6210\u4E94\u5F20\uFF0C\u7EB5\u5411\u6EDA\u52A8\u6761\u5728\u9876\u90E8\uFF1A\u65E0\u6807\u7B7E\u77ED\u6B63\u6587\u3001140 \u5B57\u957F\u6B63\u6587\u3001\u4E94\u679A\u6807\u7B7E\u4E0E\u4E24\u6761\u63D0\u9192",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-top.png",
+      "sha256": "1B5C169FEAF8167B9AAC6A0AEC97E3750283BF21FB98FD9EE9A21AE01BF6604E"
+    },
+    {
+      "captureId": "note-rows-bottom",
+      "state": "\u672A\u5B8C\u6210\u6EDA\u5230\u5E95\u90E8\uFF1A\u6BCF 15 \u5206\u949F\u63D0\u9192\u7684\u6765\u6E90\u5361\u4E0E\u5355\u6807\u7B7E\u77ED\u5361",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-bottom.png",
+      "sha256": "408FF4D51F0AEA0324B530319A360629D8B938FC43EBD97869F172FD4EE9B981"
+    },
+    {
+      "captureId": "note-rows-search",
+      "state": "\u300C\u590D\u76D8\u300D\u641C\u7D22\uFF1A\u957F\u6B63\u6587\u4E0E\u4E94\u6807\u7B7E\u4E24\u5F20",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-search.png",
+      "sha256": "76971DEF8746833206568737EBF29F12608F5073407A71F021830CE3C4456FA8"
+    },
+    {
+      "captureId": "note-rows-selected",
+      "state": "\u591A\u9009\u4E24\u5F20\uFF1A\u6279\u91CF\u64CD\u4F5C\u6761\u4E0E\u9009\u4E2D\u5361\u5E95\u8272\uFF0C\u5361\u5185\u51E0\u4F55\u4E0D\u53D8",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-selected.png",
+      "sha256": "D0546996CB1D5B0922DFD8E7E06BDBDEA8DE35FA7DE2563C8884D8ABC7976FA1"
+    },
+    {
+      "captureId": "note-rows-reminder-source",
+      "state": "\u6253\u5F00\u63D0\u9192\u6765\u6E90\uFF1A\u6765\u6E90\u5361 2 DIP ActiveBrush \u5F3A\u8C03\u3001\u7F16\u8F91\u6309\u94AE\u83B7\u7126",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-reminder-source.png",
+      "sha256": "9908B8E143E4B14C10812B66FE8C641AAC72743F1AA4B35A4DEF1EE0E1D762B6"
+    },
+    {
+      "captureId": "note-rows-completed",
+      "state": "\u5DF2\u5B8C\u6210\u6BB5\uFF1A\u5220\u9664\u7EBF\u3001\u5F31\u5316\u6B63\u6587\u4E0E\u6682\u505C\u7684\u63D0\u9192\u6458\u8981",
+      "path": "D:\\agents\\projects\\\u65F6\u949F\u5012\u8BA1\u65F6\\.claude\\worktrees\\integration\\logs\\ui-captures\\20261109T123532252-validate-only\\note-rows\\note-rows-completed.png",
+      "sha256": "8F2518BA935C7BC5D5C1A4CE80FCD1224401BF6611D786428156439C7820F57A"
+    }
+  ]
+}

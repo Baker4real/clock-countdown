@@ -11,21 +11,23 @@
   "current_source_bindings": {
     "main-window": {
       "manifest": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
-      "manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A",
+      "manifest_sha256": "05D8DABC9BACCE5C15B33AFCC350250D9AD662A9040345A97E1467BF2B7FCE48",
       "aggregate_sha256": "6CD667E9A9A51D200EE29A63867D023A7C6DBF0691E8F6AD162C34D571169795",
-      "current_source_files_verified": 22
+      "current_source_files_verified": 22,
+      "run_artifact_manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A"
     },
     "floating-window": {
       "manifest": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json",
-      "manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799",
+      "manifest_sha256": "ECC3F946FE2509C88526D18B2DC2741512AD7E2E74EAF241CEC5C5733048D3A8",
       "aggregate_sha256": "E7EA58B328F7CB11667B250CFCC212F06B3DBD7948854358C1BDB939AC63AE5F",
-      "current_source_files_verified": 27
+      "current_source_files_verified": 27,
+      "run_artifact_manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799"
     }
   },
   "generation_report": "logs/visual-baseline-generation/66bf40da1a624d4b9dc453bd8483d818/validation.json",
   "generation_report_sha256": "C47AB4EEE2645ACB5F8635A2639AF68F89C0226346BAD0005C08403BFC5E1DA9",
   "current_surfaces_manifest": "surfaces-v75.json",
-  "current_surfaces_manifest_sha256": "A9BBDCD00B9E6B69B1DFE40D7A7B89055F3C26D10D45183879EF68C4D264FAB9",
+  "current_surfaces_manifest_sha256": "4EED7B21E691EB93C8348D3ED8AA39984D575AF8003E7771C8C7158A4427D7D2",
   "required_frames": 41,
   "captured_verified_frames": 41,
   "changed_since_manual_review": 0,
@@ -81,5 +83,6 @@
     "MainDaySingleBorderGate": true,
     "MainDaySingleBorderGateIsolationBehavior": true
   },
-  "pending": "最终候选的独立GeometryPreflight与完整相关组合；本文件不替代正式suite summary。"
+  "pending": "最终候选的独立GeometryPreflight与完整相关组合；本文件不替代正式suite summary。",
+  "run_artifact_current_surfaces_manifest_sha256": "A9BBDCD00B9E6B69B1DFE40D7A7B89055F3C26D10D45183879EF68C4D264FAB9"
 }

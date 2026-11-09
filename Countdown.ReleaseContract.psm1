@@ -125,6 +125,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\FloatingTrayController.cs',
     'src\MinminCountdown\FloatingWindow.Countdowns.cs',
     'src\MinminCountdown\FloatingWindow.Notes.cs',
+    'src\MinminCountdown\FloatingWindow.ScrollContext.cs',
     'src\MinminCountdown\FloatingWindow.xaml',
     'src\MinminCountdown\FloatingWindow.xaml.cs',
     'src\MinminCountdown\GlobalUsings.cs',
@@ -150,6 +151,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\UiControls.cs',
     'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',
     'src\MinminCountdown\ValidationExercises.ConfirmationAndUndo.cs',
+    'src\MinminCountdown\ValidationExercises.Density.cs',
     'src\MinminCountdown\ValidationExercises.EmptyStates.cs',
     'src\MinminCountdown\ValidationExercises.LayoutProbes.cs',
     'src\MinminCountdown\ValidationExercises.MainWindow.cs',
@@ -177,6 +179,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\ValidationReportContract.cs',
     'src\MinminCountdown\VisualReferenceBaseline.cs',
     'src\MinminCountdown\WindowValidationInput.cs',
+    'src\MinminCountdown\WindowValidationScenarios.Density.cs',
     'src\MinminCountdown\WindowValidationScenarios.EmptyStates.cs',
     'src\MinminCountdown\WindowValidationScenarios.cs',
     'src\MinminCountdown\WindowWorkAreaGeometry.cs'

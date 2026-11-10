@@ -139,14 +139,23 @@ internal sealed class NoteCompletionExit : Adorner, IDisposable
         var moving = new HashSet<FrameworkElement>();
         foreach (var item in ReadListItems(_viewport).OrderBy(static item => item.Depth))
         {
-            if (!_previousTops.TryGetValue(item.Identity, out var previousTop)) continue;
-            var offset = previousTop - item.Bounds.Top;
-            if (Math.Abs(offset) < 0.01 ||
-                Math.Max(previousTop, item.Bounds.Top) + item.Bounds.Height <= 0 ||
-                Math.Min(previousTop, item.Bounds.Top) >= viewportHeight ||
-                HasMovingAncestor(item.Element, moving))
+            double offset;
+            if (_previousTops.TryGetValue(item.Identity, out var previousTop))
             {
-                continue;
+                offset = previousTop - item.Bounds.Top;
+                if (Math.Abs(offset) < 0.01 ||
+                    Math.Max(previousTop, item.Bounds.Top) + item.Bounds.Height <= 0 ||
+                    Math.Min(previousTop, item.Bounds.Top) >= viewportHeight ||
+                    HasMovingAncestor(item.Element, moving))
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                // 新卡不补位也包含祖先位移：在同一Storyboard中抵消既存日期组的移动。
+                offset = -MovingAncestorDisplacement(item.Element);
+                if (Math.Abs(offset) < 0.01) continue;
             }
 
             var transform = new TranslateTransform(0, offset);
@@ -169,6 +178,18 @@ internal sealed class NoteCompletionExit : Adorner, IDisposable
         Storyboard.SetTarget(animation, target);
         Storyboard.SetTargetProperty(animation, path);
         return animation;
+    }
+
+    private double MovingAncestorDisplacement(DependencyObject element)
+    {
+        var offset = 0d;
+        for (var current = VisualTreeHelper.GetParent(element);
+             current is not null && !ReferenceEquals(current, _viewport);
+             current = VisualTreeHelper.GetParent(current))
+        {
+            offset += _displacements.Find(displacement => ReferenceEquals(displacement.Element, current))?.Transform.Y ?? 0;
+        }
+        return offset;
     }
 
     private bool HasMovingAncestor(DependencyObject element, HashSet<FrameworkElement> moving)

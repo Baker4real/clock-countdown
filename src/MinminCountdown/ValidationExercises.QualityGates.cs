@@ -210,36 +210,24 @@ internal static partial class ValidationExercises
 
     private static void VerifyFloatingWorkspaceOrderAndFilterAction()
     {
-        var settingsPath = Path.Combine(Path.GetTempPath(), $"MinminCountdown-workspace-order-{Guid.NewGuid():N}.settings.json");
-        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
-        MainWindow? main = null;
-        FloatingWindow? floating = null;
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        try
+        var notes = new[]
         {
-            var notes = new[]
-            {
-                new NoteRecord("older", "较早日期", "2034-05-05", false, [], NoReminder.Instance),
-                new NoteRecord("same-first", "A 先添加", "2034-05-06", false, [], NoReminder.Instance),
-                new NoteRecord("undated", "无日期", null, false, [], NoReminder.Instance),
-                new NoteRecord("same-last", "Z 后添加", "2034-05-06", false, [], NoReminder.Instance),
-                new NoteRecord("done", "已完成", "2034-05-07", true, [], NoReminder.Instance)
-            };
-            var clock = new WorkspaceValidationClock(new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero));
-            var store = new SettingsStore(clock: clock);
-            var countdown = new CountdownRecord("restored-countdown", "清除后恢复的倒计时", clock.UtcNow.AddDays(2), ["present-tag"]);
-            store.Save(settingsPath, new CountdownSettings([countdown], notes,
-                [new TagRecord("present-tag", "已有标签", "#F4B6A6")], CountdownSettings.Empty.Preferences));
-            var workspace = DesktopWorkspace.Load(settingsPath, store);
-            main = new MainWindow(workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
-            floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-            PrepareOffscreenValidationWindow(main);
-            PrepareOffscreenValidationWindow(floating);
-            main.Show();
-            floating.Show();
-            main.ShowWorkspace(WorkspaceKind.Notes);
-            floating.ShowWorkspace(WorkspaceKind.Notes);
-            WindowValidationInput.Pump(main.Dispatcher);
+            new NoteRecord("older", "较早日期", "2034-05-05", false, [], NoReminder.Instance),
+            new NoteRecord("same-first", "A 先添加", "2034-05-06", false, [], NoReminder.Instance),
+            new NoteRecord("undated", "无日期", null, false, [], NoReminder.Instance),
+            new NoteRecord("same-last", "Z 后添加", "2034-05-06", false, [], NoReminder.Instance),
+            new NoteRecord("done", "已完成", "2034-05-07", true, [], NoReminder.Instance)
+        };
+        var clock = new WorkspaceValidationClock(new DateTimeOffset(2034, 5, 6, 1, 2, 3, TimeSpan.Zero));
+        var store = new SettingsStore(clock: clock);
+        var countdown = new CountdownRecord("restored-countdown", "清除后恢复的倒计时", clock.UtcNow.AddDays(2), ["present-tag"]);
+        DualWindowValidationFixture.Run("workspace-order", fixture =>
+        {
+            var settingsPath = fixture.SettingsPath;
+            var workspace = fixture.Workspace;
+            fixture.ShowWindows(WorkspaceKind.Notes);
+            var main = fixture.Main;
+            var floating = fixture.Floating;
             main.UpdateLayout();
             floating.UpdateLayout();
             var expectedActive = new[] { "same-last", "same-first", "older", "undated" };
@@ -315,15 +303,9 @@ internal static partial class ValidationExercises
             Must(VisualDescendants<TextBlock>(floating).Any(text => text.IsVisible && text.Text == "还没有待办便签。") &&
                     !VisualDescendants<Button>(floating).Any(button => button.IsVisible && Equals(button.Content, "清除筛选")),
                 "无筛选便签空态应如实说明没有待办，并且不提供清除筛选。");
-        }
-        finally
-        {
-            floating?.Close();
-            main?.Close();
-            WindowValidationInput.Pump(Application.Current.Dispatcher);
-            DeleteSettingsFiles(settingsPath);
-            DeleteFileIfPresent(diagnosticPath);
-        }
+            return true;
+        }, store: store, settings: new CountdownSettings([countdown], notes,
+            [new TagRecord("present-tag", "已有标签", "#F4B6A6")], CountdownSettings.Empty.Preferences));
     }
 
     public static MainNoteCompletionGateResults EvaluateMainNoteCompletionGates(

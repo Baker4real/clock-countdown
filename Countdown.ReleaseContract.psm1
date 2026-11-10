@@ -150,6 +150,8 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\TrayIconHost.cs',
     'src\MinminCountdown\UiControls.cs',
     'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',
+    'src\MinminCountdown\DualWindowValidationFixture.cs',
+    'src\MinminCountdown\ValidationExercises.DualWindowFixture.cs',
     'src\MinminCountdown\ValidationExercises.ConfirmationAndUndo.cs',
     'src\MinminCountdown\ValidationExercises.Density.cs',
     'src\MinminCountdown\ValidationExercises.EmptyStates.cs',

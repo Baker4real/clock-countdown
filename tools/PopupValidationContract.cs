@@ -1035,7 +1035,7 @@ public static class MotionValidationContractHarness
         return moved;
     }
 
-    // Popup controllers synchronously commit the captured current value.
+    // Popup调用或indicator的Loaded提交完成后，控制器已提交捕获的当前值。
     // WPF frame-clock progress is not the Stopwatch interval between these reads.
     // Require that snapshot, a live nonterminal frame in the target direction, and
     // leave each caller's subsequent real 10%-90% observation mandatory.
@@ -2248,9 +2248,9 @@ public static class MotionValidationContractHarness
             var before = Observe(result, "indicator-reverse-before", values, animated);
             move(left);
             _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-            Observe(result, "indicator-reverse-committed", values, animated);
+            var reverseCommitted = Observe(result, "indicator-reverse-committed", values, animated);
             var after = ObserveFrame(result, "indicator-reverse-first-frame", indicator, values, animated);
-            Require(Continues(before, after, new[] { 0.0, 80.0 }, 160, 0.02),
+            Require(ContinuesFromSnapshot(before, reverseCommitted, after, new[] { 0.0, 80.0 }, 160, 0.02),
                 "指示器反转未沿当前几何继续。", LateFirstFrame(before, after, 160));
             WaitFor(result, "indicator-reverse-middle", indicator, values, animated,
                 value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }), firstFrame: after);
@@ -2419,6 +2419,22 @@ public static class MotionValidationContractHarness
             new MotionObservation {
                 ElapsedMilliseconds = 58.3934, Values = new[] { 0.8814214647463753 }, HasAnimation = true },
             new[] { 1.0 }, 90, 0.002);
+        // #256组合回归实测：Loaded提交保持快照，首帧墙钟仅过0.4964ms，
+        // RenderingTime却前进8.4033ms；实际位移精确匹配后者的160ms quartic进度。
+        var indicatorBefore = new MotionObservation {
+            ElapsedMilliseconds = 222.4371,
+            Values = new[] { 23.292466773414645, 83.8820777955691 } };
+        var indicatorCommitted = new MotionObservation {
+            ElapsedMilliseconds = 222.8585,
+            Values = new[] { 23.292466773414645, 83.8820777955691 } };
+        var indicatorFirstFrame = new MotionObservation {
+            ElapsedMilliseconds = 222.9335,
+            Values = new[] { 18.771308370159435, 83.12855139502656 }, HasAnimation = true };
+        var snapshotClockControls = new Dictionary<string, bool> {
+            ["popup-frame-clock-advance"] = snapshotClockAdvanceAccepted,
+            ["indicator-frame-clock-advance"] = ContinuesFromSnapshot(
+                indicatorBefore, indicatorCommitted, indicatorFirstFrame, new[] { 0.0, 80.0 }, 160, 0.02)
+        };
         var negatives = new Dictionary<string, bool> {
             ["missing-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { 1.0 }, new[] { 1.0 }),
             ["nonfinite-intermediate"] = !Intermediate(new[] { 0.0 }, new[] { double.NaN }, new[] { 1.0 }),
@@ -2462,7 +2478,8 @@ public static class MotionValidationContractHarness
             ApplicationExitNotInvoked = !_applicationExitObserved,
             DeadlineMilliseconds,
             Results = results,
-            SnapshotClockAdvanceAccepted = snapshotClockAdvanceAccepted,
+            SnapshotClockAdvanceAccepted = snapshotClockControls.Values.All(value => value),
+            SnapshotClockControls = snapshotClockControls,
             NegativeControls = negatives,
             StallRetry = new {
                 GapThresholdMilliseconds = StallGapMilliseconds,
@@ -2474,7 +2491,7 @@ public static class MotionValidationContractHarness
                 Controls = stallControls
             },
             Passed = startupAbsent && !_applicationExitObserved && systemUnchanged && results.All(result => result.Passed) &&
-                snapshotClockAdvanceAccepted && negatives.Values.All(value => value) &&
+                snapshotClockControls.Values.All(value => value) && negatives.Values.All(value => value) &&
                 injectedStallDetected && stallControls.Values.All(value => value)
         };
     }

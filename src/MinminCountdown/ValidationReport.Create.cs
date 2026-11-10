@@ -974,6 +974,7 @@ internal static partial class ValidationReport
             floatingTypographyMeasurements.FirstOrDefault()?.ReminderFontSize ?? 0);
         var secondaryWindowTypographyGateIsolationBehavior =
             ValidationExercises.RunSecondaryWindowTypographyGateIsolationBehavior();
+        var keyboardFocusPolicyChecks = KeyboardFocusPolicyFixtures.Run();
         var secondaryWindowKeyboardFocus = ValidateSecondaryWindowKeyboardFocus(main);
 
         var countdownName = Required<TextBox>(main, "CountdownName");
@@ -1495,6 +1496,11 @@ internal static partial class ValidationReport
             ["MainStructuralAnnouncementGateIsolationBehavior"] = Must(mainStructuralAnnouncementGateIsolationBehavior, "结构变化通知三门负向夹具可独立失败"),
             ["SecondaryWindowTypography"] = secondaryWindowTypography,
             ["SecondaryWindowTypographyGateIsolationBehavior"] = Must(secondaryWindowTypographyGateIsolationBehavior, "次级窗口字号三门负向夹具可独立失败"),
+            ["KeyboardFocusPolicyBehavior"] = Must(
+                keyboardFocusPolicyChecks.Values.All(passed => passed),
+                "#255 直接 WPF 策略夹具覆盖键盘与指针、模板/宿主归属、装饰层资格与拒绝重复描边；未通过：" +
+                    string.Join('/', keyboardFocusPolicyChecks.Where(check => !check.Value).Select(check => check.Key))),
+            ["KeyboardFocusPolicyChecks"] = keyboardFocusPolicyChecks,
             ["SecondaryWindowKeyboardFocusDrawnOnce"] = Must(
                 secondaryWindowKeyboardFocus.AllPassed,
                 "提醒中心、提醒规则编辑器、设置恢复与激活失败窗沿 Tab 一圈，每个停靠点只亮模板焦点或统一的 2px 暖边、" +

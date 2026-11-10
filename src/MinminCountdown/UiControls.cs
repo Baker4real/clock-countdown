@@ -232,7 +232,6 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
     private bool _excludedFromAutomationTree;
     private bool _isInvokable;
     private bool _pointerPressed;
-    private bool _mouseFocusPending;
 
     internal event EventHandler? Invoked;
 
@@ -260,10 +259,7 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         base.OnMouseLeftButtonDown(e);
         if (!IsInvokable || !IsEnabled) return;
         _pointerPressed = true;
-        _mouseFocusPending = true;
-        FocusVisualState.SetIsKeyboardFocusVisible(this, false);
-        try { Focus(); }
-        finally { _mouseFocusPending = false; }
+        KeyboardFocusPolicy.FocusFromPointer(this);
         e.Handled = true;
     }
 
@@ -287,22 +283,16 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
     {
         base.OnKeyDown(e);
         if (!IsInvokable || !IsEnabled || e.Key is not (Key.Enter or Key.Space)) return;
-        FocusVisualState.SetIsKeyboardFocusVisible(this, true);
+        KeyboardFocusPolicy.ShowForKeyboardInput(this);
         if (!e.IsRepeat) InvokeAction();
         e.Handled = true;
-    }
-
-    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
-    {
-        base.OnGotKeyboardFocus(e);
-        FocusVisualState.SetIsKeyboardFocusVisible(this, !_mouseFocusPending);
     }
 
     protected override void OnLostKeyboardFocus(KeyboardFocusChangedEventArgs e)
     {
         base.OnLostKeyboardFocus(e);
         _pointerPressed = false;
-        FocusVisualState.SetIsKeyboardFocusVisible(this, false);
+        KeyboardFocusPolicy.Clear(this);
     }
 
     internal void SetExcludedFromAutomationTree(bool excluded)

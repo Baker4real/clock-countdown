@@ -132,6 +132,8 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\HolidayCalendar.cs',
     'src\MinminCountdown\HostOptions.cs',
     'src\MinminCountdown\InstanceActivation.cs',
+    'src\MinminCountdown\KeyboardFocusPolicy.cs',
+    'src\MinminCountdown\KeyboardFocusPolicyFixtures.cs',
     'src\MinminCountdown\MainWindow.xaml',
     'src\MinminCountdown\MainWindow.xaml.cs',
     'src\MinminCountdown\MinminCountdown.csproj',

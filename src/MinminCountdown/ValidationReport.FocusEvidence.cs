@@ -1020,7 +1020,9 @@ internal static partial class ValidationReport
             focusedType = focused.GetType().Name,
             keyboardIsMostRecentInputDevice = InputManager.Current.MostRecentInputDevice is KeyboardDevice,
             // 两项同时为真：按约定自己画焦点的控件又挂了装饰层，可能叠成两层描边，也可能是装饰层顶替了没点亮的模板焦点。
-            templateDrawsFocus = focused is Control focusedControl && FocusVisualState.DrawsOwnKeyboardFocus(focusedControl),
+            templateDrawsFocus = focused is FrameworkElement focusElement &&
+                KeyboardFocusPolicy.UsesTemplateOrHostStroke(focusElement),
+            singleFocusStroke = KeyboardFocusPolicy.KeyboardFocusDrawnOnce(focused),
             focusVisualAdorner = focused is UIElement focusedVisual &&
                 AdornerLayer.GetAdornerLayer(focusedVisual)?.GetAdorners(focusedVisual)?
                     .Any(adorner => adorner.GetType().Name == "FocusVisualAdorner") == true,

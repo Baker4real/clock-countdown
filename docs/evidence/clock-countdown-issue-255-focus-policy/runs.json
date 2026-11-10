@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "issue": 255,
+  "status": "local-regression-passed-with-concern",
+  "scope": "本票局部验收；Core、InstallValidate及集成full gate由主代理统一执行。",
+  "baseCommit": "77384095d292ad8217f79b14fd6817451a538695",
+  "finalCandidateDllSha256": "EFAB696440AB7394849299BD82EA75D9879F2AC37B81967B3EF0319D506A4E61",
+  "finalCandidateExeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+  "launcher": "tools/Invoke-CountdownSuiteLowImpact.ps1",
+  "isolation": "窗口阶段全部使用官方隔离桌面入口，未使用SkipLoadPreflight。",
+  "runs": [
+    { "runId": "20261110T201601618-948bcfeb", "stages": ["Tooling"], "exitCode": 0, "meaning": "实施前工具预检。" },
+    { "runId": "20261110T210443974-564b5c45", "stages": ["Build"], "exitCode": 0, "meaning": "受控旧行为候选编译通过，零警告、零错误。" },
+    { "runId": "20261110T210705755-e5405238", "stages": ["SourceValidation"], "exitCode": 1, "meaning": "目标RED：旧行为误接受金额文字的第二层焦点描边。", "failure": "System.InvalidOperationException: Focus policy accepted a second stroke on income text." },
+    { "runId": "20261110T211014347-2bd2571a", "stages": ["Build"], "exitCode": 0, "meaning": "删除旧行为分支，构建v76候选。" },
+    { "runId": "20261110T211653206-d1348c45", "stages": ["BaselineGenerate"], "exitCode": 1, "meaning": "新增策略夹具之前的箭头探针出现一次未定位失败。", "failure": "#253：倒计时新增选项首次键盘 Space未即时到达终态或遗留动画时钟。" },
+    { "runId": "20261110T212430176-693ec26c", "stages": ["CSharp", "Ui"], "exitCode": 0, "stageExitCodes": { "CSharp": 0, "Ui": 0 }, "meaning": "独立行为回归通过；当时v76双manifest缺席，不能作为源码视觉基线验收。" },
+    { "runId": "20261110T214120923-a17458dc", "stages": ["Build"], "exitCode": 0, "meaning": "仅加入受限诊断观测，没有改变断言或生产行为。" },
+    { "runId": "20261110T214451809-e1977094", "stages": ["GeometryPreflight"], "exitCode": 0, "passed": 9, "total": 9, "candidateDllSha256": "72DF0D3FC4770E8300A5DAB6B788BC999773E12E2B4CF021DAD0499D0C5991FE", "meaning": "既有官方窄回路通过；首次Space触发一次Click，角度正确，无动画时钟，修饰键为空、鼠标释放且无捕获。" },
+    { "runId": "20261110T214726441-37beebac", "stages": ["BaselineGenerate"], "exitCode": 0, "meaning": "带受限观测回原场景通过，正式生成v76及本目录实拍。21个策略检查与真实窗口焦点事实全部通过。" },
+    { "runId": "20261110T215935835-d05630d5", "stages": ["Build"], "exitCode": 0, "meaning": "完整移除诊断后的最终候选；诊断涉及的验证方法与基点逐字一致。" }
+  ],
+  "finalRegression": {
+    "runId": "20261110T232055062-e3a8a360",
+    "command": "pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp,Ui,SourceValidation,ValidationHarness,Tooling -WaitForLockSeconds 600",
+    "exitCode": 0,
+    "baselineMode": "CSharp和Ui在v76双manifest已存在的SourceTree模式运行。",
+    "stageExitCodes": { "CSharp": 0, "Ui": 0, "SourceValidation": 0, "ValidationHarness": 0, "Tooling": 0 },
+    "elapsedSeconds": { "CSharp": 754, "Ui": 547, "SourceValidation": 142, "ValidationHarness": 31, "Tooling": 71 },
+    "sourceReportSha256": "CE276995CF1C0A20D65506FD26C894DC43194F5BA22A5914DA3A1B1C7E75DB86",
+    "finalSourceFacts": { "Valid": true, "KeyboardFocusPolicyBehavior": true, "directChecks": 21, "failedDirectChecks": 0, "MainKeyboardPathNegativeFixtures": true, "MainPrimaryAndPinSingleFocusStroke": true, "MainKeyboardFocusRingShowsOnTab": true, "FloatingKeyboardFocusDrawnOnce": true, "SecondaryWindowKeyboardFocusDrawnOnce": true, "DisclosureArrowMotionBehavior": true }
+  },
+  "sourceBindingIndexAudit": { "bindings": 51, "uniqueFiles": 38, "failures": 0, "meaning": "双manifest的每个源码SHA同时匹配工作区文件和Git暂存blob。" },
+  "baselineComparison": { "from": "2026-11-09-v75", "to": "2026-11-10-v76", "pngByteIdentical": 14, "stateFingerprintsIdentical": 14, "total": 14 },
+  "remainingConcern": "首次箭头Space失败未重现且未定位原因。没有猜测性产品修复或放宽门禁；无诊断最终候选的独立回归已全部通过。"
+}

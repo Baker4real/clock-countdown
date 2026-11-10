@@ -572,7 +572,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v76 基线 `assets/ui-references/floating-window/520x390/2026-11-10-v76/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v77 基线 `assets/ui-references/floating-window/520x390/2026-11-11-v77/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -656,11 +656,13 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 焦点策略深化（2026-11-10，#255，v76）：输入来源、模板/宿主绘制归属、装饰层资格与单层描边统一到 `KeyboardFocusPolicy`；双窗源码绑定新增该模块，主窗继续绑定 `MainWindow.xaml.cs`，两窗继续绑定 `UiControls.cs`，没有移除原绑定。官方 BaselineGenerate `20261110T214726441-37beebac` 退出 0；主窗源码聚合 SHA-256 `80A8897A032BA5951D83D4B6F809E8EF1A4350C9952625B90690E49F76E91880`，悬浮窗 `F0D2EF6CBAC2F7809111D0BC1DE4986D53D66003010D605B78DE63C97530754C`。与 v75 比较，全部 14 帧 PNG 与状态指纹逐字节一致，EXE 哈希仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。21 个直接策略检查、管理窗完整 Tab 路径、悬浮窗与次级窗口单层描边事实均为 true；实拍保留独立核对，不以规则夹具替代渲染验收。窗口几何、真实 DIP、字号底线与 2px 焦点环均未调整。
 
-1. #189 的 WPF 改版使用纯日间 **v76** 真实渲染系列，版本目录为 `2026-11-10-v76`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+双窗 fixture 与完成补位补证（2026-11-11，#256/#243 R1，v77）：完整双窗 fixture 接管临时设置、workspace、日历、诊断、离屏显示和有界清理；七个同生命周期场景保留各自动作与断言。真实 RED 显示管理窗新卡自身位移为 0、日期组祖先使累计位移达到 121.32 DIP；`NoteCompletionExit` 仅给无旧身份的新条目加入同钟反向抵消，首帧、真实中间帧、自然终态和主动中断均验证累计位移为 0、既存卡或组仍补位且原 Transform 恢复。合并 #255/v76 后，官方 Build `20261111T003206301-eb5cf4b9` 与独立 BaselineGenerate `20261111T003530054-5f3b0e5b` 均退出 0。v77 主窗源码绑定聚合 SHA-256 `7E932E81ECF69C1639466C8A5BCDAFC33370DAD266228F6DB30DFC9906CF9410`，悬浮窗 `815BD8D9044BD44816A78B5200DCB13BC0A963A75749861565248787A77B3F88`，相对 v76 的绑定文件变化都仅为 `src/MinminCountdown/NoteCompletionExit.cs`；14 张参考 PNG 和状态指纹全部逐字节一致，EXE 哈希仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。候选 DLL SHA-256 为 `3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A`，独立 GeometryPreflight `20261111T004230547-c285feae` 退出 0；新版本仍须通过独立组合回归，不能以生成或静态帧一致替代行为验收。范围、未迁移生命周期与可复核回执见 [本票证据](docs/evidence/clock-countdown-issue-256/README.md)。
 
-2. v76 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-10-v76/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v76 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64、v65、v66、v67、v68、v69、v70、v71、v72、v73、v74 与 v75 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`、`2026-10-29-v66/`、`2026-10-31-v67/`、`2026-10-31-v68/`、`2026-11-01-v69/`、`2026-11-08-v70/`、`2026-11-09-v71/`、`2026-11-09-v72/`、`2026-11-09-v73/`、`2026-11-09-v74/`、`2026-11-09-v75/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v76。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
+1. #189 的 WPF 改版使用纯日间 **v77** 真实渲染系列，版本目录为 `2026-11-11-v77`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v77 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-11-v77/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v77 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. v21、v22、v32、v33、v43、v44、PRD #210 集成期的 v45–v47、v49、v50、v52、v54、v55、v56、v57、v58、v59、v60、v61、v62、v63、v64、v65、v66、v67、v68、v69、v70、v71、v72、v73、v74、v75 与 v76 目录作为归档保留（两类窗口下的 `2026-09-07-v21/`、`2026-09-11-v22/`、`2026-10-09-v32/`、`2026-10-10-v33/`、`2026-10-10-v43/`、`2026-10-12-v44/` 至 `2026-10-12-v50/`、`2026-10-13-v52/`、`2026-10-13-v54/`、`2026-10-14-v55/`、`2026-10-20-v56/`、`2026-10-21-v57/`、`2026-10-21-v58/`、`2026-10-21-v59/`、`2026-10-24-v60/`、`2026-10-28-v61/`、`2026-10-28-v62/`、`2026-10-28-v63/`、`2026-10-28-v64/`、`2026-10-29-v65/`、`2026-10-29-v66/`、`2026-10-31-v67/`、`2026-10-31-v68/`、`2026-11-01-v69/`、`2026-11-08-v70/`、`2026-11-09-v71/`、`2026-11-09-v72/`、`2026-11-09-v73/`、`2026-11-09-v74/`、`2026-11-09-v75/`、`2026-11-10-v76/`；主窗口 v52 及以前的目录在 `main-window/1165x1350/` 下，v54 起主窗口基线改在 `main-window/864x1000/`；目录名保持仓库既有形式），**解除现役引用**：门禁脚本和测试只读取 v77。上述历史验收记录保留原版本和哈希，归档目录本身不被删除，以保留历史比对能力。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

@@ -1,6 +1,6 @@
 # #256 双窗 fixture 与 #243 管理窗新条目补证
 
-当前状态：完整 fixture、七个场景迁移及 R1 已通过正式 Build/SourceValidation。最终集成、视觉基线与组合门禁待补齐；下面的 RED 和中断记录不计为成功。
+当前状态：完整 fixture、七个场景迁移及 R1 已通过正式 Build/SourceValidation；已合入 #255 集成 tip，v77 正式生成、逐帧比对和独立几何验证通过。组合门禁将对已提交的完整候选执行；下面的 RED 和中断记录不计为成功。
 
 ## 资源边界
 
@@ -66,4 +66,12 @@
 
 最后一轮 err 的第 26 行确认生命周期探针完整通过；第 27–30 行记录两窗自然结束与主动中断的真实帧。新卡首帧/中间帧/终态累计位移均为 0；浮窗旧卡起始 88 DIP、中间 66.387/75.836 DIP，主窗旧组起始 121.32 DIP、中间 91.435/92.52 DIP；每项都恢复了原 Transform。提醒缓存的计数序列仍为 `3,0,1,0,3,0,3,0,3,0,6,0`，包括真实日历状态变化触发的重算。
 
-该 GREEN 的源码版本对应本票工作树，尚未宣称集成候选完整门禁已通过。集成 SHA、基线版本及组合门禁将在完成后追加。主代理证据目录为 `D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353`，本票最终交付写入其中的 `issue-256-result.md`。
+## 集成后的 v77 候选
+
+已无冲突合并 #255 的集成 tip `88e2ffea9de1d9e945866e71398ffad6a9b3d24e`，merge SHA 为 `95d3937c0a898d3cc3b3df79bd54136019eaf0a5`。合并后的构建闭包实测为 99 个 SourceBuildFiles / 101 个 BuildInputFiles，四个新增源码都在；两个分支相同的计数修改自动合并后未累加，已按实际闭包纠正断言，未删减输入。静态发布哈希工具核对 23 项全部一致。
+
+正式版本工具 `-WhatIf` 确认全局最大 v76 后，应用本票独占的 `2026-11-11-v77`；没有改任何旧版本 manifest。Build `20261111T003206301-eb5cf4b9` 退出 0/135s；单独 BaselineGenerate `20261111T003530054-5f3b0e5b` 退出 0/124s。独立 GeometryPreflight `20261111T004230547-c285feae` 退出 0/25s，9/9；绑定的候选 DLL SHA-256 为 `3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A`。
+
+[实际生成与几何事实](v77-evidence.json) 保留原始报告中必须为真的字段、23/28 个源码绑定的聚合与 manifest 哈希。[跨版本比对](v76-v77-comparison.txt) 逐一检查主窗 9 帧和浮窗 5 帧：全部 PNG 与状态指纹逐字节一致；两窗源码绑定变化都只有 `NoteCompletionExit.cs`。同时直接查看了新生成的[管理窗便签代表帧](../../../assets/ui-references/main-window/864x1000/2026-11-11-v77/main-day-notes-representative.png)和[浮窗长便签顶部帧](../../../assets/ui-references/floating-window/520x390/2026-11-11-v77/long-notes-day-top.png)，没有发现新的静态视觉差异。[DESIGN 现役记录](../../../DESIGN.md) 已更新到 v77，保留 v76 历史事实。
+
+本节仍不把基线生成当作组合门禁通过。最终组合回执将在完成后追加。主代理证据目录为 `D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353`，本票最终交付写入其中的 `issue-256-result.md`。

@@ -13,7 +13,7 @@ namespace MinminCountdown;
 internal static class VisualReferenceBaseline
 {
     // 主窗与悬浮窗共用一个版本号；编号跨分支全局分配，换号用 tools/Set-CountdownBaselineVersion.ps1。
-    public const string Version = "2026-11-10-v76";
+    public const string Version = "2026-11-11-v77";
 
     private const string SourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
     private const string SourceAggregateAlgorithm =

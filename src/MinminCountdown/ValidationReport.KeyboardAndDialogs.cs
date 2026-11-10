@@ -567,7 +567,7 @@ internal static partial class ValidationReport
 
         // 与悬浮窗、次级窗口同一条判定：装饰层只认 2px 暖边 MainKeyboardFocusVisual，而且只给模板不画焦点的控件；
         // 判定读实际获焦的元素，日期框读打开日历按钮（DESIGN.md §4 常驻焦点环）。
-        return WindowValidationInput.KeyboardFocusDrawnOnce(focused);
+        return KeyboardFocusPolicy.KeyboardFocusDrawnOnce(focused);
     }
 
     private static bool ValidateMainKeyboardPathNegativeFixtures()
@@ -1321,12 +1321,21 @@ internal static partial class ValidationReport
         var unlitRing = new Button { Style = secondaryButton };
         var stackedInput = new TextBox { FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual") };
         var systemDottedList = new ScrollViewer { FocusVisualStyle = systemFocusVisual };
+        // #255: income text already has a host-drawn ring; even the approved adorner would duplicate it.
+        var stackedIncome = new AutomationOptionalTextBlock
+        {
+            IsInvokable = true,
+            FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual")
+        };
+        FocusVisualState.SetIsKeyboardFocusVisible(stackedIncome, true);
+        if (KeyboardFocusPolicy.KeyboardFocusDrawnOnce(stackedIncome))
+            throw new InvalidOperationException("Focus policy accepted a second stroke on income text.");
         return systemDottedFocus.FocusVisualStyle is not null &&
             unlitRing.FocusVisualStyle is null &&
-            !WindowValidationInput.KeyboardFocusDrawnOnce(systemDottedFocus) &&
-            !WindowValidationInput.KeyboardFocusDrawnOnce(unlitRing) &&
-            !WindowValidationInput.KeyboardFocusDrawnOnce(stackedInput) &&
-            !WindowValidationInput.KeyboardFocusDrawnOnce(systemDottedList);
+            !KeyboardFocusPolicy.KeyboardFocusDrawnOnce(systemDottedFocus) &&
+            !KeyboardFocusPolicy.KeyboardFocusDrawnOnce(unlitRing) &&
+            !KeyboardFocusPolicy.KeyboardFocusDrawnOnce(stackedInput) &&
+            !KeyboardFocusPolicy.KeyboardFocusDrawnOnce(systemDottedList);
     }
 
     private static SecondaryWindowTypographyMeasurement MeasureSecondaryTypography(

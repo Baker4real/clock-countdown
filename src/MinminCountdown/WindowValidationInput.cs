@@ -311,76 +311,6 @@ internal static class WindowValidationInput
         Dispatcher.PushFrame(frame);
     }
 
-    // 键盘焦点只画一套（DESIGN.md §4 常驻焦点环），判定读实际获焦的元素。模板不画焦点的停靠点（列表滚动区、
-    // 状态文字）只认统一的 2px 暖边装饰层 MainKeyboardFocusVisual；系统默认虚线框、模板焦点上再挂装饰层都不算。
-    // 其余停靠点不挂装饰层：按钮、分段、勾选与单选的焦点环要 FocusVisualState 已点亮；文本框、下拉框与日期框
-    // 获焦时由模板换成 2px 输入面边界。日期框的 Tab 焦点落在模板里的打开日历按钮上，描边画在包住它的日期框上，
-    // 按钮自己的焦点环再亮就叠成两层。
-    public static bool KeyboardFocusDrawnOnce(DependencyObject focused)
-    {
-        if (focused is not FrameworkElement element)
-        {
-            return false;
-        }
-
-        if (element.FocusVisualStyle is { } focusVisualStyle)
-        {
-            return ReferenceEquals(focusVisualStyle, element.TryFindResource("MainKeyboardFocusVisual")) &&
-                !(element is Control styledControl && FocusVisualState.DrawsOwnKeyboardFocus(styledControl));
-        }
-
-        // 悬浮窗的金额文字不是 Control，焦点环是旁边的 FloatingIncomeFocusRing，跟随它自己维护的 IsKeyboardFocusVisible。
-        if (element is AutomationOptionalTextBlock)
-        {
-            return FocusVisualState.GetIsKeyboardFocusVisible(element);
-        }
-
-        if (element is not Control control)
-        {
-            return false;
-        }
-
-        Control? inputHost = null;
-        for (DependencyObject? node = control; node is not null && inputHost is null; node = VisualTreeHelper.GetParent(node))
-        {
-            inputHost = node as DatePicker ?? (Control?)(node as ComboBox);
-        }
-
-        inputHost ??= control as TextBox;
-        return inputHost is not null
-            ? TemplateDrawsFocusStroke(inputHost) &&
-                (ReferenceEquals(inputHost, control) || !TemplatePartsDrawFocusStroke(control, "FocusRing"))
-            : FocusVisualState.GetIsKeyboardFocusVisible(control) && TemplateDrawsFocusStroke(control);
-    }
-
-    // 模板里画焦点的部件（常驻焦点环 FocusRing、勾选框 Box、输入面 Surface、日期框 PART_TextBox）至少一个可见，
-    // 而且边宽不小于 2px。
-    public static bool TemplateDrawsFocusStroke(Control control) =>
-        TemplatePartsDrawFocusStroke(control, "FocusRing", "Box", "Surface", "PART_TextBox");
-
-    private static bool TemplatePartsDrawFocusStroke(Control control, params string[] partNames)
-    {
-        if (control.Template is null)
-        {
-            return false;
-        }
-
-        control.ApplyTemplate();
-        return partNames
-            .Select(name => control.Template.FindName(name, control))
-            .Any(part => part switch
-            {
-                Border border => IsFocusStroke(border.IsVisible, border.BorderBrush, border.BorderThickness),
-                Control inner => IsFocusStroke(inner.IsVisible, inner.BorderBrush, inner.BorderThickness),
-                _ => false
-            });
-
-        static bool IsFocusStroke(bool visible, Brush? brush, Thickness thickness) =>
-            visible &&
-            brush is not (null or SolidColorBrush { Color.A: 0 }) &&
-            new[] { thickness.Left, thickness.Top, thickness.Right, thickness.Bottom }.Max() >= 2;
-    }
-
     // 激活窗口后从第一个 Tab 停靠点出发走一圈，见 KeyboardFocusFailuresAlongTabCycle。
     public static IReadOnlyList<string> KeyboardFocusFailuresInWindow(Window window)
     {
@@ -408,7 +338,7 @@ internal static class WindowValidationInput
         var current = first;
         for (var stop = 0; stop < maxStops; stop++)
         {
-            if (!KeyboardFocusDrawnOnce(current))
+            if (!KeyboardFocusPolicy.KeyboardFocusDrawnOnce(current))
             {
                 failures.Add(DescribeFocusStop(current));
             }

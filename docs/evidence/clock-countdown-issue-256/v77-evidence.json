@@ -20,19 +20,23 @@
   "baselines": [
     {
       "path": "assets/ui-references/main-window/864x1000/2026-11-11-v77/manifest.json",
-      "sha256": "5D23999D3639E86A0F7DD2E71DFEF5A7BA2BC5EBA2B39C3C76ED29E08EA7E550",
       "version": "2026-11-11-v77",
       "sourceBindingCount": 23,
       "sourceAggregate": "7E932E81ECF69C1639466C8A5BCDAFC33370DAD266228F6DB30DFC9906CF9410",
-      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "capturedFileSha256": "5D23999D3639E86A0F7DD2E71DFEF5A7BA2BC5EBA2B39C3C76ED29E08EA7E550",
+      "committedBlobOid": "fb2a5a1236a210a28d691192f14857b8feab0ba2",
+      "jsonContentIdenticalAfterGitEolNormalization": true
     },
     {
       "path": "assets/ui-references/floating-window/520x390/2026-11-11-v77/manifest.json",
-      "sha256": "2F02833F3DE6BCE7B0334CCA8AD37FC05DFDC1EDA1D58D0F3A0EA6E755E0DC30",
       "version": "2026-11-11-v77",
       "sourceBindingCount": 28,
       "sourceAggregate": "815BD8D9044BD44816A78B5200DCB13BC0A963A75749861565248787A77B3F88",
-      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "capturedFileSha256": "2F02833F3DE6BCE7B0334CCA8AD37FC05DFDC1EDA1D58D0F3A0EA6E755E0DC30",
+      "committedBlobOid": "24745b0bb0fa1c786a30bb3cf16441661dfe355b",
+      "jsonContentIdenticalAfterGitEolNormalization": true
     }
   ],
   "geometry": {
@@ -42,5 +46,11 @@
     "dllSha256": "3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A",
     "desktop": "MinminSuiteIso-GeometryPreflight"
   },
-  "combinedRegression": "pending"
+  "combinedRegression": {
+    "coverageFile": "combined-regression.json",
+    "originalFailedRun": "20261111T005301971-83f568b0",
+    "recoveryRun": "20261111T011756261-74700e87",
+    "verifiedCandidate": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+    "allRequiredStagesCovered": true
+  }
 }

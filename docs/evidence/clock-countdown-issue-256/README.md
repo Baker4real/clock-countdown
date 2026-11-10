@@ -1,6 +1,6 @@
 # #256 双窗 fixture 与 #243 管理窗新条目补证
 
-当前状态：完整 fixture、七个场景迁移及 R1 已通过正式 Build/SourceValidation；已合入 #255 集成 tip，v77 正式生成、逐帧比对和独立几何验证通过。组合门禁将对已提交的完整候选执行；下面的 RED 和中断记录不计为成功。
+当前状态：本票实现与适用验收已完成。完整 fixture、七个场景迁移及 R1 已合入 #255 的集成基点，v77 正式生成、逐帧比对和独立几何验证通过。所有必需阶段均有退出 0 的回执；首次组合中的既有 Harness 断言错配经实证修复后，失败/取消/跳过项已补验。下面保留真实 RED、失败和中断，不将它们改记为成功。
 
 ## 资源边界
 
@@ -74,4 +74,18 @@
 
 [实际生成与几何事实](v77-evidence.json) 保留原始报告中必须为真的字段、23/28 个源码绑定的聚合与 manifest 哈希。[跨版本比对](v76-v77-comparison.txt) 逐一检查主窗 9 帧和浮窗 5 帧：全部 PNG 与状态指纹逐字节一致；两窗源码绑定变化都只有 `NoteCompletionExit.cs`。同时直接查看了新生成的[管理窗便签代表帧](../../../assets/ui-references/main-window/864x1000/2026-11-11-v77/main-day-notes-representative.png)和[浮窗长便签顶部帧](../../../assets/ui-references/floating-window/520x390/2026-11-11-v77/long-notes-day-top.png)，没有发现新的静态视觉差异。[DESIGN 现役记录](../../../DESIGN.md) 已更新到 v77，保留 v76 历史事实。
 
-本节仍不把基线生成当作组合门禁通过。最终组合回执将在完成后追加。主代理证据目录为 `D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353`，本票最终交付写入其中的 `issue-256-result.md`。
+Git 将捕获 manifest 的 CRLF 规范化为 LF；[生成事实](v77-evidence.json) 因而明确区分 `capturedFileSha256` 和 `committedBlobOid`，原始捕获字节另存主机证据，两个版本的 JSON 内容已经逐项核对一致。这不是重新计算或替换历史 manifest。
+
+## 组合回归与 Harness 首帧修正
+
+首次组合 `20261111T005301971-83f568b0` 对干净候选 `e874722792143ea79df4b5ebf184113dc12ac7fe` 执行；Core、CSharp、SourceValidation、InstallValidate 分别退出 0（307/601/121/9s）。ValidationHarness 退出 1/27s，导致 Ui 130 Cancelled、Tooling Skipped，**该整轮仍为 Failed/1**。
+
+唯一失败是未被本票产品修改触及的 `segment-indicator` 反转连续性断言。实测 Loaded 提交值与反转前快照相等；首帧墙钟只前进 0.4964ms，WPF 渲染时钟却前进 8.4033ms。x 实际移动 4.52115840325521 DIP，等于该渲染时钟下的 160ms quartic 位移 4.521158403254285；旧 `Continues` 用墙钟上限只允许 0.87922297。父级健康运行的首帧渲染时钟未推进、位置未变，所以旧断言碰巧通过。比较原始样本排除了重启、目标跳变、生产 token/偏好污染；`Stall=null`，没有将它冒称卡顿而自动重跑。
+
+修复提交 `efcda77fbbc3919b14b0b01cf23aa2c7796e2742` 只修改 [PopupValidationContract](../../../tools/PopupValidationContract.cs)：indicator 在等待 Loaded 提交后，把前值、提交值和首个真实帧送入已有 `ContinuesFromSnapshot`。旧 `Continues`、0.02 容差、160ms 时限、卡顿规则、全部 restart/jump/nonfinite/whole-transition 负例，以及后续 10–90% 真实帧要求均保留；不改生产 SegmentIndicator、产品 DLL 或基线。
+
+加入该实际二维样本的受控重放：`20261111T011132664-668caf60` 初次实验虽控制值 false，但新增控制最初未接入总 Passed，退出 0，不计为 RED；补齐连接后的 `20261111T011407301-a0f78e06` 退出 1/25s，唯一失败是 indicator 控制，所有真实场景、旧负例和卡顿控制均通过。切换到正确断言后，`20261111T011756261-74700e87` 对干净 `efcda77f` 候选补验 Ui、ValidationHarness、Tooling，分别退出 0（376/27/64s）；重放、原负例和真实反转中间帧全部通过，卡顿重试用量为 0。
+
+[完整分阶段覆盖账](combined-regression.json) 保留两轮各自状态、提交身份与首尾干净回执，逐阶段映射成功证据。两候选之间仅有上述测试文件变化，实际 DLL 仍为 `3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A`，因此复用先前不受影响的四个已通过阶段；没有声称所有阶段在同一轮一次通过。父级合并后的完整八阶段门禁另行执行。
+
+最终交接与持久原始回执位于主代理证据目录 `D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353`，由该目录的 `issue-256-result.md` 给出最终 SHA、归档哈希和最终文档提交后的 Tooling 回执。

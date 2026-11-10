@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 2,
+  "publicationBase": "77384095d292ad8217f79b14fd6817451a538695",
+  "verifiedCandidate": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+  "allRequiredStagesCovered": true,
+  "originalRun": {
+    "runId": "20261111T005301971-83f568b0",
+    "status": "Failed",
+    "exitCode": 1,
+    "source": {
+      "Commit": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "CleanAtStart": true,
+      "CommitAtEnd": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "CleanAtEnd": true
+    }
+  },
+  "recoveryRun": {
+    "runId": "20261111T011756261-74700e87",
+    "status": "Completed",
+    "exitCode": 0,
+    "source": {
+      "Commit": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+      "CleanAtStart": true,
+      "CommitAtEnd": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+      "CleanAtEnd": true
+    }
+  },
+  "changedBetweenCandidates": [
+    "tools/PopupValidationContract.cs"
+  ],
+  "candidateDllSha256": "3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A",
+  "stageCoverage": [
+    {
+      "stage": "Core",
+      "runId": "20261111T005301971-83f568b0",
+      "candidateCommit": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "exitCode": 0,
+      "elapsedSeconds": 307,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-Core"
+    },
+    {
+      "stage": "CSharp",
+      "runId": "20261111T005301971-83f568b0",
+      "candidateCommit": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "exitCode": 0,
+      "elapsedSeconds": 601,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-CSharp"
+    },
+    {
+      "stage": "Ui",
+      "runId": "20261111T011756261-74700e87",
+      "candidateCommit": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+      "exitCode": 0,
+      "elapsedSeconds": 376,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-Ui"
+    },
+    {
+      "stage": "SourceValidation",
+      "runId": "20261111T005301971-83f568b0",
+      "candidateCommit": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "exitCode": 0,
+      "elapsedSeconds": 121,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-SourceValidation"
+    },
+    {
+      "stage": "InstallValidate",
+      "runId": "20261111T005301971-83f568b0",
+      "candidateCommit": "e874722792143ea79df4b5ebf184113dc12ac7fe",
+      "exitCode": 0,
+      "elapsedSeconds": 9,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-InstallValidate"
+    },
+    {
+      "stage": "ValidationHarness",
+      "runId": "20261111T011756261-74700e87",
+      "candidateCommit": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+      "exitCode": 0,
+      "elapsedSeconds": 27,
+      "isolated": true,
+      "desktop": "MinminSuiteIso-ValidationHarness"
+    },
+    {
+      "stage": "Tooling",
+      "runId": "20261111T011756261-74700e87",
+      "candidateCommit": "efcda77fbbc3919b14b0b01cf23aa2c7796e2742",
+      "exitCode": 0,
+      "elapsedSeconds": 64,
+      "isolated": false,
+      "desktop": null
+    }
+  ],
+  "productBehaviorFacts": {
+    "Valid": true,
+    "DualWindowValidationFixtureLifecycle": true,
+    "NoteCompletionFlipTransition": true,
+    "NoteCompletionExitTransition": true,
+    "NoteCompletionUndoFeedback": true,
+    "FloatingEmptyStateTextIsolationBehavior": true,
+    "FloatingScrollContextHintFollowsOverflow": true
+  },
+  "harness": {
+    "passed": true,
+    "snapshotClockControls": {
+      "popup-frame-clock-advance": true,
+      "indicator-frame-clock-advance": true
+    },
+    "negativeControls": {
+      "missing-intermediate": true,
+      "nonfinite-intermediate": true,
+      "restart-from-origin": true,
+      "reverse-jumps-to-target": true,
+      "whole-transition-missed": true,
+      "snapshot-commit-restarts-at-origin": true,
+      "snapshot-commit-jumps-to-target": true,
+      "snapshot-frame-restarts-at-origin": true,
+      "snapshot-frame-jumps-to-target": true,
+      "snapshot-frame-nonfinite": true,
+      "snapshot-whole-transition-missed": true,
+      "off-retains-clock": true,
+      "off-wrong-target": true
+    },
+    "stallControls": {
+      "stale-first-frame-clock-not-stall": true,
+      "callback-gap-stall": true,
+      "frame-clock-jump-stall": true,
+      "no-frame-stall": true,
+      "late-first-frame-stall": true,
+      "timely-first-frame-not-stall": true,
+      "sole-stall-retried": true,
+      "starved-attempt-rerun-passes": true,
+      "stall-with-other-failure-not-retried": true,
+      "failure-without-stall-not-retried": true,
+      "retries-capped-per-scenario": true,
+      "retries-capped-per-run": true
+    }
+  }
+}

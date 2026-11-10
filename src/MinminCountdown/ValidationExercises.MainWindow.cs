@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
@@ -164,40 +163,28 @@ internal static partial class ValidationExercises
     // #229 省略「天」分格与真实 WM_DPICHANGED（沿用 #219 注入）须重建，重建后字号下限事实仍为真。
     public static RemainingBlocksOnDemandProbe RunRemainingBlocksOnDemand()
     {
-        var settingsPath = Path.Combine(
-            Path.GetTempPath(),
-            $"MinminCountdown-remaining-blocks-{Guid.NewGuid():N}.settings.json");
-        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
         var previousDpiContext = MonitorGeometryValidation.EnterPerMonitorV2ThreadDpiContextForValidation();
         try
         {
             var t0 = new DateTimeOffset(2038, 7, 8, 1, 0, 5, TimeSpan.Zero);
             var clock = new AdvancingValidationClock(t0);
-            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
-            var preferences = workspace.Snapshot.Settings.Preferences;
-            MustApply(workspace, new SavePreferencesChange(
-                "Minute", preferences.MonthlySalary, preferences.WorkStart, preferences.WorkEnd));
-            const string nearName = "分格按需近期";
-            const string farName = "分格按需远期";
-            MustApply(workspace, new SaveCountdownChange(
-                null, nearName, t0.AddDays(1).AddSeconds(40), Array.Empty<string>(), Array.Empty<ReminderRule>()));
-            MustApply(workspace, new SaveCountdownChange(
-                null, farName, t0.AddDays(100).AddSeconds(30), Array.Empty<string>(), Array.Empty<ReminderRule>()));
-            var nearId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == nearName).Id;
-            var farId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == farName).Id;
-            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-            var main = new MainWindow(
-                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
-            var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-            PrepareOffscreenValidationWindow(main);
-            PrepareOffscreenValidationWindow(floating);
-            try
+            return DualWindowValidationFixture.Run("remaining-blocks", fixture =>
             {
-                main.Show();
-                floating.Show();
-                main.ShowWorkspace(WorkspaceKind.Countdowns);
-                floating.ShowWorkspace(WorkspaceKind.Countdowns);
-                WindowValidationInput.Pump(main.Dispatcher);
+                var workspace = fixture.Workspace;
+                var preferences = workspace.Snapshot.Settings.Preferences;
+                MustApply(workspace, new SavePreferencesChange(
+                    "Minute", preferences.MonthlySalary, preferences.WorkStart, preferences.WorkEnd));
+                const string nearName = "分格按需近期";
+                const string farName = "分格按需远期";
+                MustApply(workspace, new SaveCountdownChange(
+                    null, nearName, t0.AddDays(1).AddSeconds(40), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+                MustApply(workspace, new SaveCountdownChange(
+                    null, farName, t0.AddDays(100).AddSeconds(30), Array.Empty<string>(), Array.Empty<ReminderRule>()));
+                var nearId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == nearName).Id;
+                var farId = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == farName).Id;
+                fixture.ShowWindows();
+                var main = fixture.Main;
+                var floating = fixture.Floating;
                 var nowText = main.NowText;
                 var mainDeltas = new List<long>();
                 var floatingDeltas = new List<long>();
@@ -473,18 +460,11 @@ internal static partial class ValidationExercises
                     floatingDeltas.ToArray(),
                     dpiScaleBefore,
                     dpiScaleAfter);
-            }
-            finally
-            {
-                floating.Close();
-                main.Close();
-            }
+            }, store: new SettingsStore(clock: clock));
         }
         finally
         {
             MonitorGeometryValidation.RestoreThreadDpiContextForValidation(previousDpiContext);
-            DeleteSettingsFiles(settingsPath);
-            DeleteFileIfPresent(diagnosticPath);
         }
     }
 
@@ -492,51 +472,35 @@ internal static partial class ValidationExercises
     // 整分钟翻转、工作区状态变化与节假日日历状态变化后重算；卡片上的「下次提醒」文字始终正确。
     public static FloatingNextReminderCacheProbe RunFloatingNextReminderCache()
     {
-        var settingsPath = Path.Combine(
-            Path.GetTempPath(),
-            $"MinminCountdown-next-reminder-cache-{Guid.NewGuid():N}.settings.json");
-        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
-        // 不存在的应用根加合成离线下载：日历刷新同步经历「加载中 → 未就绪」两次状态变化，不触网也不写盘。
-        var calendarRoot = Path.Combine(
-            Path.GetTempPath(),
-            $"MinminCountdown-next-reminder-calendar-{Guid.NewGuid():N}");
-        try
-        {
-            var t0 = new DateTimeOffset(2038, 7, 8, 1, 0, 5, TimeSpan.Zero);
-            var clock = new AdvancingValidationClock(t0);
-            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
-            var repeatingFirstDue = new DateTimeOffset(2038, 7, 8, 1, 0, 30, TimeSpan.Zero);
-            var repeatingSecondDue = repeatingFirstDue.AddMinutes(15);
-            var onceDue = new DateTimeOffset(2038, 7, 9, 2, 0, 0, TimeSpan.Zero);
-            const string plainText = "下次提醒缓存·无提醒";
-            MustApply(workspace, new SaveNoteChange(
-                null, "下次提醒缓存·周期", new DateTime(2038, 7, 8), false, Array.Empty<string>(),
-                new ReminderRule[]
-                {
-                    new FixedIntervalReminderRule("next-reminder-cache-repeat", repeatingFirstDue, new ReminderInterval(15))
-                }));
-            MustApply(workspace, new SaveNoteChange(
-                null, "下次提醒缓存·一次", new DateTime(2038, 7, 9), false, Array.Empty<string>(),
-                new ReminderRule[] { new AbsoluteOnceReminderRule("next-reminder-cache-once", onceDue) }));
-            MustApply(workspace, new SaveNoteChange(
-                null, plainText, new DateTime(2038, 7, 10), false, Array.Empty<string>(), Array.Empty<ReminderRule>()));
-            using var calendar = new HolidayCalendar(
-                calendarRoot,
-                static (_, _) => Task.FromException<string>(new HttpRequestException("synthetic offline")));
-            var main = new MainWindow(
-                workspace, calendar, new DiagnosticLogger(diagnosticPath), AppContext.BaseDirectory);
-            var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-            PrepareOffscreenValidationWindow(main);
-            PrepareOffscreenValidationWindow(floating);
-            var workspaceEvents = 0;
-            var calendarEvents = 0;
-            workspace.StateChanged += (_, _) => workspaceEvents++;
-            calendar.StateChanged += (_, _) => calendarEvents++;
-            try
+        var t0 = new DateTimeOffset(2038, 7, 8, 1, 0, 5, TimeSpan.Zero);
+        var clock = new AdvancingValidationClock(t0);
+        return DualWindowValidationFixture.Run(
+            "next-reminder-cache", fixture =>
             {
-                main.Show();
-                floating.Show();
-                WindowValidationInput.Pump(floating.Dispatcher);
+                var workspace = fixture.Workspace;
+                var repeatingFirstDue = new DateTimeOffset(2038, 7, 8, 1, 0, 30, TimeSpan.Zero);
+                var repeatingSecondDue = repeatingFirstDue.AddMinutes(15);
+                var onceDue = new DateTimeOffset(2038, 7, 9, 2, 0, 0, TimeSpan.Zero);
+                const string plainText = "下次提醒缓存·无提醒";
+                MustApply(workspace, new SaveNoteChange(
+                    null, "下次提醒缓存·周期", new DateTime(2038, 7, 8), false, Array.Empty<string>(),
+                    new ReminderRule[]
+                    {
+                        new FixedIntervalReminderRule("next-reminder-cache-repeat", repeatingFirstDue, new ReminderInterval(15))
+                    }));
+                MustApply(workspace, new SaveNoteChange(
+                    null, "下次提醒缓存·一次", new DateTime(2038, 7, 9), false, Array.Empty<string>(),
+                    new ReminderRule[] { new AbsoluteOnceReminderRule("next-reminder-cache-once", onceDue) }));
+                MustApply(workspace, new SaveNoteChange(
+                    null, plainText, new DateTime(2038, 7, 10), false, Array.Empty<string>(), Array.Empty<ReminderRule>()));
+                // fixture与原场景相同：独立空日历根+合成offline；刷新仍触发加载中/未就绪，不触网。
+                var calendar = fixture.Calendar;
+                var workspaceEvents = 0;
+                var calendarEvents = 0;
+                workspace.StateChanged += (_, _) => workspaceEvents++;
+                calendar.StateChanged += (_, _) => calendarEvents++;
+                fixture.ShowWindows();
+                var floating = fixture.Floating;
                 var deltas = new List<long>();
                 var textChecks = new List<bool>();
 
@@ -639,18 +603,7 @@ internal static partial class ValidationExercises
                     calendarChanges > 0 && calendarChanged == 3 * calendarChanges && afterCalendar == 0,
                     textChecks.Count == 6 && textChecks.All(passed => passed),
                     deltas.ToArray());
-            }
-            finally
-            {
-                floating.Close();
-                main.Close();
-            }
-        }
-        finally
-        {
-            DeleteSettingsFiles(settingsPath);
-            DeleteFileIfPresent(diagnosticPath);
-        }
+            }, store: new SettingsStore(clock: clock));
     }
 
     // 两窗分格同构：块容器 → 横向 StackPanel → 每段 StackPanel（色块 Border{数值} + 单位）。

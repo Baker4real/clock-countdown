@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Windows;
-using System.Windows.Threading;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -60,29 +59,17 @@ internal static partial class ValidationExercises
     public static FloatingScrollContextProbe RunFloatingScrollContextHintBehavior(
         Action<FloatingWindow, System.Windows.Controls.Primitives.Popup?, string>? captureEvidence = null)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-scroll-context-{Guid.NewGuid():N}.json");
-        var workspace = DesktopWorkspace.Load(
-            path,
-            new SettingsStore(clock: new AdvancingValidationClock(CountdownRowFixtureUtc)));
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
         using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
             new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
-        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
-        FloatingWindow? floating = null;
         var failures = new List<string>();
         var details = new List<string>();
         var checkedStates = 0;
-        try
+        return DualWindowValidationFixture.Run("scroll-context", fixture =>
         {
-            PrepareOffscreenValidationWindow(main);
-            main.Show();
-            WindowValidationInput.Pump(main.Dispatcher);
+            var workspace = fixture.Workspace;
+            fixture.ShowWindows();
             var today = workspace.Snapshot.BeijingNow.Date;
-            floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-            PrepareOffscreenValidationWindow(floating);
-            floating.Show();
-            WindowValidationInput.Pump(floating.Dispatcher);
-            var window = floating;
+            var window = fixture.Floating;
             var scroller = window.BodyScrollerForValidation;
 
             void Expect(string state, bool above, bool below, System.Windows.Controls.Primitives.Popup? popup = null)
@@ -231,15 +218,7 @@ internal static partial class ValidationExercises
             }
 
             return new FloatingScrollContextProbe(checkedStates, 18, failures, details);
-        }
-        finally
-        {
-            floating?.Close();
-            main.Close();
-            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            DeleteSettingsFiles(path);
-            DeleteFileIfPresent(path + ".log");
-        }
+        }, store: new SettingsStore(clock: new AdvancingValidationClock(CountdownRowFixtureUtc)));
     }
 
     public static bool RunFloatingScrollContextHintPreflight()

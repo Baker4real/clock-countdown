@@ -13,6 +13,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = $PSScriptRoot
+Import-Module (Join-Path $repoRoot 'tools\Countdown.SuiteStages.psm1') -Force
 $script:sshExecutablePath = $null
 $script:scpExecutablePath = $null
 
@@ -1117,16 +1118,22 @@ function ConvertFrom-CountdownLocalValidationEvidenceJson {
         if ($timestamp -isnot [string]) { throw '本机验收证据的时间戳无效。' }
         [void] [DateTimeOffset]::Parse($timestamp, [Globalization.CultureInfo]::InvariantCulture)
     }
-    $requiredStages = [string[]] @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+    $requiredStages = [string[]] @(Get-CountdownRequiredSuiteStage)
     $stages = @($evidence.Stages)
-    if ($stages.Count -ne $requiredStages.Count) { throw '本机验收证据的阶段数量不符合六阶段套件。' }
-    for ($i = 0; $i -lt $requiredStages.Count; $i++) {
-        $stage = $stages[$i]
+    $seenStages = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($stage in $stages) {
+        $stageName = if ($null -ne $stage -and $stage.Stage -is [string]) { $stage.Stage } else { '<unknown>' }
         if ($null -eq $stage -or (@($stage.PSObject.Properties.Name) -join ',') -cne 'Stage,Status,ExitCode,ElapsedSeconds' -or
-            $stage.Stage -cne $requiredStages[$i] -or $stage.Status -cne 'Completed' -or
-            $stage.ExitCode -is [bool] -or $stage.ExitCode -ne 0 -or
+            $stage.Stage -isnot [string] -or [string]::IsNullOrWhiteSpace($stage.Stage) -or
+            $stage.Status -cne 'Completed' -or $stage.ExitCode -is [bool] -or $stage.ExitCode -ne 0 -or
             $stage.ElapsedSeconds -is [bool] -or $stage.ElapsedSeconds -lt 0) {
-            throw "本机验收证据的阶段 $($requiredStages[$i]) 未通过或不符合契约。"
+            throw "本机验收证据的阶段 $stageName 未通过或不符合契约。"
+        }
+        if (-not $seenStages.Add($stage.Stage)) { throw "本机验收证据的阶段 $stageName 重复。" }
+    }
+    foreach ($requiredStage in $requiredStages) {
+        if (@($stages | Where-Object { $_.Stage -ceq $requiredStage }).Count -ne 1) {
+            throw "本机验收证据缺少必过阶段 $requiredStage。"
         }
     }
     $evidence
@@ -1139,10 +1146,10 @@ function Find-CountdownLocalValidationRun {
         [Parameter(Mandatory)] [string] $RepositoryRoot,
         [string] $SuiteRunDirectory
     )
-    # 办公室端只安装、不跑测试：上传前必须有同一提交在本机干净工作树上跑完的六阶段套件记录。
+    # 办公室端只安装、不跑测试：上传前必须有同一提交在本机干净工作树上跑完当前全部必过阶段的记录。
     # 启动器在 run.json 的 Source 里记下开跑与收尾时的 HEAD 和工作树是否干净。
     if ([string]::IsNullOrWhiteSpace($SuiteRunDirectory)) { $SuiteRunDirectory = Join-Path $RepositoryRoot 'logs\suite-runs' }
-    $requiredStages = [string[]] @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+    $requiredStages = [string[]] @(Get-CountdownRequiredSuiteStage)
     $repositoryRootPath = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
     $rejections = [Collections.Generic.List[string]]::new()
     $runFiles = @()

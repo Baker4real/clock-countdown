@@ -59,6 +59,7 @@ foreach ($requiredPath in @(
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
         'tools/Countdown.SuiteRun.psm1',
+        'tools/Countdown.SuiteStages.psm1',
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',

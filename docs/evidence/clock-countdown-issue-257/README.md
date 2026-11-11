@@ -1,6 +1,6 @@
 # #257 行内动作构造契约
 
-状态：局部七个必需阶段均已取得通过回执；保留既有 #212 稳定刷新和 #129 窗口锚定的间歇失败记录。尚待父级干净集成提交上的完整八阶段门禁。机器可读运行账见 [runs.json](runs.json)，基线与图片绑定见 [manifest.json](manifest.json)。
+状态：父级干净候选 `7165ec79` 的完整八阶段 `20261111T121040196-c9b163f4` 已全部通过，见[最终集成验收](../clock-countdown-238-252-final/README.md)。以下保留本票局部实现、基线演进及间歇失败的历史回执；机器可读局部运行账见 [runs.json](runs.json)，基线与图片绑定见 [manifest.json](manifest.json)。
 
 ## 实现与删除测试
 
@@ -33,7 +33,7 @@
 - 主窗源码聚合：`1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C`（23 项）。
 - 悬浮窗源码聚合：`4D574BABAC0D501E1307B982BA8D79CB41D1EC7C69E6ED3B1A2F9F0DDDC36239`（28 项）。
 - [正式比较](v77-v78-comparison.txt)：14/14 PNG 与状态指纹逐字节一致；EXE 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。
-- 最终候选 DLL：`DB47F8BACA54042C6186088E6CBC4DE6744B903D3B99A4F7CF36F191F9F1020B`。
+- 本票局部候选 DLL（最终集成产物另见汇总）：`DB47F8BACA54042C6186088E6CBC4DE6744B903D3B99A4F7CF36F191F9F1020B`。
 - 双 manifest 共 51 项绑定、38 个唯一文件，工作区与暂存 blob SHA 全部一致；manifest JSON 经 Git EOL 归一化后也一致。
 
 生成后只增加未绑定的真实标签探针和报告事实，生产 sourceBinding 不变，因此没有重写 v78 或另开 v79。以下公开图从 v78 原帧复制并逐字节核对，已用 read_image 复核。
@@ -58,6 +58,6 @@
 
 最终 SourceValidation 的 `Valid`、`InlineActionContract`、`TagManagerInlineActionBehavior`、`RuleEditorInlineDeleteUsesDangerButton`、`KeyboardFocusPolicyBehavior` 与 `CrossInterfaceReferenceBaselinesCurrent` 均为 true，报告 SHA-256 为 `9D8D1DA64C8F5F7AB108F9BCD418B348C88B2F34A6B4AB9353F991846443AC9B`。
 
-并行组合 `20261111T085207274-75a05a9c` 的 Core 通过，但 CSharp 的既有 #212 FloatingStableRefresh 组失败；Ui 被取消、后续阶段跳过，均未计为通过。宿主中断的 `20261111T090140423-1c0f11f0` 不作结论；相同源码的隔离 CSharp `20261111T091945641-75e41c49` 通过。Tooling `f6ccbc2b` 发现的现役基线文档锚点和反射预算问题已据实修复：补两处 v78 锚点，标签探针使用现有强类型 XAML 字段，未抬高阈值。修复后 CSharp `95f01107`、Ui `f0fdacc6` 曾在既有 #129 窗口底部锚定项失败；对应同候选恢复 `90288c41` 和 `da34fb5e` 通过。未修改产品或放宽断言来处理间歇失败，其根因仍未定位；本票不声称所有阶段在同一轮一次通过。
+并行组合 `20261111T085207274-75a05a9c` 的 Core 通过，但 CSharp 的既有 #212 FloatingStableRefresh 组失败；Ui 被取消、后续阶段跳过，均未计为通过。宿主中断的 `20261111T090140423-1c0f11f0` 不作结论；相同源码的隔离 CSharp `20261111T091945641-75e41c49` 通过。Tooling `f6ccbc2b` 发现的现役基线文档锚点和反射预算问题已据实修复：补两处 v78 锚点，标签探针使用现有强类型 XAML 字段，未抬高阈值。修复后 CSharp `95f01107`、Ui `f0fdacc6` 曾在既有 #129 窗口底部锚定项失败；对应同候选恢复 `90288c41` 和 `da34fb5e` 通过。未修改产品或放宽断言来处理间歇失败，其根因仍未定位；本节局部结果不等于同轮完整集成验收；父级后续完整通过另见开头汇总，仍不声称间歇问题已治愈。
 
-原始 run、失败回执和 v78 生成目录均持久归档到 [257-runs](D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353/257-runs)；[sourceBinding 审计](D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353/issue-257-binding-audit.json) 可独立复核。InstallValidate 与父级合并后的完整八阶段集成门禁不在本票已完成范围内。
+原始 run、失败回执和 v78 生成目录均持久归档到 [257-runs](D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353/257-runs)；[sourceBinding 审计](D:/agents/run-evidence/clock-countdown-implement-spec/20261110T200353/issue-257-binding-audit.json) 可独立复核。局部运行账保持原始范围；父级合并后的 InstallValidate 与完整八阶段已由 `c9b163f4` 补齐，回执见[最终集成验收](../clock-countdown-238-252-final/acceptance.json)。

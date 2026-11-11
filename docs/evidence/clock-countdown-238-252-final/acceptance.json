@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted",
+  "testedCandidate": "7165ec797ce1923b32c65dc0509a0b3cbf166c2f",
+  "fixedReviewBase": "77384095d292ad8217f79b14fd6817451a538695",
+  "runId": "20261111T121040196-c9b163f4",
+  "isolation": "official-low-impact-isolated-desktops",
+  "maxParallel": 1,
+  "loadPreflightSkipped": false,
+  "stages": [
+    { "name": "Build", "exitCode": 0, "seconds": 136 },
+    { "name": "Core", "exitCode": 0, "seconds": 271 },
+    { "name": "CSharp", "exitCode": 0, "seconds": 557 },
+    { "name": "Ui", "exitCode": 0, "seconds": 393 },
+    { "name": "SourceValidation", "exitCode": 0, "seconds": 99 },
+    { "name": "InstallValidate", "exitCode": 0, "seconds": 11 },
+    { "name": "ValidationHarness", "exitCode": 0, "seconds": 26 },
+    { "name": "Tooling", "exitCode": 0, "seconds": 66 }
+  ],
+  "sourceReportSha256": "9D8D1DA64C8F5F7AB108F9BCD418B348C88B2F34A6B4AB9353F991846443AC9B",
+  "dllSha256": "F1B4C84FEBC9EE75AD75B900CA4E23F4CDD70DE707ACDFBE70632924125B0CE5",
+  "archiveManifestSha256": "4F36F35BA157F238D50389AD169A4275FCA673B1CC5C369A80EAB2FC3416E682",
+  "archivedFiles": 50,
+  "baseline": "2026-11-11-v78",
+  "sourceBindings": 51,
+  "uniqueBoundFiles": 38,
+  "unchangedImagesAndStateFingerprintsFromV77": 14,
+  "review": {
+    "standards": "唯一清理缺口由3d70ddbb修复；只读诊断增量复核通过",
+    "spec": "未发现剩余实现缺陷；完整门禁已通过"
+  },
+  "knownConcerns": [
+    "较早完整轮次26a68017的Ui曾在既有#129底部锚定项失败；有界回放未定位触发根因。7165ec79只增加只读诊断，不改变生产定位逻辑或断言。",
+    "既有#212稳定刷新间歇失败仍保留原始回执；本次验收不声称其根因已修复。"
+  ],
+  "pushed": false,
+  "deployed": false
+}

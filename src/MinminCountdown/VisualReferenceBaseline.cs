@@ -13,7 +13,7 @@ namespace MinminCountdown;
 internal static class VisualReferenceBaseline
 {
     // 主窗与悬浮窗共用一个版本号；编号跨分支全局分配，换号用 tools/Set-CountdownBaselineVersion.ps1。
-    public const string Version = "2026-11-09-v75";
+    public const string Version = "2026-11-11-v78";
 
     private const string SourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
     private const string SourceAggregateAlgorithm =
@@ -71,6 +71,7 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown/MotionBehavior.cs",
             "src/MinminCountdown/NoteCompletionExit.cs",
             "src/MinminCountdown/SegmentIndicator.cs",
+            "src/MinminCountdown/KeyboardFocusPolicy.cs",
             "src/MinminCountdown/UiControls.cs",
             "tools/Build-MainDayOrnamentScene.ps1",
             "tools/MainDecorationSceneBands.psd1",
@@ -935,6 +936,7 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown/MinminCountdown.csproj",
             "src/MinminCountdown/MotionBehavior.cs",
             "src/MinminCountdown/NoteCompletionExit.cs",
+            "src/MinminCountdown/KeyboardFocusPolicy.cs",
             "src/MinminCountdown/UiControls.cs"
         };
 

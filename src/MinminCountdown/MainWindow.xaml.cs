@@ -161,7 +161,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     internal const double TagChipMaxWidth = 148;
     // #247：倒计时行与便签行共用的次级动作最小高度（紧凑命中 53×33）。#249 便签卡以它为首行带：
     // 勾选框、正文首行与编辑/删除在这条带内共用同一中线。
-    private const double RowActionMinHeight = 33;
+    // #257：行高由共享行内动作契约拥有，便签卡首行继续按同一 33 DIP 对齐。
+    private const double RowActionMinHeight = InlineActionButton.MainRowMinHeight;
     // #152/#208：便签完成勾选的真实 DIP 命中槽，与 MainNoteCompletionCheck 模板 Surface 同为 28×28。
     private const double NoteCompletionHitSlot = 28;
     // #249：便签卡标签在正文与提醒摘要下方 6 DIP 处起排，折行后的芯片行之间留 4 DIP。
@@ -1198,7 +1199,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ConfigureControls()
     {
-        var keyboardFocusVisual = (Style)FindResource("MainKeyboardFocusVisual");
         for (var hour = 0; hour < 24; hour++)
         {
             var text = hour.ToString("D2", CultureInfo.InvariantCulture);
@@ -1257,16 +1257,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(NotesTab, "NotesTab");
         AutomationProperties.SetAutomationId(FilterButton, "FilterButton");
         AutomationProperties.SetAutomationId(TagManagerButton, "TagManagerButton");
-        // #152：模板自己画键盘焦点的控件（页签、各类按钮、复选与单选的常驻焦点环，文本框、下拉框与日期框
-        // 获焦时的 2px 输入面边界）由样式清掉 FocusVisualStyle——那是被禁止的第二套描边，而且 WPF 在
-        // Alt、Tab、方向键时会绕过 FocusVisualState 单独点亮它；焦点环由 FocusVisualState 的类处理器点亮。
-        // 只有模板不画焦点的键盘路径控件在这里挂 2px 暖边 FocusVisualStyle。
         foreach (var element in KeyboardPathControls)
         {
-            if (element is Control control && !FocusVisualState.DrawsOwnKeyboardFocus(control))
-            {
-                control.FocusVisualStyle = keyboardFocusVisual;
-            }
+            KeyboardFocusPolicy.Apply(element);
         }
 
         ConfigureReminderHelpFocusHelpText();
@@ -1736,9 +1729,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var record = records[recordIndex];
             var active = record.TargetUtc > effectiveNowUtc;
             var isPrimary = recordIndex == 0;
-            var edit = RowEditAction(record.Id, $"编辑倒计时 {record.Name}");
+            var edit = InlineActionButton.Create(
+                this, InlineActionSurface.MainRow, InlineActionIntent.Edit, record.Id, $"编辑倒计时 {record.Name}");
             edit.Click += OnEditCountdown;
-            var delete = RowDeleteAction(record.Id, $"删除倒计时 {record.Name}", "倒计时");
+            var delete = InlineActionButton.Create(
+                this, InlineActionSurface.MainRow, InlineActionIntent.Delete, record.Id, $"删除倒计时 {record.Name}", "倒计时");
             delete.Click += OnDeleteCountdown;
             // #247：主阅读轴与辅助带之间按 8px 基准间距分开；辅助带与动作取同一上边距，两者中线保持一致。
             var bandGap = (double)FindResource("SpacingUnit");
@@ -2594,10 +2589,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         completion.Unchecked += OnNoteCompletionChanged;
         _noteCompletionBoxes[note.Id] = completion;
 
-        var edit = RowEditAction(note.Id, $"编辑便签 {note.Text}");
+        var edit = InlineActionButton.Create(
+            this, InlineActionSurface.MainRow, InlineActionIntent.Edit, note.Id, $"编辑便签 {note.Text}");
         edit.Uid = "NoteRowEdit";
         edit.Click += OnEditNote;
-        var delete = RowDeleteAction(note.Id, $"删除便签 {note.Text}", "便签");
+        var delete = InlineActionButton.Create(
+            this, InlineActionSurface.MainRow, InlineActionIntent.Delete, note.Id, $"删除便签 {note.Text}", "便签");
         delete.Click += OnDeleteNote;
         var actions = new StackPanel
         {
@@ -3570,9 +3567,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             var name = UiAccessibility.Name(
                 new TextBox { Text = tag.Name, MaxLength = 30 },
                 $"标签名称 {tag.Name}");
-            var save = ActionButton("保存", tag.Id, $"保存标签 {tag.Name}");
-            var delete = ActionButton("删除", tag.Id, $"删除标签 {tag.Name}");
-            delete.Style = (Style)FindResource("DangerButton");
+            var save = InlineActionButton.Create(
+                this, InlineActionSurface.TagManager, InlineActionIntent.Save, tag.Id, $"保存标签 {tag.Name}");
+            var delete = InlineActionButton.Create(
+                this, InlineActionSurface.TagManager, InlineActionIntent.Delete, tag.Id, $"删除标签 {tag.Name}");
             save.Click += (_, _) =>
             {
                 var result = _desktopWorkspace.Apply(new RenameTagChange(
@@ -3808,85 +3806,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return card;
     }
 
-    // #227/#247：倒计时行与便签行共用的次级行内动作，同一几何与同一状态语言：SecondaryButton、
-    // 紧凑命中 53×33、caption 字号、4 DIP 间距；编辑为 InkBrush 铅笔加文字，删除为 DangerBrush 文字加垃圾桶、
-    // 透明边框与「（Delete）」提示。Content 保持可见字符串（渲染探针、焦点描述与自动化名称依赖它），
-    // 图标经 ContentTemplate 注入，不改按钮语义内容。
-    private Button RowEditAction(string id, string accessibleName)
-    {
-        var button = RowAction("编辑", id, accessibleName);
-        button.ContentTemplate = CreateGlyphButtonTemplate(
-            "M 2.5,13.2 L 3.2,10.4 L 11.6,2 C 12.2,1.4 13.2,1.4 13.8,2 C 14.4,2.6 14.4,3.6 13.8,4.2 L 5.4,12.6 L 2.5,13.2 Z",
-            "InkBrush");
-        return button;
-    }
-
-    private Button RowDeleteAction(string id, string accessibleName, string recordKind)
-    {
-        var button = RowAction("删除", id, accessibleName);
-        button.ToolTip = $"删除{recordKind}（Delete）";
-        button.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
-        button.BorderBrush = Brushes.Transparent;
-        button.ContentTemplate = CreateGlyphButtonTemplate(
-            "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
-            "DangerBrush");
-        return button;
-    }
-
-    private Button RowAction(string content, string id, string accessibleName) =>
-        UiAccessibility.Name(
-            new Button
-            {
-                Content = content,
-                Tag = id,
-                MinWidth = 53,
-                MinHeight = RowActionMinHeight,
-                FontSize = (double)FindResource("TypeCaptionFontSize"),
-                Margin = new Thickness(4, 0, 0, 0),
-                Style = (Style)FindResource("SecondaryButton")
-            },
-            accessibleName);
-
-    private DataTemplate CreateGlyphButtonTemplate(string glyphData, string glyphBrushKey)
-    {
-        var row = new FrameworkElementFactory(typeof(StackPanel));
-        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-        var glyph = new FrameworkElementFactory(typeof(WpfPath));
-        glyph.Name = "Glyph";
-        glyph.SetValue(WpfPath.WidthProperty, 12.0);
-        glyph.SetValue(WpfPath.HeightProperty, 12.0);
-        glyph.SetValue(WpfPath.DataProperty, Geometry.Parse(glyphData));
-        glyph.SetValue(WpfPath.StretchProperty, Stretch.Uniform);
-        glyph.SetValue(WpfPath.StrokeThicknessProperty, 1.6);
-        glyph.SetValue(WpfPath.StrokeStartLineCapProperty, PenLineCap.Round);
-        glyph.SetValue(WpfPath.StrokeEndLineCapProperty, PenLineCap.Round);
-        glyph.SetValue(WpfPath.StrokeLineJoinProperty, PenLineJoin.Round);
-        glyph.SetValue(WpfPath.VerticalAlignmentProperty, VerticalAlignment.Center);
-        glyph.SetResourceReference(WpfPath.StrokeProperty, glyphBrushKey);
-        var label = new FrameworkElementFactory(typeof(TextBlock));
-        label.SetValue(TextBlock.MarginProperty, new Thickness(5, 0, 0, 0));
-        label.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
-        label.SetValue(TextBlock.TextProperty, new Binding());
-        row.AppendChild(glyph);
-        row.AppendChild(label);
-        return new DataTemplate { VisualTree = row };
-    }
-
-    private Button ActionButton(string content, string id, string accessibleName)
-    {
-        return UiAccessibility.Name(
-            new Button
-            {
-                Content = content,
-                Tag = id,
-                MinWidth = 65,
-                MinHeight = 39,
-                FontSize = (double)FindResource("TypeCaptionFontSize"),
-                Margin = new Thickness(7, 0, 0, 0),
-                Style = (Style)FindResource("SecondaryButton")
-            },
-            accessibleName);
-    }
+    // #257：行内动作统一由 InlineActionButton 构造；原 #227/#247 的 53×33、caption、4 DIP、
+    // 铅笔/垃圾桶、危险语义与「（Delete）」提示均在共享契约内保留。
 
     private IEnumerable<FrameworkElement> FindCoreControls()
     {
@@ -4260,95 +4181,4 @@ internal sealed record ReminderModeClickResult(
     bool RepeatingReminder)
 {
     public static ReminderModeClickResult NotRun { get; } = new(false, false, false);
-}
-
-/// <summary>
-/// Tracks whether the current focus was reached through keyboard navigation. WPF's
-/// <see cref="UIElement.IsKeyboardFocusWithinChangedEvent"/> does not distinguish
-/// mouse focus from keyboard focus, while custom templates need that distinction.
-/// </summary>
-internal static class FocusVisualState
-{
-    private static readonly DependencyProperty MouseFocusPendingProperty =
-        DependencyProperty.RegisterAttached(
-            "MouseFocusPending",
-            typeof(bool),
-            typeof(FocusVisualState),
-            new FrameworkPropertyMetadata(false));
-
-    internal static readonly DependencyProperty IsKeyboardFocusVisibleProperty =
-        DependencyProperty.RegisterAttached(
-            "IsKeyboardFocusVisible",
-            typeof(bool),
-            typeof(FocusVisualState),
-            new FrameworkPropertyMetadata(false));
-
-    internal static void SetIsKeyboardFocusVisible(DependencyObject target, bool value) =>
-        target.SetValue(IsKeyboardFocusVisibleProperty, value);
-
-    internal static bool GetIsKeyboardFocusVisible(DependencyObject target) =>
-        (bool)target.GetValue(IsKeyboardFocusVisibleProperty);
-
-    // 模板部件的键盘焦点由宿主画时置真，类处理器不点亮它自己的焦点环：日期框的打开日历按钮套基础按钮样式，
-    // 模板里有常驻 FocusRing，可整框 2px 输入面边界由日期框模板画（App.xaml），按钮的环再亮就叠成两层。
-    public static readonly DependencyProperty HostDrawsFocusProperty =
-        DependencyProperty.RegisterAttached(
-            "HostDrawsFocus",
-            typeof(bool),
-            typeof(FocusVisualState),
-            new FrameworkPropertyMetadata(false));
-
-    public static void SetHostDrawsFocus(DependencyObject target, bool value) =>
-        target.SetValue(HostDrawsFocusProperty, value);
-
-    public static bool GetHostDrawsFocus(DependencyObject target) =>
-        (bool)target.GetValue(HostDrawsFocusProperty);
-
-    // 模板自己画键盘焦点的控件不能再叠 FocusVisualStyle 装饰层：模板里有常驻 FocusRing 的控件，
-    // 以及获焦时由模板把输入面边界换成 2px ActiveBrush 的文本框、下拉框与日期框（App.xaml）。
-    internal static bool DrawsOwnKeyboardFocus(Control control)
-    {
-        if (control is TextBox or ComboBox or DatePicker) return true;
-        control.ApplyTemplate();
-        return control.Template?.FindName("FocusRing", control) is Border;
-    }
-
-    // App 静态构造里注册一次：所有窗口与弹层里的控件，不论 XAML 声明还是代码新建，都按同一规则维护
-    // IsKeyboardFocusVisible——指针在控件上按下随后获焦不点亮，Tab、方向键与程序移交的获焦一律点亮，
-    // 标了 HostDrawsFocus 的模板部件除外。模板据此点亮自己的焦点环，不必逐个控件接线（DESIGN.md §4 常驻焦点环）。
-    internal static void RegisterClassHandlers()
-    {
-        EventManager.RegisterClassHandler(
-            typeof(Control),
-            UIElement.PreviewMouseLeftButtonDownEvent,
-            new MouseButtonEventHandler(OnPreviewMouseLeftButtonDown),
-            handledEventsToo: true);
-        EventManager.RegisterClassHandler(
-            typeof(Control),
-            UIElement.GotKeyboardFocusEvent,
-            new KeyboardFocusChangedEventHandler(OnGotKeyboardFocus),
-            handledEventsToo: true);
-    }
-
-    private static void OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        var control = (Control)sender;
-        control.SetValue(MouseFocusPendingProperty, true);
-        SetIsKeyboardFocusVisible(control, false);
-        control.Dispatcher.BeginInvoke(
-            DispatcherPriority.Input,
-            new Action(() => control.ClearValue(MouseFocusPendingProperty)));
-    }
-
-    private static void OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        // 获焦事件沿祖先冒泡，只给实际获焦的控件点亮。
-        var control = (Control)sender;
-        if (ReferenceEquals(sender, e.NewFocus) &&
-            !(bool)control.GetValue(MouseFocusPendingProperty) &&
-            !GetHostDrawsFocus(control))
-        {
-            SetIsKeyboardFocusVisible(control, true);
-        }
-    }
 }

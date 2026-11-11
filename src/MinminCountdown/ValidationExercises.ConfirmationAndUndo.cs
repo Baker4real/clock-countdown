@@ -72,6 +72,104 @@ internal static partial class ValidationExercises
         timer.Start();
     }
 
+    // #257：标签管理行内动作的真实窗口链。保存前/后、删除取消/确认构成行为对照；
+    // 只使用 MainWindow 和模态确认框，不套用拥有双窗生命周期的 #256 fixture。
+    public static bool RunTagManagerInlineActionBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-tag-inline-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2036, 5, 12, 0, 0, 0, TimeSpan.Zero));
+        var preexistingWindows = new HashSet<Window>(Application.Current.Windows.Cast<Window>());
+        HolidayCalendar? calendar = null;
+        try
+        {
+            // Seed persistence and partially constructed windows belong to this probe even if setup throws.
+            var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+            var tag = MustApply(workspace, new CreateTagChange("工作", "#A8D5BA")).CreatedTag;
+            Must(tag is not null, "#257：无法建立标签行内动作探针标签。");
+            MustApply(workspace, new SaveCountdownChange(
+                null, "标签动作倒计时", new DateTimeOffset(2036, 5, 13, 0, 0, 0, TimeSpan.Zero), new[] { tag!.Id }));
+            MustApply(workspace, new SaveNoteChange(
+                null, "标签动作便签", null, false, new[] { tag.Id }, Array.Empty<ReminderRule>()));
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(WindowValidationInput.InvokeButton(main.TagManagerButton), "#257：无法点击真实标签管理入口。");
+            var popup = main.TagManagerPopup;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(popup.IsOpen, "#257：标签管理按钮未打开真实 TagManagerPopup。");
+            var rows = main.TagManagerRows;
+
+            Grid FindRow(string name) => rows.Children.OfType<Grid>().Single(row =>
+                row.Children.OfType<TextBox>().Any(input => string.Equals(input.Text, name, StringComparison.Ordinal)));
+
+            var row = FindRow("工作");
+            var input = row.Children.OfType<TextBox>().Single();
+            var save = row.Children.OfType<Button>().Single(button => Equals(button.Content, "保存"));
+            input.Text = "工作重命名";
+            Must(DesktopWorkspace.Load(path).Snapshot.Settings.Tags.Single().Name == "工作",
+                "#257：仅编辑标签文本、尚未点击保存时不应提前落盘。");
+            Must(WindowValidationInput.InvokeButton(save), "#257：无法点击真实标签保存动作。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var renamed = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(renamed.Tags.Single().Id == tag.Id && renamed.Tags.Single().Name == "工作重命名" &&
+                 renamed.Countdowns.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 renamed.Notes.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：标签保存点击必须按原 ID 重命名落盘并保留记录关联。");
+
+            row = FindRow("工作重命名");
+            var delete = row.Children.OfType<Button>().Single(button => Equals(button.Content, "删除"));
+            QueueConfirmationDialogResponse(main, confirm: false, inspect: dialog => Must(
+                dialog.CancelButton.IsDefault && dialog.CancelButton.IsCancel && !dialog.ConfirmButton.IsDefault &&
+                Equals(dialog.ConfirmButton.Content, "确认删除"),
+                "#257：标签删除确认框必须保持取消安全默认与既有确认文案。"));
+            Must(WindowValidationInput.InvokeButton(delete), "#257：无法点击真实标签删除动作以执行取消分支。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var cancelled = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(cancelled.Tags.Single().Id == tag.Id &&
+                 cancelled.Countdowns.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 cancelled.Notes.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：取消标签删除后标签、倒计时、便签及关联必须完全保留。");
+
+            row = FindRow("工作重命名");
+            delete = row.Children.OfType<Button>().Single(button => Equals(button.Content, "删除"));
+            QueueConfirmationDialogResponse(main, confirm: true);
+            Must(WindowValidationInput.InvokeButton(delete), "#257：无法点击真实标签删除动作以执行确认分支。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var final = workspace.Snapshot.Settings;
+            var persisted = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(final.Tags.Count == 0 && persisted.Tags.Count == 0 &&
+                 final.Countdowns.Single().Name == "标签动作倒计时" &&
+                 final.Notes.Single().Text == "标签动作便签" &&
+                 !final.Countdowns[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !final.Notes[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !persisted.Countdowns[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !persisted.Notes[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：确认删除标签必须落盘解除 countdown/note 关联，且记录本身保留。");
+            return true;
+        }
+        finally
+        {
+            try
+            {
+                foreach (var window in CurrentCreatedMainWindows(preexistingWindows))
+                {
+                    if (!window.Dispatcher.HasShutdownStarted) window.Close();
+                }
+            }
+            finally
+            {
+                try { calendar?.Dispose(); }
+                finally
+                {
+                    DeleteSettingsFiles(path);
+                    DeleteFileIfPresent(path + ".log");
+                }
+            }
+        }
+    }
+
     // #155：「完成便签」确认框行为——先取消（安全默认，便签/条目/可完成状态原样保留），
     // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部知道了」不经本入口。
     public static bool RunReminderCenterCompleteRequiresConfirmationBehavior()
@@ -152,20 +250,16 @@ internal static partial class ValidationExercises
 
     // #155：最近一次删除的短时撤销——确认框取消为安全默认；删除成功后主窗口状态条提供
     // 「撤销」入口；撤销在同一事务恢复记录与规则提醒状态；连续删除只保留最近一次；入口短时过期。
-    public static bool RunNoteCompletionExitTransition()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-exit-{Guid.NewGuid():N}.json");
-        var workspace = DesktopWorkspace.Load(path);
-        MustApply(workspace, new SaveNoteChange(null, "完成淡出探针", null, false, [], Array.Empty<ReminderRule>()));
-        var note = workspace.Snapshot.Settings.Notes.Single();
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
-        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-        try
+    public static bool RunNoteCompletionExitTransition() =>
+        DualWindowValidationFixture.Run("completion-exit", fixture =>
         {
-            PrepareOffscreenValidationWindow(main); PrepareOffscreenValidationWindow(floating);
-            main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
-            WindowValidationInput.Pump(main.Dispatcher);
+            var path = fixture.SettingsPath;
+            var workspace = fixture.Workspace;
+            MustApply(workspace, new SaveNoteChange(null, "完成淡出探针", null, false, [], Array.Empty<ReminderRule>()));
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            fixture.ShowWindows(WorkspaceKind.Notes);
+            var main = fixture.Main;
+            var floating = fixture.Floating;
             foreach (var onFloating in new[] { true, false })
             {
                 var source = onFloating ? (Window)floating : main;
@@ -223,54 +317,41 @@ internal static partial class ValidationExercises
                 }
             }
             return true;
-        }
-        finally
-        {
-            floating.Close(); main.Close(); DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
-        }
-    }
+        });
 
-    public static bool RunNoteCompletionFlipTransition()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-flip-{Guid.NewGuid():N}.json");
-        var workspace = DesktopWorkspace.Load(path);
-        void Add(string text, DateTime date) => MustApply(
-            workspace,
-            new SaveNoteChange(null, text, date, false, [], Array.Empty<ReminderRule>()));
-        Add("零位移便签", new DateTime(2038, 7, 14));
-        Add("悬浮下一张", new DateTime(2038, 7, 13));
-        Add("悬浮完成", new DateTime(2038, 7, 13));
-        Add("管理下一张", new DateTime(2038, 7, 12));
-        Add("管理完成", new DateTime(2038, 7, 12));
-        Add("日期末条", new DateTime(2038, 7, 11));
-        Add("日期下方", new DateTime(2038, 7, 10));
-        for (var index = 0; index < 8; index++)
+    public static bool RunNoteCompletionFlipTransition() =>
+        DualWindowValidationFixture.Run("completion-flip", fixture =>
         {
-            Add($"视口外{index}", new DateTime(2038, 7, 8 - index));
-        }
+            var path = fixture.SettingsPath;
+            var workspace = fixture.Workspace;
+            void Add(string text, DateTime date) => MustApply(
+                workspace,
+                new SaveNoteChange(null, text, date, false, [], Array.Empty<ReminderRule>()));
+            Add("零位移便签", new DateTime(2038, 7, 14));
+            Add("悬浮下一张", new DateTime(2038, 7, 13));
+            Add("悬浮完成", new DateTime(2038, 7, 13));
+            Add("管理下一张", new DateTime(2038, 7, 12));
+            Add("管理完成", new DateTime(2038, 7, 12));
+            Add("日期末条", new DateTime(2038, 7, 11));
+            Add("日期下方", new DateTime(2038, 7, 10));
+            for (var index = 0; index < 8; index++)
+            {
+                Add($"视口外{index}", new DateTime(2038, 7, 8 - index));
+            }
 
-        var notes = workspace.Snapshot.Settings.Notes;
-        var stationary = notes.Single(note => note.Text == "零位移便签");
-        var floatingTarget = notes.Single(note => note.Text == "悬浮完成");
-        var floatingNext = notes.Single(note => note.Text == "悬浮下一张");
-        var mainTarget = notes.Single(note => note.Text == "管理完成");
-        var mainNext = notes.Single(note => note.Text == "管理下一张");
-        var lastInDate = notes.Single(note => note.Text == "日期末条");
-        var belowDate = notes.Single(note => note.Text == "日期下方");
-        // 日期最早的一条排在两个列表末尾，完成前后都在视口外。
-        var farFiller = notes.Single(note => note.Text == "视口外7");
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
-        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-        try
-        {
-            PrepareOffscreenValidationWindow(main);
-            PrepareOffscreenValidationWindow(floating);
-            main.Show();
-            floating.Show();
-            main.ShowWorkspace(WorkspaceKind.Notes);
-            floating.ShowWorkspace(WorkspaceKind.Notes);
-            WindowValidationInput.Pump(main.Dispatcher);
+            var notes = workspace.Snapshot.Settings.Notes;
+            var stationary = notes.Single(note => note.Text == "零位移便签");
+            var floatingTarget = notes.Single(note => note.Text == "悬浮完成");
+            var floatingNext = notes.Single(note => note.Text == "悬浮下一张");
+            var mainTarget = notes.Single(note => note.Text == "管理完成");
+            var mainNext = notes.Single(note => note.Text == "管理下一张");
+            var lastInDate = notes.Single(note => note.Text == "日期末条");
+            var belowDate = notes.Single(note => note.Text == "日期下方");
+            // 日期最早的一条排在两个列表末尾，完成前后都在视口外。
+            var farFiller = notes.Single(note => note.Text == "视口外7");
+            fixture.ShowWindows(WorkspaceKind.Notes);
+            var main = fixture.Main;
+            var floating = fixture.Floating;
 
             CheckBox CompletionCheck(Window source, string id) =>
                 VisualDescendants<CheckBox>(source).Single(candidate => candidate.Tag as string == id);
@@ -448,44 +529,70 @@ internal static partial class ValidationExercises
                     MustApply(workspace, new DeleteNoteChange(added.Id));
                     WindowValidationInput.Pump(source.Dispatcher);
 
-                    if (onFloating)
+                    foreach (var interruptNewEntry in new[] { false, true })
                     {
-                        // 捕获之后、Start 之前的同一同步步骤里既完成目标又插入一条新便签。新便签排在下一张卡之后，
-                        // 落在下一张卡完成前的位置上（视口内），捕获时没有旧位置，不得补位；下一张卡照常从旧位置
-                        // 补位，证明这次 Start 确实施加了补位。
-                        var targetCard = Card(floating, target.Id);
-                        Align(floating, viewport, targetCard, bottom: false);
-                        var oldNext = Bounds(Card(floating, next.Id), viewport);
+                        // 管理窗在下一既存日期组内插入新卡，必须计入日期组祖先的位移。
+                        var insertionTarget = onFloating ? target : lastInDate;
+                        var insertionNext = onFloating ? next : belowDate;
+                        Grid DateSection(string? date) => VisualDescendants<Grid>(main).Single(section =>
+                            section.Uid == "NoteDateTimelineSection" && section.IsVisible &&
+                            VisualDescendants<Button>(section).Any(toggle =>
+                                toggle.Uid == "NoteDateDisclosure" &&
+                                string.Equals(toggle.Tag as string, date ?? string.Empty, StringComparison.Ordinal)));
+                        // 捕获之后、Start之前的同一同步步骤里完成目标并插入新便签。
+                        // 浮窗新卡排在下一卡之后；管理窗新卡进入其下方既存日期组。两者均在视口内，
+                        // 捕获时没有旧位置，不得补位；既存卡或日期组仍移动，排除未启动过渡的假绿。
+                        var targetCard = Card(source, insertionTarget.Id);
+                        Align(source, viewport, targetCard, bottom: false);
+                        var oldNext = Bounds(onFloating ? Card(source, insertionNext.Id) : DateSection(insertionNext.Date), viewport);
                         Must(!OutsideViewport(oldNext, viewport),
                             $"#243：新条目补位探针的视口前置条件不成立。nextTop={oldNext.Top:0.###}; " +
                             $"viewport={viewport.ActualHeight:0.###}。");
-                        var exit = NoteCompletionExit.Capture(targetCard, viewport) ??
+                        using var exit = NoteCompletionExit.Capture(targetCard, viewport) ??
                             throw new InvalidOperationException("#243：开启动画时完成离场必须截取完成卡片。");
-                        MustApply(workspace, new SetNoteCompletionChange(target.Id, true));
-                        MustApply(workspace, new SaveNoteChange(null, "补位新便签", new DateTime(2038, 7, 12),
+                        MustApply(workspace, new SetNoteCompletionChange(insertionTarget.Id, true));
+                        MustApply(workspace, new SaveNoteChange(null, "补位新便签", new DateTime(2038, 7, onFloating ? 12 : 10),
                             false, [], Array.Empty<ReminderRule>()));
                         var inserted = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "补位新便签");
+                        var insertedCard = Card(source, inserted.Id);
+                        var insertedOriginalTransform = insertedCard.ReadLocalValue(UIElement.RenderTransformProperty);
                         exit.Start();
                         viewport.UpdateLayout();
-                        var nextAfter = Card(floating, next.Id);
+                        var nextAfter = onFloating ? Card(source, insertionNext.Id) : DateSection(insertionNext.Date);
                         var nextDelta = Displacement(nextAfter, viewport);
                         var newNextTop = Bounds(nextAfter, viewport).Top - nextDelta;
                         Must(ExitVisual(viewport) is not null && exit.ActiveFlipCountForValidation > 0 &&
-                            nextDelta > 0 && Math.Abs(nextDelta - (oldNext.Top - newNextTop)) <= 0.1,
-                            $"#243：插入新便签的同时，原有的下一张卡仍须从旧位置补位。oldY={oldNext.Top:0.###}; " +
+                            nextDelta > 0 && Math.Abs(nextDelta - (oldNext.Top - newNextTop)) <= 0.1 &&
+                            Displacement(Card(source, insertionNext.Id), viewport) > 0,
+                            $"#243：插入新便签的同时，原有下一卡或日期组仍须从旧位置补位。surface={source.GetType().Name}; oldY={oldNext.Top:0.###}; " +
                             $"newY={newNextTop:0.###}; displacement={nextDelta:0.###}; " +
                             $"activeFlip={exit.ActiveFlipCountForValidation}。");
-                        var insertedCard = Card(floating, inserted.Id);
                         var insertedBounds = Bounds(insertedCard, viewport);
                         var insertedDelta = Displacement(insertedCard, viewport);
                         Must(!OutsideViewport(insertedBounds, viewport) && Math.Abs(insertedDelta) <= 0.001,
-                            $"#243：捕获时不存在的新便签不得补位。top={insertedBounds.Top:0.###}; " +
+                            $"#243：捕获时不存在的新便签不得补位。surface={source.GetType().Name}; top={insertedBounds.Top:0.###}; " +
+                            $"own={TranslationY(insertedCard):0.###}; ancestor={insertedDelta - TranslationY(insertedCard):0.###}; " +
                             $"displacement={insertedDelta:0.###}; viewport={viewport.ActualHeight:0.###}。");
-                        exit.Dispose();
-                        AssertCleared(viewport, nextAfter, "新条目补位探针结束");
-                        MustApply(workspace, new SetNoteCompletionChange(target.Id, false));
+                        Must(WindowValidationInput.WaitUntil(source.Dispatcher, () => exit.Opacity is > 0 and < 1),
+                            "#243：新条目探针必须取得真实中间帧。");
+                        var insertedMiddleDelta = Displacement(insertedCard, viewport);
+                        var neighborMiddleDelta = Displacement(nextAfter, viewport);
+                        Must(Math.Abs(insertedMiddleDelta) <= 0.001 && neighborMiddleDelta > 0,
+                            "#243：真实中间帧中新卡累计位移须为零，既存卡或日期组须继续补位。");
+                        if (interruptNewEntry) exit.Dispose();
+                        else Must(WindowValidationInput.WaitUntil(source.Dispatcher, () => ExitVisual(viewport) is null),
+                            "#243：新条目探针必须到达真实自然终态。");
+                        AssertCleared(viewport, nextAfter, interruptNewEntry ? "新条目补位中断" : "新条目补位自然结束");
+                        Must(Math.Abs(Displacement(insertedCard, viewport)) <= 0.001 &&
+                            Equals(insertedCard.ReadLocalValue(UIElement.RenderTransformProperty), insertedOriginalTransform),
+                            "#243：新卡的补偿位移及变换必须在终态或中断后释放。");
+                        Console.Error.WriteLine($"NOTE_COMPLETION_NEW_ITEM: surface={source.GetType().Name}; " +
+                            $"interrupt={interruptNewEntry}; first={insertedDelta:0.###}; middle={insertedMiddleDelta:0.###}; " +
+                            $"end={Displacement(insertedCard, viewport):0.###}; neighborStart={nextDelta:0.###}; " +
+                            $"neighborMiddle={neighborMiddleDelta:0.###}; originalTransformRestored=True");
+                        MustApply(workspace, new SetNoteCompletionChange(insertionTarget.Id, false));
                         MustApply(workspace, new DeleteNoteChange(inserted.Id));
-                        WindowValidationInput.Pump(floating.Dispatcher);
+                        WindowValidationInput.Pump(source.Dispatcher);
                     }
 
                     running = Begin(source, viewport, target, next, nextEntersFromBelow);
@@ -530,34 +637,23 @@ internal static partial class ValidationExercises
             }
 
             return true;
-        }
-        finally
-        {
-            floating.Close();
-            main.Close();
-            DeleteSettingsFiles(path);
-            DeleteFileIfPresent(path + ".log");
-        }
-    }
+        });
 
     public static bool RunNoteCompletionUndoFeedback()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-completion-undo-{Guid.NewGuid():N}.json");
         var firstDue = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
         var clock = new AdvancingValidationClock(firstDue.AddMinutes(-1));
-        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
         var rule = new FixedIntervalReminderRule("completion-undo-repeat", firstDue, new ReminderInterval(15));
-        MustApply(workspace, new SaveNoteChange(null, "完成反馈探针", new DateTime(2038, 7, 8), false,
-            [], new ReminderRule[] { rule }));
-        var note = workspace.Snapshot.Settings.Notes.Single();
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
-        var floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
-        try
+        return DualWindowValidationFixture.Run("completion-undo", fixture =>
         {
-            PrepareOffscreenValidationWindow(main); PrepareOffscreenValidationWindow(floating);
-            main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
-            WindowValidationInput.Pump(main.Dispatcher);
+            var path = fixture.SettingsPath;
+            var workspace = fixture.Workspace;
+            MustApply(workspace, new SaveNoteChange(null, "完成反馈探针", new DateTime(2038, 7, 8), false,
+                [], new ReminderRule[] { rule }));
+            var note = workspace.Snapshot.Settings.Notes.Single();
+            fixture.ShowWindows(WorkspaceKind.Notes);
+            var main = fixture.Main;
+            var floating = fixture.Floating;
             foreach (var onFloating in new[] { true, false })
             {
                 var source = onFloating ? (Window)floating : main;
@@ -644,13 +740,7 @@ internal static partial class ValidationExercises
                 new SettingsStore(clock: clock).Load(path).Settings.Notes.Single(item => item.Id == deleted.Id).IsCompleted,
                 "#233：完成撤销到期应只关闭提示，不重新打开便签。");
             return true;
-        }
-        finally
-        {
-            floating.Close(); main.Close();
-            DeleteDirectoryIfEmpty(path + ".tmp");
-            DeleteSettingsFiles(path); DeleteFileIfPresent(path + ".log");
-        }
+        }, store: new SettingsStore(clock: clock));
     }
 
     public static bool RunDeleteUndoOfferBehavior()

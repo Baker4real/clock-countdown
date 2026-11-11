@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "issue": 255,
+  "baseline_version": "2026-11-10-v76",
+  "capture_run": "20261110T214726441-37beebac",
+  "source_base_commit": "77384095d292ad8217f79b14fd6817451a538695",
+  "capture_candidate_dll_sha256": "72DF0D3FC4770E8300A5DAB6B788BC999773E12E2B4CF021DAD0499D0C5991FE",
+  "validation_report_sha256": "0E7BC7D824AF93DBB7368A9EA61934A4A5487AF69BC819CED883538FFDAE3C22",
+  "original_focus_manifest_sha256": "1584AE7FD6BC19584C8E26462C8FE2211EF68714F9AA3316D2DED223F4A0EB92",
+  "original_surface_manifest_sha256": "DCB9BCC61CA499D7E7884C177C9FC1EF6DD336306077090A49EBF8FE17DF431F",
+  "capture_note": "此候选只在未绑定的验证方法内带受限诊断；生成后已完全移除，生产焦点源码与图像未改。正式构建和独立回归单独记录。",
+  "source_binding": {
+    "main": "80A8897A032BA5951D83D4B6F809E8EF1A4350C9952625B90690E49F76E91880",
+    "floating": "F0D2EF6CBAC2F7809111D0BC1DE4986D53D66003010D605B78DE63C97530754C"
+  },
+  "source_focus_crop_count": 47,
+  "source_focus_failures": 0,
+  "direct_policy_checks": {
+    "TemplateAndInputControlsDoNotUseAdorners": true,
+    "ListAndStatusUseSharedAdorner": true,
+    "KeyboardTransferLightsTemplateStroke": true,
+    "PointerTransferDoesNotLightTemplateStroke": true,
+    "KeyboardTransferAfterPointerLightsStroke": true,
+    "CheckBoxHasOneStroke": true,
+    "CheckBoxRejectsSecondStroke": true,
+    "TextBoxHasOneStroke": true,
+    "TextBoxRejectsSecondStroke": true,
+    "ComboBoxHasOneStroke": true,
+    "ComboBoxRejectsSecondStroke": true,
+    "SystemDottedButtonRejected": true,
+    "SystemDottedListRejected": true,
+    "DateInputOwnsItsButtonStroke": true,
+    "DateInputRejectsButtonAdorner": true,
+    "DateInputRejectsButtonTemplateStroke": true,
+    "IncomeKeyboardTransferLightsHostStroke": true,
+    "IncomeRejectsSecondStroke": true,
+    "IncomePointerTransferDoesNotLightStroke": true,
+    "IncomeKeyboardActionKeepsInvocationAndFocus": true,
+    "IncomeFocusLossClearsStroke": true
+  },
+  "real_wpf_facts": {
+    "SecondaryWindowKeyboardFocusDrawnOnce": true,
+    "FloatingKeyboardFocusDrawnOnce": true,
+    "MainKeyboardNavigation": {
+      "InitialFocusSafe": true,
+      "CompleteTabSequence": true,
+      "AllPassed": true,
+      "FailedChecks": []
+    }
+  },
+  "required_count": 4,
+  "copied_and_verified": 4,
+  "entries": [
+    {
+      "id": "Countdowns-TopmostCheck",
+      "path": "Countdowns-TopmostCheck.png",
+      "state": "管理窗置顶勾选框的单层暖金焦点边",
+      "kind": "focus-crop",
+      "sha256": "9E94F3B88E43956FFFB8B733DCD9A6EF49879A0FD8E4FA71356737E369D8720D",
+      "visual_review": "read_image reviewed; pixels unchanged",
+      "result": "pass",
+      "focusedType": "CheckBox",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 640,
+        "y": 36,
+        "width": 114,
+        "height": 52
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    },
+    {
+      "id": "Countdowns-CountdownDate",
+      "path": "Countdowns-CountdownDate.png",
+      "state": "日期输入宿主描边；打开日历按钮没有第二层焦点环",
+      "kind": "focus-crop",
+      "sha256": "1944ACFCEEE3AA71DD53ED1BFBD24CA018F25D2A99D5F83580F56E90479BCC2B",
+      "visual_review": "read_image reviewed; pixels unchanged",
+      "result": "pass",
+      "focusedType": "Button",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 379,
+        "y": 360.91,
+        "width": 258,
+        "height": 57
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    },
+    {
+      "id": "floating-focus",
+      "path": "floating-focus.png",
+      "state": "悬浮窗快速新增入口的单层暖金焦点边",
+      "kind": "surface",
+      "sha256": "91EE67979E4F348604D70CA276167372DDE2E1840654112BF76B1E016FB2C517",
+      "visual_review": "read_image reviewed; pixels unchanged",
+      "result": "pass",
+      "pixelWidth": 520,
+      "pixelHeight": 390
+    },
+    {
+      "id": "rules-editor-focus",
+      "path": "rules-editor-focus.png",
+      "state": "提醒规则编辑器保存修改按钮的单层暖金焦点边",
+      "kind": "surface",
+      "sha256": "3C5D54B6C11ECA8F668FC3205FEEE7DB443B8C67DB1A096A7EEC1C38B75087B2",
+      "visual_review": "read_image reviewed; pixels unchanged",
+      "result": "pass",
+      "pixelWidth": 640,
+      "pixelHeight": 790
+    }
+  ]
+}

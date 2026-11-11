@@ -773,6 +773,8 @@ internal static partial class ValidationReport
             ValidationExercises.ProbeSettingsRecoveryFailureExitIsDefault();
         var ruleEditorInlineDeleteUsesDangerButton =
             ValidationExercises.ProbeRuleEditorInlineDeleteUsesDangerButton();
+        var inlineActionContract = ValidationExercises.ProbeInlineActionContract();
+        var tagManagerInlineActionBehavior = ValidationExercises.RunTagManagerInlineActionBehavior();
         var settingsRecoverySecondaryUsesCanvas =
             ValidationExercises.ProbeSettingsRecoverySecondaryUsesCanvas();
         var reminderCenterTwoRowActionsLayout =
@@ -974,6 +976,7 @@ internal static partial class ValidationReport
             floatingTypographyMeasurements.FirstOrDefault()?.ReminderFontSize ?? 0);
         var secondaryWindowTypographyGateIsolationBehavior =
             ValidationExercises.RunSecondaryWindowTypographyGateIsolationBehavior();
+        var keyboardFocusPolicyChecks = KeyboardFocusPolicyFixtures.Run();
         var secondaryWindowKeyboardFocus = ValidateSecondaryWindowKeyboardFocus(main);
 
         var countdownName = Required<TextBox>(main, "CountdownName");
@@ -1386,6 +1389,7 @@ internal static partial class ValidationReport
             ["NoteBatchDeleteUndo"] = Must(ValidationExercises.RunNoteBatchDeleteUndo(), "#235 一次安全确认与撤销，恢复全部记录和规则状态，写盘失败或ID冲突原子拒绝"),
             ["NoteSelectionAccessibility"] = Must(ValidationExercises.RunNoteSelectionAccessibility(), "#235 选中数量直播区、行peer、刷新保留与筛选折叠清理"),
             ["NoteCompletionExitTransition"] = Must(ValidationExercises.RunNoteCompletionExitTransition(), "#233 完成卡片160ms透明度离场、动画开关与撤销/切页/隐藏中断"),
+            ["DualWindowValidationFixtureLifecycle"] = Must(ValidationExercises.RunDualWindowValidationFixtureLifecycle(), "#256 双窗fixture独立状态、完整清理、部分构造回滚与失败归因"),
             ["NoteCompletionFlipTransition"] = Must(ValidationExercises.RunNoteCompletionFlipTransition(), "#243 两窗卡片尺寸快照、稳定身份FLIP补位（捕获后新出现的条目不补位）、同步时钟及全部中断清零"),
             ["SystemContrastUpdatesOpenWindows"] = Must(ValidateSystemContrastUpdatesOpenWindows(main, floating), "#220 已打开主窗口与浮窗随系统对比度开关立即更新并恢复"),
             ["SystemContrastAccessibleStates"] = Must(ValidateSystemContrastAccessibleStates(main, floating), "#220 五窗文字、背景、边界、焦点、选中和禁用态映射系统颜色并保留草稿"),
@@ -1427,6 +1431,8 @@ internal static partial class ValidationReport
             ["CountdownCardActionsIncludeRecordName"] = Must(countdownCardActionsIncludeRecordName, "倒计时卡编辑/删除可访问名称包含对象名"),
             ["SettingsRecoveryFailureExitIsDefault"] = Must(settingsRecoveryFailureExitIsDefault, "设置恢复失败态退出按钮是 Enter 默认按钮"),
             ["RuleEditorInlineDeleteUsesDangerButton"] = Must(ruleEditorInlineDeleteUsesDangerButton, "规则编辑器行内删除使用 DangerButton"),
+            ["InlineActionContract"] = Must(inlineActionContract, "倒计时、便签、标签与规则行内动作共享 Content、可访问性、样式、危险语义、焦点与 ToolTip 契约（#257）"),
+            ["TagManagerInlineActionBehavior"] = Must(tagManagerInlineActionBehavior, "标签管理真实保存落盘、删除取消/确认、记录保留与解除关联（#257）"),
             ["SettingsRecoverySecondaryUsesCanvas"] = Must(settingsRecoverySecondaryUsesCanvas, "设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB"),
             ["ReminderCenterTwoRowActionsLayout"] = Must(reminderCenterTwoRowActionsLayout, "提醒中心动作按 DESIGN 两行布局且按钮为图标加文字"),
             ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN，计划时间在卡片内且完整北京时间标记下一行不拆字（#250/#253）"),
@@ -1494,6 +1500,11 @@ internal static partial class ValidationReport
             ["MainStructuralAnnouncementGateIsolationBehavior"] = Must(mainStructuralAnnouncementGateIsolationBehavior, "结构变化通知三门负向夹具可独立失败"),
             ["SecondaryWindowTypography"] = secondaryWindowTypography,
             ["SecondaryWindowTypographyGateIsolationBehavior"] = Must(secondaryWindowTypographyGateIsolationBehavior, "次级窗口字号三门负向夹具可独立失败"),
+            ["KeyboardFocusPolicyBehavior"] = Must(
+                keyboardFocusPolicyChecks.Values.All(passed => passed),
+                "#255 直接 WPF 策略夹具覆盖键盘与指针、模板/宿主归属、装饰层资格与拒绝重复描边；未通过：" +
+                    string.Join('/', keyboardFocusPolicyChecks.Where(check => !check.Value).Select(check => check.Key))),
+            ["KeyboardFocusPolicyChecks"] = keyboardFocusPolicyChecks,
             ["SecondaryWindowKeyboardFocusDrawnOnce"] = Must(
                 secondaryWindowKeyboardFocus.AllPassed,
                 "提醒中心、提醒规则编辑器、设置恢复与激活失败窗沿 Tab 一圈，每个停靠点只亮模板焦点或统一的 2px 暖边、" +

@@ -2101,25 +2101,18 @@ public sealed partial class MainWindow
                 FocusDoesNotChangeLayout(TopmostCheck, "Box", "Box") &&
                 FocusDoesNotChangeLayout(CountdownTab, "FocusRing", "Surface");
 
-            // 主按钮/置顶与模板自己画键盘焦点的键盘路径控件（常驻 FocusRing、输入框获焦时的 2px 输入面
-            // 边界）只有模板这一层（FocusVisualStyle 为空），否则 WPF 会在 Alt/Tab/方向键时另画一层装饰
-            // 描边。装饰层画在实际获焦的元素上，日期框的 Tab 焦点落在模板里的打开日历按钮，按钮也不能带。
-            // 模板不画焦点的控件保留 2px 暖边。
-            var selfDrawnFocusControls = KeyboardPathControls
-                .OfType<Control>()
-                .Where(FocusVisualState.DrawsOwnKeyboardFocus)
-                .ToArray();
+            // Check the same ownership/adorner contract used by production, then independently check geometry.
             var primaryAndPinSingleFocusStroke =
-                SaveCountdownButton.FocusVisualStyle is null &&
-                SaveNoteButton.FocusVisualStyle is null &&
-                TopmostCheck.FocusVisualStyle is null &&
-                new Control[] { CountdownTab, NotesTab, FilterButton, TagManagerButton, PreferencesButton }
-                    .All(selfDrawnFocusControls.Contains) &&
-                selfDrawnFocusControls.All(control => control.FocusVisualStyle is null) &&
+                KeyboardPathControls.All(KeyboardFocusPolicy.HasValidAdornment) &&
+                new FrameworkElement[] { SaveCountdownButton, SaveNoteButton, TopmostCheck,
+                    CountdownTab, NotesTab, FilterButton, TagManagerButton, PreferencesButton }
+                    .All(element => KeyboardFocusPolicy.UsesTemplateOrHostStroke(element) &&
+                        KeyboardFocusPolicy.HasValidAdornment(element)) &&
                 new DatePicker[] { CountdownDate, NoteDate }.All(picker =>
                 {
                     picker.ApplyTemplate();
-                    return picker.Template?.FindName("PART_Button", picker) is Control { FocusVisualStyle: null };
+                    return picker.Template?.FindName("PART_Button", picker) is Control button &&
+                        KeyboardFocusPolicy.HasValidAdornment(button);
                 }) &&
                 CountdownListRegion.FocusVisualStyle is Style regularStroke &&
                 RegularFocusVisualThicknessIs(regularStroke, 2);
@@ -3656,7 +3649,7 @@ public sealed partial class FloatingWindow
         var area = MonitorWorkAreaResolver.ResolveForWindow(this).WorkAreaDip;
         var dpi = VisualTreeHelper.GetDpi(this);
         Console.Error.WriteLine(FormattableString.Invariant(
-            $"FLOATING_ANCHOR_TRACE: phase={phase}; left={Left:0.###}; top={Top:0.###}; width={ActualWidth:0.###}; height={ActualHeight:0.###}; dpi={dpi.PixelsPerInchX:0.###}x{dpi.PixelsPerInchY:0.###}; work={area}; bottomMargin={area.Bottom - Top - ActualHeight:0.###}; manual={_hasManualWindowPlacement}; applying={_isApplyingBottomAnchor}; tracking={_trackManualWindowPlacement}; anchor={_bottomAnchorPosition}; visible={IsVisible}; state={WindowState}; workspace={_workspace}"));
+            $"FLOATING_ANCHOR_TRACE: phase={phase}; left={Left:0.###}; top={Top:0.###}; width={ActualWidth:0.###}; height={ActualHeight:0.###}; dpi={dpi.PixelsPerInchX:0.###}x{dpi.PixelsPerInchY:0.###}; work={area}; bottomMargin={area.Bottom - Top - ActualHeight:0.###}; manual={_hasManualWindowPlacement}; applying={_isApplyingBottomAnchor}; tracking={_trackManualWindowPlacement}; anchor={_bottomAnchorPosition}; visible={IsVisible}; state={WindowState}; restore={RestoreBounds}; workspace={_workspace}"));
     }
 
     internal IDisposable ObserveAnchoringForValidation() => new AnchoringObservation(this);
@@ -3677,9 +3670,11 @@ public sealed partial class FloatingWindow
         private void OnLocationChanged(object? sender, EventArgs args)
         {
             var manual = _window._hasManualWindowPlacement;
-            if (!_previouslyManual && manual && _reported++ < 6)
+            if (manual && !_window._isApplyingBottomAnchor && _reported++ < 32)
             {
-                _window.TraceAnchoringForValidation("manual-placement-set");
+                _window.TraceAnchoringForValidation(_previouslyManual
+                    ? "manual-placement-location-changed"
+                    : "manual-placement-set");
             }
             _previouslyManual = manual;
         }
@@ -3786,16 +3781,25 @@ public sealed partial class FloatingWindow
                 ? RunReminderModeClickExercises()
                 : ReminderModeClickResult.NotRun;
             var dragInteraction = RunDragInteractionExercise();
+            TraceAnchoringForValidation("after-drag-probe");
             var themeExercise = RunDayThemeExercise();
+            TraceAnchoringForValidation("after-theme-probe");
             var manualPlacement = RunManualPlacementExercise();
+            TraceAnchoringForValidation("after-manual-placement-probe");
             var uiPolish = ProbeUiPolishScenarios();
+            TraceAnchoringForValidation("after-polish-probe");
             var workspace = ProbeWorkspaceScenarios(initialStateMatches);
+            TraceAnchoringForValidation("after-workspace-probe");
             var noteSearch = ProbeNoteSearchScenarios();
+            TraceAnchoringForValidation("after-note-search-probe");
             // #212：渲染签名稳定刷新探针（焦点/实例保留、隐藏与最小化门控）。
             var stableRefresh = ProbeStableRefreshScenarios();
+            TraceAnchoringForValidation("after-stable-refresh-probe");
             var keyboardFocus = ProbeKeyboardFocusScenarios();
+            TraceAnchoringForValidation("after-keyboard-focus-probe");
             // 放在最后：设置按钮与“…”编辑会揭示管理窗口，避免扰动前面的聚焦类探针。
             var bottomCommand = ProbeBottomCommandScenarios();
+            TraceAnchoringForValidation("after-bottom-command-probe");
             var structure = ProbeStructureScenarios();
 
             return new FloatingWindowValidationScenarios(
@@ -4616,8 +4620,10 @@ public sealed partial class FloatingWindow
             var passBeforeHide = FloatingRowsRenderPassCountForValidation;
             var skippedBeforeHide = FloatingRowsSkippedRenderCountForValidation;
             var rebuildBeforeHide = FloatingRowsRebuildGenerationForValidation;
+            TraceAnchoringForValidation("stable-refresh-before-hide");
             Hide();
             WindowValidationInput.Pump(Dispatcher);
+            TraceAnchoringForValidation("stable-refresh-after-hide");
             UpdateTime(nowUtc.AddSeconds(3));
             UpdateTime(nowUtc.AddSeconds(4));
             WindowValidationInput.Pump(Dispatcher);
@@ -4646,6 +4652,7 @@ public sealed partial class FloatingWindow
             Show();
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
+            TraceAnchoringForValidation("stable-refresh-after-show");
             var hiddenSkipsRenderUntilVisible =
                 hiddenResult.Succeeded &&
                 hiddenSkipsRender &&
@@ -4656,8 +4663,10 @@ public sealed partial class FloatingWindow
 
             var passBeforeMinimize = FloatingRowsRenderPassCountForValidation;
             var skippedBeforeMinimize = FloatingRowsSkippedRenderCountForValidation;
+            TraceAnchoringForValidation("stable-refresh-before-minimize");
             WindowState = WindowState.Minimized;
             WindowValidationInput.Pump(Dispatcher);
+            TraceAnchoringForValidation("stable-refresh-after-minimize");
             UpdateTime(nowUtc.AddSeconds(5));
             UpdateTime(nowUtc.AddSeconds(6));
             WindowValidationInput.Pump(Dispatcher);
@@ -4667,6 +4676,7 @@ public sealed partial class FloatingWindow
             WindowState = WindowState.Normal;
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
+            TraceAnchoringForValidation("stable-refresh-after-restore");
             var minimizedSkipsRenderUntilRestored =
                 minimizedSkipsRender &&
                 FloatingRowsRenderPassCountForValidation > passBeforeMinimize;

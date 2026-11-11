@@ -7,7 +7,7 @@ intent: 将全窗口实拍、源码绑定、行为门禁与本地交付状态分
 
 # 全窗口精致化最终实拍与验收
 
-本目录记录界面精致化 PRD #246 的收口，基础设施 PRD #252 留到后续。管理窗口、悬浮窗、提醒中心、提醒规则编辑器、共享确认框及五个共享弹层共 41 张实拍已经逐张人工复核，图片的字节哈希与复制结果记录在 [review-manifest.json](review-manifest.json)，原捕获元数据在 [surfaces.json](surfaces.json)。同一最终候选的全部适用本机验证已通过；[最终验收状态](acceptance-status.json)、[独立行为事实](independent-behavior-facts.json)和[正式回归回执](final-regression-summary.json)分别记录结果、行为与进程终态。
+本目录保留界面精致化 PRD #246 在 2026-11-09 的验收快照，当时基础设施 PRD #252 尚待后续处理。#252 后续已完成并关闭，现役 v78 与完整集成结果见[#238 / #252 最终验收](../clock-countdown-238-252-final/README.md)。管理窗口、悬浮窗、提醒中心、提醒规则编辑器、共享确认框及五个共享弹层共 41 张实拍已经逐张人工复核，图片的字节哈希与复制结果记录在 [review-manifest.json](review-manifest.json)，原捕获元数据在 [surfaces.json](surfaces.json)。同一最终候选的全部适用本机验证已通过；[最终验收状态](acceptance-status.json)、[独立行为事实](independent-behavior-facts.json)和[正式回归回执](final-regression-summary.json)分别记录结果、行为与进程终态。
 
 设计方法：`Method: design review only (detector not applicable, native WPF)`。
 
@@ -27,7 +27,7 @@ intent: 将全窗口实拍、源码绑定、行为门禁与本地交付状态分
 
 评审修复后的 v74 候选重新进行了捕获：BaselineGenerate `20261109T200515625-1e237c47` 严格退出 0，候选 DLL SHA-256 `1EF81F42A561C9BC39FC7C7DC71F019BD13B61394E4DD784E30D2FB96783A0C2`。41 张新捕获与本目录已逐张人工复核的 PNG 全部逐字节一致，因此沿用人工判定，不重复伪称又看了一轮新画面；新原始元数据在 [surfaces-v74.json](surfaces-v74.json)，主窗 22 项和悬浮窗 27 项当前源码绑定核对、生成报告哈希及跨版本关联在 [final-source-binding.json](final-source-binding.json)。14 张正式基线帧与状态指纹也全部和 v73 一致。
 
-坐标校准后的当前最终候选为 **v75**，DLL SHA-256 `FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C`。BaselineGenerate `20261109T203340606-a12d0d4a` 退出 0，完整单边框检查与负例门均通过，GeometryPreflight `20261109T203724144-7ef21308` 为 9/9。v74→v75 没有任何界面源码绑定、PNG 或状态指纹变化；41 张重新捕获的跨窗帧也逐字节一致。当前元数据为 [surfaces-v75.json](surfaces-v75.json)，当前来源仍由 [final-source-binding.json](final-source-binding.json) 指向，旧 v74 来源保留于 [source-binding-v74.json](source-binding-v74.json)。完整七阶段回归 `20261109T203840236-4ac76637` 已全部退出 0。来源文件保留捕获时的状态快照；其独立验证待办现在均由 [最终验收状态](acceptance-status.json)闭环。
+本批坐标校准后的最终候选为 **v75**，DLL SHA-256 `FC68217948ACE2FA85E30FC4ED0A3A55DD964A130F4D242B2E9DDAE534A4031C`。BaselineGenerate `20261109T203340606-a12d0d4a` 退出 0，完整单边框检查与负例门均通过，GeometryPreflight `20261109T203724144-7ef21308` 为 9/9。v74→v75 没有任何界面源码绑定、PNG 或状态指纹变化；41 张重新捕获的跨窗帧也逐字节一致。本批捕获元数据为 [surfaces-v75.json](surfaces-v75.json)；[final-source-binding.json](final-source-binding.json) 保留 v75 捕获身份，并将 `current_source_bindings` 单独对齐到现役 v78，未声称这41帧由后续新 DLL 重拍。旧 v74 来源保留于 [source-binding-v74.json](source-binding-v74.json)。完整七阶段回归 `20261109T203840236-4ac76637` 已全部退出 0。来源文件保留捕获时的状态快照；其独立验证待办现在均由 [最终验收状态](acceptance-status.json)闭环。
 
 人工逐张核对了文字换行、可读性、边界、单层焦点、高对比度和操作可见性，判定本批批准改动的结果与回归，不将既有外观的逐字节一致解释成所有历史问题已经修复。[#250 复核记录](../clock-countdown-issue-250-surfaces/README.md#复核)中的确认框危险按钮、极长确认文案、禁用提醒的下拉外观、自定义时间折行和重复错误提示仍按原范围保留；本次明确批准的时区换行与圆角文案裁决已落实。滚动视口外内容的自然裁切保持既有规则；动作可达性、字段验证、焦点生命周期和持久化结果以运行门禁为准。共享弹层按自身尺寸单独捕获，避免将其叠回宿主时被窗口边缘裁掉。
 

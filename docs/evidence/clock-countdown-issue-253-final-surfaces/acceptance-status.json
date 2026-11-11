@@ -80,7 +80,7 @@
   "spec_review": "原P2动态禁动画与P3键盘/刷新覆盖均已闭环；真实负例单项报红，恢复后绿色。",
   "source_binding": {
     "path": "final-source-binding.json",
-    "sha256": "C7C31234BFB964CC6EA2544C7141F0E1A17FCC7C138F127CFBA1AD30F417C499",
+    "sha256": "FDE781D13D4DE6EC9F5D710DF5E59A141D4838C051D1850A38E81C3F70915717",
     "run_artifact_sha256": "D9DF5C1821FFABE474193C652BFA0FE8A4EB57AD747893051F0D37295D3892CD"
   },
   "receipts": [
@@ -117,5 +117,6 @@
   "git_commit_created": false,
   "deferred_by_user": "PRD #252 / #255–#257 基础设施深化",
   "known_history": "首次v73底部锚定采样失败已保留；后续源码/EXE/独立回归均通过，未放宽容差或用基线覆盖失败。",
-  "publication_hash_scope": "本文件中的当前文件SHA-256以Git发布的UTF-8/LF字节为准；run_artifact_*保留原始运行证据SHA-256。"
+  "publication_hash_scope": "本文件中的当前文件SHA-256以Git发布的UTF-8/LF字节为准；run_artifact_*保留原始运行证据SHA-256。",
+  "snapshot_scope": "2026-11-09的本地验收历史；发布、关票和后续正式基线状态由相应main提交及最新验收回执确认。"
 }

@@ -10,17 +10,17 @@
   "candidate_exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
-      "manifest_sha256": "05D8DABC9BACCE5C15B33AFCC350250D9AD662A9040345A97E1467BF2B7FCE48",
-      "aggregate_sha256": "6CD667E9A9A51D200EE29A63867D023A7C6DBF0691E8F6AD162C34D571169795",
-      "current_source_files_verified": 22,
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-11-v78/manifest.json",
+      "manifest_sha256": "9590C33F3CC4E1EDB487D692D5F04DD3BE2F4B540A403E883C46490897188ABF",
+      "aggregate_sha256": "1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C",
+      "current_source_files_verified": 23,
       "run_artifact_manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json",
-      "manifest_sha256": "ECC3F946FE2509C88526D18B2DC2741512AD7E2E74EAF241CEC5C5733048D3A8",
-      "aggregate_sha256": "E7EA58B328F7CB11667B250CFCC212F06B3DBD7948854358C1BDB939AC63AE5F",
-      "current_source_files_verified": 27,
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-11-v78/manifest.json",
+      "manifest_sha256": "98D583AFE50A661F33CFA78101D3800DBCDFA821C54F7D33449D6A1FA8E14645",
+      "aggregate_sha256": "4D574BABAC0D501E1307B982BA8D79CB41D1EC7C69E6ED3B1A2F9F0DDDC36239",
+      "current_source_files_verified": 28,
       "run_artifact_manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799"
     }
   },
@@ -84,5 +84,12 @@
     "MainDaySingleBorderGateIsolationBehavior": true
   },
   "pending": "最终候选的独立GeometryPreflight与完整相关组合；本文件不替代正式suite summary。",
-  "run_artifact_current_surfaces_manifest_sha256": "A9BBDCD00B9E6B69B1DFE40D7A7B89055F3C26D10D45183879EF68C4D264FAB9"
+  "run_artifact_current_surfaces_manifest_sha256": "A9BBDCD00B9E6B69B1DFE40D7A7B89055F3C26D10D45183879EF68C4D264FAB9",
+  "capture_baseline_manifests": {
+    "main-window": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
+    "floating-window": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json"
+  },
+  "current_baseline_version": "2026-11-11-v78",
+  "current_sources_revalidated_at": "2026-11-11",
+  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随正式v78，不能把它当作旧截图已由新DLL重拍。后续完整集成验收见clock-countdown-238-252-final。"
 }

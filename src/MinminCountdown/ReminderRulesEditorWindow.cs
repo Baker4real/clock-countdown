@@ -563,13 +563,12 @@ internal sealed class ReminderRulesEditorWindow : Window
             summary.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
             summary.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
             Bind(summary, TextBlock.TextProperty, nameof(ReminderRuleItemViewModel.Description), item);
-            var edit = ActionButton("编辑", $"编辑规则 {item.Description}");
-            var copy = ActionButton("复制", $"复制规则 {item.Description}");
-            var delete = ActionButton("删除", $"删除规则 {item.Description}");
-            edit.Tag = item.RuleId;
-            copy.Tag = item.RuleId;
-            delete.Tag = item.RuleId;
-            delete.Style = (Style)FindResource("DangerButton");
+            var edit = InlineActionButton.Create(
+                this, InlineActionSurface.ReminderRule, InlineActionIntent.Edit, item.RuleId, $"编辑规则 {item.Description}");
+            var copy = InlineActionButton.Create(
+                this, InlineActionSurface.ReminderRule, InlineActionIntent.Copy, item.RuleId, $"复制规则 {item.Description}");
+            var delete = InlineActionButton.Create(
+                this, InlineActionSurface.ReminderRule, InlineActionIntent.Delete, item.RuleId, $"删除规则 {item.Description}");
             Bind(edit, Button.CommandProperty, nameof(ReminderRuleItemViewModel.EditCommand), item);
             Bind(copy, Button.CommandProperty, nameof(ReminderRuleItemViewModel.CopyCommand), item);
             Bind(delete, Button.CommandProperty, nameof(ReminderRuleItemViewModel.DeleteCommand), item);
@@ -601,17 +600,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         }
     }
 
-    private static Button ActionButton(string content, string accessibleName)
-    {
-        var button = new Button
-        {
-            Content = content,
-            MinWidth = 58,
-            Margin = new Thickness(6, 0, 0, 0)
-        };
-        NameControl(button, accessibleName);
-        return button;
-    }
+    // #257：行内动作的内容、可访问性、样式、危险语义、焦点和提示均由 InlineActionButton 提供。
 
     private void BindError(TextBlock target, string textPath, string visibilityPath, Func<string?> readText)
     {

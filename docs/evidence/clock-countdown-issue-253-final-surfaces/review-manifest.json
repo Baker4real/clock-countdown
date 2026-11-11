@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "hash_scope": "git-blob",
   "issue": 253,
   "prd": 246,
   "status": "candidate",

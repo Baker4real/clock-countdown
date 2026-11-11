@@ -63,6 +63,22 @@ try {
     if ($null -eq $excerpt -or $excerpt.Path -ne $launcher -or $excerpt.Lines[0] -ne 'Start-IsolatedSuiteProcess: 隔离桌面创建失败') { $failures.Add('主日志为空时应取隔离启动器日志') }
     if ($null -ne (Get-SuiteStageFailureExcerpt -Stage (New-Stage (Join-Path $workRoot 'missing.err.log')))) { $failures.Add('没有日志时应返回空') }
 
+    # Tooling 的预期负例会写 stderr，最终失败检查以 stdout 的完整 JSON 为准。
+    $toolingOutput = Write-LogBytes 'tooling.out.log' @($utf8.GetBytes('{"Valid":false,"Checks":[{"Name":"diagnostic-negative-control","Status":"processed","Detail":"expected crash verified"},{"Name":"docs:local-links","Status":"failed","Detail":"README.md -> missing.json"}],"Failures":["docs:local-links: missing.json"]}'))
+    $toolingStage = [pscustomobject]@{Stage='Tooling';ExitCode=1;Stdout=$toolingOutput;Stderr=$mixed;LauncherStderr=$null}
+    $excerpt = Get-SuiteStageFailureExcerpt -Stage $toolingStage
+    if ($null -eq $excerpt -or $excerpt.Path -ne $toolingOutput -or $excerpt.Lines[0] -notmatch '^docs:local-links:') {
+        $failures.Add('Tooling 摘要必须优先显示最终 failed check，不能把负例的预期崩溃当作根因')
+    }
+
+    if ($null -eq $excerpt.Diagnostics -or $excerpt.Diagnostics.Path -ne $mixed) { $failures.Add('结构化失败摘要应保留原始stderr补充证据') }
+    $truncated = Write-LogBytes 'truncated.out.log' @($utf8.GetBytes('{"Valid":false,"Checks":['))
+    $toolingStage.Stdout = $truncated
+    $fallback = Get-SuiteStageFailureExcerpt -Stage $toolingStage
+    if ($null -eq $fallback -or $fallback.Path -ne $mixed) { $failures.Add('无完整Tooling JSON时应回退stderr') }
+    $nonTooling = [pscustomobject]@{Stage='Core';ExitCode=1;Stdout=$toolingOutput;Stderr=$mixed;LauncherStderr=$null}
+    if ((Get-SuiteStageFailureExcerpt -Stage $nonTooling).Path -ne $mixed) { $failures.Add('不得猜测其他阶段stdout的JSON合同') }
+
     # 4) 以 75 退出（参考基线待重拍）：延后清单写在末尾，取末尾，不回到更早的错误块。
     $pending = Write-LogBytes 'pending.err.log' @(
         $gbk.GetBytes((& $concise 512 '子进程预期失败的回显')),

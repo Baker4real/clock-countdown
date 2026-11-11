@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    "docs/evidence/clock-countdown-issue-247-countdown-rows/manifest.json",
+    "docs/evidence/clock-countdown-issue-249-note-rows/manifest.json",
+    "docs/evidence/clock-countdown-issue-253-final-surfaces/acceptance-status.json",
+    "docs/evidence/clock-countdown-issue-253-final-surfaces/review-manifest.json"
+  ]
+}

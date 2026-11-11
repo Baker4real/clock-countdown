@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "hash_scope": "git-blob",
   "prd": 246,
   "status": "local-acceptance-complete",
   "clean_build": {

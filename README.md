@@ -132,6 +132,8 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json
 pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Json
 ```
 
+发布前先将本次拟提交文件加入暂存区，再运行 `tools/Test-CountdownPublicationEvidence.ps1 -Source Index -Json`。Tooling 默认按同一个暂存树核对 Markdown 本地链接和声明为 `git-blob` 的证据哈希，不接受磁盘上的未跟踪或忽略文件替代 Git 目标；CI 在构建前用 `-Source Commit -Commit <SHA>` 检查实际发布提交。版本化 JSON 的 UTF-8/LF 写法、原始运行哈希和外部产物边界见[发布证据检查](docs/agents/publication-evidence.md)。Tooling 失败时，启动器优先显示阶段最终 JSON 中的失败检查，stderr 仅作补充诊断；无有效 JSON 时保留原来的混合编码回退。
+
 Tooling 的发布差异检查同时覆盖基点到候选提交、候选到暂存区、暂存区到工作树。默认使用 `origin/main` 和 `HEAD`；集成树或手动验收须显式提供 `-BaseCommit <发布基点>`、`-CandidateCommit <候选提交>`，或通过 `COUNTDOWN_DIFF_BASE`、`COUNTDOWN_DIFF_CANDIDATE` 传给启动器。基点必须是候选祖先；旧提交的错误不能由工作树修正掩盖。CI 按 push / PR / 手动事件解析并固定实际 SHA，手动运行须填写 `publication_base`。
 
 弹层验证和工具自检也可单独经官方入口运行，入口会写出 `logs\suite-runs\*-run.json` 与 `*-summary.json`；启动器异常、取消、超时和失效 owner 都以非成功终态保存，不能把缺少 summary 当成通过：
@@ -162,7 +164,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 
 标注：issue 关闭前按 [`docs/agents/issue-acceptance.md`](docs/agents/issue-acceptance.md) 生成结构化记录；`candidate`、`dry-run`、`deployed` 和 `live verified` 分开记录。`tools/Invoke-IssueWriteback.ps1` 不带 `-Apply` 时只生成评论和父票汇总计划，不发送 GitHub 请求。
 
-标注：`pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Incremental` 是开发者本地迭代手动工具（显式非默认开关：跳过受管清理、保留增量编译），不属于六阶段套件；直跑时须保持 BelowNormal 等低影响等价措施。增量产物不用于发布收口，收口仍走全量 `-Clean` + R2R 与六阶段套件。
+本地迭代使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild`；它保留增量编译，仍走隔离桌面与 BelowNormal。`Build` 始终表示受管 `-Clean` + R2R。开始正式收尾时，使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,Ui,SourceValidation,InstallValidate -Closeout`：入口先用现有 `-RequireClean` 预检当前 checkout 的清理能力，失败就不启动长阶段；完成状态由六阶段结果及构建实际输出的 `CleanR2R` 回执共同判定。只有退出0但没有模式回执、增量构建或缺少任何必需阶段，都不能算正式收尾完成。
 
 启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行（`-AllowForegroundDesktopLauncher`）。下方为启动器转发的**实现细节**（不是复制模板；CSharp/Ui/SourceValidation 直跑会 fail-closed）：
 

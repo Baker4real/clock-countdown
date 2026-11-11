@@ -15,7 +15,7 @@ $settingsBefore = if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
     [pscustomobject]@{ Length = $item.Length; LastWriteTimeUtc = $item.LastWriteTimeUtc; Hash = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash }
 } else { $null }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1') -Force
-$pwsh = (Get-Command pwsh -ErrorAction Stop).Source
+$pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 
 function Assert-Lifecycle {
     param([bool]$Condition, [string]$Message)
@@ -132,7 +132,7 @@ Invoke-SuiteRun -StageSpecs @($spec) -RepositoryRoot $RepositoryRoot -LogDirecto
         '-NoLogo', '-NoProfile', '-NonInteractive', '-File', $ownerFixturePath,
         '-HandshakePath', $ownerHandshakePath, '-RepositoryRoot', $repoRoot,
         '-LogDirectory', (Join-Path $tempRoot 'hard-interrupt-run'),
-        '-SuiteModulePath', (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1'), '-PwshPath', $pwsh
+        '-SuiteModulePath', (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1'), '-PwshPath', ('"' + $pwsh + '"')
     ) -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput $ownerStdout -RedirectStandardError $ownerStderr
     try { $owner.PriorityClass = 'BelowNormal' } catch { }
     $handshakeDeadline = [datetime]::UtcNow.AddSeconds(15)

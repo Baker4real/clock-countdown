@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "hash_scope": "git-blob",
   "issue": 249,
   "baseline_version": "2026-11-09-v75",
   "capture_run": "20261109T203340606-a12d0d4a",

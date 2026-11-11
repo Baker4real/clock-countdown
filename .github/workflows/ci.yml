@@ -75,6 +75,12 @@ jobs:
           "COUNTDOWN_DIFF_BASE=$($range.BaseCommit)" >> $env:GITHUB_ENV
           "COUNTDOWN_DIFF_CANDIDATE=$($range.CandidateCommit)" >> $env:GITHUB_ENV
 
+      - name: Check evidence in the published Git tree
+        shell: pwsh
+        run: |
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Test-CountdownPublicationEvidence.ps1 -Source Commit -Commit $env:GITHUB_SHA -Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Set up .NET 10
         uses: actions/setup-dotnet@v6
         with:

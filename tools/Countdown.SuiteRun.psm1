@@ -96,13 +96,14 @@ function Start-SuiteOwnedProcess {
         $Stage.PreflightPath = Join-Path $Run.LogDirectory "$($Run.RunId)-$($Stage.Stage)-preflight.json"
         $entryPath = Join-Path $Run.LogDirectory "$($Run.RunId)-$($Stage.Stage).stage.ps1"
         $preflightLiteral = ConvertTo-SuiteLiteral $Spec.PreflightScript
+        $cleanArgument = if ($Stage.Stage -eq 'IncrementalBuild') { '' } else { '-RequireClean' }
         $rootLiteral = ConvertTo-SuiteLiteral $Run.RepositoryRoot
         $resultLiteral = ConvertTo-SuiteLiteral $Stage.PreflightPath
         $commandLiteral = ConvertTo-SuiteLiteral $Spec.FilePath
         $argumentsLiteral = '@(' + (($arguments | ForEach-Object { ConvertTo-SuiteLiteral $_ }) -join ', ') + ')'
         $entry = @"
 `$ErrorActionPreference = 'Stop'
-`$preflightJson = & $preflightLiteral -RepositoryRoot $rootLiteral -RequireClean -Json
+`$preflightJson = & $preflightLiteral -RepositoryRoot $rootLiteral $cleanArgument -Json
 `$preflightExit = `$LASTEXITCODE
 [System.IO.File]::WriteAllText($resultLiteral, (`$preflightJson -join [Environment]::NewLine), [System.Text.UTF8Encoding]::new(`$false))
 `$preflight = (`$preflightJson -join [Environment]::NewLine) | ConvertFrom-Json -ErrorAction Stop
@@ -209,6 +210,17 @@ function Complete-SuiteOwnedProcess {
         $Owned.ErrorStream.Dispose()
         $Owned.Process.Dispose()
     }
+    if ($Status -eq 'Completed' -and $stage.Stage -in @('Build','IncrementalBuild')) {
+        try {
+            $receiptLines = @([IO.File]::ReadAllLines($stage.Stdout) | Where-Object { $_.StartsWith('COUNTDOWN_BUILD_RECEIPT=',[StringComparison]::Ordinal) })
+            if ($receiptLines.Count -ne 1) { throw 'Build did not emit one final build-mode receipt.' }
+            $receipt = $receiptLines[0].Substring('COUNTDOWN_BUILD_RECEIPT='.Length) | ConvertFrom-Json
+            if ($receipt.SchemaVersion -ne 1 -or $receipt.Mode -cne $stage.BuildMode -or
+                $receipt.Clean -isnot [bool] -or $receipt.Clean -ne ($stage.BuildMode -ceq 'CleanR2R') -or
+                $receipt.ReadyToRun -isnot [bool] -or -not $receipt.ReadyToRun) { throw 'Actual build receipt does not match the requested build mode.' }
+            $stage.BuildReceipt = $receipt
+        } catch { $Status='Failed';$ExitCode=1;$Failure=$_.Exception.Message }
+    }
     $stage.Status = $Status
     $stage.ExitCode = $ExitCode
     $stage.Failure = $Failure
@@ -226,7 +238,8 @@ function Invoke-SuiteRun {
         [ValidateRange(1, 86400)] [int] $StageTimeoutSeconds = 1800,
         [scriptblock] $Initialize,
         [scriptblock] $Finalize,
-        [scriptblock] $FailureProbe
+        [scriptblock] $FailureProbe,
+        [switch] $Closeout
     )
     [void][System.IO.Directory]::CreateDirectory($LogDirectory)
     foreach ($oldPath in [System.IO.Directory]::EnumerateFiles($LogDirectory, '*-run.json')) {
@@ -239,13 +252,14 @@ function Invoke-SuiteRun {
         SummaryPath = Join-Path $LogDirectory "$runId-summary.json"
         CancellationPath = Join-Path $LogDirectory "$runId-cancel.request"
         Owner = Get-SuiteProcessIdentity ([System.Diagnostics.Process]::GetCurrentProcess())
-        Status = 'Running'; ExitCode = $null; Failure = $null
+        Status = 'Running'; ExitCode = $null; Failure = $null; Closeout = $null
         StartedAtUtc = [datetime]::UtcNow.ToString('o'); FinishedAtUtc = $null; UpdatedAtUtc = $null
         Stages = @($StageSpecs | ForEach-Object {
             $name = $_.Stage
             $isolated = $_.Contains('Isolated') -and [bool]$_.Isolated
             [pscustomobject]@{
                 Stage = $name; ExitCode = $null; ProcessExitCode = $null; Status = 'Pending'; ElapsedSeconds = 0
+                BuildMode = $(if ($_.Contains('BuildMode')) { $_.BuildMode } else { $null }); BuildReceipt = $null
                 Isolated = $isolated; DesktopName = $(if ($isolated) { "MinminSuiteIso-$name" } else { $null })
                 Stdout = Join-Path $LogDirectory "$runId-$name.out.log"
                 Stderr = Join-Path $LogDirectory "$runId-$name.err.log"
@@ -298,11 +312,11 @@ function Invoke-SuiteRun {
                 }
             }
             if ($run.Status -ne 'Running') { break }
-            $build = @($run.Stages | Where-Object Stage -EQ 'Build')
+            $build = @($run.Stages | Where-Object Stage -In @('Build','IncrementalBuild'))
             $gatePending = $build.Count -gt 0 -and $build[0].Status -ne 'Completed'
             foreach ($stage in @($run.Stages | Where-Object Status -EQ 'Pending')) {
                 if ($ownedProcesses.Count -ge $MaxParallel) { break }
-                if ($gatePending -and $stage.Stage -ne 'Build') { continue }
+                if ($gatePending -and $stage.Stage -notin @('Build','IncrementalBuild')) { continue }
                 $stage.Status = 'Starting'; $stage.StartedAtUtc = [datetime]::UtcNow.ToString('o')
                 Save-SuiteRun $run
                 try {
@@ -360,6 +374,10 @@ function Invoke-SuiteRun {
         catch { $run.Status = 'Failed'; $run.Failure = $_.Exception.Message }
         $run.ExitCode = if ($run.Status -eq 'Completed') { 0 } else { 1 }
         $run.FinishedAtUtc = [datetime]::UtcNow.ToString('o')
+        if ($Closeout) {
+            $run.Closeout = Test-CountdownSuiteCompletion -Run $run
+            if (-not $run.Closeout.Valid) { $run.Status='Failed';$run.ExitCode=1;$run.Failure=$run.Closeout.Failures -join '; ' }
+        }
         Save-SuiteRun $run
     }
     return $run
@@ -390,6 +408,29 @@ function Read-SuiteLogLines {
     return $lines.ToArray()
 }
 
+function Test-CountdownSuiteCompletion {
+    <# Closeout requires the actual successful clean/R2R receipt and every required stage, independently of an exit-zero build label. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Run)
+    $failures=[Collections.Generic.List[string]]::new()
+    if ($Run.Status -cne 'Completed' -or $Run.ExitCode -ne 0) { $failures.Add('Suite is not completed successfully.') }
+    foreach ($name in @('Build','Core','CSharp','Ui','SourceValidation','InstallValidate')) {
+        $records=@($Run.Stages | Where-Object Stage -CEQ $name)
+        if ($records.Count -ne 1 -or $records[0].Status -cne 'Completed' -or $records[0].ExitCode -ne 0) { $failures.Add("Required stage incomplete: $name"); continue }
+        if ($name -eq 'Build') {
+            $property=$records[0].PSObject.Properties['BuildReceipt']
+            $receipt=if ($null -ne $property) { $property.Value } else { $null }
+            $shapeValid = $null -ne $receipt -and @(@('SchemaVersion','Mode','Clean','ReadyToRun') | Where-Object { $null -eq $receipt.PSObject.Properties[$_] }).Count -eq 0
+            if (-not $shapeValid -or $receipt.SchemaVersion -ne 1 -or $receipt.Mode -cne 'CleanR2R' -or
+                $receipt.Clean -isnot [bool] -or -not $receipt.Clean -or
+                $receipt.ReadyToRun -isnot [bool] -or -not $receipt.ReadyToRun) {
+                $failures.Add('Closeout requires an actual CleanR2R build receipt; incremental or unspecified builds are insufficient.')
+            }
+        }
+    }
+    [pscustomobject]@{Valid=$failures.Count -eq 0;BuildRequirement='CleanR2R';Failures=@($failures)}
+}
+
 function Get-SuiteStageFailureExcerpt {
     <#
     .SYNOPSIS
@@ -402,6 +443,30 @@ function Get-SuiteStageFailureExcerpt {
         [ValidateRange(1, 200)] [int] $MaxLines = 12,
         [ValidateRange(40, 4000)] [int] $MaxLineLength = 300
     )
+    # 只有 Tooling 声明了这份 stdout JSON 合同。负例的 stderr 仍保留，但不覆盖阶段最终失败检查。
+    if ($Stage.Stage -ceq 'Tooling' -and $null -ne $Stage.PSObject.Properties['Stdout'] -and [IO.File]::Exists([string]$Stage.Stdout)) {
+        try {
+            $report = [IO.File]::ReadAllText([string]$Stage.Stdout,[Text.UTF8Encoding]::new($false,$true)) | ConvertFrom-Json -Depth 20
+            if ($null -ne $report.PSObject.Properties['Valid'] -and $report.Valid -is [bool] -and -not $report.Valid -and
+                $null -ne $report.PSObject.Properties['Checks']) {
+                $failedChecks = @($report.Checks | Where-Object { $_.Status -ceq 'failed' })
+                if ($failedChecks.Count -gt 0) {
+                    $summaryLines = @($failedChecks | Select-Object -First $MaxLines | ForEach-Object {
+                        $line = ('{0}: {1}' -f $_.Name,([string]$_.Detail -replace '\s+',' '))
+                        if ($line.Length -gt $MaxLineLength) { $line.Substring(0,$MaxLineLength) + '…' } else { $line }
+                    })
+                    $diagnosticStage = [pscustomobject]@{
+                        Stage='Diagnostics';Stderr=$Stage.Stderr
+                        LauncherStderr=$(if ($null -ne $Stage.PSObject.Properties['LauncherStderr']) { $Stage.LauncherStderr } else { $null })
+                    }
+                    $diagnostics = Get-SuiteStageFailureExcerpt -Stage $diagnosticStage -MaxLines $MaxLines -MaxLineLength $MaxLineLength
+                    return [pscustomobject]@{Path=[string]$Stage.Stdout;Lines=$summaryLines;Diagnostics=$diagnostics}
+                }
+            }
+        } catch [System.ArgumentException], [System.IO.IOException], [System.Management.Automation.RuntimeException] {
+            # 无有效的阶段级结果（包括截断或非JSON输出）时，保留原有stderr/launcher回退。
+        }
+    }
     foreach ($property in @('Stderr', 'LauncherStderr')) {
         $path = if ($null -ne $Stage.PSObject.Properties[$property]) { [string] $Stage.$property } else { '' }
         if ([string]::IsNullOrWhiteSpace($path) -or -not [System.IO.File]::Exists($path)) { continue }
@@ -426,4 +491,4 @@ function Get-SuiteStageFailureExcerpt {
     return $null
 }
 
-Export-ModuleMember -Function Invoke-SuiteRun, Read-SuiteRun, Test-SuiteProcessIdentity, Get-SuiteStageFailureExcerpt
+Export-ModuleMember -Function Invoke-SuiteRun, Read-SuiteRun, Test-SuiteProcessIdentity, Get-SuiteStageFailureExcerpt, Test-CountdownSuiteCompletion

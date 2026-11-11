@@ -3,7 +3,9 @@
 param(
     [switch] $Json,
     [string] $BaseCommit = $env:COUNTDOWN_DIFF_BASE,
-    [string] $CandidateCommit = $env:COUNTDOWN_DIFF_CANDIDATE
+    [string] $CandidateCommit = $env:COUNTDOWN_DIFF_CANDIDATE,
+    [ValidateSet('Index','Commit')][string] $EvidenceSource = $(if ($env:GITHUB_ACTIONS -eq 'true') { 'Commit' } else { 'Index' }),
+    [string] $EvidenceCommit = 'HEAD'
 )
 
 Set-StrictMode -Version Latest
@@ -268,29 +270,12 @@ Add-ToolingCheck -Name 'suite-run:failure-excerpt' -Passed ($LASTEXITCODE -eq 0)
 $suiteLoadPreflight = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteLoadPreflight.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:load-preflight' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteLoadPreflight -join ' ') -replace '\s+', ' ')
 
-$docLinkFailures = [System.Collections.Generic.List[string]]::new()
-$markdownFiles = Get-ChildItem -LiteralPath $repoRoot -Filter '*.md' -File -Recurse |
-    Where-Object {
-        $_.FullName -notmatch '\\(?:\.git|bin|obj|app|verification|logs)\\' -and
-        $_.FullName -notmatch '\\release-contract-test-[^\\]+\\'
-    }
-$linkPattern = '\[[^\]]+\]\((?<target>[^)\s]+)\)'
-foreach ($markdownFile in $markdownFiles) {
-    $markdown = [System.IO.File]::ReadAllText($markdownFile.FullName)
-    foreach ($match in [regex]::Matches($markdown, $linkPattern)) {
-        $target = [string] $match.Groups['target'].Value
-        if ($target -match '^(?:[a-z][a-z0-9+.-]*:|//)' -or $target.StartsWith('#')) { continue }
-        $target = $target.Split('#')[0]
-        if ([string]::IsNullOrWhiteSpace($target)) { continue }
-        $target = [System.Uri]::UnescapeDataString($target).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
-        $resolved = [System.IO.Path]::GetFullPath((Join-Path $markdownFile.DirectoryName $target))
-        if (-not (Test-Path -LiteralPath $resolved)) {
-            $docLinkFailures.Add("$($markdownFile.FullName): $target")
-        }
-    }
-}
-$docLinkDetail = if ($docLinkFailures.Count -eq 0) { "$($markdownFiles.Count) Markdown files" } else { $docLinkFailures -join ' | ' }
-Add-ToolingCheck -Name 'docs:local-links' -Passed ($docLinkFailures.Count -eq 0) -Detail $docLinkDetail
+$evidenceRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationEvidence.Tests.ps1') -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'publication-evidence:regression' -Passed ($LASTEXITCODE -eq 0 -and $evidenceRegression.Valid) -Detail ($evidenceRegression | ConvertTo-Json -Compress -Depth 10)
+$publicationEvidence = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationEvidence.ps1') -RepositoryRoot $repoRoot -Source $EvidenceSource -Commit $EvidenceCommit -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'docs:local-links' -Passed $publicationEvidence.Valid -Detail ($publicationEvidence | ConvertTo-Json -Compress -Depth 10)
+$completionRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteCompletion.ps1') -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'suite-run:closeout-contract' -Passed ($LASTEXITCODE -eq 0 -and $completionRegression.Valid) -Detail ($completionRegression | ConvertTo-Json -Compress -Depth 10)
 
 # Keep the positive fixture contract aligned with the current visual baseline.
 # The Core suite has a separate manifest-content check; this cheap source-tree

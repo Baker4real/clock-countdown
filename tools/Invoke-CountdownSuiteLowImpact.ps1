@@ -21,13 +21,15 @@ param(
     [string] $TauriExecutable,
     [string] $TauriEvidenceDirectory,
     [string] $AppPath,
-    [string] $ExpectedDllSha256
+    [string] $ExpectedDllSha256,
+    # 正式收尾必须前置检查清理能力，并以六阶段和实际Clean/R2R回执计算完成状态。
+    [switch] $Closeout
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$allowedStages = @('Build', 'GeometryPreflight', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
+$allowedStages = @('Build', 'IncrementalBuild', 'GeometryPreflight', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 $invalid = @($Stage | Where-Object { $_ -notin $allowedStages })
 if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
@@ -49,6 +51,17 @@ if ('TauriGate' -in $Stage) {
     }
 } elseif ($TauriExecutable -or $TauriEvidenceDirectory) {
     throw 'Tauri 参数只能用于 TauriGate 阶段。'
+}
+if ('Build' -in $Stage -and 'IncrementalBuild' -in $Stage) { throw 'Build（Clean + R2R）与 IncrementalBuild 不能出现在同一轮。' }
+$closeoutPreflight = $null
+if ($Closeout) {
+    $missing = @(@('Build','Core','CSharp','Ui','SourceValidation','InstallValidate') | Where-Object { $_ -notin $Stage })
+    if ($missing.Count -gt 0 -or 'IncrementalBuild' -in $Stage) { throw "Closeout requires the six official stages including clean Build. Missing: $($missing -join ', ')" }
+    # 在负载采样、窗口初始化或任何长阶段之前，拒绝未登记的全量清理路径。
+    $preflightOutput = & (Join-Path $PSScriptRoot 'Test-CountdownBuildPreflight.ps1') -RepositoryRoot (Join-Path $PSScriptRoot '..') -RequireClean -Json
+    $preflightExit = $LASTEXITCODE
+    $closeoutPreflight = ($preflightOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    if ($preflightExit -ne 0 -or -not $closeoutPreflight.Valid) { throw ('Closeout preflight failed: ' + ($closeoutPreflight.Failures -join '; ')) }
 }
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteRun.psm1') -Force
@@ -119,6 +132,7 @@ try {
     $pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $stageTable = @{
         Build = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Build-CountdownApplication.ps1'), '-Clean')
+        IncrementalBuild = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Build-CountdownApplication.ps1'), '-Incremental')
         GeometryPreflight = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'Test-CountdownWindowPreflight.ps1'), '-AppPath', $AppPath, '-ExpectedDllSha256', $ExpectedDllSha256)
         Core = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $repoRoot 'Countdown.Core.Tests.ps1'))
         CSharp = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $repoRoot 'Countdown.CSharp.Tests.ps1'))
@@ -132,7 +146,10 @@ try {
     }
     $specs = @($allowedStages | Where-Object { $_ -in $Stage } | ForEach-Object {
         $spec = [ordered]@{ Stage = $_; FilePath = $pwsh; ArgumentList = $stageTable[$_]; Isolated = [bool]$isolation.Isolated -and $_ -ne 'Tooling' }
-        if ($_ -eq 'Build') { $spec.PreflightScript = Join-Path $PSScriptRoot 'Test-CountdownBuildPreflight.ps1' }
+        if ($_ -in @('Build','IncrementalBuild')) {
+            $spec.PreflightScript = Join-Path $PSScriptRoot 'Test-CountdownBuildPreflight.ps1'
+            $spec.BuildMode = if ($_ -eq 'Build') { 'CleanR2R' } else { 'Incremental' }
+        }
         $spec
     })
 
@@ -152,6 +169,7 @@ try {
     }
     $initialize = {
         param($run)
+        if ($Closeout) { $run | Add-Member -NotePropertyName CloseoutPreflight -NotePropertyValue $closeoutPreflight }
         $sourceAtStart = & $readSourceState $repoRoot
         $run | Add-Member -NotePropertyName Source -NotePropertyValue ([pscustomobject]@{
                 Commit = $sourceAtStart.Commit; CleanAtStart = $sourceAtStart.Clean; CommitAtEnd = $null; CleanAtEnd = $null })
@@ -180,7 +198,7 @@ try {
         return @([System.IO.File]::ReadAllLines($watcher.LeakLog) | Where-Object { $_ -and $_ -notmatch '^watcher-done' }).Count -gt 0
     }.GetNewClosure()
 
-    $result = Invoke-SuiteRun -StageSpecs $specs -RepositoryRoot $repoRoot -LogDirectory (Join-Path $repoRoot 'logs/suite-runs') -MaxParallel $MaxParallel -StageTimeoutSeconds $StageTimeoutSeconds -Initialize $initialize -Finalize $finalize -FailureProbe $failureProbe
+    $result = Invoke-SuiteRun -StageSpecs $specs -RepositoryRoot $repoRoot -LogDirectory (Join-Path $repoRoot 'logs/suite-runs') -MaxParallel $MaxParallel -StageTimeoutSeconds $StageTimeoutSeconds -Initialize $initialize -Finalize $finalize -FailureProbe $failureProbe -Closeout:$Closeout
     $result.Stages | Format-Table Stage, ExitCode, Status, ElapsedSeconds, Isolated, DesktopName -AutoSize
     Write-Host "[suite] $($result.Status)；summary：$($result.SummaryPath)"
     if ($result.Failure) { Write-Host "[suite] $($result.Failure)" }
@@ -189,6 +207,10 @@ try {
         if ($null -eq $excerpt) { continue }
         Write-Host "[suite] $($failedStage.Stage) 失败摘要（$($excerpt.Path)）："
         foreach ($line in $excerpt.Lines) { Write-Host "    $line" }
+        if ($null -ne $excerpt.PSObject.Properties['Diagnostics'] -and $null -ne $excerpt.Diagnostics) {
+            Write-Host "[suite] 补充 stderr 诊断（可能包含测试负例）：$($excerpt.Diagnostics.Path)"
+            foreach ($line in $excerpt.Diagnostics.Lines) { Write-Host "    $line" }
+        }
     }
     exit $result.ExitCode
 }

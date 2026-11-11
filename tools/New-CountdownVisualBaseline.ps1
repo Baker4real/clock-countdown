@@ -6,6 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.PublicationEvidence.psm1') -Force
 Assert-SuiteIsolatedDesktop
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -70,7 +71,9 @@ try {
         throw '基线生成期间应用 EXE 发生变化。'
     }
     foreach ($manifestPath in $manifestPaths) {
-        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable -DateKind String
+        # 版本化回执先固定为UTF-8/LF，再允许下游按Git blob字节记录引用哈希。
+        Write-CountdownEvidenceJson -Path $manifestPath -Value $manifest
         if ($manifest.executable.sha256 -cne $applicationSha256) {
             throw "基线未绑定实际执行的应用 EXE：$manifestPath"
         }

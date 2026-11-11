@@ -262,6 +262,10 @@ Add-ToolingCheck -Name 'isolation:crash-dialog-watchdog' -Passed ($LASTEXITCODE 
 $suiteRunStateWrite = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteRunStateWrite.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:state-write-retry' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteRunStateWrite -join ' ') -replace '\s+', ' ')
 
+# 套件截图留存只在临时日志树删除测试夹具：30 次边界、摘要/部署引用保护、当前运行和清理失败隔离。
+$suiteScreenshotRetention = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteScreenshotRetention.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'suite-run:screenshot-retention' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteScreenshotRetention -join ' ') -replace '\s+', ' ')
+
 # 启动器打印的失败摘要：混合编码的 err 日志逐行解码、取最后一个错误块；不开窗口。
 $suiteStageExcerpt = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteStageFailureExcerpt.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:failure-excerpt' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteStageExcerpt -join ' ') -replace '\s+', ' ')

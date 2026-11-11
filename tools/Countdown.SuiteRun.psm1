@@ -229,6 +229,51 @@ function Complete-SuiteOwnedProcess {
     $stage.FinishedAtUtc = [datetime]::UtcNow.ToString('o')
 }
 
+function Get-SuiteScreenshotCaptureUtc {
+    param([string] $Name)
+    $match = [regex]::Match($Name, '^(?:tray-menu-)?(?<stamp>\d{8}T\d{9})')
+    if (-not $match.Success) { return $null }
+    return [DateTimeOffset]::ParseExact(
+        $match.Groups['stamp'].Value,
+        'yyyyMMddTHHmmssfff',
+        [Globalization.CultureInfo]::InvariantCulture,
+        [Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime()
+}
+
+# 当前运行也占一个保留名额；只按截图目录的 UTC 时间戳删除早于第 30 次运行起点的目录。
+# run.json / summary.json 与无法解析时间的目录永不进入删除集合，部署引用因此不因截图清理失效。
+function Invoke-SuiteScreenshotRetention {
+    param([Parameter(Mandatory)] [object] $Run)
+    $captureRoot = Join-Path (Split-Path -Parent $Run.LogDirectory) 'ui-captures'
+    $runStarts = [Collections.Generic.List[DateTimeOffset]]::new()
+    $runStarts.Add([DateTimeOffset]::Parse([string] $Run.StartedAtUtc, [Globalization.CultureInfo]::InvariantCulture).ToUniversalTime())
+    foreach ($runPath in [IO.Directory]::EnumerateFiles($Run.LogDirectory, '*-run.json')) {
+        if ([string]::Equals([IO.Path]::GetFullPath($runPath), [IO.Path]::GetFullPath($Run.StatePath), [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $historicalRun = [IO.File]::ReadAllText($runPath, [Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json -DateKind String
+        $runStarts.Add([DateTimeOffset]::Parse([string] $historicalRun.StartedAtUtc, [Globalization.CultureInfo]::InvariantCulture).ToUniversalTime())
+    }
+    $orderedStarts = @($runStarts | Sort-Object -Descending)
+    $cutoff = if ($orderedStarts.Count -gt 30) { $orderedStarts[29] } else { $null }
+    $deletedCount = 0
+    if ($null -ne $cutoff -and [IO.Directory]::Exists($captureRoot)) {
+        foreach ($capture in [IO.Directory]::EnumerateDirectories($captureRoot)) {
+            $name = [IO.Path]::GetFileName($capture)
+            $captureUtc = Get-SuiteScreenshotCaptureUtc -Name $name
+            if ($null -eq $captureUtc -or $captureUtc -ge $cutoff) { continue }
+            if (([IO.File]::GetAttributes($capture) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw [IO.IOException]::new("截图清理拒绝重解析点目录：$capture")
+            }
+            [IO.Directory]::Delete($capture, $true)
+            $deletedCount++
+        }
+    }
+    [pscustomobject]@{
+        Status = 'Completed'; RetainedRunLimit = 30
+        CutoffUtc = if ($null -eq $cutoff) { $null } else { $cutoff.ToString('o') }
+        DeletedDirectoryCount = $deletedCount; Error = $null
+    }
+}
+
 function Invoke-SuiteRun {
     [CmdletBinding()]
     param(
@@ -379,6 +424,16 @@ function Invoke-SuiteRun {
             $run.Closeout = Test-CountdownSuiteCompletion -Run $run
             if (-not $run.Closeout.Valid) { $run.Status='Failed';$run.ExitCode=1;$run.Failure=$run.Closeout.Failures -join '; ' }
         }
+        try {
+            $screenshotRetention = Invoke-SuiteScreenshotRetention -Run $run
+        }
+        catch {
+            $screenshotRetention = [pscustomobject]@{
+                Status = 'Failed'; RetainedRunLimit = 30; CutoffUtc = $null; DeletedDirectoryCount = $null
+                Error = $_.Exception.Message
+            }
+        }
+        $run | Add-Member -NotePropertyName ScreenshotRetention -NotePropertyValue $screenshotRetention
         Save-SuiteRun $run
     }
     return $run

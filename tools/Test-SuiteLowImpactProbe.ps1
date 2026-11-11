@@ -1,6 +1,7 @@
 #requires -Version 7.0
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteStages.psm1') -Force
 
 # 探针 1：BelowNormal 父进程的子进程是否继承优先级
 [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal'
@@ -67,8 +68,8 @@ $priority = [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass.ToSt
 [System.IO.File]::WriteAllText($ResultPath, "desktop=$desktopName|priority=$priority")
 '@ | Set-Content -LiteralPath $childScriptPath -Encoding UTF8
 
-# 首个用例锁缺省合同：不传 -DesktopName 时保持现名；其余按套件六阶段逐一断言唯一桌面。
-$stageNames = @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+# 首个用例锁缺省合同：不传 -DesktopName 时保持现名；其余按当前必过阶段逐一断言唯一桌面。
+$stageNames = @(Get-CountdownRequiredSuiteStage)
 $cases = @(@{ Case = 'default'; ExpectedDesktop = 'MinminSuiteIso'; PassDesktop = $null })
 $cases += @($stageNames | ForEach-Object {
     @{ Case = $_; ExpectedDesktop = "MinminSuiteIso-$_"; PassDesktop = "MinminSuiteIso-$_" }

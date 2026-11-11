@@ -1,6 +1,7 @@
 #requires -Version 7.0
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteStages.psm1') -Force
 
 # CSharp / Ui 跑完其余断言、只剩参考基线过期时以此退出（Countdown.Validation.psm1 的
 # Complete-CountdownReferenceBaselineDeferral）：阶段记为失败但不触发红即停，其余阶段照常跑完，整轮仍判失败。
@@ -414,7 +415,7 @@ function Test-CountdownSuiteCompletion {
     param([Parameter(Mandatory)][object]$Run)
     $failures=[Collections.Generic.List[string]]::new()
     if ($Run.Status -cne 'Completed' -or $Run.ExitCode -ne 0) { $failures.Add('Suite is not completed successfully.') }
-    foreach ($name in @('Build','Core','CSharp','Ui','SourceValidation','InstallValidate')) {
+    foreach ($name in @(Get-CountdownRequiredSuiteStage)) {
         $records=@($Run.Stages | Where-Object Stage -CEQ $name)
         if ($records.Count -ne 1 -or $records[0].Status -cne 'Completed' -or $records[0].ExitCode -ne 0) { $failures.Add("Required stage incomplete: $name"); continue }
         if ($name -eq 'Build') {

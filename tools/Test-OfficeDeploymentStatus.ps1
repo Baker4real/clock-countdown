@@ -99,7 +99,7 @@ foreach ($name in @($success.Keys)) { if ($name -notin $remoteTestFields) { $suc
 $successV2.SchemaVersion = 2
 Write-FixtureJson 'remote-deployment-success.json' $successV2
 Assert-Status 'Incomplete' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'v2 receipt without local suite evidence is not success'
-$stageNames = @('Build','Core','CSharp','Ui','SourceValidation','InstallValidate')
+$stageNames = @(Get-CountdownRequiredSuiteStage)
 $localValidation = [ordered]@{
     SchemaVersion=1; Commit=$commit; SuiteRunId='20261022T090000000-0000000a'; SuiteRunSha256=('9'*64)
     StartedAtUtc='2026-10-22T01:00:00.0000000Z'; FinishedAtUtc='2026-10-22T01:20:00.0000000Z'
@@ -107,28 +107,39 @@ $localValidation = [ordered]@{
 }
 Write-FixtureJson 'local-validation.json' $localValidation
 Assert-Status 'HistoricallyVerified' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'v2 receipt with same-commit local suite evidence is success'
+$currentLocalStages = $localValidation.Stages
+$localValidation.Stages = @($currentLocalStages) + [ordered]@{ Stage='RetiredStage'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 }
+Write-FixtureJson 'local-validation.json' $localValidation
+Assert-Status 'HistoricallyVerified' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Completed stages beyond the current required list preserve historical success'
+$localValidation.Stages = $currentLocalStages
+Write-FixtureJson 'local-validation.json' $localValidation
 $localValidation.Commit = 'b' * 40
 Write-FixtureJson 'local-validation.json' $localValidation
-Assert-Status 'Incomplete' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Local suite evidence of another commit cannot back this deployment'
+$status = Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot
+Assert-Status 'Incomplete' $status.State 'Local suite evidence of another commit cannot back this deployment'
+Assert-Status $true (($status.Runs | Where-Object RunId -eq $runId).Reason -like '*提交与部署提交不一致*') 'Commit mismatch rejection names the contract violation'
 $localValidation.Commit = $commit
 $localValidation.Stages[3].Status = 'Failed'
 Write-FixtureJson 'local-validation.json' $localValidation
 Assert-Status 'Incomplete' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Local suite evidence with a failed stage is not success'
 $localValidation.Stages[3].Status = 'Completed'
 $allStages = $localValidation.Stages
-$localValidation.Stages = @($allStages | Select-Object -First 5)
+$missingStageName = $stageNames[-1]
+$localValidation.Stages = @($allStages | Where-Object { $_.Stage -cne $missingStageName })
 Write-FixtureJson 'local-validation.json' $localValidation
-Assert-Status 'Incomplete' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Local suite evidence must cover all six stages'
+$status = Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot
+Assert-Status 'Incomplete' $status.State 'Local suite evidence must cover every current required stage'
+Assert-Status $true (($status.Runs | Where-Object RunId -eq $runId).Reason -like "*缺少必过阶段 $missingStageName*") 'Missing-stage rejection names the absent stage'
 $localValidation.Stages = $allStages
 Write-FixtureJson 'local-validation.json' $localValidation
-# 上传前门禁：只认本 checkout 同一提交、开跑与收尾都干净、六阶段全部通过的启动器记录。
+# 上传前门禁：只认本 checkout 同一提交、开跑与收尾都干净、当前必过阶段全部通过的启动器记录。
 $suiteRoot = Join-Path $testRoot 'suite-runs'
 $gateCheckout = Join-Path $testRoot 'gate-checkout'
-function Assert-GateRejects([string] $Name) {
+function Assert-GateRejects([string] $Name, [string] $ReasonPattern = '*') {
     $script:assertions++
     $rejected = $false
     try { [void] (Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $gateCheckout -SuiteRunDirectory $suiteRoot) }
-    catch { $rejected = $_.Exception.Message -like '缺少提交 aaaaaaa 的本机验收证据*' }
+    catch { $rejected = $_.Exception.Message -like '缺少提交 aaaaaaa 的本机验收证据*' -and $_.Exception.Message -like $ReasonPattern }
     if (-not $rejected) { throw $Name }
 }
 function Write-GateRun([string] $RunId, [scriptblock] $Mutate) {
@@ -148,9 +159,9 @@ Assert-GateRejects 'Missing suite-run directory blocks deployment'
 [void] (Write-GateRun '20261022T100000001-00000001' { param($run) $run.Remove('Source') })
 Assert-GateRejects 'Suite records without source binding cannot back a deployment'
 [void] (Write-GateRun '20261022T100000002-00000002' { param($run) $run.Source.Commit = 'b' * 40; $run.Source.CommitAtEnd = 'b' * 40 })
-Assert-GateRejects 'Suite record of another commit cannot back this deployment'
-[void] (Write-GateRun '20261022T100000003-00000003' { param($run) $run.Stages = @($run.Stages | Select-Object -First 2) })
-Assert-GateRejects 'Suite record must contain all six stages'
+Assert-GateRejects 'Suite record of another commit cannot back this deployment' '*没有同提交的套件记录*'
+[void] (Write-GateRun '20261022T100000003-00000003' { param($run) $run.Stages = @($run.Stages | Where-Object { $_.Stage -cne $missingStageName }) })
+Assert-GateRejects 'Suite record must contain every current required stage' "*阶段 $missingStageName 缺失或未通过*"
 [void] (Write-GateRun '20261022T100000004-00000004' { param($run) $run.Source.CleanAtEnd = $false })
 Assert-GateRejects 'Suite record dirty at the end cannot back a deployment'
 [void] (Write-GateRun '20261022T100000005-00000005' { param($run) $run.Status = 'Failed'; $run.ExitCode = 1 })
@@ -159,13 +170,18 @@ Assert-GateRejects 'Failed suite record cannot back a deployment'
 Assert-GateRejects 'Suite record of another checkout cannot back this deployment'
 $validGateRun = Write-GateRun '20261022T090000000-0000000a' $null
 $gateEvidence = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $gateCheckout -SuiteRunDirectory $suiteRoot
-Assert-Status '20261022T090000000-0000000a' $gateEvidence.SuiteRunId 'Gate selects the clean same-commit six-stage run behind newer rejected records'
+Assert-Status '20261022T090000000-0000000a' $gateEvidence.SuiteRunId 'Gate selects the clean same-commit required-stage run behind newer rejected records'
 Assert-Status (Get-FileHash -Algorithm SHA256 -LiteralPath $validGateRun).Hash $gateEvidence.SuiteRunSha256 'Gate binds the exact suite record bytes'
 $gateEvidenceRoundTrip = ConvertFrom-CountdownLocalValidationEvidenceJson -Json ($gateEvidence | ConvertTo-Json -Depth 4) -ExpectedCommit $commit
 Assert-Status ($stageNames -join ',') (@($gateEvidenceRoundTrip.Stages | ForEach-Object Stage) -join ',') 'Gate evidence round-trips through the persisted contract'
+[void] (Write-GateRun '20261022T100000007-00000007' { param($run) $run.Stages = @($run.Stages) + [ordered]@{ Stage='RetiredStage'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 } })
+$historicalGateEvidence = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $gateCheckout -SuiteRunDirectory $suiteRoot
+Assert-Status '20261022T100000007-00000007' $historicalGateEvidence.SuiteRunId 'Gate accepts a same-commit run with completed stages beyond the current required list'
+Assert-Status ($stageNames -join ',') (@($historicalGateEvidence.Stages | ForEach-Object Stage) -join ',') 'Gate persists the current required stages from a historical run'
 # A fresh Windows checkout with autocrlf=true must preserve the locked license bytes.
 $fixture = Join-Path $testRoot 'source'
 [void] (New-Item -ItemType Directory -Path "$fixture/holiday-data" -Force)
+[void] (New-Item -ItemType Directory -Path "$fixture/tools" -Force)
 Copy-Item -LiteralPath (Join-Path $repo '.gitattributes') -Destination $fixture
 Copy-Item -LiteralPath (Join-Path $repo 'holiday-data/LICENSE.txt') -Destination "$fixture/holiday-data/LICENSE.txt"
 & git init --quiet $fixture
@@ -175,6 +191,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Fixture init failed' }
 foreach ($source in @('Deploy-OfficeCountdown.ps1','Countdown.TransferLedger.psm1','Countdown.RemoteDeployment.psm1','Countdown.InstallTransaction.psm1')) {
     Copy-Item -LiteralPath (Join-Path $repo $source) -Destination (Join-Path $fixture $source)
 }
+Copy-Item -LiteralPath (Join-Path $repo 'tools/Countdown.SuiteStages.psm1') -Destination (Join-Path $fixture 'tools/Countdown.SuiteStages.psm1')
 & git -C $fixture -c core.autocrlf=true add .
 if ($LASTEXITCODE -ne 0) { throw 'Fixture add failed' }
 & git -C $fixture -c user.name=Test -c user.email=test@example.invalid -c core.hooksPath=NUL commit --quiet -m fixture

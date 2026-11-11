@@ -22,12 +22,13 @@ param(
     [string] $TauriEvidenceDirectory,
     [string] $AppPath,
     [string] $ExpectedDllSha256,
-    # 正式收尾必须前置检查清理能力，并以六阶段和实际Clean/R2R回执计算完成状态。
+    # 正式收尾必须前置检查清理能力，并以当前必过阶段和实际Clean/R2R回执计算完成状态。
     [switch] $Closeout
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteStages.psm1') -Force
 
 $allowedStages = @('Build', 'IncrementalBuild', 'GeometryPreflight', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
@@ -55,8 +56,8 @@ if ('TauriGate' -in $Stage) {
 if ('Build' -in $Stage -and 'IncrementalBuild' -in $Stage) { throw 'Build（Clean + R2R）与 IncrementalBuild 不能出现在同一轮。' }
 $closeoutPreflight = $null
 if ($Closeout) {
-    $missing = @(@('Build','Core','CSharp','Ui','SourceValidation','InstallValidate') | Where-Object { $_ -notin $Stage })
-    if ($missing.Count -gt 0 -or 'IncrementalBuild' -in $Stage) { throw "Closeout requires the six official stages including clean Build. Missing: $($missing -join ', ')" }
+    $missing = @(@(Get-CountdownRequiredSuiteStage) | Where-Object { $_ -notin $Stage })
+    if ($missing.Count -gt 0 -or 'IncrementalBuild' -in $Stage) { throw "Closeout requires every current official stage including clean Build. Missing: $($missing -join ', ')" }
     # 在负载采样、窗口初始化或任何长阶段之前，拒绝未登记的全量清理路径。
     $preflightOutput = & (Join-Path $PSScriptRoot 'Test-CountdownBuildPreflight.ps1') -RepositoryRoot (Join-Path $PSScriptRoot '..') -RequireClean -Json
     $preflightExit = $LASTEXITCODE

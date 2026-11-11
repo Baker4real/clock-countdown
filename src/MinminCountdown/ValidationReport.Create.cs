@@ -773,6 +773,8 @@ internal static partial class ValidationReport
             ValidationExercises.ProbeSettingsRecoveryFailureExitIsDefault();
         var ruleEditorInlineDeleteUsesDangerButton =
             ValidationExercises.ProbeRuleEditorInlineDeleteUsesDangerButton();
+        var inlineActionContract = ValidationExercises.ProbeInlineActionContract();
+        var tagManagerInlineActionBehavior = ValidationExercises.RunTagManagerInlineActionBehavior();
         var settingsRecoverySecondaryUsesCanvas =
             ValidationExercises.ProbeSettingsRecoverySecondaryUsesCanvas();
         var reminderCenterTwoRowActionsLayout =
@@ -1429,6 +1431,8 @@ internal static partial class ValidationReport
             ["CountdownCardActionsIncludeRecordName"] = Must(countdownCardActionsIncludeRecordName, "倒计时卡编辑/删除可访问名称包含对象名"),
             ["SettingsRecoveryFailureExitIsDefault"] = Must(settingsRecoveryFailureExitIsDefault, "设置恢复失败态退出按钮是 Enter 默认按钮"),
             ["RuleEditorInlineDeleteUsesDangerButton"] = Must(ruleEditorInlineDeleteUsesDangerButton, "规则编辑器行内删除使用 DangerButton"),
+            ["InlineActionContract"] = Must(inlineActionContract, "倒计时、便签、标签与规则行内动作共享 Content、可访问性、样式、危险语义、焦点与 ToolTip 契约（#257）"),
+            ["TagManagerInlineActionBehavior"] = Must(tagManagerInlineActionBehavior, "标签管理真实保存落盘、删除取消/确认、记录保留与解除关联（#257）"),
             ["SettingsRecoverySecondaryUsesCanvas"] = Must(settingsRecoverySecondaryUsesCanvas, "设置恢复次级按钮使用现役暖白画布副本 #FFFDF3EB"),
             ["ReminderCenterTwoRowActionsLayout"] = Must(reminderCenterTwoRowActionsLayout, "提醒中心动作按 DESIGN 两行布局且按钮为图标加文字"),
             ["ReminderCenterEntryVisualIdentity"] = Must(reminderCenterEntryVisualIdentity, "提醒中心页面、卡片、相对时间徽章与来源图标符合 DESIGN，计划时间在卡片内且完整北京时间标记下一行不拆字（#250/#253）"),

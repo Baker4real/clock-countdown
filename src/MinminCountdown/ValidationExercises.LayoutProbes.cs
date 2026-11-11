@@ -250,19 +250,151 @@ internal static partial class ValidationExercises
             editor.Show();
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             editor.UpdateLayout();
-            var expected = editor.TryFindResource("DangerButton") as Style;
-            var deleteButtons = VisualDescendants<Button>(editor)
-                .Where(button => string.Equals(button.Content?.ToString(), "删除", StringComparison.Ordinal))
-                .ToArray();
-            return expected is not null &&
-                   deleteButtons.Length > 0 &&
-                   deleteButtons.All(button => ReferenceEquals(button.Style, expected));
+            var defaultStyle = editor.TryFindResource(typeof(Button)) as Style;
+            var dangerStyle = editor.TryFindResource("DangerButton") as Style;
+            var buttons = VisualDescendants<Button>(editor).ToArray();
+            var edit = buttons.SingleOrDefault(button => Equals(button.Content, "编辑"));
+            var copy = buttons.SingleOrDefault(button => Equals(button.Content, "复制"));
+            var delete = buttons.SingleOrDefault(button => Equals(button.Content, "删除"));
+            Must(defaultStyle is not null && dangerStyle is not null && edit is not null && copy is not null && delete is not null,
+                "#257：规则编辑器必须实际渲染编辑、复制、删除三项行内动作。");
+
+            bool HasContract(Button button, string action, Style expectedStyle)
+            {
+                var expectedNamePrefix = $"{action}规则 ";
+                var name = AutomationProperties.GetName(button);
+                return name.StartsWith(expectedNamePrefix, StringComparison.Ordinal) &&
+                       name.Length > expectedNamePrefix.Length &&
+                       string.Equals(AutomationProperties.GetHelpText(button), name, StringComparison.Ordinal) &&
+                       string.Equals(button.ToolTip as string, name, StringComparison.Ordinal) &&
+                       ReferenceEquals(button.Style, expectedStyle) &&
+                       button.Focusable &&
+                       button.MinWidth == 58 &&
+                       button.Margin == new Thickness(6, 0, 0, 0) &&
+                       KeyboardFocusPolicy.HasValidAdornment(button);
+            }
+
+            Must(HasContract(edit!, "编辑", defaultStyle!) &&
+                 HasContract(copy!, "复制", defaultStyle!) &&
+                 HasContract(delete!, "删除", dangerStyle!),
+                "#257：规则行内动作须一次获得 Content、Name/HelpText、既有样式、58/6 DIP 几何、焦点资格与 ToolTip；删除须使用 DangerButton。");
+
+            Must(delete!.Command is not null, "#257：规则删除按钮必须保留现有 DeleteCommand 绑定。");
+            delete.Command!.Execute(null);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(!VisualDescendants<Button>(editor).Any(button => Equals(button.Content, "删除")) &&
+                 editor.ResultRules.Count == 1,
+                "#257：真实规则行内删除命令必须移除草稿行，且接受前不提前改写 ResultRules。");
+            return true;
         }
         finally
         {
             if (!editor.Dispatcher.HasShutdownStarted)
             {
                 editor.Close();
+            }
+        }
+    }
+
+    public static bool ProbeInlineActionContract()
+    {
+        var host = new Window { Content = new StackPanel() };
+        PrepareOffscreenValidationWindow(host);
+        var cases = new (
+            InlineActionSurface Surface,
+            InlineActionIntent Intent,
+            string Id,
+            string Input,
+            string Name,
+            string Content,
+            string Tip,
+            string? RecordKind,
+            double Width,
+            double Height,
+            double Margin,
+            bool Glyph,
+            bool Danger)[]
+        {
+            (Surface: InlineActionSurface.MainRow, Intent: InlineActionIntent.Edit, Id: "countdown-edit",
+                Input: "编辑倒计时 发布", Name: "编辑倒计时 发布", Content: "编辑", Tip: "编辑倒计时 发布",
+                RecordKind: (string?)null, Width: 53d, Height: 33d, Margin: 4d, Glyph: true, Danger: false),
+            (InlineActionSurface.MainRow, InlineActionIntent.Delete, "countdown-delete",
+                "删除倒计时 发布", "删除倒计时 发布", "删除", "删除倒计时（Delete）",
+                "倒计时", 53d, 33d, 4d, true, true),
+            (InlineActionSurface.MainRow, InlineActionIntent.Edit, "note-edit",
+                "编辑便签 第一行\n第二行", "编辑便签 第一行 第二行", "编辑", "编辑便签 第一行 第二行",
+                (string?)null, 53d, 33d, 4d, true, false),
+            (InlineActionSurface.MainRow, InlineActionIntent.Delete, "note-delete",
+                "删除便签 第一行", "删除便签 第一行", "删除", "删除便签（Delete）",
+                "便签", 53d, 33d, 4d, true, true),
+            (InlineActionSurface.TagManager, InlineActionIntent.Save, "tag-save",
+                "保存标签 工作", "保存标签 工作", "保存", "保存标签 工作",
+                (string?)null, 65d, 39d, 7d, false, false),
+            (InlineActionSurface.TagManager, InlineActionIntent.Delete, "tag-delete",
+                "删除标签 工作", "删除标签 工作", "删除", "删除标签 工作",
+                (string?)null, 65d, 39d, 7d, false, true),
+            (InlineActionSurface.ReminderRule, InlineActionIntent.Edit, "rule-edit",
+                "编辑规则 到点提醒", "编辑规则 到点提醒", "编辑", "编辑规则 到点提醒",
+                (string?)null, 58d, 38d, 6d, false, false),
+            (InlineActionSurface.ReminderRule, InlineActionIntent.Copy, "rule-copy",
+                "复制规则 到点提醒", "复制规则 到点提醒", "复制", "复制规则 到点提醒",
+                (string?)null, 58d, 38d, 6d, false, false),
+            (InlineActionSurface.ReminderRule, InlineActionIntent.Delete, "rule-delete",
+                "删除规则 到点提醒", "删除规则 到点提醒", "删除", "删除规则 到点提醒",
+                (string?)null, 58d, 38d, 6d, false, true)
+        };
+        try
+        {
+            var panel = (StackPanel)host.Content;
+            foreach (var item in cases)
+            {
+                panel.Children.Add(InlineActionButton.Create(
+                    host, item.Surface, item.Intent, item.Id, item.Input, item.RecordKind));
+            }
+            host.Show();
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            host.UpdateLayout();
+
+            var secondaryStyle = (Style)host.FindResource("SecondaryButton");
+            var defaultStyle = (Style)host.FindResource(typeof(Button));
+            var dangerStyle = (Style)host.FindResource("DangerButton");
+            var captionSize = (double)host.FindResource("TypeCaptionFontSize");
+            var dangerBrush = (Brush)host.FindResource("DangerBrush");
+            foreach (var item in cases)
+            {
+                var button = panel.Children.OfType<Button>().Single(candidate => Equals(candidate.Tag, item.Id));
+                var expectedStyle = item.Surface switch
+                {
+                    InlineActionSurface.MainRow => secondaryStyle,
+                    InlineActionSurface.TagManager => item.Danger ? dangerStyle : secondaryStyle,
+                    _ => item.Danger ? dangerStyle : defaultStyle
+                };
+                var dangerPresentation = !item.Danger ||
+                    ReferenceEquals(button.Foreground, dangerBrush) &&
+                    (item.Surface != InlineActionSurface.MainRow || ReferenceEquals(button.BorderBrush, Brushes.Transparent));
+                var glyphPresentation = (button.ContentTemplate is not null) == item.Glyph &&
+                    (!item.Glyph || VisualDescendants<System.Windows.Shapes.Path>(button).Any(path => path.IsVisible));
+                var focusContract = button.Focusable && KeyboardFocusPolicy.HasValidAdornment(button);
+                var fontContract = item.Surface == InlineActionSurface.ReminderRule || button.FontSize == captionSize;
+                Must(Equals(button.Content, item.Content) &&
+                     Equals(button.Tag, item.Id) &&
+                     string.Equals(AutomationProperties.GetName(button), item.Name, StringComparison.Ordinal) &&
+                     string.Equals(AutomationProperties.GetHelpText(button), item.Name, StringComparison.Ordinal) &&
+                     string.Equals(button.ToolTip as string, item.Tip, StringComparison.Ordinal) &&
+                     ReferenceEquals(button.Style, expectedStyle) &&
+                     button.MinWidth == item.Width &&
+                     button.MinHeight == item.Height &&
+                     button.Margin == new Thickness(item.Margin, 0, 0, 0) &&
+                     dangerPresentation && glyphPresentation && focusContract && fontContract,
+                    $"#257：共享构造不符合 {item.Id} 的 Content/Name/HelpText/样式/危险/几何/焦点/ToolTip 合同。");
+            }
+            return true;
+        }
+        finally
+        {
+            if (!host.Dispatcher.HasShutdownStarted)
+            {
+                host.Close();
             }
         }
     }

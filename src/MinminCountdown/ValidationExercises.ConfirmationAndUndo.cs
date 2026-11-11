@@ -72,6 +72,91 @@ internal static partial class ValidationExercises
         timer.Start();
     }
 
+    // #257：标签管理行内动作的真实窗口链。保存前/后、删除取消/确认构成行为对照；
+    // 只使用 MainWindow 和模态确认框，不套用拥有双窗生命周期的 #256 fixture。
+    public static bool RunTagManagerInlineActionBehavior()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-tag-inline-{Guid.NewGuid():N}.json");
+        var clock = new AdvancingValidationClock(new DateTimeOffset(2036, 5, 12, 0, 0, 0, TimeSpan.Zero));
+        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+        var tag = MustApply(workspace, new CreateTagChange("工作", "#A8D5BA")).CreatedTag;
+        Must(tag is not null, "#257：无法建立标签行内动作探针标签。");
+        MustApply(workspace, new SaveCountdownChange(
+            null, "标签动作倒计时", new DateTimeOffset(2036, 5, 13, 0, 0, 0, TimeSpan.Zero), new[] { tag!.Id }));
+        MustApply(workspace, new SaveNoteChange(
+            null, "标签动作便签", null, false, new[] { tag.Id }, Array.Empty<ReminderRule>()));
+        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        try
+        {
+            PrepareOffscreenValidationWindow(main);
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(WindowValidationInput.InvokeButton(main.TagManagerButton), "#257：无法点击真实标签管理入口。");
+            var popup = main.TagManagerPopup;
+            WindowValidationInput.Pump(main.Dispatcher);
+            Must(popup.IsOpen, "#257：标签管理按钮未打开真实 TagManagerPopup。");
+            var rows = main.TagManagerRows;
+
+            Grid FindRow(string name) => rows.Children.OfType<Grid>().Single(row =>
+                row.Children.OfType<TextBox>().Any(input => string.Equals(input.Text, name, StringComparison.Ordinal)));
+
+            var row = FindRow("工作");
+            var input = row.Children.OfType<TextBox>().Single();
+            var save = row.Children.OfType<Button>().Single(button => Equals(button.Content, "保存"));
+            input.Text = "工作重命名";
+            Must(DesktopWorkspace.Load(path).Snapshot.Settings.Tags.Single().Name == "工作",
+                "#257：仅编辑标签文本、尚未点击保存时不应提前落盘。");
+            Must(WindowValidationInput.InvokeButton(save), "#257：无法点击真实标签保存动作。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var renamed = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(renamed.Tags.Single().Id == tag.Id && renamed.Tags.Single().Name == "工作重命名" &&
+                 renamed.Countdowns.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 renamed.Notes.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：标签保存点击必须按原 ID 重命名落盘并保留记录关联。");
+
+            row = FindRow("工作重命名");
+            var delete = row.Children.OfType<Button>().Single(button => Equals(button.Content, "删除"));
+            QueueConfirmationDialogResponse(main, confirm: false, inspect: dialog => Must(
+                dialog.CancelButton.IsDefault && dialog.CancelButton.IsCancel && !dialog.ConfirmButton.IsDefault &&
+                Equals(dialog.ConfirmButton.Content, "确认删除"),
+                "#257：标签删除确认框必须保持取消安全默认与既有确认文案。"));
+            Must(WindowValidationInput.InvokeButton(delete), "#257：无法点击真实标签删除动作以执行取消分支。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var cancelled = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(cancelled.Tags.Single().Id == tag.Id &&
+                 cancelled.Countdowns.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 cancelled.Notes.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：取消标签删除后标签、倒计时、便签及关联必须完全保留。");
+
+            row = FindRow("工作重命名");
+            delete = row.Children.OfType<Button>().Single(button => Equals(button.Content, "删除"));
+            QueueConfirmationDialogResponse(main, confirm: true);
+            Must(WindowValidationInput.InvokeButton(delete), "#257：无法点击真实标签删除动作以执行确认分支。");
+            WindowValidationInput.Pump(main.Dispatcher);
+            var final = workspace.Snapshot.Settings;
+            var persisted = DesktopWorkspace.Load(path).Snapshot.Settings;
+            Must(final.Tags.Count == 0 && persisted.Tags.Count == 0 &&
+                 final.Countdowns.Single().Name == "标签动作倒计时" &&
+                 final.Notes.Single().Text == "标签动作便签" &&
+                 !final.Countdowns[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !final.Notes[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !persisted.Countdowns[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
+                 !persisted.Notes[0].TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
+                "#257：确认删除标签必须落盘解除 countdown/note 关联，且记录本身保留。");
+            return true;
+        }
+        finally
+        {
+            if (!main.Dispatcher.HasShutdownStarted)
+            {
+                main.Close();
+            }
+            DeleteSettingsFiles(path);
+            DeleteFileIfPresent(path + ".log");
+        }
+    }
+
     // #155：「完成便签」确认框行为——先取消（安全默认，便签/条目/可完成状态原样保留），
     // 再确认（原子完成便签、移除中心条目、写入处置 key）。「全部知道了」不经本入口。
     public static bool RunReminderCenterCompleteRequiresConfirmationBehavior()

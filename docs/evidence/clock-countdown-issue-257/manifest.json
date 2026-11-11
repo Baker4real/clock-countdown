@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "issue": 257,
+  "baseline_version": "2026-11-11-v78",
+  "capture_run": "20261111T083857440-1c181a59",
+  "source_base_commit": "77384095d292ad8217f79b14fd6817451a538695",
+  "integration_tip": "81e0bbc1f4f82fba9d984ad8c76601e2faa4dc32",
+  "validation_report_sha256": "DA7E9C047F279ECF9BF750F9399AA7529E5DB265C70C0CEB92126F64095E8201",
+  "capture_note": "正式生成后只新增未绑定的真实标签窗口探针与报告事实；生产 sourceBinding 未变化，最终 DLL 与生成报告的关联分别记录。",
+  "candidate": {
+    "final_dll_sha256": "DB47F8BACA54042C6186088E6CBC4DE6744B903D3B99A4F7CF36F191F9F1020B",
+    "exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+  },
+  "source_binding": {
+    "main": "1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C",
+    "floating": "4D574BABAC0D501E1307B982BA8D79CB41D1EC7C69E6ED3B1A2F9F0DDDC36239"
+  },
+  "source_binding_index_audit": {
+    "bindings": 51,
+    "uniqueFiles": 38,
+    "failures": 0,
+    "jsonContentIdenticalAfterGitEolNormalization": true
+  },
+  "comparison": {
+    "from": "2026-11-11-v77",
+    "to": "2026-11-11-v78",
+    "pngByteIdentical": 14,
+    "stateFingerprintsIdentical": 14,
+    "total": 14
+  },
+  "real_wpf_facts": {
+    "InlineActionContract": true,
+    "TagManagerInlineActionBehavior": true,
+    "RuleEditorInlineDeleteUsesDangerButton": true,
+    "KeyboardFocusPolicyBehavior": true,
+    "MainKeyboardFocusRingShowsOnTab": true,
+    "MainPrimaryAndPinSingleFocusStroke": true,
+    "FloatingKeyboardFocusDrawnOnce": true,
+    "SecondaryWindowKeyboardFocusDrawnOnce": true
+  },
+  "required_count": 2,
+  "copied_and_verified": 2,
+  "entries": [
+    {
+      "id": "main-day-countdowns-representative",
+      "path": "main-countdowns.png",
+      "source": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-countdowns-representative.png",
+      "kind": "baseline-capture",
+      "sha256": "E81F164FA65E6A04DA5976288119841BC132EEBCDF079264B6B0BF6C4CF241A8",
+      "bytes": 195130,
+      "visual_review": "read_image reviewed; countdown edit/delete glyphs and geometry unchanged",
+      "result": "pass"
+    },
+    {
+      "id": "main-day-notes-representative",
+      "path": "main-notes.png",
+      "source": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-representative.png",
+      "kind": "baseline-capture",
+      "sha256": "AFD5D568D552960E6F0C1E8E1E87DF6949F99227F305B9F822FD03B0B1FFBA7F",
+      "bytes": 242392,
+      "visual_review": "read_image reviewed; note edit/delete glyphs and geometry unchanged",
+      "result": "pass"
+    }
+  ],
+  "final_validation_report_sha256": "9D8D1DA64C8F5F7AB108F9BCD418B348C88B2F34A6B4AB9353F991846443AC9B",
+  "final_validation_run": "20261111T094947126-fa32fb8b"
+}

@@ -1,0 +1,27 @@
+2026-11-11-v77 -> 2026-11-11-v78
+
+[主窗] assets/ui-references/main-window/864x1000
+  源码绑定聚合 7E932E81ECF69C1639466C8A5BCDAFC33370DAD266228F6DB30DFC9906CF9410 -> 1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C
+  绑定文件变化：改动 src/MinminCountdown/MainWindow.xaml.cs；改动 src/MinminCountdown/UiControls.cs
+  executable.sha256 FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5 -> FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5
+  main-day-countdowns-empty：PNG 逐字节一致；状态指纹一致
+  main-day-countdowns-representative：PNG 逐字节一致；状态指纹一致
+  main-day-countdowns-stress：PNG 逐字节一致；状态指纹一致
+  main-day-notes-empty：PNG 逐字节一致；状态指纹一致
+  main-day-notes-representative：PNG 逐字节一致；状态指纹一致
+  main-day-notes-stress：PNG 逐字节一致；状态指纹一致
+  main-day-notes-edit：PNG 逐字节一致；状态指纹一致
+  main-day-notes-filter-open：PNG 逐字节一致；状态指纹一致
+  main-day-notes-selected：PNG 逐字节一致；状态指纹一致
+  9 帧：PNG 逐字节一致 9，状态指纹一致 9
+
+[悬浮窗] assets/ui-references/floating-window/520x390
+  源码绑定聚合 815BD8D9044BD44816A78B5200DCB13BC0A963A75749861565248787A77B3F88 -> 4D574BABAC0D501E1307B982BA8D79CB41D1EC7C69E6ED3B1A2F9F0DDDC36239
+  绑定文件变化：改动 src/MinminCountdown/UiControls.cs
+  executable.sha256 FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5 -> FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5
+  floating-countdowns-day：PNG 逐字节一致；状态指纹一致
+  floating-workday-complete-day：PNG 逐字节一致；状态指纹一致
+  long-notes-day-top：PNG 逐字节一致；状态指纹一致
+  long-notes-day-bottom：PNG 逐字节一致；状态指纹一致
+  notes-search-expanded-day：PNG 逐字节一致；状态指纹一致
+  5 帧：PNG 逐字节一致 5，状态指纹一致 5

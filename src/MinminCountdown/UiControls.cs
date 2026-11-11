@@ -12,6 +12,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MinminCountdown.Core;
+using WpfPath = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
 
@@ -192,6 +193,147 @@ internal static class UiAccessibility
         {
             RealizeAutomationTree(child);
         }
+    }
+}
+
+internal enum InlineActionSurface
+{
+    MainRow,
+    TagManager,
+    ReminderRule
+}
+
+internal enum InlineActionIntent
+{
+    Edit,
+    Copy,
+    Save,
+    Delete
+}
+
+// #257：三种既有表面共用一份行内动作契约。调用方只提供表面、动作和记录上下文；
+// Content、Name/HelpText、样式、危险语义、焦点资格与 ToolTip 不再分别补齐。
+internal static class InlineActionButton
+{
+    internal const double MainRowMinHeight = 33;
+
+    public static Button Create(
+        FrameworkElement scope,
+        InlineActionSurface surface,
+        InlineActionIntent intent,
+        string id,
+        string accessibleName,
+        string? recordKind = null)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(accessibleName);
+        var supported = surface switch
+        {
+            InlineActionSurface.MainRow => intent is InlineActionIntent.Edit or InlineActionIntent.Delete,
+            InlineActionSurface.TagManager => intent is InlineActionIntent.Save or InlineActionIntent.Delete,
+            InlineActionSurface.ReminderRule => intent is InlineActionIntent.Edit or InlineActionIntent.Copy or InlineActionIntent.Delete,
+            _ => false
+        };
+        if (!supported)
+        {
+            throw new ArgumentOutOfRangeException(nameof(intent), intent, "该表面没有此行内动作。");
+        }
+        if (surface == InlineActionSurface.MainRow && intent == InlineActionIntent.Delete &&
+            string.IsNullOrWhiteSpace(recordKind))
+        {
+            throw new ArgumentException("主行删除必须提供记录类型。", nameof(recordKind));
+        }
+
+        var content = intent switch
+        {
+            InlineActionIntent.Edit => "编辑",
+            InlineActionIntent.Copy => "复制",
+            InlineActionIntent.Save => "保存",
+            InlineActionIntent.Delete => "删除",
+            _ => throw new ArgumentOutOfRangeException(nameof(intent), intent, "未知行内动作。")
+        };
+        var danger = intent == InlineActionIntent.Delete;
+        var button = new Button
+        {
+            Content = content,
+            Tag = id,
+            Focusable = true,
+            Style = surface switch
+            {
+                InlineActionSurface.ReminderRule when !danger => (Style)scope.FindResource(typeof(Button)),
+                _ when danger && surface != InlineActionSurface.MainRow => (Style)scope.FindResource("DangerButton"),
+                _ => (Style)scope.FindResource("SecondaryButton")
+            }
+        };
+
+        switch (surface)
+        {
+            case InlineActionSurface.MainRow:
+                button.MinWidth = 53;
+                button.MinHeight = MainRowMinHeight;
+                button.Margin = new Thickness(4, 0, 0, 0);
+                button.FontSize = (double)scope.FindResource("TypeCaptionFontSize");
+                if (intent == InlineActionIntent.Edit)
+                {
+                    button.ContentTemplate = CreateGlyphButtonTemplate(
+                        "M 2.5,13.2 L 3.2,10.4 L 11.6,2 C 12.2,1.4 13.2,1.4 13.8,2 C 14.4,2.6 14.4,3.6 13.8,4.2 L 5.4,12.6 L 2.5,13.2 Z",
+                        "InkBrush");
+                }
+                else
+                {
+                    button.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
+                    button.BorderBrush = Brushes.Transparent;
+                    button.ContentTemplate = CreateGlyphButtonTemplate(
+                        "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
+                        "DangerBrush");
+                }
+                break;
+            case InlineActionSurface.TagManager:
+                button.MinWidth = 65;
+                button.MinHeight = 39;
+                button.Margin = new Thickness(7, 0, 0, 0);
+                button.FontSize = (double)scope.FindResource("TypeCaptionFontSize");
+                break;
+            case InlineActionSurface.ReminderRule:
+                button.MinWidth = 58;
+                button.Margin = new Thickness(6, 0, 0, 0);
+                break;
+        }
+
+        var foldedName = UiAccessibility.FoldAccessibleName(accessibleName);
+        UiAccessibility.Name(button, foldedName);
+        AutomationProperties.SetHelpText(button, foldedName);
+        button.ToolTip = surface == InlineActionSurface.MainRow && danger
+            ? $"删除{recordKind}（Delete）"
+            : foldedName;
+        KeyboardFocusPolicy.Apply(button);
+        return button;
+    }
+
+    // 主行 Content 仍是可见字符串；铅笔/垃圾桶只经 ContentTemplate 注入，几何和笔画保持 #247 原值。
+    private static DataTemplate CreateGlyphButtonTemplate(string glyphData, string glyphBrushKey)
+    {
+        var row = new FrameworkElementFactory(typeof(StackPanel));
+        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        var glyph = new FrameworkElementFactory(typeof(WpfPath));
+        glyph.Name = "Glyph";
+        glyph.SetValue(WpfPath.WidthProperty, 12.0);
+        glyph.SetValue(WpfPath.HeightProperty, 12.0);
+        glyph.SetValue(WpfPath.DataProperty, Geometry.Parse(glyphData));
+        glyph.SetValue(WpfPath.StretchProperty, Stretch.Uniform);
+        glyph.SetValue(WpfPath.StrokeThicknessProperty, 1.6);
+        glyph.SetValue(WpfPath.StrokeStartLineCapProperty, PenLineCap.Round);
+        glyph.SetValue(WpfPath.StrokeEndLineCapProperty, PenLineCap.Round);
+        glyph.SetValue(WpfPath.StrokeLineJoinProperty, PenLineJoin.Round);
+        glyph.SetValue(WpfPath.VerticalAlignmentProperty, VerticalAlignment.Center);
+        glyph.SetResourceReference(WpfPath.StrokeProperty, glyphBrushKey);
+        var label = new FrameworkElementFactory(typeof(TextBlock));
+        label.SetValue(TextBlock.MarginProperty, new Thickness(5, 0, 0, 0));
+        label.SetValue(TextBlock.VerticalAlignmentProperty, VerticalAlignment.Center);
+        label.SetValue(TextBlock.TextProperty, new System.Windows.Data.Binding());
+        row.AppendChild(glyph);
+        row.AppendChild(label);
+        return new DataTemplate { VisualTree = row };
     }
 }
 

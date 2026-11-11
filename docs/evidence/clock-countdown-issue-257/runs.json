@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 1,
+  "issue": 257,
+  "status": "local-required-stages-covered-integration-pending",
+  "scope": "本票局部 Build、Core、CSharp、Ui、SourceValidation、ValidationHarness 与 Tooling；InstallValidate 和集成完整八阶段门禁由父级执行。",
+  "baseCommit": "77384095d292ad8217f79b14fd6817451a538695",
+  "integrationTip": "81e0bbc1f4f82fba9d984ad8c76601e2faa4dc32",
+  "finalCandidateDllSha256": "DB47F8BACA54042C6186088E6CBC4DE6744B903D3B99A4F7CF36F191F9F1020B",
+  "finalCandidateExeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+  "launcher": "tools/Invoke-CountdownSuiteLowImpact.ps1",
+  "isolation": "所有窗口阶段均使用官方隔离桌面入口、正常负载预检与 WaitForLockSeconds 600；未使用 SkipLoadPreflight。",
+  "runs": [
+    {
+      "runId": "20261111T015940714-9ee2d0b7",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 1
+      },
+      "elapsedSeconds": {
+        "Build": 41,
+        "SourceValidation": 65
+      }
+    },
+    {
+      "runId": "20261111T020541215-96b500eb",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 1,
+        "SourceValidation": "Skipped"
+      },
+      "elapsedSeconds": {
+        "Build": 86,
+        "SourceValidation": 0
+      }
+    },
+    {
+      "runId": "20261111T021103605-7fdf38fe",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 1
+      },
+      "elapsedSeconds": {
+        "Build": 66,
+        "SourceValidation": 68
+      }
+    },
+    {
+      "runId": "20261111T021709946-522a6b21",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 1
+      },
+      "elapsedSeconds": {
+        "Build": 124,
+        "SourceValidation": 63
+      }
+    },
+    {
+      "runId": "20261111T022117656-7b793c65",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 1,
+        "SourceValidation": "Skipped"
+      },
+      "elapsedSeconds": {
+        "Build": 91,
+        "SourceValidation": 0
+      }
+    },
+    {
+      "runId": "20261111T022324860-2f613299",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 1
+      },
+      "elapsedSeconds": {
+        "Build": 69,
+        "SourceValidation": 72
+      }
+    },
+    {
+      "runId": "20261111T022628183-21a40b31",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 0
+      },
+      "elapsedSeconds": {
+        "Build": 124,
+        "SourceValidation": 90
+      }
+    },
+    {
+      "runId": "20261111T023114396-318079ec",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Build": 0
+      },
+      "elapsedSeconds": {
+        "Build": 125
+      }
+    },
+    {
+      "runId": "20261111T083857440-1c181a59",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "BaselineGenerate": 0
+      },
+      "elapsedSeconds": {
+        "BaselineGenerate": 154
+      }
+    },
+    {
+      "runId": "20261111T084414363-95dd1422",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 0
+      },
+      "elapsedSeconds": {
+        "Build": 225,
+        "SourceValidation": 112
+      }
+    },
+    {
+      "runId": "20261111T085207274-75a05a9c",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Core": 0,
+        "CSharp": 1,
+        "Ui": "Cancelled",
+        "SourceValidation": "Skipped",
+        "ValidationHarness": "Skipped"
+      },
+      "elapsedSeconds": {
+        "Core": 447,
+        "CSharp": 484,
+        "Ui": 38,
+        "SourceValidation": 0,
+        "ValidationHarness": 0
+      }
+    },
+    {
+      "runId": "20261111T090140423-1c0f11f0",
+      "status": "Interrupted",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "CSharp": "Interrupted"
+      },
+      "elapsedSeconds": {
+        "CSharp": 0
+      }
+    },
+    {
+      "runId": "20261111T091945641-75e41c49",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "CSharp": 0
+      },
+      "elapsedSeconds": {
+        "CSharp": 903
+      }
+    },
+    {
+      "runId": "20261111T093517919-7408cacb",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Ui": 0,
+        "SourceValidation": 0,
+        "ValidationHarness": 0
+      },
+      "elapsedSeconds": {
+        "Ui": 511,
+        "SourceValidation": 128,
+        "ValidationHarness": 29
+      }
+    },
+    {
+      "runId": "20261111T094647477-f6ccbc2b",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Tooling": 1
+      },
+      "elapsedSeconds": {
+        "Tooling": 71
+      }
+    },
+    {
+      "runId": "20261111T094947126-fa32fb8b",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Build": 0,
+        "SourceValidation": 0,
+        "Tooling": 0
+      },
+      "elapsedSeconds": {
+        "Build": 209,
+        "SourceValidation": 114,
+        "Tooling": 64
+      }
+    },
+    {
+      "runId": "20261111T095546879-95f01107",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "CSharp": 1,
+        "Ui": "Skipped",
+        "ValidationHarness": "Skipped"
+      },
+      "elapsedSeconds": {
+        "CSharp": 287,
+        "Ui": 0,
+        "ValidationHarness": 0
+      }
+    },
+    {
+      "runId": "20261111T100509242-90288c41",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "CSharp": 0
+      },
+      "elapsedSeconds": {
+        "CSharp": 876
+      }
+    },
+    {
+      "runId": "20261111T102020411-f0fdacc6",
+      "status": "Failed",
+      "exitCode": 1,
+      "stageExitCodes": {
+        "Ui": 1,
+        "ValidationHarness": "Skipped"
+      },
+      "elapsedSeconds": {
+        "Ui": 333,
+        "ValidationHarness": 0
+      }
+    },
+    {
+      "runId": "20261111T102712782-da34fb5e",
+      "status": "Completed",
+      "exitCode": 0,
+      "stageExitCodes": {
+        "Ui": 0,
+        "ValidationHarness": 0
+      },
+      "elapsedSeconds": {
+        "Ui": 422,
+        "ValidationHarness": 31
+      }
+    }
+  ],
+  "loadGateRejections": [
+    {
+      "stage": "BaselineGenerate",
+      "runId": null,
+      "exitCode": 1,
+      "cpuPercent": 94.28,
+      "gpuPercent": 100.15,
+      "manifestCreated": false,
+      "meaning": "正常负载门在创建 run 前拒绝；未跳过门、未操作进程，后续由正常放行的 1c181a59 完成。"
+    }
+  ],
+  "finalCoverage": {
+    "Build": "20261111T094947126-fa32fb8b",
+    "Core": "20261111T085207274-75a05a9c",
+    "CSharp": "20261111T100509242-90288c41",
+    "Ui": "20261111T102712782-da34fb5e",
+    "SourceValidation": "20261111T094947126-fa32fb8b",
+    "ValidationHarness": "20261111T102712782-da34fb5e",
+    "Tooling": "20261111T094947126-fa32fb8b"
+  },
+  "finalSourceFacts": {
+    "Valid": true,
+    "InlineActionContract": true,
+    "TagManagerInlineActionBehavior": true,
+    "RuleEditorInlineDeleteUsesDangerButton": true,
+    "KeyboardFocusPolicyBehavior": true,
+    "CrossInterfaceReferenceBaselinesCurrent": true,
+    "reportSha256": "9D8D1DA64C8F5F7AB108F9BCD418B348C88B2F34A6B4AB9353F991846443AC9B"
+  },
+  "sourceBindingIndexAudit": {
+    "bindings": 51,
+    "uniqueFiles": 38,
+    "failures": 0,
+    "jsonContentIdenticalAfterGitEolNormalization": true
+  },
+  "baselineComparison": {
+    "from": "2026-11-11-v77",
+    "to": "2026-11-11-v78",
+    "pngByteIdentical": 14,
+    "stateFingerprintsIdentical": 14,
+    "total": 14
+  },
+  "remainingConcern": "既有 #212 FloatingStableRefresh 与 #129 FloatingWindowBottomAnchored/Reanchors 在部分完整验证运行中失败；同一产品候选的独立 CSharp 和 Ui 恢复通过。根因未定位，不改产品或断言；失败、中断、跳过仍保留。后续干净集成提交的完整八阶段门禁另行记录。"
+}

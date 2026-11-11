@@ -270,6 +270,12 @@ Add-ToolingCheck -Name 'suite-run:failure-excerpt' -Passed ($LASTEXITCODE -eq 0)
 $suiteLoadPreflight = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteLoadPreflight.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:load-preflight' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteLoadPreflight -join ' ') -replace '\s+', ' ')
 
+# 视觉基线留存与历史比对只在独立临时 fixture 中执行；不读真实 assets 做删除反例，不开窗口。
+$visualBaselineRetention = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-VisualBaselineRetention.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'visual-baseline:previous-version-retention' -Passed ($LASTEXITCODE -eq 0) -Detail (($visualBaselineRetention -join ' ') -replace '\s+', ' ')
+$visualBaselineCompare = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CompareCountdownVisualBaseline.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'visual-baseline:compare-from-commit' -Passed ($LASTEXITCODE -eq 0) -Detail (($visualBaselineCompare -join ' ') -replace '\s+', ' ')
+
 $evidenceRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationEvidence.Tests.ps1') -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'publication-evidence:regression' -Passed ($LASTEXITCODE -eq 0 -and $evidenceRegression.Valid) -Detail ($evidenceRegression | ConvertTo-Json -Compress -Depth 10)
 $publicationEvidence = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationEvidence.ps1') -RepositoryRoot $repoRoot -Source $EvidenceSource -Commit $EvidenceCommit -Json | ConvertFrom-Json -Depth 10
@@ -324,23 +330,16 @@ $baselineFixtureDetail = if ($baselineFixtureFailures.Count -eq 0) { $baselineFi
 Add-ToolingCheck -Name 'visual-baseline:fixture-shape' -Passed ($baselineFixtureFailures.Count -eq 0) -Detail $baselineFixtureDetail
 
 # DESIGN.md 里指向现役基线的叙述锚点。Set-CountdownBaselineVersion 只改代码钉点，这几行靠人工跟改：v65 重拍时 §11 只改了
-# 第 1 条，悬浮窗现役帧表头和第 2–4 条仍写着 v64。每个标记在 DESIGN.md 恰好一行且写着现役版本，归档条目还要列出比现役早的
-# 最近一版目录。改了这几行的措辞就同步改这里的标记。
+# 第 1 条，悬浮窗现役帧表头和第 2–4 条仍写着 v64。每个标记在 DESIGN.md 恰好一行且写着现役版本；留存条目只核对规则，
+# 不再扫描或要求上一版目录仍在工作树。改了这几行的措辞就同步改这里的标记。
 $currentBaselineNumber = [int] ($visualBaseline.Version -replace '^.*-v', '')
 $currentBaselineShort = "v$currentBaselineNumber"
-$previousBaselineVersion = @(
-    foreach ($surface in @($visualBaseline.Main, $visualBaseline.Floating)) {
-        Get-ChildItem -LiteralPath (Split-Path -Parent (Split-Path -Parent $surface.ManifestPath)) -Directory
-    }) |
-    Where-Object { $_.Name -match '^[0-9]{4}-[0-9]{2}-[0-9]{2}-v(?<number>[0-9]+)$' -and [int] $Matches['number'] -lt $currentBaselineNumber } |
-    Sort-Object { [int] ($_.Name -replace '^.*-v', '') } -Descending |
-    Select-Object -First 1 -ExpandProperty Name
 $designAnchors = [ordered]@{
     '现役五帧与场景对应' = @("$currentBaselineShort 基线", "``$($visualBaseline.Floating.RelativeDirectory)/manifest.json``")
     '真实渲染系列，版本目录为' = @("**$currentBaselineShort**", "``$($visualBaseline.Version)``")
     '主窗口帧规模' = @("$currentBaselineShort 主窗口帧规模", "``$($visualBaseline.Main.RelativeDirectory)/manifest.json``")
     '悬浮窗帧规模' = @("$currentBaselineShort 悬浮窗帧规模")
-    '目录作为归档保留' = @("``$previousBaselineVersion/``", "只读取 $currentBaselineShort")
+    '工作树只保留现役版本' = @("只读取 $currentBaselineShort", '历史版本留在提交历史里')
 }
 $designLines = [System.IO.File]::ReadAllLines((Join-Path $repoRoot 'DESIGN.md'))
 $designAnchorFailures = [System.Collections.Generic.List[string]]::new()
@@ -358,7 +357,7 @@ foreach ($anchor in $designAnchors.GetEnumerator()) {
         $designAnchorFailures.Add("DESIGN.md:$($lineNumbers[0])「$($anchor.Key)」缺少 $($missing -join '、')")
     }
 }
-$designAnchorDetail = if ($designAnchorFailures.Count -eq 0) { "DESIGN.md $($designAnchors.Count) 处锚点指向 $($visualBaseline.Version)，归档列出 $previousBaselineVersion" } else { $designAnchorFailures -join ' | ' }
+$designAnchorDetail = if ($designAnchorFailures.Count -eq 0) { "DESIGN.md $($designAnchors.Count) 处锚点指向 $($visualBaseline.Version)，留存规则不依赖旧目录" } else { $designAnchorFailures -join ' | ' }
 Add-ToolingCheck -Name 'visual-baseline:design-anchors' -Passed ($designAnchorFailures.Count -eq 0) -Detail $designAnchorDetail
 
 # 窗口探针只走 RunValidationScenarios：控件名、模板部件和窗口字段留在各窗口的场景 partial 里。

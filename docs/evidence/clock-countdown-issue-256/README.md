@@ -72,7 +72,7 @@
 
 正式版本工具 `-WhatIf` 确认全局最大 v76 后，应用本票独占的 `2026-11-11-v77`；没有改任何旧版本 manifest。Build `20261111T003206301-eb5cf4b9` 退出 0/135s；单独 BaselineGenerate `20261111T003530054-5f3b0e5b` 退出 0/124s。独立 GeometryPreflight `20261111T004230547-c285feae` 退出 0/25s，9/9；绑定的候选 DLL SHA-256 为 `3C5856A22F912710D07769D1526EA6AB40F65983CC6FB2BF3D19EA936CAAEE3A`。
 
-[实际生成与几何事实](v77-evidence.json) 保留原始报告中必须为真的字段、23/28 个源码绑定的聚合与 manifest 哈希。[跨版本比对](v76-v77-comparison.txt) 逐一检查主窗 9 帧和浮窗 5 帧：全部 PNG 与状态指纹逐字节一致；两窗源码绑定变化都只有 `NoteCompletionExit.cs`。同时直接查看了新生成的[管理窗便签代表帧](../../../assets/ui-references/main-window/864x1000/2026-11-11-v77/main-day-notes-representative.png)和[浮窗长便签顶部帧](../../../assets/ui-references/floating-window/520x390/2026-11-11-v77/long-notes-day-top.png)，没有发现新的静态视觉差异。[DESIGN 现役记录](../../../DESIGN.md) 已更新到 v77，保留 v76 历史事实。
+[实际生成与几何事实](v77-evidence.json) 保留原始报告中必须为真的字段、23/28 个源码绑定的聚合与 manifest 哈希。[跨版本比对](v76-v77-comparison.txt) 逐一检查主窗 9 帧和浮窗 5 帧：全部 PNG 与状态指纹逐字节一致；两窗源码绑定变化都只有 `NoteCompletionExit.cs`。同时直接查看了新生成的[管理窗便签代表帧](https://github.com/Baker4real/clock-countdown/blob/e49f792258c20ba6fdc54723282b483a16b87ec7/assets/ui-references/main-window/864x1000/2026-11-11-v77/main-day-notes-representative.png)和[浮窗长便签顶部帧](https://github.com/Baker4real/clock-countdown/blob/e49f792258c20ba6fdc54723282b483a16b87ec7/assets/ui-references/floating-window/520x390/2026-11-11-v77/long-notes-day-top.png)，没有发现新的静态视觉差异。[DESIGN 现役记录](../../../DESIGN.md) 已更新到 v77，保留 v76 历史事实。
 
 Git 将捕获 manifest 的 CRLF 规范化为 LF；[生成事实](v77-evidence.json) 因而明确区分 `capturedFileSha256` 和 `committedBlobOid`，原始捕获字节另存主机证据，两个版本的 JSON 内容已经逐项核对一致。这不是重新计算或替换历史 manifest。
 

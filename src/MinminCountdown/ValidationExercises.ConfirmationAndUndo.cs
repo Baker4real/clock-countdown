@@ -78,17 +78,20 @@ internal static partial class ValidationExercises
     {
         var path = Path.Combine(Path.GetTempPath(), $"MinminCountdown-tag-inline-{Guid.NewGuid():N}.json");
         var clock = new AdvancingValidationClock(new DateTimeOffset(2036, 5, 12, 0, 0, 0, TimeSpan.Zero));
-        var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
-        var tag = MustApply(workspace, new CreateTagChange("工作", "#A8D5BA")).CreatedTag;
-        Must(tag is not null, "#257：无法建立标签行内动作探针标签。");
-        MustApply(workspace, new SaveCountdownChange(
-            null, "标签动作倒计时", new DateTimeOffset(2036, 5, 13, 0, 0, 0, TimeSpan.Zero), new[] { tag!.Id }));
-        MustApply(workspace, new SaveNoteChange(
-            null, "标签动作便签", null, false, new[] { tag.Id }, Array.Empty<ReminderRule>()));
-        using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
-        var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
+        var preexistingWindows = new HashSet<Window>(Application.Current.Windows.Cast<Window>());
+        HolidayCalendar? calendar = null;
         try
         {
+            // Seed persistence and partially constructed windows belong to this probe even if setup throws.
+            var workspace = DesktopWorkspace.Load(path, new SettingsStore(clock: clock));
+            var tag = MustApply(workspace, new CreateTagChange("工作", "#A8D5BA")).CreatedTag;
+            Must(tag is not null, "#257：无法建立标签行内动作探针标签。");
+            MustApply(workspace, new SaveCountdownChange(
+                null, "标签动作倒计时", new DateTimeOffset(2036, 5, 13, 0, 0, 0, TimeSpan.Zero), new[] { tag!.Id }));
+            MustApply(workspace, new SaveNoteChange(
+                null, "标签动作便签", null, false, new[] { tag.Id }, Array.Empty<ReminderRule>()));
+            calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            var main = new MainWindow(workspace, calendar, new DiagnosticLogger(path + ".log"), AppContext.BaseDirectory);
             PrepareOffscreenValidationWindow(main);
             main.Show();
             WindowValidationInput.Pump(main.Dispatcher);
@@ -148,12 +151,22 @@ internal static partial class ValidationExercises
         }
         finally
         {
-            if (!main.Dispatcher.HasShutdownStarted)
+            try
             {
-                main.Close();
+                foreach (var window in CurrentCreatedMainWindows(preexistingWindows))
+                {
+                    if (!window.Dispatcher.HasShutdownStarted) window.Close();
+                }
             }
-            DeleteSettingsFiles(path);
-            DeleteFileIfPresent(path + ".log");
+            finally
+            {
+                try { calendar?.Dispose(); }
+                finally
+                {
+                    DeleteSettingsFiles(path);
+                    DeleteFileIfPresent(path + ".log");
+                }
+            }
         }
     }
 

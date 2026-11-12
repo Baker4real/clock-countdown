@@ -226,7 +226,6 @@ public static class SuiteEvidenceDesktopProbe
     [System.Text.UTF8Encoding]::new(`$false))
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
 "@
-        'Countdown.Ui.Tests.ps1' = "'{`"Passed`":17,`"Failed`":0}'"
         '敏敏子倒计时.ps1' = $validationSettingsArtifactFixture + "`r`n'$validationApplicationFixture'"
     }
     foreach ($fixture in $validationFixtures.GetEnumerator()) {
@@ -329,12 +328,12 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     Assert-Equal $true ([bool] $validationResult.Valid) 'Validation interface reports one stable success state'
     Assert-Equal 11 ([int] $validationResult.CoreTestsPassed) 'Validation interface exposes Core assertion count'
     Assert-Equal 13 ([int] $validationResult.CSharpTestsPassed) 'Validation interface exposes C# assertion count'
-    Assert-Equal 17 ([int] $validationResult.UiTestsPassed) 'Validation interface exposes compatibility UI assertion count'
+    Assert-Equal $false ($validationResult.PSObject.Properties.Name -contains 'UiTestsPassed') 'Validation interface retires the compatibility UI stage count'
     Assert-Equal $true ([bool] $validationResult.UiValid) 'Validation interface exposes application validate-only state'
     Assert-Equal $true ([bool] $validationResult.AdapterUiValidated) 'Validation interface preserves adapter UI evidence'
     Assert-Equal '{"Passed":11,"Failed":0}' ([string] $validationResult.TestOutput) 'Validation interface preserves Core JSON compatibility'
     Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
-    Assert-Equal '{"Passed":17,"Failed":0}' ([string] $validationResult.UiTestOutput) 'Validation interface preserves UI JSON compatibility'
+    Assert-Equal $false ($validationResult.PSObject.Properties.Name -contains 'UiTestOutput') 'Validation interface retires the compatibility UI stage output'
     Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
     $isolationEvidencePath = Join-Path $validationTestRoot 'csharp-isolation-evidence.txt'
     Assert-Equal $true (Test-Path -LiteralPath $isolationEvidencePath -PathType Leaf) 'Validation interface isolation evidence is written into the same validation run root'
@@ -416,8 +415,8 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     Assert-Equal $true $successfulDiagnosticPreserved 'Validation interface parses stdout JSON without merging successful stderr diagnostics'
 
     [System.IO.File]::WriteAllText(
-        (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),
-        "'{`"Passed`":16,`"Failed`":1}'",
+        (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
+        "'{`"Passed`":12,`"Failed`":1,`"AdapterUiValidated`":true}'",
         $utf8NoBom)
     $reportedFailureRejected = $false
     try {
@@ -427,14 +426,10 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             -DotnetPath $fixtureDotnet | Out-Null
     }
     catch {
-        $reportedFailureRejected = $_.Exception.Message -match '兼容 UI 回归报告包含 1 个失败'
+        $reportedFailureRejected = $_.Exception.Message -match 'C# 回归报告包含 1 个失败'
     }
-    Assert-Equal $true $reportedFailureRejected 'Validation interface rejects a failed report even when the process exits zero'
+    Assert-Equal $true $reportedFailureRejected 'Validation interface rejects a failed C# report even when the process exits zero'
 
-    [System.IO.File]::WriteAllText(
-        (Join-Path $validationTestRoot 'Countdown.Ui.Tests.ps1'),
-        "'{`"Passed`":17,`"Failed`":0}'",
-        $utf8NoBom)
     [System.IO.File]::WriteAllText(
         (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
         "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":false}'",

@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteStages.psm1') -Force
 
-# CSharp / Ui 跑完其余断言、只剩参考基线过期时以此退出（Countdown.Validation.psm1 的
+# CSharp 跑完其余断言、只剩参考基线过期时以此退出（Countdown.Validation.psm1 的
 # Complete-CountdownReferenceBaselineDeferral）：阶段记为失败但不触发红即停，其余阶段照常跑完，整轮仍判失败。
 $script:ReferenceBaselinePendingExitCode = 75
 

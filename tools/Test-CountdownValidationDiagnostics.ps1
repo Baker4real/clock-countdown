@@ -146,7 +146,6 @@ $crashRoot = Join-Path $root 'application-crash'
 $crashRecord = Join-Path $crashRoot 'diagnostic-path.txt'
 [IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Core.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
 [IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.CSharp.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'", $utf8)
-[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Ui.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
 [IO.File]::WriteAllText((Join-Path $crashRoot '敏敏子倒计时.ps1'), @"
 param([switch] `$ValidateOnly, [string] `$SettingsFile, [string] `$DiagnosticLogPath)
 [IO.File]::WriteAllText('$crashRecord', `$DiagnosticLogPath)

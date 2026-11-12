@@ -100,6 +100,7 @@ $successV2.SchemaVersion = 2
 Write-FixtureJson 'remote-deployment-success.json' $successV2
 Assert-Status 'Incomplete' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'v2 receipt without local suite evidence is not success'
 $stageNames = @(Get-CountdownRequiredSuiteStage)
+Assert-Status 'Build,Core,CSharp,SourceValidation,InstallValidate' ($stageNames -join ',') 'Deployment gate adopts the five current required stages'
 $localValidation = [ordered]@{
     SchemaVersion=1; Commit=$commit; SuiteRunId='20261022T090000000-0000000a'; SuiteRunSha256=('9'*64)
     StartedAtUtc='2026-10-22T01:00:00.0000000Z'; FinishedAtUtc='2026-10-22T01:20:00.0000000Z'
@@ -108,9 +109,9 @@ $localValidation = [ordered]@{
 Write-FixtureJson 'local-validation.json' $localValidation
 Assert-Status 'HistoricallyVerified' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'v2 receipt with same-commit local suite evidence is success'
 $currentLocalStages = $localValidation.Stages
-$localValidation.Stages = @($currentLocalStages) + [ordered]@{ Stage='RetiredStage'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 }
+$localValidation.Stages = @($currentLocalStages) + [ordered]@{ Stage='Ui'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 }
 Write-FixtureJson 'local-validation.json' $localValidation
-Assert-Status 'HistoricallyVerified' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Completed stages beyond the current required list preserve historical success'
+Assert-Status 'HistoricallyVerified' (Get-OfficeDeploymentStatus -Commit $commit -EvidenceBase $testRoot).State 'Historical six-stage evidence with Ui preserves historical success'
 $localValidation.Stages = $currentLocalStages
 Write-FixtureJson 'local-validation.json' $localValidation
 $localValidation.Commit = 'b' * 40
@@ -174,9 +175,9 @@ Assert-Status '20261022T090000000-0000000a' $gateEvidence.SuiteRunId 'Gate selec
 Assert-Status (Get-FileHash -Algorithm SHA256 -LiteralPath $validGateRun).Hash $gateEvidence.SuiteRunSha256 'Gate binds the exact suite record bytes'
 $gateEvidenceRoundTrip = ConvertFrom-CountdownLocalValidationEvidenceJson -Json ($gateEvidence | ConvertTo-Json -Depth 4) -ExpectedCommit $commit
 Assert-Status ($stageNames -join ',') (@($gateEvidenceRoundTrip.Stages | ForEach-Object Stage) -join ',') 'Gate evidence round-trips through the persisted contract'
-[void] (Write-GateRun '20261022T100000007-00000007' { param($run) $run.Stages = @($run.Stages) + [ordered]@{ Stage='RetiredStage'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 } })
+[void] (Write-GateRun '20261022T100000007-00000007' { param($run) $run.Stages = @($run.Stages) + [ordered]@{ Stage='Ui'; Status='Completed'; ExitCode=0; ElapsedSeconds=30 } })
 $historicalGateEvidence = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $gateCheckout -SuiteRunDirectory $suiteRoot
-Assert-Status '20261022T100000007-00000007' $historicalGateEvidence.SuiteRunId 'Gate accepts a same-commit run with completed stages beyond the current required list'
+Assert-Status '20261022T100000007-00000007' $historicalGateEvidence.SuiteRunId 'Gate accepts a same-commit historical six-stage run with Ui'
 Assert-Status ($stageNames -join ',') (@($historicalGateEvidence.Stages | ForEach-Object Stage) -join ',') 'Gate persists the current required stages from a historical run'
 # A fresh Windows checkout with autocrlf=true must preserve the locked license bytes.
 $fixture = Join-Path $testRoot 'source'

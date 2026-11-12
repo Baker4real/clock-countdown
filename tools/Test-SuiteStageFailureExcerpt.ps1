@@ -82,9 +82,9 @@ try {
     # 4) 以 75 退出（参考基线待重拍）：延后清单写在末尾，取末尾，不回到更早的错误块。
     $pending = Write-LogBytes 'pending.err.log' @(
         $gbk.GetBytes((& $concise 512 '子进程预期失败的回显')),
-        $utf8.GetBytes("[test-segment] name=Report seconds=1.000`n参考基线待重拍：Ui 其余断言已全部通过；以下 1 项因视觉源码、EXE 或实拍与现役基线不一致而延后：`n  - CrossInterfaceReferenceBaselinesCurrent`n按 README「本机验证」重拍基线后重跑本阶段；延后不改变本阶段和整轮的失败结论。`n"))
-    $excerpt = Get-SuiteStageFailureExcerpt -Stage ([pscustomobject]@{ Stage = 'Ui'; ExitCode = 75; Stderr = $pending; LauncherStderr = $null }) -MaxLines 3
-    if ($null -eq $excerpt -or $excerpt.Lines.Count -ne 3 -or -not $excerpt.Lines[0].StartsWith('参考基线待重拍：Ui ') -or
+        $utf8.GetBytes("[test-segment] name=Report seconds=1.000`n参考基线待重拍：CSharp 其余断言已全部通过；以下 1 项因视觉源码、EXE 或实拍与现役基线不一致而延后：`n  - CrossInterfaceReferenceBaselinesCurrent`n按 README「本机验证」重拍基线后重跑本阶段；延后不改变本阶段和整轮的失败结论。`n"))
+    $excerpt = Get-SuiteStageFailureExcerpt -Stage ([pscustomobject]@{ Stage = 'CSharp'; ExitCode = 75; Stderr = $pending; LauncherStderr = $null }) -MaxLines 3
+    if ($null -eq $excerpt -or $excerpt.Lines.Count -ne 3 -or -not $excerpt.Lines[0].StartsWith('参考基线待重拍：CSharp ') -or
         ($excerpt.Lines -match '子进程预期失败')) {
         $failures.Add("退出码 75 的摘要应是末尾的延后清单：$(if ($null -ne $excerpt) { $excerpt.Lines -join ' / ' })")
     }

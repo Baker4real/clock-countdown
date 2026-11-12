@@ -1472,14 +1472,55 @@ function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE
         (Test-Path -LiteralPath $isolatedSourceDll -PathType Leaf) `
         'Declared build inputs rebuild the DLL required by C# regression'
 
+    function Write-InvalidReleaseContentWithRetry {
+        param([Parameter(Mandatory)] [string] $Path)
+
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        while ($true) {
+            try {
+                [System.IO.File]::WriteAllText($Path, 'invalid release content', [System.Text.UTF8Encoding]::new($false))
+                return
+            }
+            catch [System.IO.IOException] {
+                if ([DateTime]::UtcNow -ge $deadline) { throw }
+                [System.Threading.Thread]::Sleep(100)
+            }
+        }
+    }
+
+    $lockRetryFixturePath = Join-Path $releaseContractTestRoot 'invalid-content-lock-retry.txt'
+    [System.IO.File]::WriteAllText($lockRetryFixturePath, 'original', [System.Text.UTF8Encoding]::new($false))
+    $lockRetryStream = [System.IO.File]::Open(
+        $lockRetryFixturePath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None)
+    $lockRetryReleaseJob = Start-ThreadJob -ScriptBlock {
+        Start-Sleep -Milliseconds 500
+        ($using:lockRetryStream).Dispose()
+    }
+    try {
+        Write-InvalidReleaseContentWithRetry -Path $lockRetryFixturePath
+    }
+    finally {
+        Receive-Job -Job $lockRetryReleaseJob -Wait -AutoRemoveJob | Out-Null
+        $lockRetryStream.Dispose()
+    }
+    Assert-Equal 'invalid release content' `
+        ([System.IO.File]::ReadAllText($lockRetryFixturePath)) `
+        'Invalid-content overwrite waits for a FileShare.None lock to be released'
+
     foreach ($relativePath in $releaseContract.PackageFiles) {
         $testPath = Join-Path $releaseContractTestRoot $relativePath
         $testParent = Split-Path -Parent $testPath
         if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
             New-Item -ItemType Directory -Path $testParent -Force | Out-Null
         }
-        [System.IO.File]::WriteAllText($testPath, 'invalid release content', [System.Text.UTF8Encoding]::new($false))
+        Write-InvalidReleaseContentWithRetry -Path $testPath
     }
+    Assert-Equal 'invalid release content' `
+        ([System.IO.File]::ReadAllText((Join-Path $releaseContractTestRoot 'app\MinminCountdown.exe'))) `
+        'Invalid-content retry still overwrites the application payload'
     $invalidHashRejected = $false
     try {
         Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null

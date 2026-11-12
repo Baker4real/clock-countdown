@@ -56,29 +56,38 @@ internal static class ApplicationValidation
                 };
             }
 
-            if (!ValidationExercises.RunSettingsRecoveryWindowBehavior())
+            if (options.ExercisePersistenceFailures)
             {
-                throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");
+                var persistenceWorkspace = DesktopWorkspace.Load(settingsPath);
+                return ValidationReport.CreatePersistenceFailureFixture(persistenceWorkspace);
             }
 
-            if (!ValidationExercises.RunInstanceActivationFailurePromptBehavior())
+            if (!options.NightMigrationOnly && !options.ExerciseNoteAdd)
             {
-                throw new InvalidOperationException("实例激活失败提示窗口验证失败。");
-            }
+                if (!ValidationExercises.RunSettingsRecoveryWindowBehavior())
+                {
+                    throw new InvalidOperationException("设置恢复窗口或失败呈现路由验证失败。");
+                }
 
-            if (!ValidationExercises.RunInstanceActivationStateEqualityBehavior())
-            {
-                throw new InvalidOperationException("实例激活状态相等性验证失败。");
-            }
+                if (!ValidationExercises.RunInstanceActivationFailurePromptBehavior())
+                {
+                    throw new InvalidOperationException("实例激活失败提示窗口验证失败。");
+                }
 
-            if (!ValidationExercises.RunLazyManagerLifecycleBehavior())
-            {
-                throw new InvalidOperationException("懒加载管理窗口生命周期验证失败。");
-            }
+                if (!ValidationExercises.RunInstanceActivationStateEqualityBehavior())
+                {
+                    throw new InvalidOperationException("实例激活状态相等性验证失败。");
+                }
 
-            if (!ValidationExercises.RunMainDecorationOnDemandDecodeBehavior())
-            {
-                throw new InvalidOperationException("管理窗口装饰图按需与按显示尺寸解码验证失败（#231）。");
+                if (!ValidationExercises.RunLazyManagerLifecycleBehavior())
+                {
+                    throw new InvalidOperationException("懒加载管理窗口生命周期验证失败。");
+                }
+
+                if (!ValidationExercises.RunMainDecorationOnDemandDecodeBehavior())
+                {
+                    throw new InvalidOperationException("管理窗口装饰图按需与按显示尺寸解码验证失败（#231）。");
+                }
             }
 
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);

@@ -14,6 +14,12 @@ namespace MinminCountdown;
 
 public sealed partial class MainWindow
 {
+    internal NoteExerciseResult RunNoteAddFixture() => RunNoteAddExercise();
+
+    internal ReminderModeClickResult RunNoteReminderModeFixture() => RunReminderModeClickExercises();
+
+    internal UndatedNoteEditProbe RunUndatedNoteEditFixture() => ProbeUndatedNoteEditRetention();
+
     internal MainWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd, ApplicationTheme theme)
     {
         var noteExercise = exerciseNoteAdd
@@ -730,6 +736,61 @@ public sealed partial class MainWindow
         }
     }
 
+    private (bool PointerResetRestoresResults, bool KeyboardResetRestoresResults)
+        ProbeCountdownEmptyResetBehavior(string noResultsMessage)
+    {
+        var pointerResetRestoresResults = true;
+        var keyboardResetRestoresResults = true;
+        if (_desktopWorkspace.Snapshot.Settings.Countdowns.Count > 0)
+        {
+            var savedSearch = NoteSearch.Text;
+            SetCountdownFilter(CountdownStatusFilter.Expired);
+            WindowValidationInput.Pump(Dispatcher);
+            pointerResetRestoresResults =
+                EmptyCountdownMessage.Visibility == Visibility.Visible &&
+                ResetEmptyCountdownFiltersButton.Visibility == Visibility.Visible &&
+                string.Equals(EmptyCountdownMessage.Text, noResultsMessage, StringComparison.Ordinal);
+            ResetEmptyCountdownFiltersButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(Dispatcher);
+            pointerResetRestoresResults &= CountdownEmptyResetRestoredResults();
+
+            SetCountdownFilter(CountdownStatusFilter.Expired);
+            WindowValidationInput.Pump(Dispatcher);
+            ResetEmptyCountdownFiltersButton.Focus();
+            WindowValidationInput.Pump(Dispatcher);
+            keyboardResetRestoresResults =
+                ReferenceEquals(Keyboard.FocusedElement, ResetEmptyCountdownFiltersButton) &&
+                WindowValidationInput.RaiseKey(ResetEmptyCountdownFiltersButton, Key.Space);
+            WindowValidationInput.Pump(Dispatcher);
+            keyboardResetRestoresResults &= CountdownEmptyResetRestoredResults();
+            NoteSearch.Text = savedSearch;
+        }
+
+        return (pointerResetRestoresResults, keyboardResetRestoresResults);
+    }
+
+    internal (bool PointerResetRestoresResults, bool KeyboardResetRestoresResults)
+        RunCountdownEmptyResetFixture()
+    {
+        var originalWorkspace = _workspace;
+        var originalSearch = NoteSearch.Text;
+        var originalFilter = _desktopWorkspace.Snapshot.Filter;
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            UpdateLayout();
+            WindowValidationInput.Pump(Dispatcher);
+            return ProbeCountdownEmptyResetBehavior(CountdownEmptyStatePresentation(true).Message);
+        }
+        finally
+        {
+            NoteSearch.Text = originalSearch;
+            _desktopWorkspace.ApplyFilter(originalFilter);
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
     private MainUiPolishScenarios ProbeUiPolishScenarios()
     {
         var originalWorkspace = _workspace;
@@ -810,32 +871,8 @@ public sealed partial class MainWindow
                 !string.Equals(countdownEmptyStates.Message, countdownNoResults.Message, StringComparison.Ordinal) &&
                 !countdownEmptyStates.ShowReset &&
                 countdownNoResults.ShowReset;
-            var countdownEmptyPointerResetWorks = true;
-            var countdownEmptyKeyboardResetWorks = true;
-            if (_desktopWorkspace.Snapshot.Settings.Countdowns.Count > 0)
-            {
-                var savedSearch = NoteSearch.Text;
-                SetCountdownFilter(CountdownStatusFilter.Expired);
-                WindowValidationInput.Pump(Dispatcher);
-                countdownEmptyPointerResetWorks =
-                    EmptyCountdownMessage.Visibility == Visibility.Visible &&
-                    ResetEmptyCountdownFiltersButton.Visibility == Visibility.Visible &&
-                    string.Equals(EmptyCountdownMessage.Text, countdownNoResults.Message, StringComparison.Ordinal);
-                ResetEmptyCountdownFiltersButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                WindowValidationInput.Pump(Dispatcher);
-                countdownEmptyPointerResetWorks &= CountdownEmptyResetRestoredResults();
-
-                SetCountdownFilter(CountdownStatusFilter.Expired);
-                WindowValidationInput.Pump(Dispatcher);
-                ResetEmptyCountdownFiltersButton.Focus();
-                WindowValidationInput.Pump(Dispatcher);
-                countdownEmptyKeyboardResetWorks =
-                    ReferenceEquals(Keyboard.FocusedElement, ResetEmptyCountdownFiltersButton) &&
-                    WindowValidationInput.RaiseKey(ResetEmptyCountdownFiltersButton, Key.Space);
-                WindowValidationInput.Pump(Dispatcher);
-                countdownEmptyKeyboardResetWorks &= CountdownEmptyResetRestoredResults();
-                NoteSearch.Text = savedSearch;
-            }
+            var (countdownEmptyPointerResetWorks, countdownEmptyKeyboardResetWorks) =
+                ProbeCountdownEmptyResetBehavior(countdownNoResults.Message);
             var countdownLayoutMatches = CountdownRemainingLayoutMatches;
             var countdownRemainingSamples = ProbeCountdownRemainingSamples();
             var countdownIncrementalRefresh = ProbeCountdownIncrementalRefresh();
@@ -3056,6 +3093,39 @@ public sealed partial class MainWindow
     private bool RequiredToggleButtonMargin(string name) =>
         FindName(name) is FrameworkElement element && element.Margin.Left >= 8;
 
+    private List<string>? AddCountdownReadabilityFixtureRecords(DateTimeOffset nowUtc)
+    {
+        var temporaryIds = new List<string>();
+        foreach (var (name, targetUtc) in new[]
+                 {
+                     ("验证倒计时可读-主项", nowUtc.AddDays(1)),
+                     ("验证倒计时可读-次项", nowUtc.AddDays(2)),
+                     ("验证倒计时可读-到期主项", nowUtc.AddDays(-1)),
+                     ("验证倒计时可读-到期次项", nowUtc.AddDays(-2))
+                 })
+        {
+            var result = _desktopWorkspace.Apply(new SaveCountdownChange(
+                null,
+                name,
+                targetUtc,
+                Array.Empty<string>()));
+            if (!result.Succeeded)
+            {
+                foreach (var temporaryId in temporaryIds)
+                {
+                    _desktopWorkspace.Apply(new DeleteCountdownChange(temporaryId));
+                }
+
+                return null;
+            }
+
+            temporaryIds.Add(_desktopWorkspace.Snapshot.Settings.Countdowns
+                .Single(item => string.Equals(item.Name, name, StringComparison.Ordinal)).Id);
+        }
+
+        return temporaryIds;
+    }
+
     private MainCountdownReadabilityScenarios ProbeCountdownReadabilityScenarios()
     {
         var originalWorkspace = _workspace;
@@ -3067,27 +3137,13 @@ public sealed partial class MainWindow
             var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
             // 主项/次项各一条进行中条目供徽章与分格几何检查；再各一条过去截止条目供到期对比检查。
             // 会话层允许保存 0 规则的过去截止倒计时（编辑器 UI 才限制未来），全程使用真实时钟。
-            foreach (var (name, targetUtc) in new[]
-                     {
-                         ("验证倒计时可读-主项", nowUtc.AddDays(1)),
-                         ("验证倒计时可读-次项", nowUtc.AddDays(2)),
-                         ("验证倒计时可读-到期主项", nowUtc.AddDays(-1)),
-                         ("验证倒计时可读-到期次项", nowUtc.AddDays(-2))
-                     })
+            var addedRecordIds = AddCountdownReadabilityFixtureRecords(nowUtc);
+            if (addedRecordIds is null)
             {
-                var result = _desktopWorkspace.Apply(new SaveCountdownChange(
-                    null,
-                    name,
-                    targetUtc,
-                    Array.Empty<string>()));
-                if (!result.Succeeded)
-                {
-                    return MainCountdownReadabilityScenarios.Failed;
-                }
-
-                temporaryIds.Add(_desktopWorkspace.Snapshot.Settings.Countdowns
-                    .Single(item => string.Equals(item.Name, name, StringComparison.Ordinal)).Id);
+                return MainCountdownReadabilityScenarios.Failed;
             }
+
+            temporaryIds.AddRange(addedRecordIds);
 
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
@@ -3162,6 +3218,42 @@ public sealed partial class MainWindow
         finally
         {
             _desktopWorkspace.ApplyFilter(originalFilter);
+            foreach (var temporaryId in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                _desktopWorkspace.Apply(new DeleteCountdownChange(temporaryId));
+            }
+
+            UpdateTime(ChinaStandardTime.ToBeijingTime(_desktopWorkspace.Snapshot.UtcNow));
+            ShowWorkspace(originalWorkspace);
+            WindowValidationInput.Pump(Dispatcher);
+        }
+    }
+
+    internal bool RunCountdownBlocksGeometryFixture()
+    {
+        var originalWorkspace = _workspace;
+        var temporaryIds = new List<string>();
+        try
+        {
+            ShowWorkspace(WorkspaceKind.Countdowns);
+            var addedRecordIds = AddCountdownReadabilityFixtureRecords(_desktopWorkspace.Snapshot.UtcNow);
+            if (addedRecordIds is null)
+            {
+                return false;
+            }
+
+            temporaryIds.AddRange(addedRecordIds);
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+            var blocks = CountdownBlocksFollowWarmPaperContract();
+            return blocks.PairCountValid &&
+                blocks.VerticalRatioMatches &&
+                blocks.GapMatches &&
+                blocks.UnitOutsideAndColored &&
+                blocks.ValueBrushAndFamily;
+        }
+        finally
+        {
             foreach (var temporaryId in temporaryIds.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 _desktopWorkspace.Apply(new DeleteCountdownChange(temporaryId));
@@ -3766,6 +3858,12 @@ public sealed partial class FloatingWindow
         WindowValidationInput.Pump(Dispatcher);
         return popup;
     }
+
+    internal FloatingThemeExerciseResult RunThemeMigrationFixture() => RunDayThemeExercise();
+
+    internal bool RunFloatingCrossDayReminderFixture() => RunCrossDayReminderAddExercise();
+
+    internal ReminderModeClickResult RunFloatingReminderModeFixture() => RunReminderModeClickExercises();
 
     internal FloatingWindowValidationScenarios RunValidationScenarios(bool exerciseNoteAdd)
     {

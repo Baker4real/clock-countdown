@@ -20,23 +20,31 @@ internal static partial class ValidationReport
     {
         var mainThemeExercise = RunMainThemeExercise(theme, main, restoreUtc);
         var floatingThemeExercise = floating.RunThemeMigrationFixture();
+        var emptyReset = main.RunCountdownEmptyResetFixture();
+        var blocksGeometryMatches = main.RunCountdownBlocksGeometryFixture();
         return new Dictionary<string, object?>
         {
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
-            ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors
+            ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors,
+            ["CountdownNoResultsResetWorks"] = emptyReset.PointerResetRestoresResults,
+            ["CountdownEmptyPointerResetRestoresResults"] = emptyReset.PointerResetRestoresResults,
+            ["CountdownEmptyKeyboardResetRestoresResults"] = emptyReset.KeyboardResetRestoresResults,
+            ["MainCountdownBlocksGeometryMatches"] = blocksGeometryMatches
         };
     }
 
     private static IReadOnlyDictionary<string, object?> CreateNoteAddFixture(
         MainWindow main,
-        FloatingWindow floating)
+        FloatingWindow floating,
+        DesktopWorkspace desktopWorkspace,
+        bool exerciseTagInteractions)
     {
         var floatingCrossDayReminderAdded = floating.RunFloatingCrossDayReminderFixture();
         var floatingReminderModes = floating.RunFloatingReminderModeFixture();
         var noteExercise = main.RunNoteAddFixture();
         var reminderModes = main.RunNoteReminderModeFixture();
         var undatedNoteEdit = main.RunUndatedNoteEditFixture();
-        return new Dictionary<string, object?>
+        var report = new Dictionary<string, object?>
         {
             ["NoteAddViaClick"] = noteExercise.AddedViaClick,
             ["NoteReminderViaSelector"] = noteExercise.ReminderViaSelector,
@@ -55,6 +63,28 @@ internal static partial class ValidationReport
             ["NoteDateViaPicker"] = noteExercise.DateViaPicker,
             ["NoteStatusViaCheckbox"] = noteExercise.CompletionViaCheckbox
         };
+        if (exerciseTagInteractions)
+        {
+            var tagExercise = ValidationExercises.RunTagInteractions(desktopWorkspace);
+            report["TagInteractionsExecuted"] = tagExercise.Executed;
+            report["TagCreationAndAssociation"] = tagExercise.CreationAndAssociation;
+            report["TagAnyAllFilter"] = tagExercise.AnyAllFilter;
+            report["TagEditorSummaryIsCompact"] = tagExercise.EditorSummaryIsCompact;
+            report["TagSearchCreateAvoidsDefaultSubmit"] = tagExercise.SearchCreateAvoidsDefaultSubmit;
+            report["TagUntaggedAndCountdownStatus"] = tagExercise.UntaggedAndCountdownStatus;
+            report["TagNoteStatusSearchAndCompletion"] = tagExercise.NoteStatusSearchAndCompletion;
+            report["NoteDateFilterControls"] = tagExercise.NoteDateFilterControls;
+            report["NoteDateFilterBehavior"] = tagExercise.NoteDateFilterBehavior;
+            report["TagFloatingNoteInheritsTags"] = tagExercise.FloatingNoteInheritsTags;
+            report["TagFloatingNoteDateViaPicker"] = tagExercise.FloatingNoteDateViaPicker;
+            report["TagFloatingNotePopupOnDemand"] = tagExercise.FloatingNotePopupOnDemand;
+            report["TagFloatingNoteCanOverrideTags"] = tagExercise.FloatingNoteCanOverrideTags;
+            report["TagNoteEditingPersistsTags"] = tagExercise.NoteEditingPersistsTags;
+            report["TagNoteEditingPersistsDate"] = tagExercise.NoteEditingPersistsDate;
+            report["TagRenameAndDeleteDetachOnly"] = tagExercise.RenameAndDeleteDetachOnly;
+        }
+
+        return report;
     }
 
     internal static IReadOnlyDictionary<string, object?> CreatePersistenceFailureFixture(
@@ -138,7 +168,11 @@ internal static partial class ValidationReport
 
         if (options.ExerciseNoteAdd)
         {
-            return CreateNoteAddFixture(main, floating);
+            return CreateNoteAddFixture(
+                main,
+                floating,
+                desktopWorkspace,
+                options.ExerciseTagInteractions);
         }
 
         var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);

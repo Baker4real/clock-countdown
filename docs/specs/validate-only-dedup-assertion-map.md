@@ -356,14 +356,14 @@ SortedNoteTexts, TagPersistenceRoundTrip
 
 字段按测试实际读取的报告顶层属性计数；嵌套门禁和测量值归入其顶层字段。基线为 `c40e838968465deba053714da1687d3cb0581fa6`。
 
-- `AdapterValidationRun`：保留整份报告。本段及后续 `AdapterAssertions` 显式消费下方 132 个顶层字段，另断言 `DeepModuleCount` / `DeepModuleInterfaces` 缺席；`Seal` 还校验报告内全部已声明验证事实。它是其余事实、canonical JSON 形状和参考基线的唯一完整运行，不能按本段末尾两个主题字段裁剪。
-- `NightMigration`：`FloatingThemeBoundaryModes`、`MainThemeBackgroundColors`（2 个）。改动后只运行主窗口与悬浮窗主题练习。
+- `AdapterValidationRun`：保留整份报告。本段及后续 `AdapterAssertions` 在基线显式消费 132 个顶层字段，合入 #264 后为 154 个（新增 26、移出到 Night 4），另断言 `DeepModuleCount` / `DeepModuleInterfaces` 缺席；`Seal` 还校验报告内全部已声明验证事实。它是其余事实、canonical JSON 形状和参考基线的唯一完整运行，不能按本段末尾两个主题字段裁剪。
+- `NightMigration`：`FloatingThemeBoundaryModes`、`MainThemeBackgroundColors`、`CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches`（6 个）。改动后只运行主/悬浮主题、倒计时无结果鼠标与键盘重置、分格几何子练习。
 - `PersistenceFailureFixture`：`Valid`、`CountdownSaveFailurePreservesState`、`PreferenceSaveFailurePreservesState`、`CountdownSaveFailureRetainsDraft`、`PreferenceSaveFailureRetainsDraft`、`TagSaveFailurePreservesState`、`TagSaveFailureRetainsDraft`、`TagSaveFailureRetainsFilter`、`PersistenceFailureTempPathRemainsDirectory`（9 个）。改动后只运行 `RunPersistenceFailures`；此 fixture 的 `Valid` 由其余 8 个结果计算，不表示完整 canonical 报告已另行运行。
-- `NoteExercise`：`NoteAddViaClick`、`NoteReminderViaSelector`、`FloatingCrossDayReminderViaClick`、`MainNoReminderViaClick`、`MainOnceReminderViaClick`、`MainRepeatingReminderViaClick`、`FloatingNoReminderViaClick`、`FloatingOnceReminderViaClick`、`FloatingRepeatingReminderViaClick`、`NoteDateRequired`、`NewNoteRejectsEmptyDate`、`UndatedNoteEditSavesWithoutDate`、`DatedNoteEditRejectsClearedDate`、`NoteDateValidationMessagesDistinguished`、`NoteDateViaPicker`、`NoteStatusViaCheckbox`（16 个）。改动后只运行便签添加、提醒模式及无日期/有日期编辑练习。
+- `NoteExercise`：`NoteAddViaClick`、`NoteReminderViaSelector`、`FloatingCrossDayReminderViaClick`、`MainNoReminderViaClick`、`MainOnceReminderViaClick`、`MainRepeatingReminderViaClick`、`FloatingNoReminderViaClick`、`FloatingOnceReminderViaClick`、`FloatingRepeatingReminderViaClick`、`NoteDateRequired`、`NewNoteRejectsEmptyDate`、`UndatedNoteEditSavesWithoutDate`、`DatedNoteEditRejectsClearedDate`、`NoteDateValidationMessagesDistinguished`、`NoteDateViaPicker`、`NoteStatusViaCheckbox`、`TagInteractionsExecuted`、`TagCreationAndAssociation`、`TagAnyAllFilter`、`TagEditorSummaryIsCompact`、`TagSearchCreateAvoidsDefaultSubmit`、`TagUntaggedAndCountdownStatus`、`TagNoteStatusSearchAndCompletion`、`NoteDateFilterControls`、`NoteDateFilterBehavior`、`TagFloatingNoteInheritsTags`、`TagFloatingNoteDateViaPicker`、`TagFloatingNotePopupOnDemand`、`TagFloatingNoteCanOverrideTags`、`TagNoteEditingPersistsTags`、`TagNoteEditingPersistsDate`、`TagRenameAndDeleteDetachOnly`（32 个）。改动后只运行便签添加、提醒模式、无日期/有日期编辑及同次 `RunTagInteractions` 练习。
 
 原有字段断言、设置哈希、诊断事件顺序和磁盘结果断言均保留；新增检查只比较运行时 JSON 的精确字段名集合，没有新增源码文本断言。完整报告里的验证事实名称与含义未改。
 
-`AdapterValidationRun` 的 132 个显式顶层字段：
+`AdapterValidationRun` 在基线的 132 个显式顶层字段：
 
 ```
 ActiveNotesSegmentSelectedByDefault, CalendarHeaderTextAvailableWidth,
@@ -425,6 +425,19 @@ Valid, ValidationReportContractBehavior, ValidationReportModuleDeep, WorkEndWidt
 WorkStartWidth
 ```
 
+合入 #264 后，canonical 新增以下 26 个显式字段；`CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches` 移至 Night，因此当前显式字段总数为 `132 + 26 - 4 = 154`：
+
+```
+ActiveNoteCount, CardActionsBoundByTag, CompletedNoteCount, CompletedNotesCollapsed,
+FloatingCountdownCount, FloatingCountdownTexts, FloatingEmptyStateTextIsolationBehavior,
+FloatingIncomeText, HasNoteDateControls, LoadedCountdowns, LoadedNotes, LoadedTags,
+NoteActionsBoundByTag, NoteDateChoicesSurviveBeijingDayChange,
+NoteDateDefaultsTrackBeijingDay, NoteDatesRendered, NotePersistenceRoundTrip,
+NoteStatusLabelsPresent, NotesGroupedByDay, PersistenceRoundTrip,
+RenderedFloatingNoteIds, RenderedManagerNoteIds, SettingsWereMigrated, SortedNames,
+SortedNoteTexts, TagPersistenceRoundTrip
+```
+
 ### 改动前实测
 
 官方入口：`tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,CSharp`。运行目录 `logs/suite-runs/20261112T094857988-bc44acfe-*`，Build 与 CSharp 退出码均为 0。
@@ -453,11 +466,53 @@ WorkStartWidth
 
 这次运行保留并通过完整 canonical 断言面；Night、Persistence、Note 分别只输出 2、9、16 个被断言字段。它不是最终集成证据：integration 纳入 #264 后还必须合并并复验 Night=6、Note=32 的同一提交。
 
-### 与 #264 的合并准备
+### 最终集成复验（含 #264）
 
-本节先记录尚未进入 `integration/prd-258` 的交互，不把待合并字段冒充为当前结果。正式合并后必须保留 #264 的 Ui 覆盖迁移及上方「2026-11-11 #264 Ui 退役前分段去向」全节，并按下列映射扩展本票 fixture：
+官方入口：`tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -WaitForLockSeconds 1800`。运行目录 `logs/suite-runs/20261112T163814120-71955fdd-*`，CSharp 退出码 0，无 `SkipLoadPreflight`，未运行 full gate。
+
+| 阶段或分段 | 改动前秒 | 最终秒 |
+| --- | ---: | ---: |
+| CSharp（低影响套件阶段结果） | 828 | 194 |
+| AdapterValidationRun | 154.007 | 125.893 |
+| NightMigration | 154.799 | 2.046 |
+| PersistenceFailureFixture | 163.492 | 1.631 |
+| NoteExercise | 196.058 | 3.963 |
+
+最终四段合计 133.533 秒，改动前为 668.356 秒。该次运行同时通过完整 canonical 断言面、#264 的全部迁移覆盖与反例，以及 Night=6、Persistence=9、Note=32 的运行时精确字段集断言；没有新增源码文本断言，也没有删减原断言来缩短耗时。
+
+### 与 #264 的合并结果
+
+`integration/prd-258` 的 `81a412ffe979c0ca9d6de8fea0f0187b8b37b3bc` 已正式纳入 #264。本分支只 merge 该 integration，未直接 merge `ticket/258/264`；保留下方「2026-11-11 #264 Ui 退役前分段去向」全节和全部迁移断言，并按下列映射扩展本票 fixture：
 
 - Night 由 2 字段扩为 6 字段：增加 `CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches`。前三个复用共享的 `ProbeCountdownEmptyResetBehavior`，只执行倒计时无结果的鼠标与键盘重置；最后一个复用 `AddCountdownReadabilityFixtureRecords` 和 `RunCountdownBlocksGeometryFixture`，只建立几何所需记录并测量分格，不运行整组 `ProbeUiPolishScenarios` / `ProbeCountdownReadabilityScenarios`。
-- Note 由 16 字段扩为 32 字段：增加 `TagInteractionsExecuted`、`TagCreationAndAssociation`、`TagAnyAllFilter`、`TagEditorSummaryIsCompact`、`TagSearchCreateAvoidsDefaultSubmit`、`TagUntaggedAndCountdownStatus`、`TagNoteStatusSearchAndCompletion`、`TagNoteDateFilterControls`、`TagNoteDateFilterBehavior`、`TagFloatingNoteInheritsTags`、`TagFloatingNoteDateViaPicker`、`TagFloatingNotePopupOnDemand`、`TagFloatingNoteCanOverrideTags`、`TagNoteEditingPersistsTags`、`TagNoteEditingPersistsDate`、`TagRenameAndDeleteDetachOnly`。这些结果只来自同次 fixture 内已有的 `ExerciseTagInteractions` / `RunTagInteractions`，不新增完整报告运行。
+- Note 由 16 字段扩为 32 字段：增加 `TagInteractionsExecuted`、`TagCreationAndAssociation`、`TagAnyAllFilter`、`TagEditorSummaryIsCompact`、`TagSearchCreateAvoidsDefaultSubmit`、`TagUntaggedAndCountdownStatus`、`TagNoteStatusSearchAndCompletion`、`NoteDateFilterControls`、`NoteDateFilterBehavior`、`TagFloatingNoteInheritsTags`、`TagFloatingNoteDateViaPicker`、`TagFloatingNotePopupOnDemand`、`TagFloatingNoteCanOverrideTags`、`TagNoteEditingPersistsTags`、`TagNoteEditingPersistsDate`、`TagRenameAndDeleteDetachOnly`。这些结果只来自同次 fixture 内已有的 `ExerciseTagInteractions` / `RunTagInteractions`，不新增完整报告运行。
 
 上述子练习拆分先落在既有 `WindowValidationScenarios.cs`，不改视觉基线覆盖的产品窗口源码，不形成对 `ticket/258/264` 的额外 merge。
+
+## 2026-11-11 #264 Ui 退役前分段去向
+
+本节是 Ui 阶段退役前的正式清点记录；上方行号和执行点编号仍是 2026-09-14 的调查快照。本票只迁移覆盖，不删除 `Countdown.Ui.Tests.ps1`、Ui 阶段或旧 PowerShell WPF 宿主。分段以 `Write-TestSegmentTiming -Name` 为准，共 9 段：旧宿主专属 4 段，C# 已有等价覆盖 1 段，C# 无覆盖而迁入现役 CSharp 4 段。
+
+| Ui 分段 | 分类 | 去向与理由 |
+| --- | --- | --- |
+| `Setup` | 旧宿主专属 | 唯一产品断言是旧 `Countdown.Core.psm1` 的 `ConvertTo-CountdownDateText`；其余为旧 Ui 夹具准备。随 #265/#266 的 Ui/旧宿主删除，不迁入 CSharp。 |
+| `FatalDiagnosticExercise` | C# 无覆盖 | adapter 经 `-ExerciseFatalDiagnostic` 启动 C# EXE。非默认 `InstanceActivationOnly/Matrix` 虽有相似 case，默认 CSharp 不执行，且没有 Ui 的 `exceptionType` 与 fatal 进程 `ProcessStarted` 断言。迁入默认 CSharp 的同名预期失败分段，复用 adapter、隔离设置与诊断日志 seam；不产出整份验证报告。 |
+| `ApplicationHostValidation` | 旧宿主专属 | 直接导入 `Countdown.App.psm1` 并调用 `Start-CountdownApplication`，验证的是旧宿主自身 `ValidateOnly` 合同。随旧宿主删除。 |
+| `RuntimeIntegration` | 旧宿主专属 | 复制并直接运行旧 `Countdown.App.psm1`，检查旧宿主 window-ready、日历引导和自退。随旧宿主删除。 |
+| `PopupUiaGate` | 旧宿主专属 | UIA 操作由旧 `Countdown.App.psm1` 渲染的窗口。随旧宿主删除。 |
+| `ListValidation` | C# 无覆盖 | U2 的 populated fixture、多行动态 Tab 路径和输入相关字段没有现役等价执行点。fixture 与缺口迁入既有 `AdapterValidationRun`，断言复用同一次 `$adapterValidation`。已有重复覆盖不另开运行，逐项见下表。 |
+| `TagInteractionExercise` | C# 无覆盖 | U4 是全套件唯一 `ExerciseTagInteractions` 执行点。既有 `NoteExercise` 增加同一 exercise 开关，全部报告与落盘断言复用 `$noteExercise` 和 `$noteExerciseSettings`，不新增报告运行。 |
+| `PersistenceFailureExercise` | C# 无覆盖 | U5 是全套件唯一“tmp 未阻塞必须拒绝”路径。紧接既有 `PersistenceFailureFixture` 的阻塞路径复用同一隔离设置，新增的只是非零退出且无报告的预期失败进程；保留设置哈希不变断言。 |
+| `LegacyMigrationExercise` | C# 已有等价覆盖 | 默认 CSharp `FixtureRoundTrip` 调用 `MinminCountdown.Verification.exe verify`；`VerificationSuite.RunAll` 对 `SettingsFixtures.VersionThree` 执行 `VerifySchemaMigration`，覆盖迁移标志、canonical v10、倒计时、Minute/月薪/上下班偏好和空便签。`CliApplication.RunRoundTrip` 及 CSharp `FixtureRoundTrip` 另覆盖来源字节不变、显式输出 canonical v10 和稳定往返；adapter 参数映射由 `AdapterValidationRun` 覆盖。因此不新增一份 v3 整份报告。 |
+
+### ListValidation 逐项归属
+
+- 迁入既有 `$adapterValidation` 的输入/落盘断言：`LoadedCountdowns`、`SortedNames`、`PersistenceRoundTrip`、`LoadedTags`、`TagPersistenceRoundTrip`、`LoadedNotes`、`ActiveNoteCount`、`CompletedNoteCount`、`NotePersistenceRoundTrip`、`NoteActionsBoundByTag`、`NoteStatusLabelsPresent`、`HasNoteDateControls`、`NoteDatesRendered`、`NotesGroupedByDay`、`SortedNoteTexts`、`RenderedManagerNoteIds`、`RenderedFloatingNoteIds`、`NoteDateDefaultsTrackBeijingDay`、`NoteDateChoicesSurviveBeijingDayChange`、`CompletedNotesCollapsed`、`SettingsWereMigrated`、`CardActionsBoundByTag`、`FloatingCountdownCount`、`FloatingCountdownTexts`、`FloatingIncomeText`、`FloatingEmptyStateTextIsolationBehavior`。
+- 动态 `CountdownTabPath` / `NotesTabPath` 改为 populated fixture 的真实多行 `ForwardFocusedTargets` / `BackwardFocusedTargets`，继续断言正反向严格对称与焦点可见；现役单行断言由本次迁移扩展，不新增执行点。
+- 设置哈希不变已由 `AdapterValidationRun` 对同一 `$themeExercisePath` 的前后 SHA-256 断言覆盖。
+- 既有 CSharp 直接等价断言：`NoteStatusSegmentSwitch`（`AdapterAssertions`）与 `FloatingNoteSearch` 五个子字段（同段悬浮搜索断言组）。
+- 由 C# 验证事实及现役 `$adapterValidation.Valid` 等价覆盖：`NoteDateTimelineVisuals`、`NoteDisclosureAccessibility`、`NoteDisclosureThemeTokens`、`ManagerNoteRowsFollowSortOrder`、`FloatingNotesKeepExistingSortOrder`、`NoteDateSectionsCanCollapse`、`NoteDateSectionsAreIndependent`、`NoteDateSectionStateSurvivesRefresh`、`NoteStatusSegmentsSwitchExclusively`、`FloatingIncomeHiddenWithoutSalary`、`FloatingIncomeRestoredWithSalary`。这些字段在 `ValidationReport.Create` 以 `Must(...)` 登记，`Seal` 为假时拒绝有效报告。
+
+### 运行与断言边界
+
+CSharp 的完整 validate-only 报告运行数保持 4 次：Auto + populated List、Night、阻塞 tmp 的 PersistenceFailure、NoteAdd + TagInteractions。FatalDiagnostic 与未阻塞 tmp 都是预期失败且不产出报告。原 Auto 报告上的 `CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches` 移挂到仍使用原单活动倒计时夹具的 Night 报告：populated 夹具含已到期记录，继续用 `Expired` 制造空态会正确失败，不能靠删除或放宽这些既有断言转绿。本票没有新增对源码文本的断言；迁入断言只读 C# 宿主报告、真实诊断日志、退出码和隔离设置落盘结果。

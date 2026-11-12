@@ -3937,6 +3937,79 @@ $fixture = @'
   ]
 }
 '@
+# #264：Ui ListValidation / TagInteractionExercise 的 populated 输入独立迁移，
+# 不改原 CSharp fixture 所守护的“Expired 筛选无结果”等既有场景。
+$populatedFixture = @'
+{
+  "schemaVersion": 6,
+  "timeZoneId": "China Standard Time",
+  "displayPrecision": "Second",
+  "monthlySalary": 23000,
+  "workStart": "09:00",
+  "workEnd": "18:00",
+  "tags": [
+    {
+      "id": "seed-tag",
+      "name": "种子标签"
+    }
+  ],
+  "countdowns": [
+    {
+      "id": "expired",
+      "name": "已到期项目",
+      "targetUtc": "2000-01-01T00:00:00Z",
+      "tagIds": []
+    },
+    {
+      "id": "future",
+      "name": "未来项目",
+      "targetUtc": "2099-01-01T00:00:00Z",
+      "tagIds": [
+        "seed-tag"
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "id": "note-active-old",
+      "text": "未完成旧日期",
+      "date": "2026-07-18",
+      "isCompleted": false,
+      "tagIds": [
+        "seed-tag"
+      ]
+    },
+    {
+      "id": "note-active-new-first",
+      "text": "未完成新日期甲",
+      "date": "2026-07-22",
+      "isCompleted": false,
+      "tagIds": []
+    },
+    {
+      "id": "note-active-new-second",
+      "text": "未完成新日期乙",
+      "date": "2026-07-22",
+      "isCompleted": false,
+      "tagIds": []
+    },
+    {
+      "id": "note-completed-old",
+      "text": "已完成旧日期",
+      "date": "2026-07-18",
+      "isCompleted": true,
+      "tagIds": []
+    },
+    {
+      "id": "note-completed-new",
+      "text": "已完成新日期",
+      "date": "2026-07-22",
+      "isCompleted": true,
+      "tagIds": []
+    }
+  ]
+}
+'@
 
 try {
     New-Item -ItemType Directory -Path $testRoot | Out-Null
@@ -4193,7 +4266,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # 由 adapter validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
     $canonicalHash = (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash
 
-    [System.IO.File]::Copy($roundTripPath, $themeExercisePath)
+    # #264：复用现役 Auto adapter 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
+    $populatedState = ConvertFrom-CountdownSettingsObject -Settings (
+        $populatedFixture | ConvertFrom-Json)
+    [System.IO.File]::WriteAllText(
+        $themeExercisePath,
+        (ConvertTo-CountdownSettingsJson -State $populatedState),
+        $utf8NoBom)
+    Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
     $adapterResult = Invoke-CapturedNativeProcess -FilePath $pwsh -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '-NoLogo',
@@ -4334,8 +4414,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $nightMigrationReport = [string] $nightMigrationResult.Stdout | ConvertFrom-Json
     Assert-Equal 'Day' ([string]::Join(',', @($nightMigrationReport.FloatingThemeBoundaryModes))) '旧 Night 主题设置启动一律按日间解释：悬浮窗'
     Assert-Equal '#FFFDF0E4' ([string] $nightMigrationReport.MainThemeBackgroundColors) '旧 Night 主题设置启动一律按日间解释：主窗口背景'
+    # #264：List populated fixture 含已到期记录，原 C2 的 Expired 无结果场景移到本原夹具报告，不断言削弱。
+    Assert-Equal $true ([bool] $nightMigrationReport.CountdownNoResultsResetWorks) '倒计时筛选无结果状态通过指针重置完整筛选条件'
+    Assert-Equal $true ([bool] $nightMigrationReport.CountdownEmptyPointerResetRestoresResults) '倒计时空态指针重置恢复默认筛选、列表和摘要'
+    Assert-Equal $true ([bool] $nightMigrationReport.CountdownEmptyKeyboardResetRestoresResults) '倒计时空态聚焦按钮可由键盘恢复默认筛选、列表和摘要'
+    Assert-Equal $true ([bool] $nightMigrationReport.MainCountdownBlocksGeometryMatches) '主窗分格保持约 2:3；四分格主项使用 6 DIP 紧凑间距，其余使用标准间距，单位字不低于辅助下限'
     Assert-ExactReportFields -Report $nightMigrationReport -ExpectedNames @(
+        'CountdownEmptyKeyboardResetRestoresResults',
+        'CountdownEmptyPointerResetRestoresResults',
+        'CountdownNoResultsResetWorks',
         'FloatingThemeBoundaryModes',
+        'MainCountdownBlocksGeometryMatches',
         'MainThemeBackgroundColors'
     ) -Name 'NightMigration 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NightMigration'
@@ -4416,12 +4505,53 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'TagSaveFailureRetainsFilter',
         'Valid'
     ) -Name 'PersistenceFailureFixture 只输出被断言字段'
+    # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
+    $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
+        '-NoLogo',
+        '-NoProfile',
+        '-NonInteractive',
+        '-STA',
+        '-File',
+        $adapter,
+        '-ValidateOnly',
+        '-ExercisePersistenceFailures',
+        '-SettingsFile',
+        $persistenceExercisePath
+    )
+    Assert-Equal $true ($unblockedPersistenceResult.ExitCode -ne 0) '持久化失败演练拒绝未阻塞的临时路径'
+    Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '被拒绝的未阻塞临时路径演练不改设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
     Assert-Equal 'Number' $adapterValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
     Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
+    # #264：迁入 Ui ListValidation 依赖 populated fixture 的输入与真实列表行为；复用本次 adapter 报告。
+    Assert-Equal 2 ([int] $adapterValidation.LoadedCountdowns) 'populated fixture 载入两个倒计时'
+    Assert-Equal '未来项目,已到期项目' ([string]::Join(',', @($adapterValidation.SortedNames))) '倒计时按现役顺序呈现'
+    Assert-Equal $true ([bool] $adapterValidation.PersistenceRoundTrip) '倒计时 canonical 持久化往返稳定'
+    Assert-Equal 1 ([int] $adapterValidation.LoadedTags) 'populated fixture 载入一个共享标签'
+    Assert-Equal $true ([bool] $adapterValidation.TagPersistenceRoundTrip) '共享标签 canonical 持久化往返稳定'
+    Assert-Equal 5 ([int] $adapterValidation.LoadedNotes) 'populated fixture 载入五张便签'
+    Assert-Equal $true (3 -eq [int] $adapterValidation.ActiveNoteCount -and 2 -eq [int] $adapterValidation.CompletedNoteCount) '便签按完成状态正确分组计数'
+    Assert-Equal $true ([bool] $adapterValidation.NotePersistenceRoundTrip) '便签 canonical 持久化往返稳定'
+    Assert-Equal $true ([bool] $adapterValidation.NoteActionsBoundByTag) '便签行动作绑定记录 ID'
+    Assert-Equal $true ([bool] $adapterValidation.NoteStatusLabelsPresent) '便签真实行包含状态标签'
+    Assert-Equal $true ([bool] $adapterValidation.HasNoteDateControls) '管理窗与悬浮窗均有便签日期控件'
+    Assert-Equal $true ([bool] $adapterValidation.NoteDatesRendered) '便签真实行渲染日历日期'
+    Assert-Equal $true ([bool] $adapterValidation.NotesGroupedByDay) '便签真实行按日历日分组'
+    Assert-Equal '未完成新日期乙,未完成新日期甲,未完成旧日期,已完成新日期,已完成旧日期' ([string]::Join(',', @($adapterValidation.SortedNoteTexts))) '便签按新日期及同日期新条目优先排序'
+    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old,note-completed-new,note-completed-old' ([string]::Join(',', @($adapterValidation.RenderedManagerNoteIds))) '管理窗真实便签行遵循共享排序'
+    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old' ([string]::Join(',', @($adapterValidation.RenderedFloatingNoteIds))) '悬浮窗真实便签行遵循共享排序'
+    Assert-Equal $true ([bool] $adapterValidation.NoteDateDefaultsTrackBeijingDay) '便签默认日期随北京日历日推进'
+    Assert-Equal $true ([bool] $adapterValidation.NoteDateChoicesSurviveBeijingDayChange) '北京跨日不覆盖已选日期与草稿'
+    Assert-Equal $true ([bool] $adapterValidation.CompletedNotesCollapsed) '已完成便签默认收起'
+    Assert-Equal $false ([bool] $adapterValidation.SettingsWereMigrated) 'canonical populated fixture 不被误报为旧设置'
+    Assert-Equal $true ([bool] $adapterValidation.CardActionsBoundByTag) '倒计时行动作绑定记录 ID'
+    Assert-Equal 1 ([int] $adapterValidation.FloatingCountdownCount) '悬浮窗只呈现一个未到期用户倒计时'
+    Assert-Equal $true (1 -eq @($adapterValidation.FloatingCountdownTexts).Count -and [string] $adapterValidation.FloatingCountdownTexts[0] -match '天 .*小时 .*分钟 .*秒') '悬浮倒计时使用统一单位格式'
+    Assert-Equal $true ([string] $adapterValidation.FloatingIncomeText -match '今日已赚 ￥|节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复|节假日日历正在加载|加油！美好的事情正在靠近') '悬浮底部显示收入、节假日状态或鼓励文案'
+    Assert-Equal $true ([bool] $adapterValidation.FloatingEmptyStateTextIsolationBehavior) '悬浮空态文案映射隔离行为通过'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
     Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
@@ -4936,9 +5066,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal $false ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
         Assert-Equal 0 @($adapterValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
     }
-    Assert-Equal $true ([bool] $adapterValidation.CountdownNoResultsResetWorks) '倒计时筛选无结果状态通过指针重置完整筛选条件'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyPointerResetRestoresResults) '倒计时空态指针重置恢复默认筛选、列表和摘要'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownEmptyKeyboardResetRestoresResults) '倒计时空态聚焦按钮可由键盘恢复默认筛选、列表和摘要'
     $countdownEmptyContrastMeasurements = @($adapterValidation.CountdownEmptyStateContrastMeasurements)
     Assert-Equal 1 $countdownEmptyContrastMeasurements.Count '倒计时空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '倒计时空态对比度主题集合固定'
@@ -5070,7 +5197,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.ConstrainedEmptyProvidesAction) '悬浮窗搜索/筛选两种无匹配空态互斥且约束空态有下一步（#149）'
     Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
     Assert-Equal 0 @($adapterValidation.FloatingReferenceContentOverlapTargets).Count '悬浮窗受保护内容遮挡明细清单为空（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainCountdownBlocksGeometryMatches) '主窗分格保持约 2:3；四分格主项使用 6 DIP 紧凑间距，其余使用标准间距，单位字不低于辅助下限'
     $primaryDeadlineMeasurements = @($adapterValidation.FloatingPrimaryDeadlineMeasurements)
     Assert-Equal 2 $primaryDeadlineMeasurements.Count '主项截止行覆盖有无滚动条两份实测宽度'
     Assert-Equal $true ([bool] (@($primaryDeadlineMeasurements | Where-Object { -not $_.FullyVisible -or [double] $_.ActualWidth + 0.01 -lt [double] $_.RequiredWidth }).Count -eq 0)) '主项截止行实测宽度足以容纳完整 M 月 d 日 HH:mm'
@@ -5230,9 +5356,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [array]::Reverse($expectedCountdownTabPathBackward)
     Assert-Equal ($expectedCountdownTabPathBackward -join ',') ([string]::Join(',', @($countdownTabPath.BackwardSequence))) '倒计时工作区真实反向 Tab 路径严格对称'
     Assert-Equal $true ([bool] $countdownTabPath.FocusVisualsVisible) '倒计时工作区每个 Tab 目标都有可见焦点样式'
-    $expectedCountdownFocusedTargets = $expectedCountdownTabPath.Replace(
-        ',CountdownListRegion,StatusText',
-        ',CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText')
+    # #264：Ui ListValidation 的两条倒计时各自遍历 Edit/Delete，而非只覆盖单行。
+    $expectedCountdownFocusedTargets = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,CountdownName,CountdownDate,SaveCountdownButton,CountdownEditorExpandButton,CountdownListRegion,CountdownListRegion.Edit,CountdownListRegion.Delete,CountdownListRegion.Edit,CountdownListRegion.Delete,StatusText'
     Assert-Equal $expectedCountdownFocusedTargets ([string]::Join(',', @($countdownTabPath.ForwardFocusedTargets))) '倒计时动态列表行的编辑和删除均被真实遍历'
     $expectedCountdownFocusedTargetsBackward = @($countdownTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedCountdownFocusedTargetsBackward)
@@ -5245,9 +5370,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [array]::Reverse($expectedNotesTabPathBackward)
     Assert-Equal ($expectedNotesTabPathBackward -join ',') ([string]::Join(',', @($notesTabPath.BackwardSequence))) '便签工作区真实反向 Tab 路径严格对称'
     Assert-Equal $true ([bool] $notesTabPath.FocusVisualsVisible) '便签工作区每个 Tab 目标都有可见焦点样式'
-    $expectedNotesFocusedTargets = $expectedNotesTabPath.Replace(
-        ',NotesListRegion,StatusText',
-        ',NotesListRegion,NotesListRegion.DateSection,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText')
+    # #264：Ui ListValidation 的五个日期分组/便签行均进入真实 Tab 路径。
+    $expectedNotesFocusedTargets = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,ActiveNotesSegment,CompletedNotesSegment,NoteSearch,NotesListRegion,NotesListRegion.DateSection,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,NotesListRegion.DateSection,NotesListRegion.NoteSelectionCard,NotesListRegion.Completion,NotesListRegion.Edit,NotesListRegion.Delete,StatusText'
     Assert-Equal $expectedNotesFocusedTargets ([string]::Join(',', @($notesTabPath.ForwardFocusedTargets))) '便签动态分组、日期、完成框、编辑和删除均被真实遍历'
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)
@@ -5540,7 +5664,40 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
     Write-TestSegmentTiming -Name 'AdapterAssertions'
 
-    [System.IO.File]::Copy($roundTripPath, $noteExercisePath)
+    # #264：迁入 Ui FatalDiagnosticExercise；这是预期失败的诊断演练，不产出整份验证报告。
+    $fatalDiagnosticPath = Join-Path $testRoot 'fatal-diagnostic-application.jsonl'
+    $fatalDiagnosticResult = Invoke-CapturedNativeProcess `
+        -FilePath $pwsh `
+        -WorkingDirectory $PSScriptRoot `
+        -ArgumentList @(
+            '-NoLogo',
+            '-NoProfile',
+            '-NonInteractive',
+            '-STA',
+            '-File',
+            $adapter,
+            '-ValidateOnly',
+            '-ExerciseFatalDiagnostic',
+            '-SettingsFile',
+            $themeExercisePath,
+            '-DiagnosticLogPath',
+            $fatalDiagnosticPath
+        )
+    Assert-Equal $true ($fatalDiagnosticResult.ExitCode -ne 0) '致命诊断演练必须非零退出'
+    Assert-Equal $true (Test-Path -LiteralPath $fatalDiagnosticPath -PathType Leaf) '致命诊断演练写出日志'
+    $fatalDiagnosticEntries = @(
+        Get-Content -LiteralPath $fatalDiagnosticPath -Encoding UTF8 |
+            ForEach-Object { $_ | ConvertFrom-Json }
+    )
+    Assert-Equal 1 @($fatalDiagnosticEntries | Where-Object event -eq 'ProcessStarted').Count '致命诊断演练记录唯一进程启动'
+    $fatalDiagnosticEntry = $fatalDiagnosticEntries |
+        Where-Object event -eq 'FatalUnhandledException' |
+        Select-Object -Last 1
+    Assert-Equal $true ($null -ne $fatalDiagnosticEntry -and $fatalDiagnosticEntry.exceptionType -eq 'System.InvalidOperationException') '致命诊断演练记录指定未处理异常'
+    Write-TestSegmentTiming -Name 'FatalDiagnosticExercise'
+
+    # #264：NoteAdd 与 TagInteractions 共用 Ui populated 输入和同一份报告，不新增完整运行。
+    [System.IO.File]::Copy($themeExercisePath, $noteExercisePath)
     # #129 去重迁移（U3 独有断言）：便签日期校验、选期/状态保持与落库结构断言迁入 C5；
     # 落库日期按北京时间“运行时刻 +2 天”计算，跨零点用运行前后窗口兼容。
     $noteExerciseDateBefore = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
@@ -5555,6 +5712,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $adapter,
         '-ValidateOnly',
         '-ExerciseNoteAdd',
+        '-ExerciseTagInteractions',
         '-SettingsFile',
         $noteExercisePath,
         '-DiagnosticLogPath',
@@ -5580,6 +5738,23 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $noteExercise.NoteDateValidationMessagesDistinguished) '新便签与编辑路径的日期校验消息可区分（#129 自 U3 迁移）'
     Assert-Equal $true ([bool] $noteExercise.NoteDateViaPicker) '点击添加保留所选便签日历日期（#129 自 U3 迁移）'
     Assert-Equal $true ([bool] $noteExercise.NoteStatusViaCheckbox) '便签完成状态经复选框真实切换（#129 自 U3 迁移）'
+    # #264：Ui TagInteractionExercise 迁入同一次 NoteExercise 报告；先断言，后接 exercise 开关。
+    Assert-Equal $true ([bool] $noteExercise.TagInteractionsExecuted) '标签交互演练真实执行'
+    Assert-Equal $true ([bool] $noteExercise.TagCreationAndAssociation) '标签创建及倒计时关联通过'
+    Assert-Equal $true ([bool] $noteExercise.TagAnyAllFilter) '标签任意/全部匹配与未打标签筛选通过'
+    Assert-Equal $true ([bool] $noteExercise.TagEditorSummaryIsCompact) '标签编辑器摘要保持紧凑'
+    Assert-Equal $true ([bool] $noteExercise.TagSearchCreateAvoidsDefaultSubmit) '标签搜索创建不会触发默认表单提交'
+    Assert-Equal $true ([bool] $noteExercise.TagUntaggedAndCountdownStatus) '倒计时与无标签筛选组合正确'
+    Assert-Equal $true ([bool] $noteExercise.TagNoteStatusSearchAndCompletion) '便签状态、搜索与完成交互正确'
+    Assert-Equal $true ([bool] $noteExercise.NoteDateFilterControls) '便签日历日期筛选与清除控件存在'
+    Assert-Equal $true ([bool] $noteExercise.NoteDateFilterBehavior) '便签日期筛选、跨日保留与清除行为正确'
+    Assert-Equal $true ([bool] $noteExercise.TagFloatingNoteInheritsTags) '悬浮窗新建便签继承当前标签'
+    Assert-Equal $true ([bool] $noteExercise.TagFloatingNoteDateViaPicker) '悬浮窗日期选择器真实提交所选日期'
+    Assert-Equal $true ([bool] $noteExercise.TagFloatingNotePopupOnDemand) '悬浮窗便签按真实点击切换标签与日历弹层'
+    Assert-Equal $true ([bool] $noteExercise.TagFloatingNoteCanOverrideTags) '悬浮窗便签可清空继承标签'
+    Assert-Equal $true ([bool] $noteExercise.TagNoteEditingPersistsTags) '编辑便签保留标签修改'
+    Assert-Equal $true ([bool] $noteExercise.TagNoteEditingPersistsDate) '编辑便签保留日期修改'
+    Assert-Equal $true ([bool] $noteExercise.TagRenameAndDeleteDetachOnly) '标签重命名与删除只解除关联，不删除用户记录'
     $noteExerciseDateAfter = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
         [DateTimeOffset]::UtcNow,
         'China Standard Time'
@@ -5595,6 +5770,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
                 $rules[0].intervalMinutes -eq 30 -and
                 $null -ne $rules[0].firstDueUtc
             }).Count -eq 1) '主窗口点击添加真实写入带日期与 30 分钟固定间隔规则的未完成便签（#129 自 U3 迁移）'
+    Assert-Equal $true (@($noteExerciseSettings.countdowns).Count -ge 5) '标签演练倒计时记录真实落盘'
+    Assert-Equal $true (@($noteExerciseSettings.notes).Count -ge 4) '标签演练便签记录真实落盘'
+    Assert-Equal $true (@($noteExerciseSettings.tags).Count -ge 2) '标签演练标签真实落盘'
+    Assert-Equal 'Auto' ([string] $noteExerciseSettings.themePreference) '标签演练保持 Auto 主题偏好'
     Assert-ExactReportFields -Report $noteExercise -ExpectedNames @(
         'DatedNoteEditRejectsClearedDate',
         'FloatingCrossDayReminderViaClick',
@@ -5606,11 +5785,27 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'MainRepeatingReminderViaClick',
         'NewNoteRejectsEmptyDate',
         'NoteAddViaClick',
+        'NoteDateFilterBehavior',
+        'NoteDateFilterControls',
         'NoteDateRequired',
         'NoteDateValidationMessagesDistinguished',
         'NoteDateViaPicker',
         'NoteReminderViaSelector',
         'NoteStatusViaCheckbox',
+        'TagAnyAllFilter',
+        'TagCreationAndAssociation',
+        'TagEditorSummaryIsCompact',
+        'TagFloatingNoteCanOverrideTags',
+        'TagFloatingNoteDateViaPicker',
+        'TagFloatingNoteInheritsTags',
+        'TagFloatingNotePopupOnDemand',
+        'TagInteractionsExecuted',
+        'TagNoteEditingPersistsDate',
+        'TagNoteEditingPersistsTags',
+        'TagNoteStatusSearchAndCompletion',
+        'TagRenameAndDeleteDetachOnly',
+        'TagSearchCreateAvoidsDefaultSubmit',
+        'TagUntaggedAndCountdownStatus',
         'UndatedNoteEditSavesWithoutDate'
     ) -Name 'NoteExercise 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NoteExercise'

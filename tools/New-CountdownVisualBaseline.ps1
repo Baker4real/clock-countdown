@@ -7,6 +7,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.PublicationEvidence.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.VisualBaselineRetention.psm1') -Force
 Assert-SuiteIsolatedDesktop
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -19,7 +20,7 @@ $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
 $manifestPaths = foreach ($surface in @($visualBaseline.Main, $visualBaseline.Floating)) {
     $directory = Split-Path -Parent $surface.ManifestPath
     if (Test-Path -LiteralPath $directory) {
-        throw "基线目录已存在，拒绝覆盖：$directory。保留历史目录并先更新源码中的基线版本。"
+        throw "基线目录已存在，拒绝覆盖：$directory。请先更新源码中的基线版本，不要覆盖现役或历史目录。"
     }
     $surface.ManifestPath
 }
@@ -51,6 +52,7 @@ $environment = @{
     MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG = $null
 }
 $previousEnvironment = @{}
+$generationValidated = $false
 try {
     foreach ($name in $environment.Keys) {
         $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -78,10 +80,13 @@ try {
             throw "基线未绑定实际执行的应用 EXE：$manifestPath"
         }
     }
+    $generationValidated = $true
+    $removedPrevious = @(Remove-CountdownPreviousVisualBaseline -ManifestPath $manifestPaths)
     [pscustomobject]@{
         Valid = $true
         ApplicationSha256 = $applicationSha256
         Manifests = @($manifestPaths)
+        RemovedPreviousBaseline = @($removedPrevious)
         ValidationReport = $stdoutPath
     } | ConvertTo-Json -Depth 4
 }
@@ -89,6 +94,10 @@ catch {
     # 应用先写帧与 manifest 再自检：失败时把这次新建的版本目录整体移进诊断目录，assets 里不留半成品，
     # 重跑不用先清理（生成器拒绝覆盖已有目录），现场仍和诊断放在一起。
     $failure = $_
+    if ($generationValidated) {
+        # 新版已完整验证后，留存删除失败不再把新版当半成品移走；旧版可由 Git 历史恢复。
+        throw $failure
+    }
     $moved = foreach ($manifestPath in $manifestPaths) {
         $directory = Split-Path -Parent $manifestPath
         if (-not (Test-Path -LiteralPath $directory)) { continue }

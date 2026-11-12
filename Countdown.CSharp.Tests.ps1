@@ -3704,21 +3704,23 @@ if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace MinminCountdown.Tests;
 
 public static class BundleAssetProbe
 {
-    public static string[] FindExactPayloads(string bundlePath, string[] payloadPaths)
+    public static string[] FindPayloadNames(string bundlePath, string[] payloadNames)
     {
         var bundle = File.ReadAllBytes(bundlePath);
         var matches = new List<string>();
-        foreach (var payloadPath in payloadPaths)
+        foreach (var payloadName in payloadNames)
         {
-            var payload = File.ReadAllBytes(payloadPath);
-            if (bundle.AsSpan().IndexOf(payload) >= 0)
+            var utf8 = Encoding.UTF8.GetBytes(payloadName);
+            var utf16 = Encoding.Unicode.GetBytes(payloadName);
+            if (bundle.AsSpan().IndexOf(utf8) >= 0 || bundle.AsSpan().IndexOf(utf16) >= 0)
             {
-                matches.Add(Path.GetFileName(payloadPath));
+                matches.Add(payloadName);
             }
         }
 
@@ -3807,21 +3809,18 @@ $retiredFloatingRuntimeAssetFiles = @(
     'floating-plush-kuromi-pose.png'
 )
 foreach ($file in $retiredFloatingRuntimeAssetFiles) {
-    $retiredPublishedAsset = Join-Path $PSScriptRoot "app\assets\floating-plush\$file"
+    $retiredRelativePath = "app\assets\floating-plush\$file"
+    Assert-Equal $false ($retiredRelativePath -in $publishedPayloadPaths) "C# 载荷清单不包含已淘汰的旧悬浮窗资产：$file"
+    $retiredPublishedAsset = Join-Path $PSScriptRoot $retiredRelativePath
     if (Test-Path -LiteralPath $retiredPublishedAsset -PathType Leaf) {
         throw "C# 发布仍包含已淘汰的旧悬浮窗资产：$retiredPublishedAsset"
     }
 }
-$retiredSourceAssetPaths = @(
-    $retiredFloatingRuntimeAssetFiles | ForEach-Object {
-        Join-Path $PSScriptRoot "assets\floating-plush\$_"
-    }
-)
-$embeddedRetiredAssets = [MinminCountdown.Tests.BundleAssetProbe]::FindExactPayloads(
+$embeddedRetiredAssets = [MinminCountdown.Tests.BundleAssetProbe]::FindPayloadNames(
     $application,
-    [string[]] $retiredSourceAssetPaths
+    [string[]] $retiredFloatingRuntimeAssetFiles
 )
-Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不嵌入已淘汰的旧悬浮窗 PNG'
+Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不包含已淘汰的旧悬浮窗 PNG 资产名'
 if (-not (Test-Path -LiteralPath $adapter -PathType Leaf)) {
     throw "未找到 PowerShell 薄 adapter：$adapter"
 }

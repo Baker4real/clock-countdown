@@ -1186,6 +1186,140 @@ Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Countdown.Notes.psm
 $releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $releaseContractTestRoot -Force | Out-Null
+
+    # #261：在隔离 module 副本里注入“12 月且缺下一年数据”的判定结果。导入仍须成功，
+    # 只有发布入口显式调用守卫时才失败；纯函数本身的日期与年份边界由 MainDomain 分段覆盖。
+    $holidayGuardModuleSource = [System.IO.File]::ReadAllText(
+        (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1'),
+        [System.Text.Encoding]::UTF8)
+    $holidayGuardImportIndex = $holidayGuardModuleSource.LastIndexOf(
+        'Assert-CountdownReleaseContractDefinition',
+        [System.StringComparison]::Ordinal)
+    if ($holidayGuardImportIndex -lt 0) {
+        throw '年度覆盖守卫夹具找不到发布契约导入断言。'
+    }
+    $holidayGuardOverride = @'
+function Test-CountdownHolidayYearCoverage {
+    param($BeijingNow, $PackagedYears)
+    [pscustomobject]@{
+        Covered = $false
+        MissingYear = 2027
+        Message = '随包节假日数据尚未覆盖 2027 年；请按 holiday-data/README.md 的更新流程补齐。'
+    }
+}
+
+'@
+    $holidayGuardModulePath = Join-Path $releaseContractTestRoot 'Countdown.ReleaseContract.HolidayGuard.psm1'
+    [System.IO.File]::WriteAllText(
+        $holidayGuardModulePath,
+        $holidayGuardModuleSource.Insert($holidayGuardImportIndex, $holidayGuardOverride),
+        [System.Text.UTF8Encoding]::new($false))
+    $holidayGuardImportError = $null
+    $holidayGuardModule = $null
+    try {
+        $holidayGuardModule = Import-Module $holidayGuardModulePath -Force -PassThru
+    }
+    catch {
+        $holidayGuardImportError = $_.Exception.Message
+    }
+    Assert-Equal $null $holidayGuardImportError 'Release contract import succeeds when December holiday coverage is missing'
+    if ($null -ne $holidayGuardModule) {
+        $holidayGuardExplicitError = & $holidayGuardModule {
+            try {
+                Assert-CountdownHolidayYearCoverage
+                $null
+            }
+            catch {
+                $_.Exception.Message
+            }
+        }
+        Assert-Equal $true ([string] $holidayGuardExplicitError).Contains('2027') 'Explicit holiday coverage assertion names the missing year'
+        Assert-Equal $true ([string] $holidayGuardExplicitError).Contains('holiday-data/README.md') 'Explicit holiday coverage assertion names the refresh runbook'
+        Remove-Module -ModuleInfo $holidayGuardModule -Force
+        Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+    }
+
+    $holidayGuardEntryRoot = Join-Path $releaseContractTestRoot 'holiday-guard-entries'
+    $holidayGuardEntryTools = Join-Path $holidayGuardEntryRoot 'tools'
+    New-Item -ItemType Directory -Path $holidayGuardEntryTools -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Install-Countdown.ps1') -Destination $holidayGuardEntryRoot
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1') -Destination $holidayGuardEntryRoot
+    [System.IO.File]::WriteAllText(
+        (Join-Path $holidayGuardEntryTools 'Countdown.SuiteStages.psm1'),
+        '',
+        [System.Text.UTF8Encoding]::new($false))
+    $holidayGuardEntryModulePath = Join-Path $holidayGuardEntryRoot 'Countdown.ReleaseContract.psm1'
+    $holidayGuardEntryEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $PSNativeCommandUseErrorActionPreference = $false
+
+    # 安装验证不是发布动作：即使注入缺数据结果，也只运行原有包校验夹具并成功返回。
+    $holidayGuardValidationStubs = @'
+function Get-CountdownReleaseContract {
+    [pscustomobject]@{
+        OfficialCharacterAssets = @()
+        FloatingPlushAssets = @()
+        CurrentFloatingRuntimeAssets = @()
+        LegacyFloatingRegressionAssets = @()
+        RetiredRuntimeFiles = @()
+        CompatibilityFixtureFiles = @()
+    }
+}
+function Assert-CountdownReleasePackage {
+    param($Root)
+    [pscustomobject]@{ Valid = $true; VerifiedFiles = 0 }
+}
+'@
+    [System.IO.File]::WriteAllText(
+        $holidayGuardEntryModulePath,
+        $holidayGuardModuleSource + $holidayGuardOverride + $holidayGuardValidationStubs,
+        [System.Text.UTF8Encoding]::new($false))
+    $holidayGuardInstallValidationJson = & $holidayGuardEntryEngine `
+        -NoLogo -NoProfile -NonInteractive `
+        -File (Join-Path $holidayGuardEntryRoot 'Install-Countdown.ps1') `
+        -ValidateOnly | Out-String
+    $holidayGuardInstallValidationExit = $LASTEXITCODE
+    Assert-Equal 0 $holidayGuardInstallValidationExit 'Installer ValidateOnly remains available when December holiday coverage is missing'
+    if ($holidayGuardInstallValidationExit -eq 0) {
+        $holidayGuardInstallValidation = $holidayGuardInstallValidationJson | ConvertFrom-Json
+        Assert-Equal $true ([bool] $holidayGuardInstallValidation.Valid) 'Installer ValidateOnly returns its normal success contract under the coverage fixture'
+    }
+
+    # 真实安装夹具在任何后续发布契约读取处放置安全哨兵；只有入口先调用守卫才会得到年份错误。
+    $holidayGuardInstallSentinel = @'
+function Get-CountdownReleaseContract { throw 'REAL_INSTALL_CONTINUED_WITHOUT_COVERAGE_GUARD' }
+'@
+    [System.IO.File]::WriteAllText(
+        $holidayGuardEntryModulePath,
+        $holidayGuardModuleSource + $holidayGuardOverride + $holidayGuardInstallSentinel,
+        [System.Text.UTF8Encoding]::new($false))
+    $holidayGuardRealInstallOutput = & $holidayGuardEntryEngine `
+        -NoLogo -NoProfile -NonInteractive `
+        -File (Join-Path $holidayGuardEntryRoot 'Install-Countdown.ps1') 2>&1 | Out-String
+    $holidayGuardRealInstallExit = $LASTEXITCODE
+    Assert-Equal $true ($holidayGuardRealInstallExit -ne 0) 'Real install entry fails closed when December holiday coverage is missing'
+    Assert-Equal $true ($holidayGuardRealInstallOutput.Contains('2027') -and $holidayGuardRealInstallOutput.Contains('holiday-data/README.md')) 'Real install guard names the missing year and refresh runbook'
+    Assert-Equal $false $holidayGuardRealInstallOutput.Contains('REAL_INSTALL_CONTINUED_WITHOUT_COVERAGE_GUARD') 'Real install guard runs before any installation continuation'
+
+    # 本地候选打包/部署验证入口同样先闭锁；安全哨兵保证夹具不会进入 Git、SSH 或远端路径。
+    $holidayGuardDeploySentinel = @'
+function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE_GUARD' }
+'@
+    [System.IO.File]::WriteAllText(
+        $holidayGuardEntryModulePath,
+        $holidayGuardModuleSource + $holidayGuardOverride + $holidayGuardDeploySentinel,
+        [System.Text.UTF8Encoding]::new($false))
+    $holidayGuardDeployOutput = & $holidayGuardEntryEngine `
+        -NoLogo -NoProfile -NonInteractive `
+        -File (Join-Path $holidayGuardEntryRoot 'Deploy-OfficeCountdown.ps1') `
+        -ValidateOnly 2>&1 | Out-String
+    $holidayGuardDeployExit = $LASTEXITCODE
+    Assert-Equal $true ($holidayGuardDeployExit -ne 0) 'Working-tree package and deploy validation entry fails closed when December holiday coverage is missing'
+    Assert-Equal $true ($holidayGuardDeployOutput.Contains('2027') -and $holidayGuardDeployOutput.Contains('holiday-data/README.md')) 'Package and deploy guard names the missing year and refresh runbook'
+    Assert-Equal $false $holidayGuardDeployOutput.Contains('DEPLOY_CONTINUED_WITHOUT_COVERAGE_GUARD') 'Package and deploy guard runs before archive creation'
+    $global:LASTEXITCODE = 0
+    Remove-Item -LiteralPath $holidayGuardModulePath -Force
+    Remove-Item -LiteralPath $holidayGuardEntryRoot -Recurse -Force
+
     $missingPackageRejected = $false
     try {
         Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null

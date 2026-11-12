@@ -1301,6 +1301,7 @@ if (@(@($ValidateOnly,$StatusOnly,$RecheckLatest,$Redeploy) | Where-Object { $_.
 if ($ValidateOnly) {
     $releaseContractPath = Join-Path $repoRoot 'Countdown.ReleaseContract.psm1'
     Import-Module $releaseContractPath -Force | Out-Null
+    Assert-CountdownHolidayYearCoverage
     $releaseContract = Get-CountdownReleaseContract
     $packageValidation = Assert-CountdownReleasePackage -Root $repoRoot
     $temporaryArchiveRoot = 'D:\Codex\.codex\tmp'
@@ -1463,6 +1464,7 @@ $releaseContractSha256 = Invoke-CountdownDeploymentLockedCommitFile `
         Import-Module $lockedPath -Force | Out-Null
         $sha256
     }
+Assert-CountdownHolidayYearCoverage
 $releaseContract = Get-CountdownReleaseContract
 $requiredFiles = [string[]] @($releaseContract.PackageFiles)
 $controlFiles = [string[]] @(
@@ -1724,6 +1726,7 @@ Invoke-LockedDeploymentFile -Path `$archive -ExpectedSha256 '$archiveHash' -Acti
     Expand-Archive -LiteralPath `$lockedPath -DestinationPath `$source -Force
 }
 Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.ReleaseContract.psm1') -ExpectedSha256 '$releaseContractSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
+Assert-CountdownHolidayYearCoverage
 [void] (Assert-CountdownReleasePackage -Root `$source)
 Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.TransferLedger.psm1') -ExpectedSha256 '$transferLedgerSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }
 Invoke-LockedDeploymentFile -Path (Join-Path `$source 'Countdown.RemoteDeployment.psm1') -ExpectedSha256 '$remoteDeploymentSha256' -Action { param(`$lockedPath) Import-Module `$lockedPath -Force | Out-Null }

@@ -28,8 +28,8 @@ $expectedCompatibilityFixtures = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 445 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
-Assert-Equal 442 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
+Assert-Equal 446 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
+Assert-Equal 443 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
 Assert-Equal $true ('src\MinminCountdown\NoteCompletionExit.cs' -in @($releaseContract.BuildInputFiles)) '#233 source rebuild checks the completion exit animation by commit identity'
 Assert-Equal $true ('src\MinminCountdown\app.manifest' -in @($releaseContract.BuildInputFiles)) '#219 source rebuild checks the PerMonitorV2 manifest by commit identity'
 foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
@@ -58,6 +58,7 @@ $expectedInstalledSupportFiles = @(
     'sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png',
     'holiday-data\2026.json',
+    'holiday-data\2027.json',
     'holiday-data\README.md',
     'holiday-data\LICENSE.txt'
 )
@@ -86,6 +87,7 @@ $expectedOfficePackageSupportFiles = @(
     'sanrio-official-cinnamoroll.png',
     'sanrio-official-kuromi.png',
     'holiday-data\2026.json',
+    'holiday-data\2027.json',
     'holiday-data\README.md',
     'holiday-data\LICENSE.txt'
 )
@@ -115,11 +117,62 @@ Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.PackageFile
 Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot $notifyIconLicenseSource)).Hash 'Vendored H.NotifyIcon license matches the upstream commit bytes'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.SourceBuildFiles)) 'Build-script license input is not an MSBuild project item'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.InstalledFiles)) 'Runtime uses the published license copy instead of the repository source path'
-foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
+foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\2027.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
 }
+
+# #260 独立期望直接转录自国务院办公厅国办发明电〔2026〕10号，不读取上游数据或转换代码：
+# https://www.gov.cn/zhengce/content/202611/content_7085101.htm
+$expected2027PublicHolidays = @(
+    '2027-01-01', '2027-01-02', '2027-01-03',
+    '2027-02-05', '2027-02-06', '2027-02-07', '2027-02-08', '2027-02-09',
+    '2027-02-10', '2027-02-11', '2027-02-12', '2027-02-13',
+    '2027-04-03', '2027-04-04', '2027-04-05',
+    '2027-05-01', '2027-05-02', '2027-05-03', '2027-05-04', '2027-05-05',
+    '2027-06-09',
+    '2027-09-15',
+    '2027-10-01', '2027-10-02', '2027-10-03', '2027-10-04', '2027-10-05', '2027-10-06', '2027-10-07'
+)
+$expected2027TransferWorkdays = @(
+    '2027-01-31', '2027-02-14', '2027-05-08', '2027-09-26', '2027-10-09'
+)
+Assert-Equal 29 $expected2027PublicHolidays.Count 'State Council notice yields 29 public holidays in 2027'
+Assert-Equal 5 $expected2027TransferWorkdays.Count 'State Council notice yields five transfer workdays in 2027'
+$expected2027Days = [ordered]@{}
+for ($date = [datetime]'2027-01-01'; $date -le [datetime]'2027-12-31'; $date = $date.AddDays(1)) {
+    $dateText = $date.ToString('yyyy-MM-dd')
+    $expected2027Days[$dateText] = if ($dateText -in $expected2027PublicHolidays) {
+        $false
+    } elseif ($dateText -in $expected2027TransferWorkdays) {
+        $true
+    } else {
+        $date.DayOfWeek -notin @([DayOfWeek]::Saturday, [DayOfWeek]::Sunday)
+    }
+}
+Assert-Equal 365 $expected2027Days.Count 'Independent 2027 expectation covers the full year'
+Assert-Equal 248 @($expected2027Days.Values | Where-Object { $_ }).Count 'Independent 2027 expectation has 248 workdays'
+Assert-Equal 117 @($expected2027Days.Values | Where-Object { -not $_ }).Count 'Independent 2027 expectation has 117 non-workdays'
+$packaged2027Path = Join-Path $PSScriptRoot 'holiday-data\2027.json'
+Assert-Equal $true (Test-Path -LiteralPath $packaged2027Path -PathType Leaf) 'Packaged 2027 holiday data exists'
+if (Test-Path -LiteralPath $packaged2027Path -PathType Leaf) {
+    $packaged2027 = Get-Content -LiteralPath $packaged2027Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 1 $packaged2027.schemaVersion 'Packaged 2027 data keeps schema version one'
+    Assert-Equal 2027 $packaged2027.year 'Packaged 2027 data declares its year'
+    Assert-Equal 'CN' $packaged2027.region 'Packaged 2027 data declares the CN region'
+    Assert-Equal 365 @($packaged2027.days).Count 'Packaged 2027 data contains 365 day records'
+    Assert-Equal 365 @($packaged2027.days.date | Sort-Object -Unique).Count 'Packaged 2027 dates are unique'
+    Assert-Equal (($expected2027Days.Keys | Sort-Object) -join ',') (($packaged2027.days.date | Sort-Object) -join ',') 'Packaged 2027 data covers every date exactly once'
+    foreach ($day in $packaged2027.days) {
+        Assert-Equal $expected2027Days[$day.date] $day.is_workday "Packaged 2027 workday matches the State Council notice: $($day.date)"
+    }
+}
+$packagedHolidayYears = @($releaseContract.OfflineHolidayDataFiles | ForEach-Object {
+        if ($_ -match '^holiday-data\\(\d{4})\.json$') { [int] $Matches[1] }
+    })
+$actualDecemberCoverage = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-12-01T00:00:00+08:00') -PackagedYears $packagedHolidayYears
+Assert-Equal $true ([bool] $actualDecemberCoverage.Covered) 'Actual packaged years pass the December 2026 coverage guard'
 Assert-Equal 24 @($releaseContract.RetiredRuntimeFiles).Count 'Release contract preserves the retired runtime cleanup set'
 foreach ($verificationOnlyReference in @(
         'assets\floating-plush\floating-plush-mymelody-reference.png',

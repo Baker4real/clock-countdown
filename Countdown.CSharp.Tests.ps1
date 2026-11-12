@@ -4086,8 +4086,11 @@ exit 23
     # #272：部署设置等价命令是产品 EXE 的只读、无窗口 CLI；在隔离目录捕获完整 stdout。
     $equivalenceRoot = Join-Path $testRoot 'settings-equivalence-cli'
     New-Item -ItemType Directory -Path $equivalenceRoot | Out-Null
-    $equivalenceApplication = Join-Path $equivalenceRoot 'MinminCountdown.exe'
-    [System.IO.File]::Copy($application, $equivalenceApplication)
+    $equivalenceApplicationRoot = Split-Path -Parent $application
+    $equivalenceApplicationHashes = @{}
+    foreach ($path in @(Get-ChildItem -LiteralPath $equivalenceApplicationRoot -File -Recurse).FullName) {
+        $equivalenceApplicationHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
     $equivalenceBeforePath = Join-Path $equivalenceRoot 'before.json'
     $equivalenceAfterPath = Join-Path $equivalenceRoot 'after.json'
     [System.IO.File]::Copy($fixturePath, $equivalenceBeforePath)
@@ -4115,7 +4118,7 @@ exit 23
         '--migration-utc',
         '2031-09-10T02:16:00.0000000+00:00'
     )
-    $equivalenceMigrationResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMigrationArgs
+    $equivalenceMigrationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMigrationArgs
     Assert-Equal 0 $equivalenceMigrationResult.ExitCode '设置等价命令接受严格 v7→v10 迁移'
     Assert-Equal '' $equivalenceMigrationResult.Stderr '设置等价命令成功路径不写 stderr'
     $equivalenceMigration = $equivalenceMigrationResult.Stdout | ConvertFrom-Json
@@ -4124,7 +4127,7 @@ exit 23
 
     $equivalenceUnchangedArgs = @($equivalenceMigrationArgs)
     $equivalenceUnchangedArgs[2] = $equivalenceAfterPath
-    $equivalenceUnchangedResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceUnchangedArgs
+    $equivalenceUnchangedResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceUnchangedArgs
     Assert-Equal 0 $equivalenceUnchangedResult.ExitCode '设置等价命令接受字节不变输入'
     $equivalenceUnchanged = $equivalenceUnchangedResult.Stdout | ConvertFrom-Json
     Assert-Equal $true ([bool] $equivalenceUnchanged.equivalent) '字节不变输入等价'
@@ -4132,13 +4135,13 @@ exit 23
 
     $equivalenceDifferentArgs = @($equivalenceMigrationArgs)
     $equivalenceDifferentArgs[4] = $equivalenceChangedPath
-    $equivalenceDifferentResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceDifferentArgs
+    $equivalenceDifferentResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceDifferentArgs
     Assert-Equal 1 $equivalenceDifferentResult.ExitCode '非等价设置使用独立非零退出码'
     $equivalenceDifferent = $equivalenceDifferentResult.Stdout | ConvertFrom-Json
     Assert-Equal $false ([bool] $equivalenceDifferent.equivalent) '非等价设置输出等价=false'
     Assert-Equal 'data-mismatch' ([string] $equivalenceDifferent.reasonCategory) '非等价设置报告数据差异原因'
 
-    $equivalenceUsageResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList @('--settings-equivalence')
+    $equivalenceUsageResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList @('--settings-equivalence')
     Assert-Equal 2 $equivalenceUsageResult.ExitCode '设置等价命令用法错误使用独立退出码'
     $equivalenceUsage = $equivalenceUsageResult.Stdout | ConvertFrom-Json
     Assert-Equal $false ([bool] $equivalenceUsage.equivalent) '用法错误也输出可解析 JSON'
@@ -4148,7 +4151,7 @@ exit 23
     $equivalenceMissingPath = Join-Path $equivalenceRoot 'missing.json'
     $equivalenceMissingArgs = @($equivalenceMigrationArgs)
     $equivalenceMissingArgs[4] = $equivalenceMissingPath
-    $equivalenceMissingResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMissingArgs
+    $equivalenceMissingResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMissingArgs
     Assert-Equal 1 $equivalenceMissingResult.ExitCode '缺失输入是非等价结果而非未处理异常'
     $equivalenceMissing = $equivalenceMissingResult.Stdout | ConvertFrom-Json
     Assert-Equal 'invalid-input' ([string] $equivalenceMissing.reasonCategory) '缺失输入原因类别'
@@ -4156,7 +4159,7 @@ exit 23
 
     $equivalenceCorruptArgs = @($equivalenceMigrationArgs)
     $equivalenceCorruptArgs[4] = $equivalenceCorruptPath
-    $equivalenceCorruptResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceCorruptArgs
+    $equivalenceCorruptResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceCorruptArgs
     Assert-Equal 1 $equivalenceCorruptResult.ExitCode '损坏输入是非等价结果而非未处理异常'
     $equivalenceCorrupt = $equivalenceCorruptResult.Stdout | ConvertFrom-Json
     Assert-Equal 'invalid-settings' ([string] $equivalenceCorrupt.reasonCategory) '损坏输入原因类别'
@@ -4171,7 +4174,12 @@ exit 23
     foreach ($path in $equivalenceInputHashes.Keys) {
         Assert-Equal $equivalenceInputHashes[$path] (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash "设置等价命令不改输入：$([IO.Path]::GetFileName($path))"
     }
-    Assert-Equal 'MinminCountdown.exe,after.json,before.json,changed.json,corrupt.json' (
+    $equivalenceApplicationFilesAfter = @(Get-ChildItem -LiteralPath $equivalenceApplicationRoot -File -Recurse)
+    Assert-Equal $equivalenceApplicationHashes.Count $equivalenceApplicationFilesAfter.Count '设置等价命令不增删发布目录文件'
+    foreach ($path in $equivalenceApplicationHashes.Keys) {
+        Assert-Equal $equivalenceApplicationHashes[$path] (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash "设置等价命令不改发布文件：$([IO.Path]::GetFileName($path))"
+    }
+    Assert-Equal 'after.json,before.json,changed.json,corrupt.json' (
         @((Get-ChildItem -LiteralPath $equivalenceRoot -File).Name | Sort-Object) -join ','
     ) '设置等价命令不写日志、备份、回执或其他文件'
     Write-TestSegmentTiming -Name 'SettingsEquivalenceCli'

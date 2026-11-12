@@ -115,10 +115,11 @@ function Get-CountdownBuildPaths {
     param([Parameter(Mandatory)][string]$RepositoryRoot)
 
     $root = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
-    $projects = @('MinminCountdown.Core', 'MinminCountdown', 'MinminCountdown.Verification') | ForEach-Object { Join-Path $root "src\$_" }
+    $projects = @('MinminCountdown.Core', 'MinminCountdown', 'MinminCountdown.Verification', 'MinminCountdown.WindowVerification') | ForEach-Object { Join-Path $root "src\$_" }
     $paths = [System.Collections.Generic.List[string]]::new()
     $paths.Add((Join-Path $root 'app'))
     $paths.Add((Join-Path $root 'verification'))
+    $paths.Add((Join-Path $root 'window-verification'))
     foreach ($project in $projects) {
         $paths.Add((Join-Path $project 'bin'))
         $paths.Add((Join-Path $project 'obj'))

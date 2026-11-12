@@ -3731,6 +3731,7 @@ public static class BundleAssetProbe
 }
 
 $verificationRunner = Join-Path $PSScriptRoot 'verification\MinminCountdown.Verification.exe'
+$windowVerificationRunner = Join-Path $PSScriptRoot 'window-verification\MinminCountdown.WindowVerification.exe'
 $application = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
 $adapter = Join-Path $PSScriptRoot '敏敏子倒计时.ps1'
 $settingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
@@ -3739,6 +3740,9 @@ $pwsh = (Get-Process -Id $PID).Path
 
 if (-not (Test-Path -LiteralPath $verificationRunner -PathType Leaf)) {
     throw "未找到自包含 C# 验证程序：$verificationRunner。请先运行 Build-CountdownApplication.ps1。"
+}
+if (-not (Test-Path -LiteralPath $windowVerificationRunner -PathType Leaf)) {
+    throw "未找到独立窗口验证程序：$windowVerificationRunner。请先运行 Build-CountdownApplication.ps1。"
 }
 if (-not (Test-Path -LiteralPath $application -PathType Leaf)) {
     throw "未找到待验证的 C# 应用宿主：$application。请先运行 Build-CountdownApplication.ps1。"
@@ -4039,6 +4043,20 @@ exit 23
     Assert-Equal $captureArgumentMarker $captureHelperProbe.Stdout '进程捕获 helper 通过 ArgumentList 保留参数边界'
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
+
+    # #273：独立窗口验证项目产出这条空态事实；非零退出或事实为假都让 CSharp 阶段失败。
+    $windowVerificationResult = Invoke-CapturedNativeProcess `
+        -FilePath $windowVerificationRunner `
+        -WorkingDirectory $PSScriptRoot `
+        -ArgumentList @('--')
+    $windowVerification = $windowVerificationResult.Stdout | ConvertFrom-Json
+    Assert-Equal $true ([bool] $windowVerification.MainListOverflowScrollsAndReachesActions) `
+        "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）；$($windowVerificationResult.Stderr)"
+    Assert-Equal 0 $windowVerificationResult.ExitCode `
+        "独立窗口验证进程退出码；$($windowVerificationResult.Stderr)"
+    Assert-Equal 1 @($windowVerification.PSObject.Properties).Count `
+        '窗口验证曳光弹只产出 MainListOverflowScrollsAndReachesActions，不生成整份产品报告'
+    Write-TestSegmentTiming -Name 'WindowVerification'
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash
@@ -5055,6 +5073,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $dwmWindowChromeSource -match 'MainWindowDwmRoundedCornersFallback' -and
         $dwmWindowChromeSource -match 'catch \(Exception') '主窗口 SourceInitialized 请求 Windows 11 DWM 原生圆角，失败只记录降级且不启用整窗透明（#200 源码契约）'
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
+    Assert-Equal $false ('MainListOverflowScrollsAndReachesActions' -in @($adapterValidationPropertyNames)) `
+        '#273 产品 validate-only 不再产出已迁入独立窗口项目的同名字段'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'

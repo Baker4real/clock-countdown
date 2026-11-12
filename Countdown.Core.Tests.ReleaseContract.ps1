@@ -34,12 +34,23 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 101 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
+Assert-Equal 102 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $false ($equivalenceBuildInput -in @($releaseContract.PackageFiles)) "#272 equivalence source stays out of the office package: $equivalenceBuildInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($equivalenceBuildInput) "#272 equivalence source is not statically pinned: $equivalenceBuildInput"
+}
+Assert-Equal $true ('src\MinminCountdown\MainWindowEmptyStateProbe.cs' -in @($releaseContract.SourceBuildFiles)) '#273 product closure contains only the narrow empty-state probe adapter'
+foreach ($windowVerificationInput in @(
+    'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
+    'src\MinminCountdown.WindowVerification\Program.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
+    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273 build identity contains the window verification input: $windowVerificationInput"
+    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273 window verification stays outside the product closure: $windowVerificationInput"
+    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273 window verification stays out of the office package: $windowVerificationInput"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273 window verification source is not statically pinned: $windowVerificationInput"
 }
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.BuildInputFiles)) 'Deploy checks the PowerShell build preflight helper by commit identity'
@@ -211,7 +222,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 103 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus the preflight helper and vendored license read by the build script'
+Assert-Equal 108 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus preflight, license and the repository-only window verification project read by the build script'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `

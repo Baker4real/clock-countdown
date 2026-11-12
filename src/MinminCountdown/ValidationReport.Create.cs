@@ -443,7 +443,6 @@ internal static partial class ValidationReport
         var mainEmptyStateViewport =
             ValidationExercises.RunMainEmptyStateViewportBehavior(CreateEmptyStateEvidenceWriter());
         var mainEmptyStateGuidance = ValidationExercises.RunMainEmptyStateGuidanceBehavior();
-        var mainListOverflowScroll = ValidationExercises.RunMainListOverflowScrollBehavior();
         var mainWorkbenchDensity =
             ValidationExercises.RunMainWorkbenchDensityBehavior(CreateWorkbenchDensityEvidenceWriter());
         var floatingScrollContextHint =
@@ -1857,10 +1856,6 @@ internal static partial class ValidationReport
                 mainEmptyStateGuidance.Explain(
                     "首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，" +
                     "分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）")),
-            ["MainListOverflowScrollsAndReachesActions"] = Must(
-                mainListOverflowScroll.AllPassed,
-                mainListOverflowScroll.Explain(
-                    "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）")),
             ["MainWorkbenchDensityReclaimed"] = Must(
                 mainWorkbenchDensity.Passed,
                 mainWorkbenchDensity.Explain(

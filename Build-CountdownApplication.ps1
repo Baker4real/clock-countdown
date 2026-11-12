@@ -128,8 +128,10 @@ $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $coreProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Core\MinminCountdown.Core.csproj'
 $applicationProject = Join-Path $PSScriptRoot 'src\MinminCountdown\MinminCountdown.csproj'
 $verificationProject = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\MinminCountdown.Verification.csproj'
+$windowVerificationProject = Join-Path $PSScriptRoot 'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj'
 $applicationOutput = Join-Path $PSScriptRoot 'app'
 $verificationOutput = Join-Path $PSScriptRoot 'verification'
+$windowVerificationOutput = Join-Path $PSScriptRoot 'window-verification'
 $applicationAssetsOutput = Join-Path $applicationOutput 'assets'
 
 # -Clean 必须先于发布契约加载。导入时会读取 app\published-payload.json；
@@ -213,6 +215,9 @@ if (-not (Test-Path -LiteralPath $applicationProject -PathType Leaf)) {
 }
 if (-not (Test-Path -LiteralPath $verificationProject -PathType Leaf)) {
     throw "未找到 C# 验证项目：$verificationProject"
+}
+if (-not (Test-Path -LiteralPath $windowVerificationProject -PathType Leaf)) {
+    throw "未找到独立窗口验证项目：$windowVerificationProject"
 }
 foreach ($asset in $assetManifest) {
     if (-not (Test-Path -LiteralPath $asset.Source -PathType Leaf)) {
@@ -415,7 +420,26 @@ if (-not (Test-Path -LiteralPath $verification -PathType Leaf)) {
 }
 Write-BuildSegmentTiming -Name 'VerificationPublish'
 
-Get-Item -LiteralPath $application, $verification | Select-Object FullName, Length, LastWriteTime
+# #273：独立 WPF 验证宿主单独发布；纯 C# Verification 保持无窗口且不引用这个产品项目。
+& $dotnet publish $windowVerificationProject -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true `
+    -p:PublishReadyToRun=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:IncludeSourceRevisionInInformationalVersion=false `
+    -p:DebugType=None `
+    -p:DebugSymbols=false `
+    -o $windowVerificationOutput
+if ($LASTEXITCODE -ne 0) {
+    throw "独立窗口验证程序发布失败，退出码：$LASTEXITCODE"
+}
+
+$windowVerification = Join-Path $windowVerificationOutput 'MinminCountdown.WindowVerification.exe'
+if (-not (Test-Path -LiteralPath $windowVerification -PathType Leaf)) {
+    throw "发布未生成独立窗口验证程序：$windowVerification"
+}
+Write-BuildSegmentTiming -Name 'WindowVerificationPublish'
+
+Get-Item -LiteralPath $application, $verification, $windowVerification | Select-Object FullName, Length, LastWriteTime
 $assetResults
 # 仅所有构建与资产校验成功后写出，套件据此区分实际全量收尾和增量开发。
 $buildReceipt = [ordered]@{

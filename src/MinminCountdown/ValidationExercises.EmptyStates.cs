@@ -78,19 +78,6 @@ internal static partial class ValidationExercises
         return probe ?? throw new InvalidOperationException("空态引导探针没有产出结果。");
     }
 
-    // #248：真实溢出时两个列表的滚动条、滚轮、thumb、键盘与到底可达（首选尺寸与最小尺寸窗口）。
-    public static MainListOverflowProbe RunMainListOverflowScrollBehavior()
-    {
-        var probes = new List<MainListOverflowProbe>();
-        foreach (var windowCase in new[] { EmptyStateWindowCases[0], EmptyStateWindowCases[3] })
-        {
-            WithEmptyMainWindow(windowCase, (main, _) =>
-                probes.Add(main.ProbeListOverflowScrollingForValidation(windowCase.Label)));
-        }
-
-        return MainListOverflowProbe.Combine(probes);
-    }
-
     // 空数据的隔离管理窗口：注入工作区、离屏不激活显示；需要时按用户拖拽路径调成指定尺寸，或注入一次真实
     // WM_DPICHANGED（窗口句柄须在 PerMonitorV2 线程上下文里创建）。收尾关窗、恢复线程 DPI 上下文并删临时设置。
     private static void WithEmptyMainWindow(

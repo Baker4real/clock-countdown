@@ -123,6 +123,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\KeyboardFocusPolicyFixtures.cs',
     'src\MinminCountdown\MainWindow.xaml',
     'src\MinminCountdown\MainWindow.xaml.cs',
+    'src\MinminCountdown\MainWindowEmptyStateProbe.cs',
     'src\MinminCountdown\MinminCountdown.csproj',
     'src\MinminCountdown\app.manifest',
     'src\MinminCountdown\MonitorGeometryValidation.cs',
@@ -201,10 +202,15 @@ $script:nonAssetHashes = [ordered]@{
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
 }
 
-# 构建脚本自身读取、但不在 MSBuild 项目闭包里的输入：构建前导入的预检模块，以及复制进载荷的许可证原文。
+# 构建脚本自身读取、但不在产品 MSBuild 项目闭包里的输入：构建前导入的预检模块、复制进载荷的许可证原文，
+# 以及只在本机 CSharp 阶段运行、绝不进入办公室载荷的独立窗口验证项目。
 $script:buildScriptInputFiles = @(
     'tools\Countdown.BuildPreflight.psm1',
-    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
+    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md',
+    'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
+    'src\MinminCountdown.WindowVerification\Program.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
+    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs'
 )
 
 function Assert-CountdownReleaseRelativePath {

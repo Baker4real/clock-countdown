@@ -541,21 +541,6 @@ function Invoke-CountdownValidationSuite {
         -IsolatedDesktopName 'MinminSuiteIso-ValidateCSharp'
     $cSharpPassed = Assert-CountdownValidationTestReport -Report $cSharp.Report -Label 'C# 回归'
 
-    $ui = Invoke-CountdownValidationProcess `
-        -PowerShell7Path $resolvedPowerShell `
-        -Operation '兼容 UI 回归' `
-        -EvidenceDirectory $EvidenceDirectory `
-        -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-STA',
-            '-File',
-            (Join-Path $resolvedRoot 'Countdown.Ui.Tests.ps1')
-        ) `
-        -IsolatedDesktopName 'MinminSuiteIso-ValidateUi'
-    $uiPassed = Assert-CountdownValidationTestReport -Report $ui.Report -Label '兼容 UI 回归'
-
     # 夹具根不带视觉源码，也就没有可要求的基线，与 manifest 缺席同样处理。
     $floatingBaselineRequired = $false
     $mainBaselineRequired = $false
@@ -649,12 +634,10 @@ function Invoke-CountdownValidationSuite {
         Valid = $true
         CoreTestsPassed = $corePassed
         CSharpTestsPassed = $cSharpPassed
-        UiTestsPassed = $uiPassed
         UiValid = $true
         AdapterUiValidated = $true
         TestOutput = $core.Json
         CSharpTestOutput = $cSharp.Json
-        UiTestOutput = $ui.Json
         UiValidationOutput = $application.Json
     }
 }

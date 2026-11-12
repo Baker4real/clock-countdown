@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    标准化 13 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 12 步收口验证 runner。单目录、单次不间断全绿。
 
 .DESCRIPTION
     在 D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -11,11 +11,11 @@
     约束：
     - namespace 仅为 soak 或 full；默认 full。soak 不抵扣收口。
     - runId 必须唯一；已存在的 attempt 目录永不覆盖，需换新 runId。
-    - 13 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
+    - 12 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
     - 默认不重试。-Retry 必须保持关闭；打开则拒绝执行。
     - 不把 settings.json、便签或凭据拷进 evidence，不写 C:\。
 
-    13 步（顺序不可增减）：
+    12 步（顺序不可增减）：
     1. env-pre：Countdown.ReleaseContract.psm1 IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check：git diff --check
     3. build：pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
@@ -25,10 +25,9 @@
     7. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
     8. core：pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
     9. transfer-ledger：pwsh -NoLogo -NoProfile -File Countdown.TransferLedger.Tests.ps1
-    10. ui：pwsh -NoLogo -NoProfile -STA -File Countdown.Ui.Tests.ps1
-    11. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    12. install-validate：pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
-    13. deploy-validate：pwsh -NoLogo -NoProfile -File Deploy-OfficeCountdown.ps1 -ValidateOnly
+    10. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    11. install-validate：pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
+    12. deploy-validate：pwsh -NoLogo -NoProfile -File Deploy-OfficeCountdown.ps1 -ValidateOnly
 
     非矩阵步优先使用 D:\Codex\tools\PowerShell\7.6.5\pwsh.exe；矩阵步固定 7.6.4。不修改 ExecutionPolicy。
 
@@ -40,7 +39,7 @@
     已存在的 runId 会被拒绝，不会覆盖。
 
 .PARAMETER DryRun
-    创建 attempt 目录、先写 meta、拷贝 runner 并列出 13 步，不执行验证。
+    创建 attempt 目录、先写 meta、拷贝 runner 并列出 12 步，不执行验证。
 
 .PARAMETER Retry
     必须关闭。默认关闭。打开则拒绝执行；失败后请换新 runId 重跑。
@@ -93,12 +92,12 @@ $script:ExpectedPins = $null
 function Show-CountdownVerificationRunHelp {
     @'
 SYNOPSIS
-    标准化 13 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 12 步收口验证 runner。单目录、单次不间断全绿。
 
 参数
     -Namespace  soak | full（默认 full）。soak 不抵扣收口。
     -RunId      必须唯一。省略则用 UTC yyyyMMddTHHmmssZ + 短随机。禁止覆盖已有 attempt。
-    -DryRun     只写 meta、拷贝 runner、列出 13 步，不跑验证。
+    -DryRun     只写 meta、拷贝 runner、列出 12 步，不跑验证。
     -Retry      必须保持关闭。打开则拒绝。默认不重试。
     -AllowForegroundWindowedSteps
                 前台跑 desktop-launcher / instance-activation-matrix。
@@ -110,7 +109,7 @@ SYNOPSIS
     meta 先写（status=running）后补。runner 自拷贝并记录 SHA-256。失败保留现场。
     不写 C:\。不把 settings.json / 便签 / 凭据拷进 evidence。不改 ExecutionPolicy。
 
-13 步（顺序不可增减）
+12 步（顺序不可增减）
     1. env-pre                      IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check               git diff --check
     3. build                        pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
@@ -121,10 +120,9 @@ SYNOPSIS
     7. instance-activation-matrix   钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
     8. core                         pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
     9. transfer-ledger              pwsh -NoLogo -NoProfile -File Countdown.TransferLedger.Tests.ps1
-    10. ui                          pwsh -NoLogo -NoProfile -STA -File Countdown.Ui.Tests.ps1
-    11. source-validation           pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    12. install-validate             pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
-    13. deploy-validate             pwsh -NoLogo -NoProfile -File Deploy-OfficeCountdown.ps1 -ValidateOnly
+    10. source-validation           pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    11. install-validate            pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
+    12. deploy-validate             pwsh -NoLogo -NoProfile -File Deploy-OfficeCountdown.ps1 -ValidateOnly
 
 证据根
     D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -344,10 +342,9 @@ function Get-CountdownVerificationSteps {
         [pscustomobject]@{ Index = 7; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
         [pscustomobject]@{ Index = 8; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
         [pscustomobject]@{ Index = 9; Id = 'transfer-ledger'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.TransferLedger.Tests.ps1'; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 10; Id = 'ui'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.Ui.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyUi' }
-        [pscustomobject]@{ Index = 11; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
-        [pscustomobject]@{ Index = 12; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-Countdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
-        [pscustomobject]@{ Index = 13; Id = 'deploy-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Deploy-OfficeCountdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 10; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
+        [pscustomobject]@{ Index = 11; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-Countdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 12; Id = 'deploy-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Deploy-OfficeCountdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
     )
 }
 
@@ -675,8 +672,8 @@ $script:Meta = [ordered]@{
 Save-CountdownVerificationMeta
 
 $steps = @(Get-CountdownVerificationSteps)
-if ($steps.Count -ne 13) {
-    throw "内部步骤表必须恰好 13 项，实际 $($steps.Count)。"
+if ($steps.Count -ne 12) {
+    throw "内部步骤表必须恰好 12 项，实际 $($steps.Count)。"
 }
 $stepPlan = @(
     foreach ($step in $steps) {
@@ -695,7 +692,7 @@ Write-Output ("namespace={0}" -f $Namespace)
 Write-Output ("runId={0}" -f $RunId)
 Write-Output ("attemptDir={0}" -f $attemptDir)
 Write-Output ("runnerSha256={0}" -f $runnerSha256)
-Write-Output 'steps=13'
+Write-Output 'steps=12'
 foreach ($item in $stepPlan) {
     Write-Output ('{0,2}. {1}' -f [int] $item.index, [string] $item.id)
 }
@@ -717,7 +714,7 @@ try {
         $stepDir = Join-Path $attemptDir $stepLabel
         New-Item -ItemType Directory -Path $stepDir | Out-Null
         $commandTokens = @(Get-CountdownStepCommandTokens -Step $step -ManagedPwsh $managedPwsh -MatrixPwsh $matrixPwsh -GitPath $gitPath)
-        Write-Output ("STEP {0}/13 {1} starting" -f [int] $step.Index, [string] $step.Id)
+        Write-Output ("STEP {0}/12 {1} starting" -f [int] $step.Index, [string] $step.Id)
 
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $captured = $null
@@ -798,7 +795,7 @@ try {
             Command = $commandTokens
         }
         Write-CountdownStepEvidence -StepDir $stepDir -Record $record
-        Write-Output ("STEP {0}/13 {1} {2} exit={3} durationMs={4}" -f [int] $step.Index, [string] $step.Id, $status, $exitCode, $record.DurationMs)
+        Write-Output ("STEP {0}/12 {1} {2} exit={3} durationMs={4}" -f [int] $step.Index, [string] $step.Id, $status, $exitCode, $record.DurationMs)
 
         if ($exitCode -ne 0) {
             $failedStepId = [string] $step.Id

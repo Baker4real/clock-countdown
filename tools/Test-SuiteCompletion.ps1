@@ -10,6 +10,14 @@ $stages=@($required | ForEach-Object { [pscustomobject]@{Stage=$_;Status='Comple
 $run=[pscustomobject]@{Status='Completed';ExitCode=0;Stages=$stages}
 $checks=[Collections.Generic.List[string]]::new()
 function Check([bool]$Value,[string]$Name) { if (-not $Value) { throw "Suite completion regression: $Name" }; $checks.Add($Name) }
+Check (($required -join ',') -ceq 'Build,Core,CSharp,SourceValidation,InstallValidate') 'required-stage-list-is-five-without-ui'
+$launcherPath=Join-Path $PSScriptRoot 'Invoke-CountdownSuiteLowImpact.ps1'
+$priorNativePreference=$PSNativeCommandUseErrorActionPreference
+$PSNativeCommandUseErrorActionPreference=$false
+$uiRejection=@(& pwsh -NoLogo -NoProfile -NonInteractive -File $launcherPath -Stage Ui -Closeout 2>&1)
+$uiRejectionCode=$LASTEXITCODE
+$PSNativeCommandUseErrorActionPreference=$priorNativePreference
+Check ($uiRejectionCode -ne 0 -and ($uiRejection -join ' ') -match '无效 Stage：Ui') 'ui-stage-is-rejected-before-any-test-execution'
 $stages[0].BuildReceipt=[pscustomobject]@{SchemaVersion=1;Mode='Incremental';Clean=$false;ReadyToRun=$true}
 Check (-not (Test-CountdownSuiteCompletion -Run $run).Valid) 'incremental-build-zero-cannot-complete-closeout'
 $stages[0].BuildReceipt=[pscustomobject]@{SchemaVersion=1;Mode='CleanR2R';Clean=$true;ReadyToRun=$true}

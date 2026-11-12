@@ -377,6 +377,22 @@ function Assert-Equal {
     }
 }
 
+function Assert-ExactReportFields {
+    param(
+        [Parameter(Mandatory)] $Report,
+        [Parameter(Mandatory)] [string[]] $ExpectedNames,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $actualNames = @($Report.PSObject.Properties.Name | Sort-Object)
+    $expectedNames = @($ExpectedNames | Sort-Object)
+    Assert-Equal $expectedNames.Count $actualNames.Count "$Name：字段数"
+    Assert-Equal $true ([string]::Equals(
+        $expectedNames -join ',',
+        $actualNames -join ',',
+        [System.StringComparison]::Ordinal)) "$Name：精确字段集"
+}
+
 Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
 $script:allowForegroundDesktopSuite =
     ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix) -and
@@ -4385,6 +4401,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '-File',
         $adapter,
         '-ValidateOnly',
+        '-NightMigrationOnly',
         '-SettingsFile',
         $nightMigrationPath,
         '-DiagnosticLogPath',
@@ -4402,6 +4419,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $nightMigrationReport.CountdownEmptyPointerResetRestoresResults) '倒计时空态指针重置恢复默认筛选、列表和摘要'
     Assert-Equal $true ([bool] $nightMigrationReport.CountdownEmptyKeyboardResetRestoresResults) '倒计时空态聚焦按钮可由键盘恢复默认筛选、列表和摘要'
     Assert-Equal $true ([bool] $nightMigrationReport.MainCountdownBlocksGeometryMatches) '主窗分格保持约 2:3；四分格主项使用 6 DIP 紧凑间距，其余使用标准间距，单位字不低于辅助下限'
+    Assert-ExactReportFields -Report $nightMigrationReport -ExpectedNames @(
+        'CountdownEmptyKeyboardResetRestoresResults',
+        'CountdownEmptyPointerResetRestoresResults',
+        'CountdownNoResultsResetWorks',
+        'FloatingThemeBoundaryModes',
+        'MainCountdownBlocksGeometryMatches',
+        'MainThemeBackgroundColors'
+    ) -Name 'NightMigration 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NightMigration'
 
     [System.IO.File]::Copy($roundTripPath, $persistenceExercisePath)
@@ -4469,6 +4494,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $failedValidationCompletedIndex -gt $failedResourcesReleasedIndex
     ) 'validate-only 受控持久化失败演练在报告完成前释放真实 WPF 资源'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '受控持久化失败演练不改变隔离设置'
+    Assert-ExactReportFields -Report $persistenceFailureValidation -ExpectedNames @(
+        'CountdownSaveFailurePreservesState',
+        'CountdownSaveFailureRetainsDraft',
+        'PreferenceSaveFailurePreservesState',
+        'PreferenceSaveFailureRetainsDraft',
+        'PersistenceFailureTempPathRemainsDirectory',
+        'TagSaveFailurePreservesState',
+        'TagSaveFailureRetainsDraft',
+        'TagSaveFailureRetainsFilter',
+        'Valid'
+    ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
     $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
         '-NoLogo',
@@ -5738,6 +5774,40 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (@($noteExerciseSettings.notes).Count -ge 4) '标签演练便签记录真实落盘'
     Assert-Equal $true (@($noteExerciseSettings.tags).Count -ge 2) '标签演练标签真实落盘'
     Assert-Equal 'Auto' ([string] $noteExerciseSettings.themePreference) '标签演练保持 Auto 主题偏好'
+    Assert-ExactReportFields -Report $noteExercise -ExpectedNames @(
+        'DatedNoteEditRejectsClearedDate',
+        'FloatingCrossDayReminderViaClick',
+        'FloatingNoReminderViaClick',
+        'FloatingOnceReminderViaClick',
+        'FloatingRepeatingReminderViaClick',
+        'MainNoReminderViaClick',
+        'MainOnceReminderViaClick',
+        'MainRepeatingReminderViaClick',
+        'NewNoteRejectsEmptyDate',
+        'NoteAddViaClick',
+        'NoteDateFilterBehavior',
+        'NoteDateFilterControls',
+        'NoteDateRequired',
+        'NoteDateValidationMessagesDistinguished',
+        'NoteDateViaPicker',
+        'NoteReminderViaSelector',
+        'NoteStatusViaCheckbox',
+        'TagAnyAllFilter',
+        'TagCreationAndAssociation',
+        'TagEditorSummaryIsCompact',
+        'TagFloatingNoteCanOverrideTags',
+        'TagFloatingNoteDateViaPicker',
+        'TagFloatingNoteInheritsTags',
+        'TagFloatingNotePopupOnDemand',
+        'TagInteractionsExecuted',
+        'TagNoteEditingPersistsDate',
+        'TagNoteEditingPersistsTags',
+        'TagNoteStatusSearchAndCompletion',
+        'TagRenameAndDeleteDetachOnly',
+        'TagSearchCreateAvoidsDefaultSubmit',
+        'TagUntaggedAndCountdownStatus',
+        'UndatedNoteEditSavesWithoutDate'
+    ) -Name 'NoteExercise 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NoteExercise'
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null

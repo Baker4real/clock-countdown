@@ -12,6 +12,111 @@ namespace MinminCountdown;
 
 internal static partial class ValidationReport
 {
+    private static IReadOnlyDictionary<string, object?> CreateNightMigrationFixture(
+        MainWindow main,
+        FloatingWindow floating,
+        ApplicationTheme theme,
+        DateTimeOffset restoreUtc)
+    {
+        var mainThemeExercise = RunMainThemeExercise(theme, main, restoreUtc);
+        var floatingThemeExercise = floating.RunThemeMigrationFixture();
+        var emptyReset = main.RunCountdownEmptyResetFixture();
+        var blocksGeometryMatches = main.RunCountdownBlocksGeometryFixture();
+        return new Dictionary<string, object?>
+        {
+            ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
+            ["MainThemeBackgroundColors"] = mainThemeExercise.BackgroundColors,
+            ["CountdownNoResultsResetWorks"] = emptyReset.PointerResetRestoresResults,
+            ["CountdownEmptyPointerResetRestoresResults"] = emptyReset.PointerResetRestoresResults,
+            ["CountdownEmptyKeyboardResetRestoresResults"] = emptyReset.KeyboardResetRestoresResults,
+            ["MainCountdownBlocksGeometryMatches"] = blocksGeometryMatches
+        };
+    }
+
+    private static IReadOnlyDictionary<string, object?> CreateNoteAddFixture(
+        MainWindow main,
+        FloatingWindow floating,
+        DesktopWorkspace desktopWorkspace,
+        bool exerciseTagInteractions)
+    {
+        var floatingCrossDayReminderAdded = floating.RunFloatingCrossDayReminderFixture();
+        var floatingReminderModes = floating.RunFloatingReminderModeFixture();
+        var noteExercise = main.RunNoteAddFixture();
+        var reminderModes = main.RunNoteReminderModeFixture();
+        var undatedNoteEdit = main.RunUndatedNoteEditFixture();
+        var report = new Dictionary<string, object?>
+        {
+            ["NoteAddViaClick"] = noteExercise.AddedViaClick,
+            ["NoteReminderViaSelector"] = noteExercise.ReminderViaSelector,
+            ["FloatingCrossDayReminderViaClick"] = floatingCrossDayReminderAdded,
+            ["MainNoReminderViaClick"] = reminderModes.NoReminder,
+            ["MainOnceReminderViaClick"] = reminderModes.OnceReminder,
+            ["MainRepeatingReminderViaClick"] = reminderModes.RepeatingReminder,
+            ["FloatingNoReminderViaClick"] = floatingReminderModes.NoReminder,
+            ["FloatingOnceReminderViaClick"] = floatingReminderModes.OnceReminder,
+            ["FloatingRepeatingReminderViaClick"] = floatingReminderModes.RepeatingReminder,
+            ["NoteDateRequired"] = noteExercise.DateRequired,
+            ["NewNoteRejectsEmptyDate"] = undatedNoteEdit.NewNoteRejectsEmptyDate,
+            ["UndatedNoteEditSavesWithoutDate"] = undatedNoteEdit.UndatedEditSavesWithoutDate,
+            ["DatedNoteEditRejectsClearedDate"] = undatedNoteEdit.DatedEditRejectsClearedDate,
+            ["NoteDateValidationMessagesDistinguished"] = undatedNoteEdit.ValidationMessagesDistinguished,
+            ["NoteDateViaPicker"] = noteExercise.DateViaPicker,
+            ["NoteStatusViaCheckbox"] = noteExercise.CompletionViaCheckbox
+        };
+        if (exerciseTagInteractions)
+        {
+            var tagExercise = ValidationExercises.RunTagInteractions(desktopWorkspace);
+            report["TagInteractionsExecuted"] = tagExercise.Executed;
+            report["TagCreationAndAssociation"] = tagExercise.CreationAndAssociation;
+            report["TagAnyAllFilter"] = tagExercise.AnyAllFilter;
+            report["TagEditorSummaryIsCompact"] = tagExercise.EditorSummaryIsCompact;
+            report["TagSearchCreateAvoidsDefaultSubmit"] = tagExercise.SearchCreateAvoidsDefaultSubmit;
+            report["TagUntaggedAndCountdownStatus"] = tagExercise.UntaggedAndCountdownStatus;
+            report["TagNoteStatusSearchAndCompletion"] = tagExercise.NoteStatusSearchAndCompletion;
+            report["NoteDateFilterControls"] = tagExercise.NoteDateFilterControls;
+            report["NoteDateFilterBehavior"] = tagExercise.NoteDateFilterBehavior;
+            report["TagFloatingNoteInheritsTags"] = tagExercise.FloatingNoteInheritsTags;
+            report["TagFloatingNoteDateViaPicker"] = tagExercise.FloatingNoteDateViaPicker;
+            report["TagFloatingNotePopupOnDemand"] = tagExercise.FloatingNotePopupOnDemand;
+            report["TagFloatingNoteCanOverrideTags"] = tagExercise.FloatingNoteCanOverrideTags;
+            report["TagNoteEditingPersistsTags"] = tagExercise.NoteEditingPersistsTags;
+            report["TagNoteEditingPersistsDate"] = tagExercise.NoteEditingPersistsDate;
+            report["TagRenameAndDeleteDetachOnly"] = tagExercise.RenameAndDeleteDetachOnly;
+        }
+
+        return report;
+    }
+
+    internal static IReadOnlyDictionary<string, object?> CreatePersistenceFailureFixture(
+        DesktopWorkspace desktopWorkspace)
+    {
+        using var persistenceExercisePath = new PersistenceExercisePathGate(
+            desktopWorkspace.Snapshot.SettingsPath);
+        var exercise = persistenceExercisePath.Run(() => ValidationExercises.RunPersistenceFailures(
+            desktopWorkspace,
+            desktopWorkspace.Snapshot.SettingsPath));
+        var valid = exercise.CountdownStatePreserved &&
+            exercise.PreferenceStatePreserved &&
+            exercise.CountdownDraftRetained &&
+            exercise.PreferenceDraftRetained &&
+            exercise.TagStatePreserved &&
+            exercise.TagDraftRetained &&
+            exercise.TagFilterRetained &&
+            exercise.TemporaryPathRemainsDirectory;
+        return new Dictionary<string, object?>
+        {
+            ["CountdownSaveFailurePreservesState"] = exercise.CountdownStatePreserved,
+            ["PreferenceSaveFailurePreservesState"] = exercise.PreferenceStatePreserved,
+            ["CountdownSaveFailureRetainsDraft"] = exercise.CountdownDraftRetained,
+            ["PreferenceSaveFailureRetainsDraft"] = exercise.PreferenceDraftRetained,
+            ["TagSaveFailurePreservesState"] = exercise.TagStatePreserved,
+            ["TagSaveFailureRetainsDraft"] = exercise.TagDraftRetained,
+            ["TagSaveFailureRetainsFilter"] = exercise.TagFilterRetained,
+            ["PersistenceFailureTempPathRemainsDirectory"] = exercise.TemporaryPathRemainsDirectory,
+            ["Valid"] = valid
+        };
+    }
+
     public static IReadOnlyDictionary<string, object?> Create(
         MainWindow main,
         FloatingWindow floating,
@@ -55,6 +160,20 @@ internal static partial class ValidationReport
         floating.Reanchor();
         PumpDispatcher();
         floating.TraceAnchoringForValidation("initial-reanchor");
+
+        if (options.NightMigrationOnly)
+        {
+            return CreateNightMigrationFixture(main, floating, theme, desktopWorkspace.Snapshot.UtcNow);
+        }
+
+        if (options.ExerciseNoteAdd)
+        {
+            return CreateNoteAddFixture(
+                main,
+                floating,
+                desktopWorkspace,
+                options.ExerciseTagInteractions);
+        }
 
         var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
         floating.TraceAnchoringForValidation("after-floating-scenarios");

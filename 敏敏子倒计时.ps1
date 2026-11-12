@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [switch] $ValidateOnly,
+    [switch] $NightMigrationOnly,
     [switch] $ExerciseNoteAdd,
     [switch] $ExercisePersistenceFailures,
     [switch] $ExerciseTagInteractions,
@@ -34,6 +35,9 @@ if ($ValidateOnly.IsPresent) {
 else {
     # 生产 adapter 启动必须绑定安装器写出的请求；缺失或损坏时由 C# 宿主 fail-closed。
     $applicationArguments.Add('--require-startup-request')
+}
+if ($NightMigrationOnly.IsPresent) {
+    $applicationArguments.Add('--night-migration-only')
 }
 if ($ExerciseNoteAdd.IsPresent) {
     $applicationArguments.Add('--exercise-note-add')

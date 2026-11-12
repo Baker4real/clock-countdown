@@ -50,8 +50,8 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 
 - `敏敏子倒计时.ps1`：C# 应用的薄启动 adapter；映射既有参数。生产启动用 `Win32_Process.Create` 脱离计划任务作业，确认 C# 仍存活后退出 0；validate/exercise 仍等待并传播退出码。不回退旧 PowerShell WPF
 - `src/MinminCountdown`：C# WPF 应用宿主源码
-- `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
-- `src/MinminCountdown.Verification`：C# 设置契约与互操作验证程序
+- `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex、部署设置等价规则，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
+- `src/MinminCountdown.Verification`：C# 设置契约、PowerShell 部署等价夹具快照与互操作验证程序
 - `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
@@ -83,7 +83,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `tools/Test-CountdownTooling.ps1`：不在用户桌面开窗的自检：issue 验收 schema、回写 dry-run、PowerShell 解析、弹层验证夹具 C# 只编译、日间纯装饰图生成契约（`tools/Test-MainDayOrnamentScene.ps1`）、隔离启动器崩溃对话框看门狗（`tools/Test-IsolatedCrashDialogWatchdog.ps1`，对话框只弹在自建的隔离桌面上）、套件状态原子写的瞬时占用重试（`tools/Test-SuiteRunStateWrite.ps1`）、CI 单独成步的 `Countdown.TransferLedger.Tests.ps1` 与 `tools/Test-OfficeDeploymentStatus.ps1`、CI 工作流脚本都有本机阶段跑到的对等检查、生产脚本 `Move-Item -Force` 只减不增、通过的子测试不在 `logs\` 与仓库根留下 `*-test-*` 测试根和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例，夹具 C# 在 `tools/PopupValidationContract.cs`
 - `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
 
-设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)。
+设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)；产品 EXE 的 `--settings-equivalence` 只读判定、JSON 原因类别和退出码见同文「办公室部署边界」。
 当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
 WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方案](docs/现代化重构方案.md)；现行栈状态与候选闸门范围见 [技术栈决策](docs/stack.md)。Tauri/React/Rust 文档只描述可回滚的候选切片，不代表已批准的目标栈。
 倒计时、便签与共享标签的产品证据、现役边界和后续候选见 [倒计时、便签与标签协同调研](docs/标签与倒计时应用调研.md)。

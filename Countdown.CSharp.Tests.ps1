@@ -4084,6 +4084,99 @@ exit 23
     Assert-Equal $powerShellCanonical $powerShellReloadedCanonical 'PowerShell/C# 双向领域值等价'
     Write-TestSegmentTiming -Name 'FixtureRoundTrip'
 
+    # #272：部署设置等价命令是产品 EXE 的只读、无窗口 CLI；在隔离目录捕获完整 stdout。
+    $equivalenceRoot = Join-Path $testRoot 'settings-equivalence-cli'
+    New-Item -ItemType Directory -Path $equivalenceRoot | Out-Null
+    $equivalenceApplication = Join-Path $equivalenceRoot 'MinminCountdown.exe'
+    [System.IO.File]::Copy($application, $equivalenceApplication)
+    $equivalenceBeforePath = Join-Path $equivalenceRoot 'before.json'
+    $equivalenceAfterPath = Join-Path $equivalenceRoot 'after.json'
+    [System.IO.File]::Copy($fixturePath, $equivalenceBeforePath)
+    [System.IO.File]::Copy($powerShellCanonicalPath, $equivalenceAfterPath)
+    $equivalenceChangedPath = Join-Path $equivalenceRoot 'changed.json'
+    $equivalenceChanged = Get-Content -LiteralPath $equivalenceAfterPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $equivalenceChanged.monthlySalary = 1
+    [System.IO.File]::WriteAllText(
+        $equivalenceChangedPath,
+        ($equivalenceChanged | ConvertTo-Json -Depth 20),
+        $utf8NoBom)
+    $equivalenceCorruptPath = Join-Path $equivalenceRoot 'corrupt.json'
+    [System.IO.File]::WriteAllText($equivalenceCorruptPath, '{not-json', $utf8NoBom)
+    $equivalenceInputHashes = @{}
+    foreach ($path in @($equivalenceBeforePath, $equivalenceAfterPath, $equivalenceChangedPath, $equivalenceCorruptPath)) {
+        $equivalenceInputHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
+
+    $equivalenceMigrationArgs = @(
+        '--settings-equivalence',
+        '--before-settings',
+        $equivalenceBeforePath,
+        '--after-settings',
+        $equivalenceAfterPath,
+        '--migration-utc',
+        '2031-09-10T02:16:00.0000000+00:00'
+    )
+    $equivalenceMigrationResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMigrationArgs
+    Assert-Equal 0 $equivalenceMigrationResult.ExitCode '设置等价命令接受严格 v7→v10 迁移'
+    Assert-Equal '' $equivalenceMigrationResult.Stderr '设置等价命令成功路径不写 stderr'
+    $equivalenceMigration = $equivalenceMigrationResult.Stdout | ConvertFrom-Json
+    Assert-Equal $true ([bool] $equivalenceMigration.equivalent) '设置等价命令输出等价=true'
+    Assert-Equal 'migrated' ([string] $equivalenceMigration.reasonCategory) '设置等价命令报告迁移等价原因'
+
+    $equivalenceUnchangedArgs = @($equivalenceMigrationArgs)
+    $equivalenceUnchangedArgs[2] = $equivalenceAfterPath
+    $equivalenceUnchangedResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceUnchangedArgs
+    Assert-Equal 0 $equivalenceUnchangedResult.ExitCode '设置等价命令接受字节不变输入'
+    $equivalenceUnchanged = $equivalenceUnchangedResult.Stdout | ConvertFrom-Json
+    Assert-Equal $true ([bool] $equivalenceUnchanged.equivalent) '字节不变输入等价'
+    Assert-Equal 'unchanged' ([string] $equivalenceUnchanged.reasonCategory) '字节不变原因类别'
+
+    $equivalenceDifferentArgs = @($equivalenceMigrationArgs)
+    $equivalenceDifferentArgs[4] = $equivalenceChangedPath
+    $equivalenceDifferentResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceDifferentArgs
+    Assert-Equal 1 $equivalenceDifferentResult.ExitCode '非等价设置使用独立非零退出码'
+    $equivalenceDifferent = $equivalenceDifferentResult.Stdout | ConvertFrom-Json
+    Assert-Equal $false ([bool] $equivalenceDifferent.equivalent) '非等价设置输出等价=false'
+    Assert-Equal 'data-mismatch' ([string] $equivalenceDifferent.reasonCategory) '非等价设置报告数据差异原因'
+
+    $equivalenceUsageResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList @('--settings-equivalence')
+    Assert-Equal 2 $equivalenceUsageResult.ExitCode '设置等价命令用法错误使用独立退出码'
+    $equivalenceUsage = $equivalenceUsageResult.Stdout | ConvertFrom-Json
+    Assert-Equal $false ([bool] $equivalenceUsage.equivalent) '用法错误也输出可解析 JSON'
+    Assert-Equal 'usage' ([string] $equivalenceUsage.reasonCategory) '用法错误原因类别'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $equivalenceUsage.message)) '用法错误输出明确消息'
+
+    $equivalenceMissingPath = Join-Path $equivalenceRoot 'missing.json'
+    $equivalenceMissingArgs = @($equivalenceMigrationArgs)
+    $equivalenceMissingArgs[4] = $equivalenceMissingPath
+    $equivalenceMissingResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceMissingArgs
+    Assert-Equal 1 $equivalenceMissingResult.ExitCode '缺失输入是非等价结果而非未处理异常'
+    $equivalenceMissing = $equivalenceMissingResult.Stdout | ConvertFrom-Json
+    Assert-Equal 'invalid-input' ([string] $equivalenceMissing.reasonCategory) '缺失输入原因类别'
+    Assert-Equal $true ([string] $equivalenceMissing.message.Contains('missing.json', [StringComparison]::Ordinal)) '缺失输入消息指出具体文件'
+
+    $equivalenceCorruptArgs = @($equivalenceMigrationArgs)
+    $equivalenceCorruptArgs[4] = $equivalenceCorruptPath
+    $equivalenceCorruptResult = Invoke-CapturedNativeProcess -FilePath $equivalenceApplication -WorkingDirectory $equivalenceRoot -ArgumentList $equivalenceCorruptArgs
+    Assert-Equal 1 $equivalenceCorruptResult.ExitCode '损坏输入是非等价结果而非未处理异常'
+    $equivalenceCorrupt = $equivalenceCorruptResult.Stdout | ConvertFrom-Json
+    Assert-Equal 'invalid-settings' ([string] $equivalenceCorrupt.reasonCategory) '损坏输入原因类别'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $equivalenceCorrupt.message)) '损坏输入输出明确消息'
+
+    foreach ($report in @($equivalenceMigration, $equivalenceUnchanged, $equivalenceDifferent, $equivalenceUsage, $equivalenceMissing, $equivalenceCorrupt)) {
+        Assert-Equal 1 ([int] $report.schemaVersion) "设置等价 JSON schema 版本：$($report.reasonCategory)"
+    }
+    foreach ($result in @($equivalenceMigrationResult, $equivalenceUnchangedResult, $equivalenceDifferentResult, $equivalenceUsageResult, $equivalenceMissingResult, $equivalenceCorruptResult)) {
+        Assert-Equal '' $result.Stderr "设置等价命令不写未处理异常 stderr：$($result.ExitCode)"
+    }
+    foreach ($path in $equivalenceInputHashes.Keys) {
+        Assert-Equal $equivalenceInputHashes[$path] (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash "设置等价命令不改输入：$([IO.Path]::GetFileName($path))"
+    }
+    Assert-Equal 'MinminCountdown.exe,after.json,before.json,changed.json,corrupt.json' (
+        @((Get-ChildItem -LiteralPath $equivalenceRoot -File).Name | Sort-Object) -join ','
+    ) '设置等价命令不写日志、备份、回执或其他文件'
+    Write-TestSegmentTiming -Name 'SettingsEquivalenceCli'
+
     # ExitAfterReadyForTest 自退间隔参数契约（#122）：默认 30 秒与现状一致、显式秒数生效、
     # 孤立开关与非法值 fail-closed。经源码构建 DLL 反射探针直接断言 HostOptions.Parse。
     $hostOptionsProbeAssembly = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'

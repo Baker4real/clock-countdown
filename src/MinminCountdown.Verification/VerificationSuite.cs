@@ -28,6 +28,23 @@ internal static class VerificationSuite
         Run(results, "schema-v8-reminder-branches-reject-foreign-fields", VerifyVersionEightReminderBranchesAreStrict);
         Run(results, "schema-v9-reminders-migrate-to-stable-v10-rules", VerifyVersionNineReminderMigration);
         Run(results, "schema-v10-multiple-rules-round-trip-stably", VerifyVersionTenRoundTrip);
+        Run(results, "deployment-equivalence-unchanged-settings-match-power-shell", VerifyDeploymentEquivalenceUnchanged);
+        foreach (var fixture in DeploymentEquivalenceFixtures.Versions)
+        {
+            Run(
+                results,
+                $"deployment-equivalence-v{fixture.Version}-matches-power-shell",
+                () => VerifyDeploymentEquivalenceVersion(fixture));
+        }
+
+        foreach (var fixture in DeploymentEquivalenceFixtures.Cases)
+        {
+            Run(
+                results,
+                $"deployment-equivalence-{fixture.Name}-matches-power-shell",
+                () => VerifyDeploymentEquivalenceMutation(fixture));
+        }
+
         Run(results, "schema-v10-countdown-relative-rules-round-trip-at-bounds", VerifyCountdownRelativeRulesRoundTrip);
         Run(results, "schema-v10-calendar-rules-round-trip-as-typed-subset", VerifyCalendarRulesRoundTrip);
         Run(results, "ical-net-calendar-occurrences-use-beijing-time-and-collapse-missed-runs", VerifyCalendarOccurrences);
@@ -111,6 +128,43 @@ internal static class VerificationSuite
         Equal(true, notes.SequenceEqual(original), "排序不改原始添加顺序或记录");
         notes[1] = notes[1] with { Text = "ZZZ 编辑正文不改变添加顺序" };
         Equal(expected, string.Join(",", NoteOrdering.Sort(notes).Select(note => note.Id)), "正文编辑不改变同日顺序");
+    }
+
+    private static void VerifyDeploymentEquivalenceUnchanged()
+    {
+        var settings = Encoding.UTF8.GetBytes(SettingsFixtures.VersionTen);
+        var result = SettingsDeploymentEquivalence.Evaluate(
+            settings,
+            settings,
+            new DateTimeOffset(2031, 9, 10, 2, 16, 0, TimeSpan.Zero));
+
+        Equal(true, result.Equivalent, "未变化设置等价");
+        Equal("unchanged", result.ReasonCategory, "未变化设置原因类别");
+    }
+
+    private static void VerifyDeploymentEquivalenceVersion(DeploymentVersionFixture fixture)
+    {
+        var result = SettingsDeploymentEquivalence.Evaluate(
+            Encoding.UTF8.GetBytes(fixture.BeforeJson),
+            Encoding.UTF8.GetBytes(fixture.AfterJson),
+            DeploymentEquivalenceFixtures.MigrationUtc);
+        Equal(fixture.ExpectedEquivalent, result.Equivalent, $"v{fixture.Version} 部署等价结论");
+        Equal(fixture.ExpectedReason, result.ReasonCategory, $"v{fixture.Version} 原因类别");
+    }
+
+    private static void VerifyDeploymentEquivalenceMutation(DeploymentMutationFixture fixture)
+    {
+        var before = DeploymentEquivalenceFixtures.BeforeJson(fixture.Version);
+        var after = DeploymentEquivalenceFixtures.MutateAfter(
+            DeploymentEquivalenceFixtures.AfterJson(fixture.Version),
+            fixture.Mutation);
+        var result = SettingsDeploymentEquivalence.Evaluate(
+            Encoding.UTF8.GetBytes(before),
+            Encoding.UTF8.GetBytes(after),
+            DeploymentEquivalenceFixtures.MigrationUtc);
+
+        Equal(fixture.ExpectedEquivalent, result.Equivalent, $"{fixture.Name} 等价结论");
+        Equal(fixture.ExpectedReason, result.ReasonCategory, $"{fixture.Name} 原因类别");
     }
 
     private static void VerifySchemaMigration(int version, string json)

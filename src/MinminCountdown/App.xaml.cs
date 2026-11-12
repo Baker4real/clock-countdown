@@ -52,6 +52,14 @@ public sealed partial class App : Application
         var exitCode = 1;
         try
         {
+            // #272：只读设置等价命令不得初始化色板、启动请求、日志、单实例或任何窗口。
+            if (SettingsEquivalenceCommand.IsRequested(eventArgs.Args))
+            {
+                exitCode = SettingsEquivalenceCommand.Run(eventArgs.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
             // App.xaml 不写色值：在任何窗口（含验证、激活失败与设置恢复提示）之前先写入日间色板。
             ApplicationTheme.WriteDayPalette(Resources);
             _options = HostOptions.Parse(eventArgs.Args);

@@ -13,18 +13,14 @@ $expectedBuildAssets = @(
     'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png'
 )
 $actualBuildAssets = @($releaseContract.BuildAssets | ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" })
-$expectedCompatibilityFixtures = @(
-    'Countdown.App.psm1',
-    'Countdown.Core.psm1',
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png',
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png'
+$expectedFloatingPlushAssets = @(
+    'assets\floating-plush\floating-plush-mymelody-reference.png',
+    'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+    'assets\floating-plush\floating-plush-kuromi-reference.png',
+    'assets\floating-plush\component-day-outer-shell.png',
+    'assets\floating-plush\component-day-header-blank.png',
+    'assets\floating-plush\component-day-card-blank.png',
+    'assets\floating-plush\component-day-mascots.png'
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
@@ -186,7 +182,9 @@ foreach ($verificationOnlyReference in @(
     Assert-Equal $true ($installedReference -in @($releaseContract.RetiredRuntimeFiles)) "Plush reference is cleaned from existing installations: $installedReference"
 }
 Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
-Assert-Equal ($expectedCompatibilityFixtures -join ',') (@($releaseContract.CompatibilityFixtureFiles) -join ',') 'Release contract exposes the exact compatibility fixtures'
+Assert-Equal ($expectedFloatingPlushAssets -join ',') (@($releaseContract.FloatingPlushAssets) -join ',') 'Release contract retains only current and reference floating assets in the repository asset list'
+Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'CompatibilityFixtureFiles') 'Release contract no longer exposes a legacy-host compatibility fixture list'
+Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'LegacyFloatingRegressionAssets') 'Release contract no longer exposes a legacy floating regression asset list'
 Assert-Equal $true ('Countdown.InstallLifecycle.psm1' -in @($releaseContract.PackageFiles)) 'Install lifecycle is packaged'
 Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Countdown.InstallLifecycle.psm1') 'Install lifecycle is integrity protected'
 Assert-Equal $false ('Countdown.InstallLifecycle.psm1' -in @($releaseContract.InstalledFiles)) 'Install lifecycle is not installed as runtime'
@@ -195,12 +193,16 @@ foreach ($deploymentModule in @('Countdown.RemoteDeployment.psm1', 'Countdown.Tr
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($deploymentModule) "Deployment module is integrity protected: $deploymentModule"
     Assert-Equal $false ($deploymentModule -in @($releaseContract.InstalledFiles)) "Deployment module is not installed as runtime: $deploymentModule"
 }
-foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1', 'Countdown.Core.psm1')) {
+foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1')) {
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.PackageFiles)) "Module the office install never loads stays out of the office package: $repositoryOnlyModule"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($repositoryOnlyModule) "Module the office install never loads is not statically pinned: $repositoryOnlyModule"
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.InstalledFiles)) "Module the office install never loads is not installed as runtime: $repositoryOnlyModule"
 }
-Assert-Equal $true ('Countdown.Core.psm1' -in @($releaseContract.RetiredRuntimeFiles)) 'Legacy core module is cleaned from existing installations'
+foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
+    Assert-Equal $false ($legacyHostModule -in @($releaseContract.PackageFiles)) "Deleted legacy host module stays out of the office package: $legacyHostModule"
+    Assert-Equal $false ($legacyHostModule -in @($releaseContract.InstalledFiles)) "Deleted legacy host module is not installed as runtime: $legacyHostModule"
+    Assert-Equal $true ($legacyHostModule -in @($releaseContract.RetiredRuntimeFiles)) "Deleted legacy host module remains in the cleanup set: $legacyHostModule"
+}
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
 Assert-Equal 101 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus the preflight helper and vendored license read by the build script'
@@ -1259,9 +1261,7 @@ function Get-CountdownReleaseContract {
         OfficialCharacterAssets = @()
         FloatingPlushAssets = @()
         CurrentFloatingRuntimeAssets = @()
-        LegacyFloatingRegressionAssets = @()
         RetiredRuntimeFiles = @()
-        CompatibilityFixtureFiles = @()
     }
 }
 function Assert-CountdownReleasePackage {
@@ -1349,6 +1349,32 @@ function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE
         'Isolated package contains exactly the deployment ZIP allowlist'
     $isolatedPackageValidation = Assert-CountdownReleasePackage -Root $releaseContractTestRoot
     Assert-Equal $true ([bool] $isolatedPackageValidation.Valid) 'Isolated deployment package passes the release assertion'
+    foreach ($retiredLegacyPackageFile in @(
+            'Countdown.App.psm1',
+            'Countdown.Core.psm1',
+            'assets\floating-plush\floating-plush-mymelody-front.png',
+            'assets\floating-plush\floating-plush-mymelody-pose.png',
+            'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+            'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+            'assets\floating-plush\floating-plush-kuromi-front.png',
+            'assets\floating-plush\floating-plush-kuromi-pose.png'
+        )) {
+        $retiredLegacyPackagePath = Join-Path $releaseContractTestRoot $retiredLegacyPackageFile
+        $retiredLegacyPackageParent = Split-Path -Parent $retiredLegacyPackagePath
+        if (-not (Test-Path -LiteralPath $retiredLegacyPackageParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $retiredLegacyPackageParent -Force | Out-Null
+        }
+        [System.IO.File]::WriteAllText($retiredLegacyPackagePath, 'retired legacy host fixture', [System.Text.UTF8Encoding]::new($false))
+        $retiredLegacyPackageRejected = $false
+        try {
+            Assert-CountdownDeploymentFileSet -Root $releaseContractTestRoot -ExpectedFiles $releaseContract.PackageFiles -Stage '旧宿主混入负例'
+        }
+        catch {
+            $retiredLegacyPackageRejected = $_.Exception.Message -match '发布包文件集与已验证清单不一致'
+        }
+        Assert-Equal $true $retiredLegacyPackageRejected "Deployment package rejects deleted legacy-host content: $retiredLegacyPackageFile"
+        Remove-Item -LiteralPath $retiredLegacyPackagePath -Force
+    }
 
     $managedDotnet = if ($isCIEnvironment) {
         (Get-Command dotnet -ErrorAction Stop).Path

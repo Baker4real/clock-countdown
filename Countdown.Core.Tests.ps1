@@ -32,7 +32,6 @@ function Write-TestSegmentTotal {
         ('[test-segment-total] seconds={0:F3}' -f $script:testClock.Elapsed.TotalSeconds))
 }
 
-Import-Module (Join-Path $PSScriptRoot 'Countdown.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
@@ -228,4 +227,5 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-[pscustomobject]@{ Passed = $script:assertions; Failed = 0; TimeZone = (Get-BeijingNow).Offset.ToString() } | ConvertTo-Json
+$beijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'China Standard Time')
+[pscustomobject]@{ Passed = $script:assertions; Failed = 0; TimeZone = $beijingNow.Offset.ToString() } | ConvertTo-Json

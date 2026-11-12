@@ -23,7 +23,6 @@ $releaseContract = Get-CountdownReleaseContract
 $officialCharacterAssets = @($releaseContract.OfficialCharacterAssets)
 $floatingPlushAssets = @($releaseContract.FloatingPlushAssets)
 $currentFloatingRuntimeAssets = @($releaseContract.CurrentFloatingRuntimeAssets)
-$legacyFloatingRegressionAssets = @($releaseContract.LegacyFloatingRegressionAssets)
 $retiredRuntimeFiles = @($releaseContract.RetiredRuntimeFiles)
 $packageValidation = Assert-CountdownReleasePackage -Root $staging
 
@@ -35,8 +34,6 @@ if ($ValidateOnly) {
         OfficialCharacterAssets = $officialCharacterAssets
         FloatingPlushAssets = $floatingPlushAssets
         CurrentFloatingRuntimeAssets = $currentFloatingRuntimeAssets
-        LegacyFloatingRegressionAssets = $legacyFloatingRegressionAssets
-        CompatibilityFixtureFiles = @($releaseContract.CompatibilityFixtureFiles)
         RetiredRuntimeFiles = $retiredRuntimeFiles
         Transactional = $true
         DeferredCommitSupported = $true

@@ -522,3 +522,18 @@ CSharp 的完整 validate-only 报告运行数保持 4 次：Auto + populated Li
 上表九个 Ui 分段已按既定去向处理：`Setup`、`ApplicationHostValidation`、`RuntimeIntegration`、`PopupUiaGate` 随旧兼容测试路径退役；`FatalDiagnosticExercise`、`ListValidation`、`TagInteractionExercise`、`PersistenceFailureExercise` 的现役 C# 覆盖保留在 CSharp；`LegacyMigrationExercise` 继续由 `FixtureRoundTrip` 与纯 C# 验证 runner 覆盖。`Countdown.Ui.Tests.ps1` 及低影响启动器、安装验证编排和收口 runner 中的 Ui 执行点已删除，canonical 报告与 #264/#271 的断言未删改。
 
 当前必过阶段唯一清单为 `Build`、`Core`、`CSharp`、`SourceValidation`、`InstallValidate`。部署证据门仍接受额外已完成的 Ui 阶段，因此既有六阶段记录保持有效；缺少任一现行五阶段仍失败闭锁。旧 `Countdown.App.psm1`、`Countdown.Core.psm1` 及其独占资产不在本票删除范围，仍由 #266 按清单逐项处理。
+
+## 2026-11-12 #266 旧 PowerShell 宿主退役结果
+
+`Countdown.App.psm1`、`Countdown.Core.psm1` 及六张 `floating-plush-{mymelody|cinnamoroll|kuromi}-{front|pose}.png` 旧宿主独占资产已删除；Core 测试入口不再导入旧核心 module，旧核心的纯 PowerShell 领域测试与设置清理测试随之删除。`Countdown.Notes.psm1`、`Countdown.Tags.psm1` 仍被 `Countdown.Settings.psm1` 与现役设置验证使用，不在本票删除。
+
+发布契约相关清单逐项处理如下；`PackageFiles`、`InstalledFiles`、`BuildAssets` 与静态 `IntegrityHashes` 的内容不因本次退役改变。
+
+| 清单 | 处理结论 |
+| --- | --- |
+| `CompatibilityFixtureFiles` | 整个属性退役。两个旧 module 随源码删除；三张官方角色图不是旧宿主独占资产，继续由 `OfficialCharacterAssets`、`BuildAssets` 和运行时清单覆盖；六张旧悬浮商品图随源码删除。 |
+| `LegacyFloatingRegressionAssets` | 整个属性退役，六项全部随旧宿主独占 PNG 删除。 |
+| `FloatingPlushAssets` | 删除六项旧商品图；保留三张 `*-reference.png` 作为现役视觉基线 sourceBinding 输入，以及四张 `component-day-*.png` 现役运行时源资产。 |
+| `RetiredRuntimeFiles` | 24 项全部保留且顺序不变：继续清理既有安装中的旧 module、旧源资产和旧 `app` 资产，并让旧宿主内容混入发布包的负例继续失败。保留清单不表示源文件仍存在。 |
+
+现役 C# 源码、构建输入和视觉基线 manifest 均不引用六张旧商品图；`Countdown.CSharp.Tests.ps1` 只保留其不得出现在发布目录及单文件 EXE 的负例。

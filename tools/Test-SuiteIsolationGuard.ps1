@@ -123,6 +123,18 @@ $assertIndex = $csharpSource.IndexOf('Assert-SuiteIsolatedDesktop')
 Assert-Guard ($assertIndex -ge 0 -and $assertIndex -lt $hiddenProbeIndex) 'CSharp fail-closed 在首个 WPF 探针之前'
 
 Assert-Guard (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'Countdown.Ui.Tests.ps1') -PathType Leaf)) 'Ui 测试脚本已退役'
+foreach ($retiredLegacyHostFile in @(
+        'Countdown.App.psm1',
+        'Countdown.Core.psm1',
+        'assets\floating-plush\floating-plush-mymelody-front.png',
+        'assets\floating-plush\floating-plush-mymelody-pose.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+        'assets\floating-plush\floating-plush-kuromi-front.png',
+        'assets\floating-plush\floating-plush-kuromi-pose.png'
+    )) {
+    Assert-Guard (-not (Test-Path -LiteralPath (Join-Path $repoRoot $retiredLegacyHostFile) -PathType Leaf)) "旧 PowerShell 宿主独占文件已退役：$retiredLegacyHostFile"
+}
 
 $sourceValidationSource = Get-Content -LiteralPath $sourceValidationPath -Raw -Encoding UTF8
 Assert-Guard ($sourceValidationSource -match 'Assert-SuiteIsolatedDesktop') 'SourceValidation fail-closed'

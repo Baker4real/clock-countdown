@@ -55,8 +55,6 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Build-CountdownApplication.ps1`：生成 self-contained 的应用与验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
-- `Countdown.App.psm1`：旧 PowerShell WPF 兼容回归夹具；只保留在仓库中，不进办公室发布包、不安装到运行目录，生产入口不调用
-- `Countdown.Core.psm1`：旧 PowerShell WPF 兼容回归夹具使用的北京时间换算与倒计时核心逻辑；只保留在仓库中，不进办公室发布包，安装时从运行目录移除残留
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
 - `Countdown.Runtime.psm1`：每次启动的令牌、窗口首帧就绪回执、有界等待与滚动诊断日志
@@ -72,7 +70,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
 - `countdown-icon.ico`：窗口和桌面启动器图标
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
-- `assets/floating-plush/*.png`：悬浮窗现役视觉资产与旧 PowerShell 回归夹具；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入留在仓库，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
+- `assets/floating-plush/*.png`：悬浮窗现役视觉资产；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入留在仓库，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - `assets/main-decorations/*.png`：主窗口暖色日间装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
 - `assets/ui-references/`：用户生成的页面与悬浮窗参考图及机器可读 `manifest.json` 的固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - [DESIGN.md](DESIGN.md)：主窗口两页、悬浮窗两工作区与提醒中心的「暖粉日间」现役视觉、交互和单一日间主题合同

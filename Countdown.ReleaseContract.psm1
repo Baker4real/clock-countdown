@@ -66,24 +66,9 @@ $script:buildAssetDefinitions = @(
     }
 )
 
-$script:legacyFloatingRegressionAssets = @(
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png'
-)
-
 $script:floatingPlushAssets = @(
-    'assets\floating-plush\floating-plush-mymelody-front.png',
-    'assets\floating-plush\floating-plush-mymelody-pose.png',
     'assets\floating-plush\floating-plush-mymelody-reference.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-    'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
     'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
-    'assets\floating-plush\floating-plush-kuromi-front.png',
-    'assets\floating-plush\floating-plush-kuromi-pose.png',
     'assets\floating-plush\floating-plush-kuromi-reference.png',
     'assets\floating-plush\component-day-outer-shell.png',
     'assets\floating-plush\component-day-header-blank.png',
@@ -430,8 +415,23 @@ function New-CountdownReleaseContractSnapshot {
         }
     }
     $installedFiles = @($uniqueInstalled)
-    # 旧 PowerShell WPF 宿主及其独占的核心 module 只留在仓库作兼容回归夹具，安装时从运行目录移除残留。
-    $retiredRuntimeFiles = @('Countdown.App.psm1', 'Countdown.Core.psm1') + $script:floatingPlushAssets + @(
+    # 源文件可以退役，清理清单必须继续识别既有安装与发布包里的历史残留。
+    $retiredRuntimeFiles = @(
+        'Countdown.App.psm1',
+        'Countdown.Core.psm1',
+        'assets\floating-plush\floating-plush-mymelody-front.png',
+        'assets\floating-plush\floating-plush-mymelody-pose.png',
+        'assets\floating-plush\floating-plush-mymelody-reference.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-front.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
+        'assets\floating-plush\floating-plush-cinnamoroll-reference.png',
+        'assets\floating-plush\floating-plush-kuromi-front.png',
+        'assets\floating-plush\floating-plush-kuromi-pose.png',
+        'assets\floating-plush\floating-plush-kuromi-reference.png',
+        'assets\floating-plush\component-day-outer-shell.png',
+        'assets\floating-plush\component-day-header-blank.png',
+        'assets\floating-plush\component-day-card-blank.png',
+        'assets\floating-plush\component-day-mascots.png',
         'app\assets\floating-plush\floating-plush-mymelody-front.png',
         'app\assets\floating-plush\floating-plush-mymelody-pose.png',
         'app\assets\floating-plush\floating-plush-cinnamoroll-front.png',
@@ -443,7 +443,6 @@ function New-CountdownReleaseContractSnapshot {
         'app\assets\floating-plush\floating-plush-cinnamoroll-reference.png',
         'app\assets\floating-plush\floating-plush-kuromi-reference.png'
     )
-    $compatibilityFixtures = @('Countdown.App.psm1', 'Countdown.Core.psm1') + $officialCharacterAssets + $script:legacyFloatingRegressionAssets
     $packageFiles = @($script:packageTrustRoots) + @($integrityHashes.Keys)
 
     $hashCopy = [ordered]@{}
@@ -468,12 +467,10 @@ function New-CountdownReleaseContractSnapshot {
         IntegrityHashes = $hashCopy
         BuildAssets = [object[]] $buildAssetCopies
         InstalledFiles = [string[]] $installedFiles
-        CompatibilityFixtureFiles = [string[]] $compatibilityFixtures
         RetiredRuntimeFiles = [string[]] $retiredRuntimeFiles
         OfficialCharacterAssets = [string[]] $officialCharacterAssets
         FloatingPlushAssets = [string[]] @($script:floatingPlushAssets)
         CurrentFloatingRuntimeAssets = [string[]] $currentFloatingRuntimeAssets
-        LegacyFloatingRegressionAssets = [string[]] @($script:legacyFloatingRegressionAssets)
         SourceBuildFiles = [string[]] @($script:sourceBuildFiles)
         BuildInputFiles = [string[]] (@($script:sourceBuildFiles) + @($script:buildScriptInputFiles))
         OfflineHolidayDataFiles = [string[]] @($script:offlineHolidayDataFiles)
@@ -486,7 +483,6 @@ function Assert-CountdownReleaseContractDefinition {
     Assert-CountdownUniqueReleasePaths -Name 'PackageFiles' -Paths $contract.PackageFiles
     Assert-CountdownUniqueReleasePaths -Name 'InstalledFiles' -Paths $contract.InstalledFiles
     Assert-CountdownUniqueReleasePaths -Name 'RetiredRuntimeFiles' -Paths $contract.RetiredRuntimeFiles
-    Assert-CountdownUniqueReleasePaths -Name 'CompatibilityFixtureFiles' -Paths $contract.CompatibilityFixtureFiles
     Assert-CountdownUniqueReleasePaths -Name 'SourceBuildFiles' -Paths $contract.SourceBuildFiles
     Assert-CountdownUniqueReleasePaths -Name 'BuildInputFiles' -Paths $contract.BuildInputFiles
     Assert-CountdownUniqueReleasePaths -Name 'BuildAssets.SourcePath' -Paths @($contract.BuildAssets.SourcePath)

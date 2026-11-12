@@ -70,14 +70,6 @@ $coercedMtime = ($mtimeJson | ConvertFrom-Json).ExpectedSettingsMtimeUtc
 $keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMtimeUtc
 Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
 Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package; the deployer runs it from the commit-identity-checked snapshot'
-$clearTestPath = Join-Path $PSScriptRoot 'clear-test.settings.json'
-[System.IO.File]::WriteAllText($clearTestPath, '{}')
-[System.IO.File]::WriteAllText("$clearTestPath.tmp", '{}')
-$removed = Remove-CountdownSettings -SettingsPath $clearTestPath
-Assert-Equal $true $removed 'Settings clear reports removal'
-Assert-Equal $false (Test-Path -LiteralPath $clearTestPath) 'Settings file removed'
-Assert-Equal $false (Test-Path -LiteralPath "$clearTestPath.tmp") 'Temporary settings file removed'
-
 $legacyV3Settings = [pscustomobject]@{
     schemaVersion = 3
     timeZoneId = 'China Standard Time'

@@ -1434,17 +1434,13 @@ function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE
         (Join-Path $releaseContractTestRoot 'Countdown.CSharp.Tests.ps1'),
         "if (-not (Test-Path -LiteralPath '$($isolatedSourceDll.Replace("'", "''"))' -PathType Leaf)) { throw 'Source DLL was not built before C# regression.' }`r`n'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'",
         [System.Text.UTF8Encoding]::new($false))
-    [System.IO.File]::WriteAllText(
-        (Join-Path $releaseContractTestRoot 'Countdown.Ui.Tests.ps1'),
-        "'{`"Passed`":1,`"Failed`":0}'",
-        [System.Text.UTF8Encoding]::new($false))
     $isolatedValidation = Invoke-CountdownValidationSuite `
         -Root $releaseContractTestRoot `
         -PowerShell7Path (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source) `
         -DotnetPath $managedDotnet
     Assert-Equal 1 ([int] $isolatedValidation.CoreTestsPassed) 'Isolated validation runs the pre-build Core fixture'
     Assert-Equal 1 ([int] $isolatedValidation.CSharpTestsPassed) 'Isolated validation runs C# regression after the real source build'
-    Assert-Equal 1 ([int] $isolatedValidation.UiTestsPassed) 'Isolated validation runs the narrow UI fixture'
+    Assert-Equal $false ($isolatedValidation.PSObject.Properties.Name -contains 'UiTestsPassed') 'Isolated validation no longer runs a compatibility UI stage'
     Assert-Equal $true ([bool] $isolatedValidation.AdapterUiValidated) 'Isolated validation preserves adapter UI evidence'
     Assert-Equal $true `
         (Test-Path -LiteralPath $isolatedSourceDll -PathType Leaf) `

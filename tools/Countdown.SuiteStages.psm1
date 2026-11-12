@@ -10,7 +10,7 @@ function Get-CountdownRequiredSuiteStage {
     [CmdletBinding()]
     param()
 
-    [string[]] @('Build', 'Core', 'CSharp', 'Ui', 'SourceValidation', 'InstallValidate')
+    [string[]] @('Build', 'Core', 'CSharp', 'SourceValidation', 'InstallValidate')
 }
 
 Export-ModuleMember -Function Get-CountdownRequiredSuiteStage

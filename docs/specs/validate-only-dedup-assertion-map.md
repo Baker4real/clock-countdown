@@ -516,3 +516,9 @@ SortedNoteTexts, TagPersistenceRoundTrip
 ### 运行与断言边界
 
 CSharp 的完整 validate-only 报告运行数保持 4 次：Auto + populated List、Night、阻塞 tmp 的 PersistenceFailure、NoteAdd + TagInteractions。FatalDiagnostic 与未阻塞 tmp 都是预期失败且不产出报告。原 Auto 报告上的 `CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches` 移挂到仍使用原单活动倒计时夹具的 Night 报告：populated 夹具含已到期记录，继续用 `Expired` 制造空态会正确失败，不能靠删除或放宽这些既有断言转绿。本票没有新增对源码文本的断言；迁入断言只读 C# 宿主报告、真实诊断日志、退出码和隔离设置落盘结果。
+
+## 2026-11-12 #265 Ui 阶段退役结果
+
+上表九个 Ui 分段已按既定去向处理：`Setup`、`ApplicationHostValidation`、`RuntimeIntegration`、`PopupUiaGate` 随旧兼容测试路径退役；`FatalDiagnosticExercise`、`ListValidation`、`TagInteractionExercise`、`PersistenceFailureExercise` 的现役 C# 覆盖保留在 CSharp；`LegacyMigrationExercise` 继续由 `FixtureRoundTrip` 与纯 C# 验证 runner 覆盖。`Countdown.Ui.Tests.ps1` 及低影响启动器、安装验证编排和收口 runner 中的 Ui 执行点已删除，canonical 报告与 #264/#271 的断言未删改。
+
+当前必过阶段唯一清单为 `Build`、`Core`、`CSharp`、`SourceValidation`、`InstallValidate`。部署证据门仍接受额外已完成的 Ui 阶段，因此既有六阶段记录保持有效；缺少任一现行五阶段仍失败闭锁。旧 `Countdown.App.psm1`、`Countdown.Core.psm1` 及其独占资产不在本票删除范围，仍由 #266 按清单逐项处理。

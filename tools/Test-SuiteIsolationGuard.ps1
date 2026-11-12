@@ -11,7 +11,6 @@ $watcherPath = Join-Path $PSScriptRoot 'Watch-DesktopWindows.ps1'
 $runnerPath = Join-Path $PSScriptRoot 'Invoke-CountdownVerificationRun.ps1'
 $validationPath = Join-Path $repoRoot 'Countdown.Validation.psm1'
 $csharpTestsPath = Join-Path $repoRoot 'Countdown.CSharp.Tests.ps1'
-$uiTestsPath = Join-Path $repoRoot 'Countdown.Ui.Tests.ps1'
 $sourceValidationPath = Join-Path $repoRoot 'Invoke-CountdownSourceValidation.ps1'
 $readmePath = Join-Path $repoRoot 'README.md'
 
@@ -50,7 +49,7 @@ try {
     }
     Assert-Guard $defaultFailed 'Default 桌面 fail-closed'
 
-    Assert-SuiteIsolatedDesktop -DesktopName 'MinminSuiteIso-Ui'
+    Assert-SuiteIsolatedDesktop -DesktopName 'MinminSuiteIso-SourceValidation'
     Assert-SuiteIsolatedDesktop -DesktopName 'MinminSuiteIso'
 
     $unisolatedSwitchFailed = $false
@@ -123,8 +122,7 @@ $hiddenProbeIndex = $csharpSource.IndexOf('Assert-HiddenTopLevelWindowEnumeratio
 $assertIndex = $csharpSource.IndexOf('Assert-SuiteIsolatedDesktop')
 Assert-Guard ($assertIndex -ge 0 -and $assertIndex -lt $hiddenProbeIndex) 'CSharp fail-closed 在首个 WPF 探针之前'
 
-$uiSource = Get-Content -LiteralPath $uiTestsPath -Raw -Encoding UTF8
-Assert-Guard ($uiSource -match 'Assert-SuiteIsolatedDesktop') 'Ui 测试 fail-closed'
+Assert-Guard (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'Countdown.Ui.Tests.ps1') -PathType Leaf)) 'Ui 测试脚本已退役'
 
 $sourceValidationSource = Get-Content -LiteralPath $sourceValidationPath -Raw -Encoding UTF8
 Assert-Guard ($sourceValidationSource -match 'Assert-SuiteIsolatedDesktop') 'SourceValidation fail-closed'
@@ -141,7 +139,6 @@ $validationSource = Get-Content -LiteralPath $validationPath -Raw -Encoding UTF8
 Assert-Guard ($validationSource -match 'Start-IsolatedSuiteProcess') '验证套件窗口步骤走隔离启动器'
 Assert-Guard ($validationSource -match 'MINMIN_SUITE_ALLOW_UNISOLATED') '验证套件尊重隔离 opt-out'
 Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateCSharp') 'C# 回归使用独立隔离桌面'
-Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateUi') '兼容 UI 回归使用独立隔离桌面'
 Assert-Guard ($validationSource -match 'MinminSuiteIso-ValidateApp') 'validate-only 使用独立隔离桌面'
 $coreInvoke = [regex]::Match(
     $validationSource,

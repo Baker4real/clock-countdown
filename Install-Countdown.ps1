@@ -116,14 +116,12 @@ $result = [ordered]@{}
 if ($null -ne $validationSuite) {
     $result.TestOutput = ([string] $validationSuite.TestOutput).Trim()
     $result.CSharpTestOutput = ([string] $validationSuite.CSharpTestOutput).Trim()
-    $result.UiTestOutput = ([string] $validationSuite.UiTestOutput).Trim()
     $result.UiValidationOutput = ([string] $validationSuite.UiValidationOutput).Trim()
     $result.Validation = [ordered]@{
         SchemaVersion = [int] $validationSuite.SchemaVersion
         Valid = [bool] $validationSuite.Valid
         CoreTestsPassed = [int] $validationSuite.CoreTestsPassed
         CSharpTestsPassed = [int] $validationSuite.CSharpTestsPassed
-        UiTestsPassed = [int] $validationSuite.UiTestsPassed
         UiValid = [bool] $validationSuite.UiValid
         AdapterUiValidated = [bool] $validationSuite.AdapterUiValidated
     }

@@ -16,6 +16,9 @@ $ErrorActionPreference = 'Stop'
 
 $staging = $PSScriptRoot
 Import-Module (Join-Path $staging 'Countdown.ReleaseContract.psm1') -Force
+if (-not $ValidateOnly) {
+    Assert-CountdownHolidayYearCoverage
+}
 $releaseContract = Get-CountdownReleaseContract
 $officialCharacterAssets = @($releaseContract.OfficialCharacterAssets)
 $floatingPlushAssets = @($releaseContract.FloatingPlushAssets)

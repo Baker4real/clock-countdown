@@ -208,7 +208,7 @@ $script:nonAssetHashes = [ordered]@{
     'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
     'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
     'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
-    'holiday-data\README.md' = 'E177C43E1EA189D8C191A058DFC46E0E524ED4DA78881DD1E95CD600E508D53F'
+    'holiday-data\README.md' = '4063F6FAFCD2579B5866B8D8CA612D2E7082BFA881DA89FD78B07A55E91C5416'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
 }
 
@@ -258,8 +258,8 @@ function Assert-CountdownUniqueReleasePaths {
     }
 }
 
-# #218 节假日年度覆盖守卫：纯函数，注入北京时间与随包覆盖年份集合。北京时间进入 12 月后，
-# 随包数据必须已覆盖下一年；否则验证明确失败并指明缺失年份与补数据流程。
+# #218/#261 节假日年度覆盖守卫：纯函数，注入北京时间与随包覆盖年份集合。北京时间进入 12 月后，
+# 随包数据必须已覆盖下一年；打包、真实安装和部署入口显式执行断言，module 导入与定义校验不执行。
 function Test-CountdownHolidayYearCoverage {
     [CmdletBinding()]
     param(
@@ -517,8 +517,6 @@ function Assert-CountdownReleaseContractDefinition {
         }
     }
 
-    # #218 年度覆盖守卫：北京时间进入 12 月后随包数据必须已覆盖下一年。
-    Assert-CountdownHolidayYearCoverage
 }
 
 function Resolve-CountdownReleasePackagePath {
@@ -575,4 +573,4 @@ function Assert-CountdownReleasePackage {
 }
 
 Assert-CountdownReleaseContractDefinition
-Export-ModuleMember -Function Get-CountdownReleaseContract, Assert-CountdownReleasePackage, Test-CountdownHolidayYearCoverage
+Export-ModuleMember -Function Get-CountdownReleaseContract, Assert-CountdownReleasePackage, Test-CountdownHolidayYearCoverage, Assert-CountdownHolidayYearCoverage

@@ -349,3 +349,31 @@ NoteStatusLabelsPresent, NotesGroupedByDay, PersistenceRoundTrip,
 RenderedFloatingNoteIds, RenderedManagerNoteIds, SettingsWereMigrated, SortedNames,
 SortedNoteTexts, TagPersistenceRoundTrip
 ```
+
+## 2026-11-11 #264 Ui 退役前分段去向
+
+本节是 Ui 阶段退役前的正式清点记录；上方行号和执行点编号仍是 2026-09-14 的调查快照。本票只迁移覆盖，不删除 `Countdown.Ui.Tests.ps1`、Ui 阶段或旧 PowerShell WPF 宿主。分段以 `Write-TestSegmentTiming -Name` 为准，共 9 段：旧宿主专属 4 段，C# 已有等价覆盖 1 段，C# 无覆盖而迁入现役 CSharp 4 段。
+
+| Ui 分段 | 分类 | 去向与理由 |
+| --- | --- | --- |
+| `Setup` | 旧宿主专属 | 唯一产品断言是旧 `Countdown.Core.psm1` 的 `ConvertTo-CountdownDateText`；其余为旧 Ui 夹具准备。随 #265/#266 的 Ui/旧宿主删除，不迁入 CSharp。 |
+| `FatalDiagnosticExercise` | C# 无覆盖 | adapter 经 `-ExerciseFatalDiagnostic` 启动 C# EXE。非默认 `InstanceActivationOnly/Matrix` 虽有相似 case，默认 CSharp 不执行，且没有 Ui 的 `exceptionType` 与 fatal 进程 `ProcessStarted` 断言。迁入默认 CSharp 的同名预期失败分段，复用 adapter、隔离设置与诊断日志 seam；不产出整份验证报告。 |
+| `ApplicationHostValidation` | 旧宿主专属 | 直接导入 `Countdown.App.psm1` 并调用 `Start-CountdownApplication`，验证的是旧宿主自身 `ValidateOnly` 合同。随旧宿主删除。 |
+| `RuntimeIntegration` | 旧宿主专属 | 复制并直接运行旧 `Countdown.App.psm1`，检查旧宿主 window-ready、日历引导和自退。随旧宿主删除。 |
+| `PopupUiaGate` | 旧宿主专属 | UIA 操作由旧 `Countdown.App.psm1` 渲染的窗口。随旧宿主删除。 |
+| `ListValidation` | C# 无覆盖 | U2 的 populated fixture、多行动态 Tab 路径和输入相关字段没有现役等价执行点。fixture 与缺口迁入既有 `AdapterValidationRun`，断言复用同一次 `$adapterValidation`。已有重复覆盖不另开运行，逐项见下表。 |
+| `TagInteractionExercise` | C# 无覆盖 | U4 是全套件唯一 `ExerciseTagInteractions` 执行点。既有 `NoteExercise` 增加同一 exercise 开关，全部报告与落盘断言复用 `$noteExercise` 和 `$noteExerciseSettings`，不新增报告运行。 |
+| `PersistenceFailureExercise` | C# 无覆盖 | U5 是全套件唯一“tmp 未阻塞必须拒绝”路径。紧接既有 `PersistenceFailureFixture` 的阻塞路径复用同一隔离设置，新增的只是非零退出且无报告的预期失败进程；保留设置哈希不变断言。 |
+| `LegacyMigrationExercise` | C# 已有等价覆盖 | 默认 CSharp `FixtureRoundTrip` 调用 `MinminCountdown.Verification.exe verify`；`VerificationSuite.RunAll` 对 `SettingsFixtures.VersionThree` 执行 `VerifySchemaMigration`，覆盖迁移标志、canonical v10、倒计时、Minute/月薪/上下班偏好和空便签。`CliApplication.RunRoundTrip` 及 CSharp `FixtureRoundTrip` 另覆盖来源字节不变、显式输出 canonical v10 和稳定往返；adapter 参数映射由 `AdapterValidationRun` 覆盖。因此不新增一份 v3 整份报告。 |
+
+### ListValidation 逐项归属
+
+- 迁入既有 `$adapterValidation` 的输入/落盘断言：`LoadedCountdowns`、`SortedNames`、`PersistenceRoundTrip`、`LoadedTags`、`TagPersistenceRoundTrip`、`LoadedNotes`、`ActiveNoteCount`、`CompletedNoteCount`、`NotePersistenceRoundTrip`、`NoteActionsBoundByTag`、`NoteStatusLabelsPresent`、`HasNoteDateControls`、`NoteDatesRendered`、`NotesGroupedByDay`、`SortedNoteTexts`、`RenderedManagerNoteIds`、`RenderedFloatingNoteIds`、`NoteDateDefaultsTrackBeijingDay`、`NoteDateChoicesSurviveBeijingDayChange`、`CompletedNotesCollapsed`、`SettingsWereMigrated`、`CardActionsBoundByTag`、`FloatingCountdownCount`、`FloatingCountdownTexts`、`FloatingIncomeText`、`FloatingEmptyStateTextIsolationBehavior`。
+- 动态 `CountdownTabPath` / `NotesTabPath` 改为 populated fixture 的真实多行 `ForwardFocusedTargets` / `BackwardFocusedTargets`，继续断言正反向严格对称与焦点可见；现役单行断言由本次迁移扩展，不新增执行点。
+- 设置哈希不变已由 `AdapterValidationRun` 对同一 `$themeExercisePath` 的前后 SHA-256 断言覆盖。
+- 既有 CSharp 直接等价断言：`NoteStatusSegmentSwitch`（`AdapterAssertions`）与 `FloatingNoteSearch` 五个子字段（同段悬浮搜索断言组）。
+- 由 C# 验证事实及现役 `$adapterValidation.Valid` 等价覆盖：`NoteDateTimelineVisuals`、`NoteDisclosureAccessibility`、`NoteDisclosureThemeTokens`、`ManagerNoteRowsFollowSortOrder`、`FloatingNotesKeepExistingSortOrder`、`NoteDateSectionsCanCollapse`、`NoteDateSectionsAreIndependent`、`NoteDateSectionStateSurvivesRefresh`、`NoteStatusSegmentsSwitchExclusively`、`FloatingIncomeHiddenWithoutSalary`、`FloatingIncomeRestoredWithSalary`。这些字段在 `ValidationReport.Create` 以 `Must(...)` 登记，`Seal` 为假时拒绝有效报告。
+
+### 运行与断言边界
+
+CSharp 的完整 validate-only 报告运行数保持 4 次：Auto + populated List、Night、阻塞 tmp 的 PersistenceFailure、NoteAdd + TagInteractions。FatalDiagnostic 与未阻塞 tmp 都是预期失败且不产出报告。原 Auto 报告上的 `CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches` 移挂到仍使用原单活动倒计时夹具的 Night 报告：populated 夹具含已到期记录，继续用 `Expired` 制造空态会正确失败，不能靠删除或放宽这些既有断言转绿。本票没有新增对源码文本的断言；迁入断言只读 C# 宿主报告、真实诊断日志、退出码和隔离设置落盘结果。

@@ -240,8 +240,37 @@ function Get-SuiteScreenshotCaptureUtc {
         [Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime()
 }
 
-# 当前运行也占一个保留名额；只按截图目录的 UTC 时间戳删除早于第 30 次运行起点的目录。
-# run.json / summary.json 与无法解析时间的目录永不进入删除集合，部署引用因此不因截图清理失效。
+function ConvertTo-SuiteManagedRecycleResult {
+    param([object[]] $Output, [int] $ExitCode, [string] $TargetPath)
+    $text = @($Output | ForEach-Object { "$_" }) -join [Environment]::NewLine
+    try { $json = $text | ConvertFrom-Json -DateKind String }
+    catch { throw [IO.IOException]::new("受管回收输出不是 JSON（exit=$ExitCode）：$text") }
+    if ($ExitCode -ne 0) { throw [IO.IOException]::new("受管回收拒绝 ${TargetPath}：$text") }
+    $json
+}
+
+function Invoke-SuiteManagedRecycle {
+    param([Parameter(Mandatory)] [string] $TargetPath)
+    $recycle = 'D:/Codex/.codex/scripts/Invoke-ManagedRecycle.ps1'
+    if (-not [IO.File]::Exists($recycle)) { throw "受管回收入口不存在：$recycle" }
+    $output = @(& $recycle -Mode Check -TargetPath $TargetPath 2>&1)
+    $checked = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
+    if ($checked.status -ne 'checked') { throw "受管回收 Check 未通过：$TargetPath" }
+    $output = @(& $recycle -Mode Plan -TargetPath $TargetPath `
+        -Purpose '工单 #267：套件运行结束只保留最近 30 次运行截图' `
+        -Authorization '用户要求“低影响套件启动器在运行结束时只保留最近 30 次运行的截图”' 2>&1)
+    $planned = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
+    if ($planned.status -ne 'planned') { throw "受管回收 Plan 未通过：$TargetPath" }
+    $output = @(& $recycle -Mode Apply -PlanPath ([string] $planned.planPath) `
+        -ApprovedPlanSha256 ([string] $planned.planSha256) -ConfirmRecycle 2>&1)
+    $applied = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
+    if ($applied.status -ne 'recycled' -or $applied.targetStillExists) {
+        throw "受管回收 Apply 未完成：$TargetPath"
+    }
+}
+
+# 当前运行也占一个保留名额；只按截图目录的 UTC 时间戳回收早于第 30 次运行起点的目录。
+# run.json / summary.json 与无法解析时间的目录永不进入回收集合，部署引用因此不因截图清理失效。
 function Invoke-SuiteScreenshotRetention {
     param([Parameter(Mandatory)] [object] $Run)
     $captureRoot = Join-Path (Split-Path -Parent $Run.LogDirectory) 'ui-captures'
@@ -263,7 +292,7 @@ function Invoke-SuiteScreenshotRetention {
             if (([IO.File]::GetAttributes($capture) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                 throw [IO.IOException]::new("截图清理拒绝重解析点目录：$capture")
             }
-            [IO.Directory]::Delete($capture, $true)
+            Invoke-SuiteManagedRecycle -TargetPath $capture
             $deletedCount++
         }
     }

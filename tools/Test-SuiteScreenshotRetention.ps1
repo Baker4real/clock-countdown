@@ -107,6 +107,7 @@ try {
 
     $result = Invoke-ScreenshotRetentionProbe -LogRoot $retention.LogRoot
     Assert-ScreenshotRetention ($result.Status -eq 'Completed' -and $result.ExitCode -eq 0 -and $result.Stages[0].Status -eq 'Completed') '超过 30 次运行时阶段结果仍应完成'
+    Assert-ScreenshotRetention ($result.ScreenshotRetention.Status -eq 'Completed' -and $result.ScreenshotRetention.DeletedDirectoryCount -eq 2) '最早普通截图与 tray-menu 截图均应经受管回收完成'
     Assert-ScreenshotRetention (-not [IO.Directory]::Exists($retention.Captures[0])) '第 31 次运行结束后应删除最早一次截图'
     Assert-ScreenshotRetention (-not [IO.Directory]::Exists($oldTrayCapture)) '最早一次运行的 tray-menu 截图也应受同一留存边界约束'
     Assert-ScreenshotRetention (@($retention.Captures[1..29] | Where-Object { -not [IO.Directory]::Exists($_) }).Count -eq 0) '最近 30 次运行内的历史截图必须保留'

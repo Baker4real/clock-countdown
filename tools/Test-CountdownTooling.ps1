@@ -262,7 +262,7 @@ Add-ToolingCheck -Name 'isolation:crash-dialog-watchdog' -Passed ($LASTEXITCODE 
 $suiteRunStateWrite = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteRunStateWrite.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:state-write-retry' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteRunStateWrite -join ' ') -replace '\s+', ' ')
 
-# 套件截图留存只在临时日志树删除测试夹具：30 次边界、摘要/部署引用保护、当前运行和清理失败隔离。
+# 套件截图留存只在临时日志树经受管回收移除测试夹具：30 次边界、摘要/部署引用保护、当前运行和清理失败隔离。
 $suiteScreenshotRetention = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-SuiteScreenshotRetention.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'suite-run:screenshot-retention' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteScreenshotRetention -join ' ') -replace '\s+', ' ')
 

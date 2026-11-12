@@ -377,6 +377,22 @@ function Assert-Equal {
     }
 }
 
+function Assert-ExactReportFields {
+    param(
+        [Parameter(Mandatory)] $Report,
+        [Parameter(Mandatory)] [string[]] $ExpectedNames,
+        [Parameter(Mandatory)] [string] $Name
+    )
+
+    $actualNames = @($Report.PSObject.Properties.Name | Sort-Object)
+    $expectedNames = @($ExpectedNames | Sort-Object)
+    Assert-Equal $expectedNames.Count $actualNames.Count "$Name：字段数"
+    Assert-Equal $true ([string]::Equals(
+        $expectedNames -join ',',
+        $actualNames -join ',',
+        [System.StringComparison]::Ordinal)) "$Name：精确字段集"
+}
+
 Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
 $script:allowForegroundDesktopSuite =
     ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix) -and
@@ -4305,6 +4321,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '-File',
         $adapter,
         '-ValidateOnly',
+        '-NightMigrationOnly',
         '-SettingsFile',
         $nightMigrationPath,
         '-DiagnosticLogPath',
@@ -4317,6 +4334,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $nightMigrationReport = [string] $nightMigrationResult.Stdout | ConvertFrom-Json
     Assert-Equal 'Day' ([string]::Join(',', @($nightMigrationReport.FloatingThemeBoundaryModes))) '旧 Night 主题设置启动一律按日间解释：悬浮窗'
     Assert-Equal '#FFFDF0E4' ([string] $nightMigrationReport.MainThemeBackgroundColors) '旧 Night 主题设置启动一律按日间解释：主窗口背景'
+    Assert-ExactReportFields -Report $nightMigrationReport -ExpectedNames @(
+        'FloatingThemeBoundaryModes',
+        'MainThemeBackgroundColors'
+    ) -Name 'NightMigration 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NightMigration'
 
     [System.IO.File]::Copy($roundTripPath, $persistenceExercisePath)
@@ -4384,6 +4405,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $failedValidationCompletedIndex -gt $failedResourcesReleasedIndex
     ) 'validate-only 受控持久化失败演练在报告完成前释放真实 WPF 资源'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '受控持久化失败演练不改变隔离设置'
+    Assert-ExactReportFields -Report $persistenceFailureValidation -ExpectedNames @(
+        'CountdownSaveFailurePreservesState',
+        'CountdownSaveFailureRetainsDraft',
+        'PreferenceSaveFailurePreservesState',
+        'PreferenceSaveFailureRetainsDraft',
+        'PersistenceFailureTempPathRemainsDirectory',
+        'TagSaveFailurePreservesState',
+        'TagSaveFailureRetainsDraft',
+        'TagSaveFailureRetainsFilter',
+        'Valid'
+    ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
     Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
@@ -5563,6 +5595,24 @@ function Get-RejectionMessage([string[]] $Arguments) {
                 $rules[0].intervalMinutes -eq 30 -and
                 $null -ne $rules[0].firstDueUtc
             }).Count -eq 1) '主窗口点击添加真实写入带日期与 30 分钟固定间隔规则的未完成便签（#129 自 U3 迁移）'
+    Assert-ExactReportFields -Report $noteExercise -ExpectedNames @(
+        'DatedNoteEditRejectsClearedDate',
+        'FloatingCrossDayReminderViaClick',
+        'FloatingNoReminderViaClick',
+        'FloatingOnceReminderViaClick',
+        'FloatingRepeatingReminderViaClick',
+        'MainNoReminderViaClick',
+        'MainOnceReminderViaClick',
+        'MainRepeatingReminderViaClick',
+        'NewNoteRejectsEmptyDate',
+        'NoteAddViaClick',
+        'NoteDateRequired',
+        'NoteDateValidationMessagesDistinguished',
+        'NoteDateViaPicker',
+        'NoteReminderViaSelector',
+        'NoteStatusViaCheckbox',
+        'UndatedNoteEditSavesWithoutDate'
+    ) -Name 'NoteExercise 只输出被断言字段'
     Write-TestSegmentTiming -Name 'NoteExercise'
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null

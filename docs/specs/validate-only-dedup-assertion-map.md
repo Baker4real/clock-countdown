@@ -349,3 +349,115 @@ NoteStatusLabelsPresent, NotesGroupedByDay, PersistenceRoundTrip,
 RenderedFloatingNoteIds, RenderedManagerNoteIds, SettingsWereMigrated, SortedNames,
 SortedNoteTexts, TagPersistenceRoundTrip
 ```
+
+## #271 四个 CSharp 夹具分段的字段与计时（2026-11-12）
+
+### 断言字段与报告范围
+
+字段按测试实际读取的报告顶层属性计数；嵌套门禁和测量值归入其顶层字段。基线为 `c40e838968465deba053714da1687d3cb0581fa6`。
+
+- `AdapterValidationRun`：保留整份报告。本段及后续 `AdapterAssertions` 显式消费下方 132 个顶层字段，另断言 `DeepModuleCount` / `DeepModuleInterfaces` 缺席；`Seal` 还校验报告内全部已声明验证事实。它是其余事实、canonical JSON 形状和参考基线的唯一完整运行，不能按本段末尾两个主题字段裁剪。
+- `NightMigration`：`FloatingThemeBoundaryModes`、`MainThemeBackgroundColors`（2 个）。改动后只运行主窗口与悬浮窗主题练习。
+- `PersistenceFailureFixture`：`Valid`、`CountdownSaveFailurePreservesState`、`PreferenceSaveFailurePreservesState`、`CountdownSaveFailureRetainsDraft`、`PreferenceSaveFailureRetainsDraft`、`TagSaveFailurePreservesState`、`TagSaveFailureRetainsDraft`、`TagSaveFailureRetainsFilter`、`PersistenceFailureTempPathRemainsDirectory`（9 个）。改动后只运行 `RunPersistenceFailures`；此 fixture 的 `Valid` 由其余 8 个结果计算，不表示完整 canonical 报告已另行运行。
+- `NoteExercise`：`NoteAddViaClick`、`NoteReminderViaSelector`、`FloatingCrossDayReminderViaClick`、`MainNoReminderViaClick`、`MainOnceReminderViaClick`、`MainRepeatingReminderViaClick`、`FloatingNoReminderViaClick`、`FloatingOnceReminderViaClick`、`FloatingRepeatingReminderViaClick`、`NoteDateRequired`、`NewNoteRejectsEmptyDate`、`UndatedNoteEditSavesWithoutDate`、`DatedNoteEditRejectsClearedDate`、`NoteDateValidationMessagesDistinguished`、`NoteDateViaPicker`、`NoteStatusViaCheckbox`（16 个）。改动后只运行便签添加、提醒模式及无日期/有日期编辑练习。
+
+原有字段断言、设置哈希、诊断事件顺序和磁盘结果断言均保留；新增检查只比较运行时 JSON 的精确字段名集合，没有新增源码文本断言。完整报告里的验证事实名称与含义未改。
+
+`AdapterValidationRun` 的 132 个显式顶层字段：
+
+```
+ActiveNotesSegmentSelectedByDefault, CalendarHeaderTextAvailableWidth,
+CalendarHeaderTextRequiredWidth, CalendarNextMonthAccessibleName,
+CalendarPreviousMonthAccessibleName, ComboBoxTextClick, ConfirmationDialog,
+CountdownEmptyKeyboardResetRestoresResults, CountdownEmptyPointerResetRestoresResults,
+CountdownEmptyStateContrastMeasurements, CountdownExpiryVisualsFlipTogether,
+CountdownIncrementalRefresh, CountdownIncrementalRefreshIdentityMatches,
+CountdownInputHeight, CountdownNameWidth, CountdownNoResultsResetWorks,
+CountdownPreferenceInputHeight, CountdownRemainingSamples,
+DatePickerOpenCalendarAccessibleName, DatePickerProductionMeasurements,
+DatePickerTextAvailableWidth, DatePickerTextRequiredWidth,
+DeferredReferenceBaselineFailures, DisplayPrecisionWidth, ExpandedDisplayPrecisionWidth,
+ExpandedMonthlySalaryWidth, ExpandedTargetDateWidth, ExpandedTargetHourWidth,
+ExpandedTargetMinuteWidth, ExpandedTargetSecondWidth, ExpandedWorkEndWidth,
+ExpandedWorkStartWidth, FloatingCountdownBottomMargin,
+FloatingCountdownButtonTextAvailableWidth, FloatingCountdownButtonTextRequiredWidth,
+FloatingDayRasterComponentAssetNames, FloatingLongNotesCaptures,
+FloatingLongNotesMeasurements, FloatingMascotPresentationModes, FloatingNoteSearch,
+FloatingNotesBottomMargin, FloatingNotesButtonTextAvailableWidth,
+FloatingNotesButtonTextRequiredWidth, FloatingPrimaryCountdownContrastMeasurements,
+FloatingPrimaryDeadlineMeasurements, FloatingQuickAddDayResourceChecks,
+FloatingQuickAddDayResourceDiagnostics, FloatingQuickAddLocalActiveColor,
+FloatingQuickAddLocalCanvasColor, FloatingQuickAddPaletteBindings,
+FloatingReferenceBaselineCaptures, FloatingReferenceBaselineDiagnostics,
+FloatingReferenceBaselineExecutableSha256, FloatingReferenceBaselineGates,
+FloatingReferenceBaselineManifestAvailable, FloatingReferenceBaselineManifestPath,
+FloatingReferenceBaselineNegativeFixtures, FloatingReferenceBaselineRequested,
+FloatingReferenceBaselineSourceAggregateSha256, FloatingReferenceBaselineValidated,
+FloatingReferenceContentOverlapCount, FloatingReferenceContentOverlapTargets,
+FloatingReferenceFreshnessGates, FloatingReferenceFreshnessNegativeFixtures,
+FloatingScrollBarCaptureNames, FloatingScrollBarDragOffsets,
+FloatingScrollBarStateMeasurements, FloatingScrollBarWheelOffsets,
+FloatingSecondaryRemainingSamples, FloatingThemeBoundaryModes,
+FloatingThemePanelColors, FloatingThemePlushGlowColors,
+FloatingTitleTextAvailableHeight, FloatingTitleTextAvailableWidth,
+FloatingTitleTextRequiredHeight, FloatingTitleTextRequiredWidth,
+KeyboardFocusBaselineFramesAffected, KeyboardFocusRingContrast, MainActionPalette,
+MainCharacterPanelDockCount, MainCountdownBlocksGeometryMatches, MainDaySingleBorder,
+MainDaySingleBorderGate, MainDaySingleBorderGateIsolationBehavior,
+MainDaySingleBorderNegativeFixtures, MainDynamicCountdownCardSampleCount,
+MainDynamicNoteCardSampleCount, MainEmptyStateGuidance, MainKeyboardBehavior,
+MainKeyboardNavigationGates, MainNoteCardReminderFontMeasurements,
+MainNoteCardReminderFontSizeDip, MainNoteCardReminderFontSizeMeetsContract,
+MainNoteCompletionInteractionBehavior, MainNoteCompletionMeasurements,
+MainReferenceBaselineCaptures, MainReferenceBaselineDiagnostics,
+MainReferenceBaselineExecutableSha256, MainReferenceBaselineGates,
+MainReferenceBaselineManifestAvailable, MainReferenceBaselineManifestPath,
+MainReferenceBaselineNegativeFixtures, MainReferenceBaselineRequested,
+MainReferenceBaselineSourceAggregateSha256, MainReferenceBaselineValidated,
+MainShortcutGates, MainStressCountdownTitleMeasurements, MainStressCountdownTitleVisuals,
+MainStructuralAnnouncementGates, MainStructuralAnnouncements,
+MainThemeBackgroundColors, MainThemeCharacterOpacities, MainThemeCharacterPanelColors,
+MonthlySalaryWidth, NoteEmptyStateContrastMeasurements, NoteReminderTimeOptionCounts,
+NoteStatusSegmentSwitch, ReminderCenterSourceLabelContrast, SecondaryWindowHeaderDrag,
+SecondaryWindowTypography, SystemDialogPrimaryButtonContrast, TargetDateWidth,
+TargetHourWidth, TargetMinuteWidth, TargetSecondWidth, TimeDropDowns, TimeOptionCounts,
+Valid, ValidationReportContractBehavior, ValidationReportModuleDeep, WorkEndWidth,
+WorkStartWidth
+```
+
+### 改动前实测
+
+官方入口：`tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,CSharp`。运行目录 `logs/suite-runs/20261112T094857988-bc44acfe-*`，Build 与 CSharp 退出码均为 0。
+
+| 阶段或分段 | 秒 |
+| --- | ---: |
+| CSharp（低影响套件阶段结果） | 828 |
+| AdapterValidationRun | 154.007 |
+| NightMigration | 154.799 |
+| PersistenceFailureFixture | 163.492 |
+| NoteExercise | 196.058 |
+
+四段合计 668.356 秒。改动前四次调用都进入同一个 `ValidationReport.Create` 并返回经 `Seal` 的完整报告；canonical 运行枚举完整顶层键，未改应用的字段数负控也在 `NightMigration`、`PersistenceFailureFixture` 与 `NoteExercise` 分别观察到 800 个字段（预期 2 / 9 / 16，测试按预期失败）。因此“四个分段各自完整生成报告”由调用流、基线计时和运行时字段计数共同确认，不再只是按耗时推断。
+
+### 当前基线的裁剪复验（尚未合入 #264）
+
+官方入口：`tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -WaitForLockSeconds 1800`。运行目录 `logs/suite-runs/20261112T152328616-2895bf6f-*`，CSharp 退出码 0。
+
+| 阶段或分段 | 改动前秒 | 当前秒 |
+| --- | ---: | ---: |
+| CSharp（低影响套件阶段结果） | 828 | 197 |
+| AdapterValidationRun | 154.007 | 130.971 |
+| NightMigration | 154.799 | 1.758 |
+| PersistenceFailureFixture | 163.492 | 0.807 |
+| NoteExercise | 196.058 | 2.687 |
+
+这次运行保留并通过完整 canonical 断言面；Night、Persistence、Note 分别只输出 2、9、16 个被断言字段。它不是最终集成证据：integration 纳入 #264 后还必须合并并复验 Night=6、Note=32 的同一提交。
+
+### 与 #264 的合并准备
+
+本节先记录尚未进入 `integration/prd-258` 的交互，不把待合并字段冒充为当前结果。正式合并后必须保留 #264 的 Ui 覆盖迁移及上方「2026-11-11 #264 Ui 退役前分段去向」全节，并按下列映射扩展本票 fixture：
+
+- Night 由 2 字段扩为 6 字段：增加 `CountdownNoResultsResetWorks`、`CountdownEmptyPointerResetRestoresResults`、`CountdownEmptyKeyboardResetRestoresResults`、`MainCountdownBlocksGeometryMatches`。前三个复用共享的 `ProbeCountdownEmptyResetBehavior`，只执行倒计时无结果的鼠标与键盘重置；最后一个复用 `AddCountdownReadabilityFixtureRecords` 和 `RunCountdownBlocksGeometryFixture`，只建立几何所需记录并测量分格，不运行整组 `ProbeUiPolishScenarios` / `ProbeCountdownReadabilityScenarios`。
+- Note 由 16 字段扩为 32 字段：增加 `TagInteractionsExecuted`、`TagCreationAndAssociation`、`TagAnyAllFilter`、`TagEditorSummaryIsCompact`、`TagSearchCreateAvoidsDefaultSubmit`、`TagUntaggedAndCountdownStatus`、`TagNoteStatusSearchAndCompletion`、`TagNoteDateFilterControls`、`TagNoteDateFilterBehavior`、`TagFloatingNoteInheritsTags`、`TagFloatingNoteDateViaPicker`、`TagFloatingNotePopupOnDemand`、`TagFloatingNoteCanOverrideTags`、`TagNoteEditingPersistsTags`、`TagNoteEditingPersistsDate`、`TagRenameAndDeleteDetachOnly`。这些结果只来自同次 fixture 内已有的 `ExerciseTagInteractions` / `RunTagInteractions`，不新增完整报告运行。
+
+上述子练习拆分先落在既有 `WindowValidationScenarios.cs`，不改视觉基线覆盖的产品窗口源码，不形成对 `ticket/258/264` 的额外 merge。

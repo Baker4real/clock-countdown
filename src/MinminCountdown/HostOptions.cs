@@ -12,7 +12,8 @@ internal sealed record HostOptions(
     string? SettingsFile,
     string? DiagnosticLogPath,
     InstanceActivationTestState? ActivationTestState,
-    InstanceActivationListenerBehavior ActivationListenerBehavior)
+    InstanceActivationListenerBehavior ActivationListenerBehavior,
+    bool NightMigrationOnly)
 {
     // 测试自退间隔只是测试参数：生产默认保持 30 秒，套件可传更短值压缩纯等待。
     internal const int DefaultExitAfterReadyForTestSeconds = 30;
@@ -33,6 +34,7 @@ internal sealed record HostOptions(
         string? diagnosticLogPath = null;
         InstanceActivationTestState? activationTestState = null;
         var activationListenerBehavior = InstanceActivationListenerBehavior.Normal;
+        var nightMigrationOnly = false;
 
         for (var index = 0; index < arguments.Count; index++)
         {
@@ -41,6 +43,9 @@ internal sealed record HostOptions(
             {
                 case "validateonly":
                     validateOnly = true;
+                    break;
+                case "nightmigrationonly":
+                    nightMigrationOnly = true;
                     break;
                 case "exercisenoteadd":
                     exerciseNoteAdd = true;
@@ -126,6 +131,12 @@ internal sealed record HostOptions(
                 "--exit-after-ready-seconds 只能与 --exit-after-ready-for-test 一起使用。");
         }
 
+        if (nightMigrationOnly &&
+            (!validateOnly || exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic))
+        {
+            throw new ArgumentException("--night-migration-only 只能单独与 --validate-only 一起使用。");
+        }
+
         if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
             !validateOnly)
         {
@@ -177,7 +188,8 @@ internal sealed record HostOptions(
             settingsFile,
             diagnosticLogPath,
             activationTestState,
-            activationListenerBehavior);
+            activationListenerBehavior,
+            nightMigrationOnly);
     }
 
     private static string NormalizeOption(string value)

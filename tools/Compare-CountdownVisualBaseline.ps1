@@ -8,12 +8,14 @@
 - sourceBinding.aggregateSha256 的前后值，以及新增、删除或哈希变化的绑定文件；
 - executable.sha256 的前后值；
 - 逐帧 PNG 是否逐字节一致、状态指纹是否一致，以及其余字段里有哪些变了；PNG 不同的帧再给出差异像素数、差异框与差异行。
--To 默认取现役版本（src/MinminCountdown/VisualReferenceBaseline.cs 的 Version）。只读，不写文件。
+-To 默认取现役版本（src/MinminCountdown/VisualReferenceBaseline.cs 的 Version）。旧版从 Git 提交读取，
+-FromCommit 默认 HEAD，因此重拍生成新版并移除上一版后仍能比对；回看更早历史时传入包含旧版的固定提交。
+新版从工作树读取。只读仓库，不写文件。
 
 .EXAMPLE
-pwsh -NoLogo -NoProfile -File ./tools/Compare-CountdownVisualBaseline.ps1 -From 2026-10-29-v65
+pwsh -NoLogo -NoProfile -File ./tools/Compare-CountdownVisualBaseline.ps1 -From 2026-10-29-v65 -FromCommit HEAD
 
-重拍后拿上一版对比现役版；-To 可显式指定另一版。
+重拍后拿上一版对比现役版；-To 可显式指定另一版，-FromCommit 可固定历史提交。
 #>
 [CmdletBinding()]
 param(
@@ -21,7 +23,9 @@ param(
     [ValidatePattern('^[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+$')]
     [string] $From,
     [ValidatePattern('^[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+$')]
-    [string] $To
+    [string] $To,
+    [ValidateNotNullOrEmpty()]
+    [string] $FromCommit = 'HEAD'
 )
 
 Set-StrictMode -Version Latest
@@ -33,6 +37,53 @@ Import-Module (Join-Path $repoRoot 'Countdown.Validation.psm1') -Force
 $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
 if (-not $To) { $To = $visualBaseline.Version }
 
+function Read-GitBytes {
+    param([Parameter(Mandatory)] [string[]] $Arguments)
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new('git')
+    foreach ($argument in @('-C', $repoRoot) + $Arguments) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $output = [System.IO.MemoryStream]::new()
+    try {
+        $process.StandardOutput.BaseStream.CopyTo($output)
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) {
+            throw "git $($Arguments -join ' ') 失败：$($stderrTask.Result.Trim())"
+        }
+        return ,$output.ToArray()
+    }
+    finally {
+        $output.Dispose()
+        $process.Dispose()
+    }
+}
+
+$fromCommitBytes = Read-GitBytes -Arguments @('rev-parse', '--verify', '--end-of-options', "$FromCommit^{commit}")
+$resolvedFromCommit = [System.Text.Encoding]::UTF8.GetString($fromCommitBytes).Trim()
+if ($resolvedFromCommit -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "旧版提交解析结果无效：$resolvedFromCommit"
+}
+
+function Read-GitBaselineBlob {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    Read-GitBytes -Arguments @('show', "$resolvedFromCommit`:$Path", '--')
+}
+
+function Get-BytesSha256 {
+    param([Parameter(Mandatory)] [byte[]] $Bytes)
+
+    [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($Bytes))
+}
+
 function Read-BaselineManifest {
     param([Parameter(Mandatory)] [string] $SurfaceRoot, [Parameter(Mandatory)] [string] $Version)
 
@@ -43,6 +94,19 @@ function Read-BaselineManifest {
     Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -Depth 100
 }
 
+function Read-BaselineManifestFromCommit {
+    param([Parameter(Mandatory)] [string] $RelativeRoot, [Parameter(Mandatory)] [string] $Version)
+
+    $path = "$RelativeRoot/$Version/manifest.json"
+    $bytes = Read-GitBaselineBlob -Path $path
+    try {
+        [System.Text.UTF8Encoding]::new($false, $true).GetString($bytes) | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        throw "提交 $resolvedFromCommit 中的 manifest 不是有效 UTF-8 JSON：$path；$($_.Exception.Message)"
+    }
+}
+
 # PSCustomObject 的 -eq 比的是引用，嵌套字段一律序列化成 JSON 再比。
 function ConvertTo-ComparableJson {
     param([AllowNull()] $Value)
@@ -50,10 +114,12 @@ function ConvertTo-ComparableJson {
 }
 
 function Get-PixelDifference {
-    param([Parameter(Mandatory)] [string] $OldPath, [Parameter(Mandatory)] [string] $NewPath)
+    param([Parameter(Mandatory)] [byte[]] $OldBytes, [Parameter(Mandatory)] [byte[]] $NewBytes)
 
-    $old = [System.Drawing.Bitmap]::FromFile($OldPath)
-    $new = [System.Drawing.Bitmap]::FromFile($NewPath)
+    $oldStream = [System.IO.MemoryStream]::new($OldBytes, $false)
+    $newStream = [System.IO.MemoryStream]::new($NewBytes, $false)
+    $old = [System.Drawing.Bitmap]::FromStream($oldStream)
+    $new = [System.Drawing.Bitmap]::FromStream($newStream)
     try {
         if ($old.Width -ne $new.Width -or $old.Height -ne $new.Height) {
             return "尺寸 $($old.Width)x$($old.Height) -> $($new.Width)x$($new.Height)"
@@ -114,19 +180,23 @@ function Get-PixelDifference {
     finally {
         $old.Dispose()
         $new.Dispose()
+        $oldStream.Dispose()
+        $newStream.Dispose()
     }
 }
 
 "$From -> $To"
+"旧版来源：$resolvedFromCommit；新版来源：工作树"
 foreach ($surface in @(
         [pscustomobject]@{ Name = '主窗'; Baseline = $visualBaseline.Main },
         [pscustomobject]@{ Name = '悬浮窗'; Baseline = $visualBaseline.Floating })) {
-    # 版本目录的上一级是窗口尺寸目录，两个版本都按它定位。
+    # 新版按当前窗口尺寸目录定位；旧版同一路径从固定 Git 提交读取，不要求旧目录仍在工作树。
     $surfaceRoot = Split-Path -Parent (Split-Path -Parent $surface.Baseline.ManifestPath)
-    $old = Read-BaselineManifest -SurfaceRoot $surfaceRoot -Version $From
+    $relativeSurfaceRoot = [System.IO.Path]::GetRelativePath($repoRoot, $surfaceRoot).Replace('\', '/')
+    $old = Read-BaselineManifestFromCommit -RelativeRoot $relativeSurfaceRoot -Version $From
     $new = Read-BaselineManifest -SurfaceRoot $surfaceRoot -Version $To
     ''
-    '[{0}] {1}' -f $surface.Name, [System.IO.Path]::GetRelativePath($repoRoot, $surfaceRoot).Replace('\', '/')
+    '[{0}] {1}' -f $surface.Name, $relativeSurfaceRoot
     '  源码绑定聚合 {0} -> {1}' -f $old.sourceBinding.aggregateSha256, $new.sourceBinding.aggregateSha256
 
     $oldFiles = @{}
@@ -154,9 +224,10 @@ foreach ($surface in @(
             continue
         }
         $previous = $oldCaptures[$capture.captureId]
-        $oldPng = Join-Path $repoRoot $previous.path
+        $oldPngBytes = Read-GitBaselineBlob -Path $previous.path
         $newPng = Join-Path $repoRoot $capture.path
-        $pngIdentical = (Get-FileHash -LiteralPath $oldPng -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $newPng -Algorithm SHA256).Hash
+        $newPngBytes = [System.IO.File]::ReadAllBytes($newPng)
+        $pngIdentical = (Get-BytesSha256 -Bytes $oldPngBytes) -eq (Get-BytesSha256 -Bytes $newPngBytes)
         if ($pngIdentical) { $pngSame++ }
         $fingerprintIdentical = (ConvertTo-ComparableJson $previous.stateFingerprint) -ceq (ConvertTo-ComparableJson $capture.stateFingerprint)
         if ($fingerprintIdentical) { $fingerprintSame++ }
@@ -169,7 +240,7 @@ foreach ($surface in @(
                     (ConvertTo-ComparableJson ($capture.PSObject.Properties[$_]?.Value))
                 })
         '  {0}：{1}；{2}{3}' -f $capture.captureId,
-            $(if ($pngIdentical) { 'PNG 逐字节一致' } else { 'PNG ' + (Get-PixelDifference -OldPath $oldPng -NewPath $newPng) }),
+            $(if ($pngIdentical) { 'PNG 逐字节一致' } else { 'PNG ' + (Get-PixelDifference -OldBytes $oldPngBytes -NewBytes $newPngBytes) }),
             $(if ($fingerprintIdentical) { '状态指纹一致' } else { '状态指纹不同' }),
             $(if ($changedFields.Count -gt 0) { "；其余字段变化：$($changedFields -join '、')" } else { '' })
     }

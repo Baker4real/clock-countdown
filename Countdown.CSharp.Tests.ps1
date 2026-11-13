@@ -163,207 +163,6 @@ function Invoke-CapturedNativeProcess {
     }
 }
 
-function Protect-CountdownDiagnosticText {
-    param(
-        [AllowNull()] [string] $Text,
-        [Parameter(Mandatory)] [hashtable] $PathReplacements
-    )
-
-    if ($null -eq $Text) {
-        return $null
-    }
-
-    $protected = $Text
-    foreach ($path in $PathReplacements.Keys) {
-        if (-not [string]::IsNullOrWhiteSpace([string] $path)) {
-            $protected = $protected.Replace(
-                [string] $path,
-                [string] $PathReplacements[$path],
-                [System.StringComparison]::OrdinalIgnoreCase)
-        }
-    }
-
-    return $protected
-}
-
-function Get-FalseValidationGateNames {
-    param([Parameter(Mandatory)] $Report)
-
-    $falseGateNames = [System.Collections.Generic.List[string]]::new()
-    foreach ($property in $Report.PSObject.Properties) {
-        if ($property.Value -is [bool] -and -not [bool] $property.Value) {
-            $falseGateNames.Add($property.Name)
-            continue
-        }
-
-        if ($property.Name -notmatch 'Gates$' -or $null -eq $property.Value) {
-            continue
-        }
-
-        foreach ($gate in $property.Value.PSObject.Properties) {
-            if ($gate.Value -is [bool] -and -not [bool] $gate.Value) {
-                $falseGateNames.Add("$($property.Name).$($gate.Name)")
-            }
-        }
-    }
-
-    return @($falseGateNames | Sort-Object -Unique)
-}
-
-function Write-AdapterFailureDiagnosticEvidence {
-    param(
-        [Parameter(Mandatory)] $AdapterResult,
-        [Parameter(Mandatory)] $DirectResult,
-        [Parameter(Mandatory)] [string] $DirectDiagnosticPath,
-        [Parameter(Mandatory)] [string] $RepositoryRoot,
-        [Parameter(Mandatory)] [string] $TestRoot,
-        [Parameter(Mandatory)] [System.Text.Encoding] $Encoding,
-        [Parameter(Mandatory)] [string] $ApplicationPath,
-        [Parameter(Mandatory)] [string] $FailureStage
-    )
-
-    $pathReplacements = @{
-        $RepositoryRoot = '<repo-root>'
-        $TestRoot = '<test-root>'
-    }
-    $directReport = $null
-    $parseErrors = [System.Collections.Generic.List[string]]::new()
-    if (-not [string]::IsNullOrWhiteSpace([string] $DirectResult.Stdout)) {
-        try {
-            $directReport = $DirectResult.Stdout | ConvertFrom-Json
-        }
-        catch {
-            $parseErrors.Add((Protect-CountdownDiagnosticText `
-                    -Text $_.Exception.Message `
-                    -PathReplacements $pathReplacements))
-        }
-    }
-
-    $fatal = $null
-    if (Test-Path -LiteralPath $DirectDiagnosticPath -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $DirectDiagnosticPath -Encoding UTF8) {
-            try {
-                $entry = $line | ConvertFrom-Json
-                if ($entry.event -eq 'FatalUnhandledException') {
-                    $fatal = [ordered]@{
-                        type = [string] $entry.exceptionType
-                        message = Protect-CountdownDiagnosticText `
-                            -Text ([string] $entry.exceptionMessage) `
-                            -PathReplacements $pathReplacements
-                    }
-                }
-            }
-            catch {
-                $parseErrors.Add((Protect-CountdownDiagnosticText `
-                        -Text $_.Exception.Message `
-                        -PathReplacements $pathReplacements))
-            }
-        }
-    }
-
-    $readReportProperty = {
-        param([string] $Name)
-        if ($null -eq $directReport) { return $null }
-        $property = $directReport.PSObject.Properties[$Name]
-        if ($null -eq $property) { return $null }
-        return $property.Value
-    }
-    $protectDiagnostics = {
-        param($Diagnostics)
-        return @($Diagnostics | ForEach-Object {
-                Protect-CountdownDiagnosticText `
-                    -Text ([string] $_) `
-                    -PathReplacements $pathReplacements
-            })
-    }
-
-    $summary = [ordered]@{
-        schemaVersion = 2
-        capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        failureStage = $FailureStage
-        retrySafe = ($AdapterResult.ExitCode -ne 0 -and $DirectResult.ExitCode -eq 0)
-        recommendedAction = if ($DirectResult.ExitCode -eq 0) { 'inspect-adapter-host' } else { 'inspect-native-process-and-WER' }
-        executable = [ordered]@{
-            path = Protect-CountdownDiagnosticText -Text $ApplicationPath -PathReplacements $pathReplacements
-            exists = Test-Path -LiteralPath $ApplicationPath -PathType Leaf
-            sha256 = if (Test-Path -LiteralPath $ApplicationPath -PathType Leaf) {
-                (Get-FileHash -LiteralPath $ApplicationPath -Algorithm SHA256).Hash
-            } else { $null }
-        }
-        adapter = [ordered]@{
-            exitCode = [int] $AdapterResult.ExitCode
-            stdoutEmpty = [string]::IsNullOrWhiteSpace([string] $AdapterResult.Stdout)
-            stderr = Protect-CountdownDiagnosticText `
-                -Text ([string] $AdapterResult.Stderr) `
-                -PathReplacements $pathReplacements
-        }
-        direct = [ordered]@{
-            exitCode = [int] $DirectResult.ExitCode
-            valid = & $readReportProperty 'Valid'
-            main = [ordered]@{
-                requested = & $readReportProperty 'MainReferenceBaselineRequested'
-                available = & $readReportProperty 'MainReferenceBaselineManifestAvailable'
-                validated = & $readReportProperty 'MainReferenceBaselineValidated'
-                captureCount = @(& $readReportProperty 'MainReferenceBaselineCaptures').Count
-                diagnostics = & $protectDiagnostics (& $readReportProperty 'MainReferenceBaselineDiagnostics')
-            }
-            floating = [ordered]@{
-                requested = & $readReportProperty 'FloatingReferenceBaselineRequested'
-                available = & $readReportProperty 'FloatingReferenceBaselineManifestAvailable'
-                validated = & $readReportProperty 'FloatingReferenceBaselineValidated'
-                captureCount = @(& $readReportProperty 'FloatingReferenceBaselineCaptures').Count
-                diagnostics = & $protectDiagnostics (& $readReportProperty 'FloatingReferenceBaselineDiagnostics')
-            }
-            falseGates = if ($null -eq $directReport) { @() } else { @(Get-FalseValidationGateNames -Report $directReport) }
-            fatalUnhandledException = $fatal
-            stderr = Protect-CountdownDiagnosticText `
-                -Text ([string] $DirectResult.Stderr) `
-                -PathReplacements $pathReplacements
-            parseErrors = @($parseErrors)
-        }
-    }
-
-    $summary.nativeFailureClassification = if ($DirectResult.ExitCode -in @(0, 1, 2)) {
-        'managed-validation-failure'
-    } elseif ($DirectResult.ExitCode -eq -1073740791 -or $DirectResult.ExitCode -eq 3221225786) {
-        'native-fail-fast'
-    } else {
-        'native-process-failure'
-    }
-    $summary.wer = [ordered]@{
-        applicationErrorEventObserved = $false
-        queryAttempted = $false
-    }
-    try {
-        $summary.wer.queryAttempted = $true
-        $exeName = [System.IO.Path]::GetFileName($ApplicationPath)
-        $summary.wer.applicationErrorEventObserved = $null -ne (Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = [DateTime]::Now.AddMinutes(-5) } -MaxEvents 50 -ErrorAction Stop | Where-Object { $_.Message -like "*$exeName*" } | Select-Object -First 1)
-    }
-    catch {
-        $summary.wer.queryError = Protect-CountdownDiagnosticText -Text $_.Exception.Message -PathReplacements $pathReplacements
-    }
-    $summary.dumps = @(
-        foreach ($candidate in @($DirectDiagnosticPath, "$DirectDiagnosticPath.dmp", [System.IO.Path]::ChangeExtension($DirectDiagnosticPath, '.dmp'))) {
-            [ordered]@{ path = Protect-CountdownDiagnosticText -Text $candidate -PathReplacements $pathReplacements; present = Test-Path -LiteralPath $candidate -PathType Leaf }
-        }
-    )
-
-    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-csharp-adapter-failures'
-    [void] [System.IO.Directory]::CreateDirectory($evidenceRoot)
-    $evidenceName = '{0}-{1}.json' -f `
-        [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
-        [guid]::NewGuid().ToString('N')
-    $evidencePath = Join-Path $evidenceRoot $evidenceName
-    [System.IO.File]::WriteAllText(
-        $evidencePath,
-        ($summary | ConvertTo-Json -Depth 8),
-        $Encoding)
-    return [pscustomobject]@{
-        Path = $evidencePath
-        Summary = $summary
-    }
-}
-
 function Assert-Equal {
     param(
         [AllowNull()] $Expected,
@@ -3872,8 +3671,6 @@ $mutexHolderErrorPath = Join-Path $testRoot 'mutex-holder.stderr.txt'
     $captureHelperProbePath = Join-Path $testRoot 'capture-helper-probe.ps1'
     $adapterDiagnosticPath = Join-Path $testRoot 'adapter-application.jsonl'
 $nightMigrationDiagnosticPath = Join-Path $testRoot 'night-migration-application.jsonl'
-$adapterFailureDirectDiagnosticPath = Join-Path $testRoot (
-    'adapter-failure-direct-' + [guid]::NewGuid().ToString('N') + '.jsonl')
 $failedValidationDiagnosticPath = Join-Path $testRoot 'failed-validation-application.jsonl'
 $noteExercisePath = Join-Path $testRoot 'note-exercise.settings.json'
 $noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jsonl'
@@ -4390,10 +4187,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
 
     Write-TestSegmentTiming -Name 'MutexInterop'
     # #129 去重：直连 exe 的 validate-only 烟测（原 C1 执行点）删除。其唯一断言（设置哈希不变）
-    # 由 adapter validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
+    # 由 validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
     $canonicalHash = (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash
 
-    # #264：复用现役 Auto adapter 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
+    # #264：复用现役 Auto validate-only 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
+    # #277：现役测试直接启动应用 EXE 并显式传入设置与诊断日志路径，不再经 adapter。
     $populatedState = ConvertFrom-CountdownSettingsObject -Settings (
         $populatedFixture | ConvertFrom-Json)
     [System.IO.File]::WriteAllText(
@@ -4402,45 +4200,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
-    $adapterResult = Invoke-CapturedNativeProcess -FilePath $pwsh -WorkingDirectory $PSScriptRoot -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-SettingsFile',
+    $adapterResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--settings-file',
         $themeExercisePath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $adapterDiagnosticPath
     )
     if ($adapterResult.ExitCode -ne 0) {
-        if ([string]::IsNullOrWhiteSpace([string] $adapterResult.Stdout)) {
-            $directFailureResult = Invoke-CapturedNativeProcess `
-                -FilePath $application `
-                -WorkingDirectory $PSScriptRoot `
-                -ArgumentList @(
-                    '--validate-only',
-                    '--settings-file',
-                    $themeExercisePath,
-                    '--diagnostic-log-path',
-                    $adapterFailureDirectDiagnosticPath
-                )
-            $diagnosticEvidence = Write-AdapterFailureDiagnosticEvidence `
-                -AdapterResult $adapterResult `
-                -DirectResult $directFailureResult `
-                -DirectDiagnosticPath $adapterFailureDirectDiagnosticPath `
-                -RepositoryRoot $PSScriptRoot `
-                -TestRoot $testRoot `
-                -Encoding $utf8NoBom `
-                -ApplicationPath $application `
-                -FailureStage 'AdapterValidateOnly'
-            Write-Host "Adapter failure diagnostic evidence: $($diagnosticEvidence.Path)"
-            Write-Host ($diagnosticEvidence.Summary | ConvertTo-Json -Depth 8 -Compress)
-        }
-
         $adapterFailureDetail = @(
-            "经 PowerShell adapter 运行 C# 应用 --validate-only 失败，退出码：$($adapterResult.ExitCode)。",
+            "直接运行 C# 应用 --validate-only 失败，退出码：$($adapterResult.ExitCode)。",
             "标准输出：$([Environment]::NewLine)$($adapterResult.Stdout)",
             "标准错误：$([Environment]::NewLine)$($adapterResult.Stderr)"
         ) -join [Environment]::NewLine
@@ -4521,17 +4290,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 'Night' ([string] (Get-Content -LiteralPath $nightMigrationPath -Raw -Encoding UTF8 | ConvertFrom-Json).themePreference) '主题迁移启动用例隔离设置写入旧 Night 偏好'
     $nightMigrationHash = (Get-FileHash -LiteralPath $nightMigrationPath -Algorithm SHA256).Hash
-    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $pwsh -WorkingDirectory $PSScriptRoot -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-NightMigrationOnly',
-        '-SettingsFile',
+    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--night-migration-only',
+        '--settings-file',
         $nightMigrationPath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $nightMigrationDiagnosticPath
     )
     if ($nightMigrationResult.ExitCode -ne 0) {
@@ -4562,17 +4326,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
     New-Item -ItemType Directory -Path $blockedTemporaryPath | Out-Null
     $blockedTemporaryPathRemainsDirectory = $false
     try {
-        $failedValidationResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-STA',
-            '-File',
-            $adapter,
-            '-ValidateOnly',
-            '-ExercisePersistenceFailures',
-            '-SettingsFile',
+        $failedValidationResult = Invoke-NativeCommandResult -FilePath $application -ArgumentList @(
+            '--validate-only',
+            '--exercise-persistence-failures',
+            '--settings-file',
             $persistenceExercisePath,
-            '-DiagnosticLogPath',
+            '--diagnostic-log-path',
             $failedValidationDiagnosticPath
         )
     }
@@ -4633,22 +4392,18 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'Valid'
     ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
-    $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-NonInteractive',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-ExercisePersistenceFailures',
-        '-SettingsFile',
-        $persistenceExercisePath
+    $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $application -ArgumentList @(
+        '--validate-only',
+        '--exercise-persistence-failures',
+        '--settings-file',
+        $persistenceExercisePath,
+        '--diagnostic-log-path',
+        (Join-Path $testRoot 'unblocked-persistence-application.jsonl')
     )
     Assert-Equal $true ($unblockedPersistenceResult.ExitCode -ne 0) '持久化失败演练拒绝未阻塞的临时路径'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '被拒绝的未阻塞临时路径演练不改设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
-    Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
+    Assert-Equal $true ([bool] $adapterValidation.Valid) 'validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
     Assert-Equal 'Number' $adapterValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
@@ -5791,26 +5546,20 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $floatingNotesSource -match 'PopupFocusLifecycle\.Attach\(popup, trigger') '悬浮便签…菜单接入与筛选/标签选择器同一套弹层焦点生命周期（#149 升级 #143 键盘路径源码契约；Esc 归还焦点行为由 PopupFocusLifecycle 与运行态探针共同钉住）'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
-    Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
+    Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'validate-only 保持设置不变'
     Write-TestSegmentTiming -Name 'AdapterAssertions'
 
     # #264：迁入 Ui FatalDiagnosticExercise；这是预期失败的诊断演练，不产出整份验证报告。
     $fatalDiagnosticPath = Join-Path $testRoot 'fatal-diagnostic-application.jsonl'
     $fatalDiagnosticResult = Invoke-CapturedNativeProcess `
-        -FilePath $pwsh `
+        -FilePath $application `
         -WorkingDirectory $PSScriptRoot `
         -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-STA',
-            '-File',
-            $adapter,
-            '-ValidateOnly',
-            '-ExerciseFatalDiagnostic',
-            '-SettingsFile',
+            '--validate-only',
+            '--exercise-fatal-diagnostic',
+            '--settings-file',
             $themeExercisePath,
-            '-DiagnosticLogPath',
+            '--diagnostic-log-path',
             $fatalDiagnosticPath
         )
     Assert-Equal $true ($fatalDiagnosticResult.ExitCode -ne 0) '致命诊断演练必须非零退出'
@@ -5834,18 +5583,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [DateTimeOffset]::UtcNow,
         'China Standard Time'
     ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-    $noteExerciseOutput = Invoke-CheckedNativeCommand -FilePath $pwsh -Operation '经真实 UI 点击验证跨天便签提醒' -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-ExerciseNoteAdd',
-        '-ExerciseTagInteractions',
-        '-SettingsFile',
+    $noteExerciseOutput = Invoke-CheckedNativeCommand -FilePath $application -Operation '经真实 UI 点击验证跨天便签提醒' -ArgumentList @(
+        '--validate-only',
+        '--exercise-note-add',
+        '--exercise-tag-interactions',
+        '--settings-file',
         $noteExercisePath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $noteExerciseDiagnosticPath
     )
     $noteExercise = $noteExerciseOutput | ConvertFrom-Json

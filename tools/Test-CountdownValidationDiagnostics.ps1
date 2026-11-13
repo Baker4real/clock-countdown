@@ -141,18 +141,42 @@ finally {
 
 # CI 上应用 validate-only 偶发以 0xC0000409 崩溃：诊断日志须在清理前复制进该阶段证据目录。
 # 夹具子进程都不开窗口，本进程临时设隔离 opt-out 让它们直接启动；假 dotnet 只让 Release 构建阶段放行。
+# 套件直接启动 <根>\app\MinminCountdown.exe：假应用编译成同名自包含 EXE，按套件给的诊断日志路径写面包屑与轮转文件后以崩溃码退出。
+# 夹具源目录与项目名取短名：失败时测试根留作现场，worktree 里 obj 下的路径不能超过受管回收的长度上限。
 $crashRoot = Join-Path $root 'application-crash'
 [void][IO.Directory]::CreateDirectory($crashRoot)
 $crashRecord = Join-Path $crashRoot 'diagnostic-path.txt'
 [IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Core.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
 [IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.CSharp.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'", $utf8)
-[IO.File]::WriteAllText((Join-Path $crashRoot '敏敏子倒计时.ps1'), @"
-param([switch] `$ValidateOnly, [string] `$SettingsFile, [string] `$DiagnosticLogPath)
-[IO.File]::WriteAllText('$crashRecord', `$DiagnosticLogPath)
-[IO.File]::WriteAllText(`$DiagnosticLogPath, '{"event":"crash-breadcrumb"}')
-[IO.File]::WriteAllText("`$DiagnosticLogPath.1", '{"event":"rotated"}')
-exit -1073740791
-"@, $utf8)
+$crashApplicationSource = Join-Path $crashRoot 'fake-app'
+[void][IO.Directory]::CreateDirectory($crashApplicationSource)
+[IO.File]::WriteAllText((Join-Path $crashApplicationSource 'FakeApp.csproj'), @'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>MinminCountdown</AssemblyName>
+  </PropertyGroup>
+</Project>
+'@, $utf8)
+[IO.File]::WriteAllText((Join-Path $crashApplicationSource 'Program.cs'), @'
+using System;
+using System.IO;
+
+var index = Array.IndexOf(args, "--diagnostic-log-path");
+if (index < 0 || index + 1 >= args.Length) { return 2; }
+var diagnosticLogPath = args[index + 1];
+File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "..", "diagnostic-path.txt"), diagnosticLogPath);
+File.WriteAllText(diagnosticLogPath, "{\"event\":\"crash-breadcrumb\"}");
+File.WriteAllText(diagnosticLogPath + ".1", "{\"event\":\"rotated\"}");
+return -1073740791;
+'@, $utf8)
+Import-Module (Join-Path $PSScriptRoot 'Countdown.BuildPreflight.psm1') -Force
+$sdkDotnet = (Resolve-CountdownBuildDotnet -RepositoryRoot $repo).Path
+$fakeApplicationBuild = & $sdkDotnet publish (Join-Path $crashApplicationSource 'FakeApp.csproj') -c Release -r win-x64 --self-contained true `
+    --disable-build-servers --nologo -o (Join-Path $crashRoot 'app') 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) { throw "假应用夹具编译失败，退出码：$LASTEXITCODE`n$fakeApplicationBuild" }
 $fakeDotnet = Join-Path $crashRoot 'dotnet.cmd'
 [IO.File]::WriteAllText($fakeDotnet, "@exit /b 0`r`n", $utf8)
 $priorIsolation = $env:MINMIN_SUITE_ALLOW_UNISOLATED
@@ -173,12 +197,21 @@ if (-not (Test-Path -LiteralPath $preserved -PathType Leaf) -or [IO.File]::ReadA
 if ((Test-Path -LiteralPath $diagnosticPath) -or (Test-Path -LiteralPath "$diagnosticPath.1")) { throw '复制进证据目录后仍须清理临时诊断日志。' }
 $assertions++
 # 断言全部通过才清理测试根；任一断言失败时脚本已中止，测试根留作现场。清理失败只记 stderr，stdout 仍是单个 JSON。
-try {
-    foreach ($file in Get-ChildItem -LiteralPath $root -File -Recurse -Force) { Remove-Item -LiteralPath $file.FullName -Force }
-    foreach ($directory in @(Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
-        Remove-Item -LiteralPath $directory.FullName -Force
+# 刚构建并执行过的假应用可能仍被杀毒扫描短暂占用（本机见过退出后即删报文件占用），清理在 30 秒内重试。
+$cleanupDeadline = [datetime]::UtcNow.AddSeconds(30)
+while ($true) {
+    try {
+        foreach ($file in Get-ChildItem -LiteralPath $root -File -Recurse -Force) { Remove-Item -LiteralPath $file.FullName -Force }
+        foreach ($directory in @(Get-ChildItem -LiteralPath $root -Directory -Recurse -Force | Sort-Object { $_.FullName.Length } -Descending)) {
+            Remove-Item -LiteralPath $directory.FullName -Force
+        }
+        Remove-Item -LiteralPath $root -Force
+        break
+    } catch {
+        if ([datetime]::UtcNow -lt $cleanupDeadline) { Start-Sleep -Milliseconds 500; continue }
+        [Console]::Error.WriteLine("断言已全部通过，但测试根未能清理：$root；$($_.Exception.Message)")
+        break
     }
-    Remove-Item -LiteralPath $root -Force
-} catch { [Console]::Error.WriteLine("断言已全部通过，但测试根未能清理：$root；$($_.Exception.Message)") }
+}
 $result =[pscustomobject]@{ Valid=$true; Passed=$assertions; Failed=0 }
 if ($Json) { $result | ConvertTo-Json -Compress } else { $result }

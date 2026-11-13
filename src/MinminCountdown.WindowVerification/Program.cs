@@ -8,7 +8,16 @@ namespace MinminCountdown.WindowVerification;
 
 internal static class Program
 {
+    internal const string ViewportFactName = "MainEmptyStatesFitListViewport";
+    internal const string GuidanceFactName = "MainEmptyStatesGuideToSingleAddEntry";
     internal const string OverflowFactName = "MainListOverflowScrollsAndReachesActions";
+
+    private const string ViewportFactMeaning =
+        "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
+        "在列表实际视口居中且滚进窗口后完整可见（#248）";
+    private const string GuidanceFactMeaning =
+        "首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，" +
+        "分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）";
     private const string OverflowFactMeaning =
         "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）";
 
@@ -16,7 +25,32 @@ internal static class Program
     private static int Main()
     {
         Console.OutputEncoding = new UTF8Encoding(false);
-        MainListOverflowProbe probe;
+        var facts = new Dictionary<string, bool>
+        {
+            [ViewportFactName] = false,
+            [GuidanceFactName] = false,
+            [OverflowFactName] = false
+        };
+        var failures = new List<string>();
+
+        void RunFact(string name, string meaning, Func<(bool Passed, string Explanation)> run)
+        {
+            try
+            {
+                var result = run();
+                facts[name] = result.Passed;
+                if (!result.Passed)
+                {
+                    failures.Add(result.Explanation);
+                }
+            }
+            catch (Exception exception)
+            {
+                facts[name] = false;
+                failures.Add($"{meaning}；{exception}");
+            }
+        }
+
         try
         {
             var app = new App();
@@ -30,23 +64,34 @@ internal static class Program
             app.Startup -= productionStartup;
             using var theme = new ApplicationTheme(app.Resources);
             theme.Apply();
-            probe = EmptyStateOverflowScenario.Run();
+
+            RunFact(ViewportFactName, ViewportFactMeaning, () =>
+            {
+                var probe = EmptyStateScenario.RunViewport();
+                return (probe.Passed, probe.Explain(ViewportFactMeaning));
+            });
+            RunFact(GuidanceFactName, GuidanceFactMeaning, () =>
+            {
+                var probe = EmptyStateScenario.RunGuidance();
+                return (probe.AllPassed, probe.Explain(GuidanceFactMeaning));
+            });
+            RunFact(OverflowFactName, OverflowFactMeaning, () =>
+            {
+                var probe = EmptyStateOverflowScenario.Run();
+                return (probe.AllPassed, probe.Explain(OverflowFactMeaning));
+            });
         }
         catch (Exception exception)
         {
-            probe = MainListOverflowProbe.Failure(exception.ToString());
+            failures.Add($"独立窗口验证宿主初始化失败：{exception}");
         }
 
-        var passed = probe.AllPassed;
-        Console.Out.Write(JsonSerializer.Serialize(new Dictionary<string, bool>
+        Console.Out.Write(JsonSerializer.Serialize(facts));
+        foreach (var failure in failures)
         {
-            [OverflowFactName] = passed
-        }));
-        if (!passed)
-        {
-            Console.Error.WriteLine(probe.Explain(OverflowFactMeaning));
+            Console.Error.WriteLine(failure);
         }
 
-        return passed ? 0 : 1;
+        return facts.Values.All(passed => passed) ? 0 : 1;
     }
 }

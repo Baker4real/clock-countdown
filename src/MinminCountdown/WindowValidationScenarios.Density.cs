@@ -17,11 +17,72 @@ public sealed partial class MainWindow
     private const string DensityProbeTagName = "密度探针";
     private const string DensityProbeSearch = "密度探针";
 
+    // #274：这些辅助成员仍服务本文件的 #251 密度场景；空态场景本身已迁出，不在此保留空态判定。
+    private void RequireEmptyDataForDensityProbe()
+    {
+        var settings = _desktopWorkspace.Snapshot.Settings;
+        if (settings.Countdowns.Count > 0 || settings.Notes.Count > 0)
+        {
+            throw new InvalidOperationException("密度探针要求从没有任何倒计时与便签的数据开始。");
+        }
+    }
+
+    private void ApplyDensityProbeChange(DesktopWorkspaceChange change)
+    {
+        var result = _desktopWorkspace.Apply(change);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException($"密度探针写入失败：{result.Error}");
+        }
+
+        WindowValidationInput.Pump(Dispatcher);
+    }
+
+    private void RestoreAfterDensityProbe(
+        WorkspaceKind originalWorkspace,
+        DesktopWorkspaceFilter originalFilter,
+        bool originalSegment,
+        IReadOnlyList<string> countdownIds,
+        IReadOnlyList<string> noteIds)
+    {
+        if (noteIds.Count > 0)
+        {
+            _desktopWorkspace.Apply(new DeleteNotesChange(noteIds.ToArray()));
+        }
+
+        foreach (var id in countdownIds)
+        {
+            _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+        }
+
+        if (originalFilter.HasConstraints)
+        {
+            _desktopWorkspace.ApplyFilter(originalFilter);
+        }
+        else
+        {
+            ClearFilters();
+        }
+
+        SelectNotesSegment(originalSegment);
+        ShowWorkspace(originalWorkspace);
+        SettleDensityProbeLayout();
+    }
+
+    private void SettleDensityProbeLayout()
+    {
+        for (var pass = 0; pass < 2; pass++)
+        {
+            WindowValidationInput.Pump(Dispatcher);
+            UpdateLayout();
+        }
+    }
+
     internal MainWorkbenchDensityMeasurement MeasureWorkbenchDensityForValidation(
         string label,
         Action<string>? revealed = null)
     {
-        RequireEmptyDataForEmptyStateProbe();
+        RequireEmptyDataForDensityProbe();
         var originalWorkspace = _workspace;
         var originalFilter = _desktopWorkspace.Snapshot.Filter;
         var originalSegment = _completedSegmentSelected;
@@ -42,7 +103,7 @@ public sealed partial class MainWindow
                 var name = index == 1
                     ? "密度探针三十字名称用来确认长标题仍单行完整显示不被裁切"
                     : string.Create(CultureInfo.InvariantCulture, $"密度探针倒计时 {index:00}");
-                ApplyEmptyStateProbeChange(new SaveCountdownChange(
+                ApplyDensityProbeChange(new SaveCountdownChange(
                     null,
                     name,
                     _desktopWorkspace.Snapshot.UtcNow.AddDays(index),
@@ -57,7 +118,7 @@ public sealed partial class MainWindow
                 var text = index is 2 or 7
                     ? $"{DensityProbeSearch}长正文 {number}：" + string.Concat(Enumerable.Repeat("确认长便签在列表里自然换行、动作仍可达。", 3))
                     : $"{DensityProbeSearch}便签 {number}";
-                ApplyEmptyStateProbeChange(new SaveNoteChange(
+                ApplyDensityProbeChange(new SaveNoteChange(
                     null,
                     text,
                     _desktopWorkspace.Snapshot.BeijingNow.Date.AddDays(index % 3),
@@ -70,9 +131,9 @@ public sealed partial class MainWindow
             // —— 倒计时页：收起新增区，量编辑卡留白、到列表的间距、列表首屏视口与完整可见行数。
             ShowWorkspace(WorkspaceKind.Countdowns);
             SetCountdownEditorExpanded(false);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             CountdownListRegion.ScrollToTop();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var countdownEditor = DensityProbeBounds(CountdownEditorSurface, MainLayoutSurface);
             var countdownContent = DensityProbeContentBounds(CountdownEditorCard, MainLayoutSurface);
             var countdownList = DensityProbeBounds(CountdownListRegion, MainLayoutSurface);
@@ -81,19 +142,19 @@ public sealed partial class MainWindow
             var countdownScrollable = CountdownListRegion.ScrollableHeight;
             Reveal($"{label}-countdowns", CountdownListRegion);
             CountdownListRegion.ScrollToBottom();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var countdownEditorStays = DensityProbeSameBounds(
                 countdownEditor,
                 DensityProbeBounds(CountdownEditorSurface, MainLayoutSurface));
             CountdownListRegion.ScrollToTop();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
 
             // —— 便签页：量编辑卡留白、区块间距、列表卡到状态栏的间距与首屏能给行用的视口。
             ShowWorkspace(WorkspaceKind.Notes);
             SelectNotesSegment(false);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             NotesListRegion.ScrollToTop();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var noteEditor = DensityProbeBounds(NoteEditorSurface, MainLayoutSurface);
             var noteContent = DensityProbeContentBounds(NoteEditorFields, MainLayoutSurface);
             var notesCard = DensityProbeBounds(NotesListSurface, MainLayoutSurface);
@@ -108,35 +169,35 @@ public sealed partial class MainWindow
             Reveal($"{label}-notes", NotesListCard);
             var header = DensityProbeBounds(NotesStatusHeader, MainLayoutSurface);
             NotesListRegion.ScrollToBottom();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var headerStays = DensityProbeSameBounds(header, DensityProbeBounds(NotesStatusHeader, MainLayoutSurface)) &&
                 NotesListRegion.VerticalOffset > 0.5;
             CheckNotesContext("滚到底");
             NotesListRegion.ScrollToBottom();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             Reveal($"{label}-notes-scrolled", NotesListCard);
 
             // —— 搜索：命中全部探针便签，列表仍出行，分段与搜索固定可见。
             NotesListRegion.ScrollToTop();
             NoteSearch.Text = DensityProbeSearch;
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var searchShowsRows = DensityProbeFullyVisible(
                 _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
                 NotesListRegion) > 0;
             CheckNotesContext("搜索");
             Reveal($"{label}-notes-search", NotesListCard);
             NoteSearch.Text = string.Empty;
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
 
             // —— 标签筛选：只剩一半便签，分段与搜索固定可见。
             _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = new[] { probeTag } });
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var filterShowsRows = DensityProbeFullyVisible(
                 _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
                 NotesListRegion) > 0;
             CheckNotesContext("标签筛选");
             ClearFilters();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
 
             // —— 多选：两张便签被选中后批量操作条出现在搜索与列表之间，分段、搜索、操作条与列表互不重叠。
             var selectable = VisibleNoteSelectionRows();
@@ -147,13 +208,13 @@ public sealed partial class MainWindow
 
             SelectNoteRow(selectable[0], ModifierKeys.None);
             SelectNoteRow(selectable[1], ModifierKeys.Control);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             var batchVisible = NoteBatchActions.IsVisible;
             CheckNotesContext("多选");
             var batchViewport = NotesListRegion.ViewportHeight;
             Reveal($"{label}-notes-selected", NotesListCard);
             OnClearSelectedNotes(this, new RoutedEventArgs());
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
 
             return new MainWorkbenchDensityMeasurement(
                 label,
@@ -184,7 +245,7 @@ public sealed partial class MainWindow
         {
             NoteSearch.Text = string.Empty;
             OnClearSelectedNotes(this, new RoutedEventArgs());
-            RestoreAfterEmptyStateProbe(originalWorkspace, originalFilter, originalSegment, countdownIds, noteIds);
+            RestoreAfterDensityProbe(originalWorkspace, originalFilter, originalSegment, countdownIds, noteIds);
             if (tagId is not null)
             {
                 _desktopWorkspace.Apply(new DeleteTagChange(tagId));
@@ -192,7 +253,7 @@ public sealed partial class MainWindow
 
             MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
             MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
         }
 
         // 实拍：先把要看的区块滚进管理窗口可视区（窄窗口靠窗口级滚动兜底），拍完复原外层滚动偏移。
@@ -204,11 +265,11 @@ public sealed partial class MainWindow
             }
 
             subject.BringIntoView();
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
             revealed(state);
             MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
             MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
         }
 
         // 列表卡顶部的上下文控件：完整落在列表卡里、不落进滚动视口、两两不重叠；滚进管理窗口可视区后完整可见；
@@ -291,7 +352,7 @@ public sealed partial class MainWindow
                      })
             {
                 element.BringIntoView();
-                SettleEmptyStateProbeLayout();
+                SettleDensityProbeLayout();
                 var inWindow = DensityProbeBounds(element, MainWindowScrollHost);
                 if (!DensityProbeInside(inWindow, window))
                 {
@@ -301,7 +362,7 @@ public sealed partial class MainWindow
 
             MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
             MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
-            SettleEmptyStateProbeLayout();
+            SettleDensityProbeLayout();
         }
     }
 

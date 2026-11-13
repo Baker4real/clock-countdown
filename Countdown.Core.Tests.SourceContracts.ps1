@@ -26,11 +26,31 @@ Assert-Equal $true `
     'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
 Assert-Equal $true ($installerSource -match 'if \(-not \$DeferCommit\) \{\r?\n(?:\s*#[^\r\n]*\r?\n)?\s*Import-Module \(Join-Path \$staging ''Countdown\.Validation\.psm1''\) -Force\r?\n\s*\$validationSuite = Invoke-CountdownValidationSuite') 'Installer loads the validation module and runs the validation suite only outside the office deferred commit'
 Assert-Equal 1 ([regex]::Matches($installerSource, 'Countdown\.Validation\.psm1').Count) 'Installer references the validation module only inside the local-install branch'
-Assert-Equal 2 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'Both self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
+Assert-Equal 3 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'All three self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
+$windowVerificationPublishStart = $buildSource.IndexOf('& $dotnet publish $windowVerificationProject -c Release -r win-x64 --self-contained true')
+$windowVerificationPublishEnd = if ($windowVerificationPublishStart -ge 0) {
+    $buildSource.IndexOf('if ($LASTEXITCODE -ne 0)', $windowVerificationPublishStart)
+}
+else {
+    -1
+}
+$windowVerificationPublishSource = if ($windowVerificationPublishEnd -gt $windowVerificationPublishStart) {
+    $buildSource.Substring(
+        $windowVerificationPublishStart,
+        $windowVerificationPublishEnd - $windowVerificationPublishStart)
+}
+else {
+    ''
+}
+Assert-Equal $true (
+    $buildSource.Contains('src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj') -and
+    $windowVerificationPublishSource.Contains('-p:PublishSingleFile=true') -and
+    $windowVerificationPublishSource.Contains('-p:IncludeSourceRevisionInInformationalVersion=false')) `
+    'Window verification project publish keeps its exact project path, win-x64 self-contained command and reproducible Git revision exclusion together'
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$project 'bin'") -and $buildPreflightSource.Contains("Join-Path `$project 'obj'")) 'Shared build path contract includes managed bin and obj directories for each project'
 Assert-Equal $true $buildSource.Contains('$buildPaths = Get-CountdownBuildPaths -RepositoryRoot $PSScriptRoot') 'Clean build derives candidates from the shared build path contract'
 Assert-Equal $true $buildSource.Contains('$managedCleanCandidates = @($buildPaths.CleanCandidates)') 'Clean build passes the shared candidate list to the managed cleanup gate'
-Assert-Equal $true ($buildPreflightSource.Contains("'MinminCountdown.Core'") -and $buildPreflightSource.Contains("'MinminCountdown'") -and $buildPreflightSource.Contains("'MinminCountdown.Verification'")) 'Shared build path contract covers all three C# projects'
+Assert-Equal $true ($buildPreflightSource.Contains("'MinminCountdown.Core'") -and $buildPreflightSource.Contains("'MinminCountdown'") -and $buildPreflightSource.Contains("'MinminCountdown.Verification'") -and $buildPreflightSource.Contains("'MinminCountdown.WindowVerification'")) 'Shared build path contract covers all four C# projects'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($repositoryRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build rejects absolute removal targets outside the repository root'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCleanPaths') 'Clean build validates every absolute removal target against its exact allowlist'
 Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\agents\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'

@@ -330,7 +330,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 每页的添加入口只有表单里的实心主行动（「＋ 添加倒计时」/「＋ 添加」），空态里没有写着「添加」的第二个按钮。首次空态的填写引导「填写倒计时名称」/「填写便签内容」用 `MainEmptyStateGuideButton`：基于 `MainSecondaryButton`，常态无底无边、只留文字，悬停底色与常驻焦点环沿用共享按钮模板；点击只把焦点交给表单的名称/正文输入框，不重置编辑器、不清已填的草稿、不新增记录。可访问名与可见文字相同。
 - 空态在列表实际视口里居中，不写死位置。便签列表内容是 `Auto/Auto/*` 三行 Grid：未完成行、已完成行各占一行，空态占最后的 `*` 行（#251 起状态分段移到视口上方的列表工具条，内容上边距 13 → 8；空态区上边距 8 → 0 与之相抵，空态上下各留 8 DIP）。ScrollViewer 以无限高度测量时 `*` 行按内容取高，排布时分到视口剩余高度，所以空态不靠最小高度补偿，也就没有虚假滚动范围，并在整个列表视口里水平、垂直居中。倒计时空态同样居中于整个列表视口；列表内容的 `MinHeight` 与 `UpdateCountdownListHeight` 的最小列表高度同源，最小尺寸下也不溢出。
 - 真实溢出照常滚动：内容超过视口时保留滚动条，滚轮、拖动 thumb、键盘 PageDown 与滚到底都可用，末行和每一行的操作都能滚进视口完整可见。
-- 验证：`MainEmptyStatesFitListViewport` 在首选 864×1000、工作区缩小（864×802 / 864×664）、最小 720×560 与真实 WM_DPICHANGED 五个隔离窗口里各量 6 种空态的可滚范围、滚动条、居中和滚进窗口后的完整可见；DPI 档同时覆盖文字放大（经典 WPF 按窗口 DPI 光栅化文字，见 #134）。`MainEmptyStatesGuideToSingleAddEntry` 守文案、动作、轻量引导与唯一添加入口，`MainListOverflowScrollsAndReachesActions` 守真实溢出。源码树模式下首选与最小尺寸的空态实拍写进本次运行证据目录 `logs\ui-captures\<时间戳>-empty-states\`，只供核对、不进门禁。
+- 验证：`MainEmptyStatesFitListViewport` 在首选 864×1000、工作区缩小（864×802 / 864×664）、最小 720×560 与真实 WM_DPICHANGED 五个隔离窗口里各量 6 种空态的可滚范围、滚动条、居中和滚进窗口后的完整可见；DPI 档同时覆盖文字放大（经典 WPF 按窗口 DPI 光栅化文字，见 #134）。`MainEmptyStatesGuideToSingleAddEntry` 守文案、动作、轻量引导与唯一添加入口，`MainListOverflowScrollsAndReachesActions` 守真实溢出。这三条同名验证事实自 #274 起全部由独立 `MinminCountdown.WindowVerification` runner 产出，产品 `--validate-only` 不再重复运行或输出。源码树模式下首选与最小尺寸的空态实拍由同一 runner 写进本次运行证据目录 `logs\ui-captures\<时间戳>-empty-states\`，只供核对、不进门禁。
 
 ### 工作台密度与列表工具条（#251）
 

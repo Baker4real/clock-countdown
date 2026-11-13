@@ -145,7 +145,6 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\ValidationExercises.DualWindowFixture.cs',
     'src\MinminCountdown\ValidationExercises.ConfirmationAndUndo.cs',
     'src\MinminCountdown\ValidationExercises.Density.cs',
-    'src\MinminCountdown\ValidationExercises.EmptyStates.cs',
     'src\MinminCountdown\ValidationExercises.LayoutProbes.cs',
     'src\MinminCountdown\ValidationExercises.MainWindow.cs',
     'src\MinminCountdown\ValidationExercises.Narrator.cs',
@@ -173,7 +172,6 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\VisualReferenceBaseline.cs',
     'src\MinminCountdown\WindowValidationInput.cs',
     'src\MinminCountdown\WindowValidationScenarios.Density.cs',
-    'src\MinminCountdown\WindowValidationScenarios.EmptyStates.cs',
     'src\MinminCountdown\WindowValidationScenarios.cs',
     'src\MinminCountdown\WindowWorkAreaGeometry.cs'
 )
@@ -210,7 +208,9 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
     'src\MinminCountdown.WindowVerification\Program.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
-    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs'
+    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs'
 )
 
 function Assert-CountdownReleaseRelativePath {

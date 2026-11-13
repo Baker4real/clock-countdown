@@ -440,9 +440,6 @@ internal static partial class ValidationReport
             ValidationExercises.RunWindowPositionResetBehavior();
         var mainWindowWorkAreaFit =
             ValidationExercises.RunMainWindowWorkAreaFitBehavior();
-        var mainEmptyStateViewport =
-            ValidationExercises.RunMainEmptyStateViewportBehavior(CreateEmptyStateEvidenceWriter());
-        var mainEmptyStateGuidance = ValidationExercises.RunMainEmptyStateGuidanceBehavior();
         var mainWorkbenchDensity =
             ValidationExercises.RunMainWorkbenchDensityBehavior(CreateWorkbenchDensityEvidenceWriter());
         var floatingScrollContextHint =
@@ -1846,16 +1843,6 @@ internal static partial class ValidationReport
                 mainWindowWorkAreaFit,
                 "管理窗口装进 1032/826/688 DIP 注入工作区：首选尺寸收缩、顶端控件与状态栏可达、倒计时三行滚动可见、720×560 滚动不裁切、隐藏再显保留用户几何、越界与工作区变化夹回（#211）"),
             ["CountdownListFirstBehavior"] = Must(countdownListFirst, "倒计时默认折叠新增，首选尺寸至少三行，窗口增高显示更多完整行（#221）"),
-            ["MainEmptyStatesFitListViewport"] = Must(
-                mainEmptyStateViewport.Passed,
-                mainEmptyStateViewport.Explain(
-                    "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
-                    "在列表实际视口居中且滚进窗口后完整可见（#248）")),
-            ["MainEmptyStatesGuideToSingleAddEntry"] = Must(
-                mainEmptyStateGuidance.AllPassed,
-                mainEmptyStateGuidance.Explain(
-                    "首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，" +
-                    "分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）")),
             ["MainWorkbenchDensityReclaimed"] = Must(
                 mainWorkbenchDensity.Passed,
                 mainWorkbenchDensity.Explain(

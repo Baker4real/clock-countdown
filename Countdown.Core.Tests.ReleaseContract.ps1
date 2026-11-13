@@ -34,7 +34,7 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 102 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure including icon, manifest and content assets'
+Assert-Equal 100 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure after #274 removes the two product empty-state verification files'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
@@ -42,15 +42,23 @@ foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymen
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($equivalenceBuildInput) "#272 equivalence source is not statically pinned: $equivalenceBuildInput"
 }
 Assert-Equal $true ('src\MinminCountdown\MainWindowEmptyStateProbe.cs' -in @($releaseContract.SourceBuildFiles)) '#273 product closure contains only the narrow empty-state probe adapter'
+foreach ($migratedProductInput in @(
+    'src\MinminCountdown\ValidationExercises.EmptyStates.cs',
+    'src\MinminCountdown\WindowValidationScenarios.EmptyStates.cs')) {
+    Assert-Equal $false ($migratedProductInput -in @($releaseContract.SourceBuildFiles)) "#274 migrated empty-state verification leaves the product closure: $migratedProductInput"
+    Assert-Equal $false ($migratedProductInput -in @($releaseContract.BuildInputFiles)) "#274 migrated product file leaves deploy build identity: $migratedProductInput"
+}
 foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
     'src\MinminCountdown.WindowVerification\Program.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
-    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273 build identity contains the window verification input: $windowVerificationInput"
-    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273 window verification stays outside the product closure: $windowVerificationInput"
-    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273 window verification stays out of the office package: $windowVerificationInput"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273 window verification source is not statically pinned: $windowVerificationInput"
+    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274 build identity contains the window verification input: $windowVerificationInput"
+    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
+    Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
 }
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.BuildInputFiles)) 'Deploy checks the PowerShell build preflight helper by commit identity'

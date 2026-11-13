@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Interop;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -8,15 +9,25 @@ namespace MinminCountdown;
 // WM_DPICHANGED 五档；测量在窗口的场景 partial（WindowValidationScenarios.Density）里，判定在测量记录上。
 internal static partial class ValidationExercises
 {
+    // #274：五档隔离宿主仍服务 #251 密度区域；空态测量与判定已全部迁往窗口验证项目。
+    private static readonly DensityWindowCase[] DensityWindowCases =
+    [
+        new("864x1000", new Rect(0, 0, 1920, 1032), 1, null, false, true, new Size(864, 1000)),
+        new("864x802-125", new Rect(0, 0, 1536, 826), 1.25, null, false, false, new Size(864, 802)),
+        new("864x664-150", new Rect(0, 0, 1280, 688), 1.5, null, false, false, new Size(864, 664)),
+        new("720x560", new Rect(0, 0, 1920, 1032), 1, new Size(720, 560), false, true, new Size(720, 560)),
+        new("dpi", new Rect(0, 0, 1920, 1032), 1, null, true, false, new Size(864, 1000))
+    ];
+
     public static MainWorkbenchDensityProbe RunMainWorkbenchDensityBehavior(
         Action<MainWindow, string>? captureEvidence = null)
     {
         var failures = new List<string>();
         var details = new List<string>();
         var measured = 0;
-        foreach (var windowCase in EmptyStateWindowCases)
+        foreach (var windowCase in DensityWindowCases)
         {
-            WithEmptyMainWindow(windowCase, (main, injection) =>
+            WithDensityMainWindow(windowCase, (main, injection) =>
             {
                 var label = windowCase.Label;
                 if (windowCase.RaiseDpi)
@@ -42,7 +53,7 @@ internal static partial class ValidationExercises
             });
         }
 
-        return new MainWorkbenchDensityProbe(measured, EmptyStateWindowCases.Length, failures, details);
+        return new MainWorkbenchDensityProbe(measured, DensityWindowCases.Length, failures, details);
     }
 
     // GeometryPreflight 入口：失败时把实测写进异常消息。
@@ -52,6 +63,79 @@ internal static partial class ValidationExercises
         Must(probe.Passed, probe.Explain("#251：管理窗口密度回收与状态/操作上下文"));
         return true;
     }
+
+    // #274：原空态文件里的共享宿主留在唯一仍消费它的密度区域，保持窗口尺寸与 DPI 行为不变。
+    private static void WithDensityMainWindow(
+        DensityWindowCase windowCase,
+        Action<MainWindow, DpiChangeInjection?> probe)
+    {
+        var settingsPath = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-density-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var previousDpiContext = windowCase.RaiseDpi
+            ? MonitorGeometryValidation.EnterPerMonitorV2ThreadDpiContextForValidation()
+            : IntPtr.Zero;
+        MainWindow? main = null;
+        try
+        {
+            var clock = new AdvancingValidationClock(new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero));
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+            using var calendar = new HolidayCalendar(AppContext.BaseDirectory);
+            using var monitor = MonitorWorkAreaResolver.OverrideForValidation(
+                new MonitorWorkArea(windowCase.WorkArea, windowCase.Dpi, windowCase.Dpi));
+            main = new MainWindow(
+                workspace,
+                calendar,
+                new DiagnosticLogger(diagnosticPath),
+                AppContext.BaseDirectory);
+            PrepareOffscreenValidationWindow(main);
+            using var tracking = NativeWorkAreaProbe.OverrideTrackingCapacity(main, new Size(3840, 2160));
+            main.Show();
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            if (windowCase.UserSize is { } userSize)
+            {
+                // 与 #211 相同，经 WM_ENTERSIZEMOVE→几何变化→WM_EXITSIZEMOVE 标记为用户调整的尺寸。
+                var handle = new WindowInteropHelper(main).Handle;
+                NativeWorkAreaProbe.SendMessage(handle, NativeWorkAreaProbe.WmEnterSizeMove, IntPtr.Zero, IntPtr.Zero);
+                main.Width = userSize.Width;
+                main.Height = userSize.Height;
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+                NativeWorkAreaProbe.SendMessage(handle, NativeWorkAreaProbe.WmExitSizeMove, IntPtr.Zero, IntPtr.Zero);
+                WindowValidationInput.Pump(main.Dispatcher);
+                main.UpdateLayout();
+            }
+
+            var injection = windowCase.RaiseDpi && previousDpiContext != IntPtr.Zero
+                ? MonitorGeometryValidation.InjectDpiChangeForValidation(main, 1.5)
+                : null;
+            WindowValidationInput.Pump(main.Dispatcher);
+            main.UpdateLayout();
+            probe(main, injection);
+        }
+        finally
+        {
+            if (main is not null)
+            {
+                main.Close();
+                WindowValidationInput.Pump(main.Dispatcher);
+            }
+            MonitorGeometryValidation.RestoreThreadDpiContextForValidation(previousDpiContext);
+            DeleteSettingsFiles(settingsPath);
+            DeleteFileIfPresent(diagnosticPath);
+        }
+    }
+
+    private sealed record DensityWindowCase(
+        string Label,
+        Rect WorkArea,
+        double Dpi,
+        Size? UserSize,
+        bool RaiseDpi,
+        bool Capture,
+        Size ExpectedWindow);
 
     // #251：悬浮窗滚动上下文提示。空便签列表（不可滚动）、七张长便签的顶部/首部空白/中段/尾部空白/底部，滚轮、
     // thumb 与键盘 PageDown/PageUp 改变偏移后的提示，搜索展开、快速新增展开与「…」菜单打开时的提示，以及十二条倒计时

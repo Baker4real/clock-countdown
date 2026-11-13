@@ -4044,18 +4044,27 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273：独立窗口验证项目产出这条空态事实；非零退出或事实为假都让 CSharp 阶段失败。
+    # #273/#274：独立窗口验证项目是这三条空态事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    $windowVerificationFacts = [ordered]@{
+        MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
+        MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
+        MainListOverflowScrollsAndReachesActions = '两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）'
+    }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
         -WorkingDirectory $PSScriptRoot `
         -ArgumentList @('--')
     $windowVerification = $windowVerificationResult.Stdout | ConvertFrom-Json
-    Assert-Equal $true ([bool] $windowVerification.MainListOverflowScrollsAndReachesActions) `
-        "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）；$($windowVerificationResult.Stderr)"
+    Assert-ExactReportFields `
+        -Report $windowVerification `
+        -ExpectedNames @($windowVerificationFacts.Keys) `
+        -Name '窗口验证只产出三条空态事实，不生成整份产品报告'
+    foreach ($factName in $windowVerificationFacts.Keys) {
+        Assert-Equal $true ([bool] $windowVerification.$factName) `
+            "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"
+    }
     Assert-Equal 0 $windowVerificationResult.ExitCode `
         "独立窗口验证进程退出码；$($windowVerificationResult.Stderr)"
-    Assert-Equal 1 @($windowVerification.PSObject.Properties).Count `
-        '窗口验证曳光弹只产出 MainListOverflowScrollsAndReachesActions，不生成整份产品报告'
     Write-TestSegmentTiming -Name 'WindowVerification'
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
@@ -5004,8 +5013,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $mainWindowXamlSource -notmatch '<Viewbox[^>]+x:Name="MainScaleViewport"') '#211 主窗口首选 864×1000、最小 720×560，业务内容由窗口级滚动容器承载，不以 Viewbox 缩放'
     Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="NoteDateFilterLabel"') '筛选弹层便签日期带可见标签元素（#153 源码契约）'
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'x:Name="EmptyNotesMessage"(?s).*?TextWrapping="Wrap"') '便签空态文案允许换行（#153 源码契约）'
+    # #274：空态换行改由 WindowVerification 在真实 TextBlock.TextWrapping 上判定，不再匹配 XAML 源码文本。
     # #154 视觉铬源码契约：漏斗填充与摘要刷新不替换内容、无重复搜索镜、矢量窗铬几何与悬浮窗一致、
     # 胶囊全圆角、手写体装饰层落点、悬浮去投影、方角窗铬；运行态由 8 个新键探针共同钉住。
     $floatingXamlSource = Get-Content -LiteralPath (
@@ -5073,8 +5081,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $dwmWindowChromeSource -match 'MainWindowDwmRoundedCornersFallback' -and
         $dwmWindowChromeSource -match 'catch \(Exception') '主窗口 SourceInitialized 请求 Windows 11 DWM 原生圆角，失败只记录降级且不启用整窗透明（#200 源码契约）'
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
-    Assert-Equal $false ('MainListOverflowScrollsAndReachesActions' -in @($adapterValidationPropertyNames)) `
-        '#273 产品 validate-only 不再产出已迁入独立窗口项目的同名字段'
+    foreach ($factName in $windowVerificationFacts.Keys) {
+        Assert-Equal $false ($factName -in @($adapterValidationPropertyNames)) `
+            "#273/#274 产品 validate-only 不再产出已迁入独立窗口项目的同名字段：$factName"
+    }
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'

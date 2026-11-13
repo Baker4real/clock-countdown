@@ -34,7 +34,7 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 100 @($releaseContract.SourceBuildFiles).Count 'Release contract declares the complete source-build closure after #274 removes the two product empty-state verification files'
+Assert-Equal 100 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure separate from repository-only window verification sources'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
@@ -60,6 +60,11 @@ foreach ($windowVerificationInput in @(
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
 }
+$emptyStateSupportInput = 'src\MinminCountdown.WindowVerification\EmptyStateScenarioSupport.cs'
+Assert-Equal $false ($emptyStateSupportInput -in @($releaseContract.SourceBuildFiles)) '#258 repository-only window verification helper stays outside the product MSBuild closure'
+Assert-Equal $true ($emptyStateSupportInput -in @($releaseContract.BuildInputFiles)) '#258 deploy identity contains the exact shared empty-state scenario helper'
+Assert-Equal $false ($emptyStateSupportInput -in @($releaseContract.PackageFiles)) '#258 shared empty-state scenario helper stays out of the office package'
+Assert-Equal $false $releaseContract.IntegrityHashes.Contains($emptyStateSupportInput) '#258 shared empty-state scenario helper is not statically pinned'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.SourceBuildFiles)) 'PowerShell build preflight is not an MSBuild project input'
 Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.BuildInputFiles)) 'Deploy checks the PowerShell build preflight helper by commit identity'
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight helper stays out of the office package'
@@ -230,7 +235,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 108 @($releaseContract.BuildInputFiles).Count 'Build inputs are the source-build closure plus preflight, license and the repository-only window verification project read by the build script'
+Assert-Equal 109 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `

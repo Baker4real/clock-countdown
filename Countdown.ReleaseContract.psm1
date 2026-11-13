@@ -210,6 +210,7 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
+    'src\MinminCountdown.WindowVerification\EmptyStateScenarioSupport.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs'
 )
 

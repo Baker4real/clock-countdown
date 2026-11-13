@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -10,6 +9,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MinminCountdown.Core;
+using static MinminCountdown.WindowVerification.EmptyStateScenarioSupport;
 
 namespace MinminCountdown.WindowVerification;
 
@@ -108,8 +108,8 @@ internal static class EmptyStateScenario
         {
             Measure(WorkspaceKind.Countdowns, "first-use");
             Measure(WorkspaceKind.Notes, "first-use");
-            countdownIds.Add(SaveCountdown(workspace, "空态几何探针倒计时", 7));
-            noteIds.Add(SaveNote(workspace, "空态几何探针便签"));
+            countdownIds.Add(SaveCountdown(workspace, "空态几何探针倒计时", 7, Application.Current.Dispatcher));
+            noteIds.Add(SaveNote(workspace, "空态几何探针便签", Application.Current.Dispatcher));
             workspace.ApplyFilter(
                 DesktopWorkspaceFilter.Empty with { CountdownStatus = CountdownStatusFilter.Expired });
             Measure(WorkspaceKind.Countdowns, "filter-no-results");
@@ -258,8 +258,8 @@ internal static class EmptyStateScenario
                 () => workspace.Snapshot.Settings.Notes.Count);
             Required<TextBox>(main, "NoteText").Text = originalNoteText;
 
-            countdownIds.Add(SaveCountdown(workspace, "空态引导探针倒计时", 7));
-            noteIds.Add(SaveNote(workspace, "空态引导探针便签"));
+            countdownIds.Add(SaveCountdown(workspace, "空态引导探针倒计时", 7, Application.Current.Dispatcher));
+            noteIds.Add(SaveNote(workspace, "空态引导探针便签", Application.Current.Dispatcher));
 
             probe.ShowWorkspace(WorkspaceKind.Countdowns);
             Click(main, "CountdownExpiredFilter");
@@ -582,68 +582,8 @@ internal static class EmptyStateScenario
     private static void Click(MainWindow main, string name) =>
         Required<ButtonBase>(main, name).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
-    private static Rect Bounds(FrameworkElement element, Visual ancestor) =>
-        element.TransformToAncestor(ancestor).TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
-
-    private static void SettleLayout(MainWindow main)
-    {
-        for (var pass = 0; pass < 2; pass++)
-        {
-            WindowValidationInput.Pump(main.Dispatcher);
-            main.UpdateLayout();
-        }
-    }
-
     private static T Required<T>(MainWindow main, string name) where T : class =>
         main.FindName(name) as T ?? throw new InvalidOperationException($"空态窗口缺少控件 {name}（{typeof(T).Name}）");
-
-    private static IEnumerable<T> VisualDescendants<T>(DependencyObject root) where T : DependencyObject
-    {
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T match)
-            {
-                yield return match;
-            }
-            foreach (var descendant in VisualDescendants<T>(child))
-            {
-                yield return descendant;
-            }
-        }
-    }
-
-    private static void RequireEmptyData(DesktopWorkspace workspace)
-    {
-        var settings = workspace.Snapshot.Settings;
-        if (settings.Countdowns.Count > 0 || settings.Notes.Count > 0)
-        {
-            throw new InvalidOperationException("空态探针要求从没有任何倒计时与便签的数据开始。");
-        }
-    }
-
-    private static string SaveCountdown(DesktopWorkspace workspace, string name, int daysAhead)
-    {
-        ApplyChange(workspace, new SaveCountdownChange(
-            null,
-            name,
-            workspace.Snapshot.UtcNow.AddDays(daysAhead),
-            Array.Empty<string>(),
-            Array.Empty<ReminderRule>()));
-        return workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == name).Id;
-    }
-
-    private static string SaveNote(DesktopWorkspace workspace, string text)
-    {
-        ApplyChange(workspace, new SaveNoteChange(
-            null,
-            text,
-            workspace.Snapshot.BeijingNow.Date,
-            false,
-            Array.Empty<string>(),
-            Array.Empty<ReminderRule>()));
-        return workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
-    }
 
     private static void DeleteAllCountdowns(DesktopWorkspace workspace)
     {
@@ -662,28 +602,8 @@ internal static class EmptyStateScenario
         }
     }
 
-    private static void ApplyChange(DesktopWorkspace workspace, DesktopWorkspaceChange change)
-    {
-        var result = workspace.Apply(change);
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException($"空态探针写入失败：{result.Error}");
-        }
-
-        WindowValidationInput.Pump(Application.Current.Dispatcher);
-    }
-
-    private static void DeleteSettingsFiles(string settingsPath)
-    {
-        foreach (var suffix in new[] { "", ".tmp", ".backup1", ".backup2", ".backup2.tmp", ".backup2.rollback" })
-        {
-            var path = suffix.Length == 0 ? settingsPath : settingsPath + suffix;
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
+    private static void ApplyChange(DesktopWorkspace workspace, DesktopWorkspaceChange change) =>
+        EmptyStateScenarioSupport.Apply(workspace, change, Application.Current.Dispatcher);
 
     private sealed record EmptyStateWindowCase(
         string Label,
@@ -693,27 +613,4 @@ internal static class EmptyStateScenario
         bool RaiseDpi,
         bool Capture,
         Size ExpectedWindow);
-
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
-    {
-        public DateTimeOffset UtcNow { get; } = utcNow.ToUniversalTime();
-    }
-
-    private static class NativeWindowMessage
-    {
-        internal const int WmEnterSizeMove = 0x0231;
-        internal const int WmExitSizeMove = 0x0232;
-
-        [DllImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true)]
-        private static extern IntPtr SendMessage(
-            IntPtr hWnd,
-            int msg,
-            IntPtr wParam,
-            IntPtr lParam);
-
-        internal static void Send(IntPtr handle, int message, IntPtr wParam, IntPtr lParam)
-        {
-            _ = SendMessage(handle, message, wParam, lParam);
-        }
-    }
 }

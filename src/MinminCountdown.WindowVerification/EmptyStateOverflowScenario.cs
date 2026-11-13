@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -9,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using MinminCountdown.Core;
+using static MinminCountdown.WindowVerification.EmptyStateScenarioSupport;
 
 namespace MinminCountdown.WindowVerification;
 
@@ -51,18 +51,18 @@ internal static class EmptyStateOverflowScenario
             for (var index = 1; index <= 12; index++)
             {
                 countdownIds.Add(SaveCountdown(
-                    main,
                     workspace,
                     string.Create(CultureInfo.InvariantCulture, $"溢出探针倒计时 {index:00}"),
-                    index));
+                    index,
+                    main.Dispatcher));
             }
 
             for (var index = 1; index <= 14; index++)
             {
                 noteIds.Add(SaveNote(
-                    main,
                     workspace,
-                    string.Create(CultureInfo.InvariantCulture, $"溢出探针便签 {index:00}")));
+                    string.Create(CultureInfo.InvariantCulture, $"溢出探针便签 {index:00}"),
+                    main.Dispatcher));
             }
 
             main.Activate();
@@ -326,53 +326,6 @@ internal static class EmptyStateOverflowScenario
         }
     }
 
-    private static string SaveCountdown(
-        MainWindow main,
-        DesktopWorkspace workspace,
-        string name,
-        int daysAhead)
-    {
-        Apply(main, workspace, new SaveCountdownChange(
-            null,
-            name,
-            workspace.Snapshot.UtcNow.AddDays(daysAhead),
-            Array.Empty<string>(),
-            Array.Empty<ReminderRule>()));
-        return workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == name).Id;
-    }
-
-    private static string SaveNote(MainWindow main, DesktopWorkspace workspace, string text)
-    {
-        Apply(main, workspace, new SaveNoteChange(
-            null,
-            text,
-            workspace.Snapshot.BeijingNow.Date,
-            false,
-            Array.Empty<string>(),
-            Array.Empty<ReminderRule>()));
-        return workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id;
-    }
-
-    private static void Apply(MainWindow main, DesktopWorkspace workspace, DesktopWorkspaceChange change)
-    {
-        var result = workspace.Apply(change);
-        if (!result.Succeeded)
-        {
-            throw new InvalidOperationException($"空态探针写入失败：{result.Error}");
-        }
-
-        WindowValidationInput.Pump(main.Dispatcher);
-    }
-
-    private static void RequireEmptyData(DesktopWorkspace workspace)
-    {
-        var settings = workspace.Snapshot.Settings;
-        if (settings.Countdowns.Count > 0 || settings.Notes.Count > 0)
-        {
-            throw new InvalidOperationException("空态探针要求从没有任何倒计时与便签的数据开始。");
-        }
-    }
-
     private static void RequireRowCount(int actual, int expected, string sizeLabel, string kind)
     {
         if (actual != expected)
@@ -386,36 +339,6 @@ internal static class EmptyStateOverflowScenario
         main.FindName(name) as T ??
         throw new InvalidOperationException($"管理窗口缺少空态验证元素 {name}（{typeof(T).Name}）。");
 
-    private static void SettleLayout(MainWindow main)
-    {
-        for (var pass = 0; pass < 2; pass++)
-        {
-            WindowValidationInput.Pump(main.Dispatcher);
-            main.UpdateLayout();
-        }
-    }
-
-    private static Rect Bounds(FrameworkElement element, Visual ancestor) =>
-        element.TransformToAncestor(ancestor).TransformBounds(new Rect(new Point(0, 0), element.RenderSize));
-
-    private static IEnumerable<T> VisualDescendants<T>(DependencyObject root)
-        where T : DependencyObject
-    {
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T match)
-            {
-                yield return match;
-            }
-
-            foreach (var descendant in VisualDescendants<T>(child))
-            {
-                yield return descendant;
-            }
-        }
-    }
-
     private static void PrepareOffscreenWindow(Window window)
     {
         window.ShowInTaskbar = false;
@@ -424,18 +347,6 @@ internal static class EmptyStateOverflowScenario
         window.Left = -20_000;
         window.Top = -20_000;
         window.Opacity = 0;
-    }
-
-    private static void DeleteSettingsFiles(string settingsPath)
-    {
-        foreach (var suffix in new[]
-                 {
-                     "", ".tmp", ".backup1", ".backup2",
-                     ".backup2.tmp", ".backup2.rollback"
-                 })
-        {
-            DeleteFileIfPresent(settingsPath + suffix);
-        }
     }
 
     private static void DeleteFileIfPresent(string path)
@@ -451,27 +362,4 @@ internal static class EmptyStateOverflowScenario
         Rect WorkArea,
         double Dpi,
         Size? UserSize);
-
-    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
-    {
-        public DateTimeOffset UtcNow { get; } = utcNow.ToUniversalTime();
-    }
-
-    private static class NativeWindowMessage
-    {
-        internal const int WmEnterSizeMove = 0x0231;
-        internal const int WmExitSizeMove = 0x0232;
-
-        [DllImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true)]
-        private static extern IntPtr SendMessage(
-            IntPtr hWnd,
-            int msg,
-            IntPtr wParam,
-            IntPtr lParam);
-
-        internal static void Send(IntPtr handle, int message, IntPtr wParam, IntPtr lParam)
-        {
-            _ = SendMessage(handle, message, wParam, lParam);
-        }
-    }
 }

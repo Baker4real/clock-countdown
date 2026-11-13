@@ -269,21 +269,81 @@ function Invoke-SuiteManagedRecycle {
     }
 }
 
+function Get-SuiteScreenshotRetentionPlan {
+    param(
+        [Parameter(Mandatory)] [string] $CaptureRoot,
+        [Parameter(Mandatory)] [string[]] $TargetPath
+    )
+    $targets = @($TargetPath | Sort-Object | ForEach-Object {
+        $path = [IO.Path]::GetFullPath($_)
+        [long] $bytes = 0
+        foreach ($file in [IO.Directory]::EnumerateFiles($path, '*', [IO.SearchOption]::AllDirectories)) {
+            $bytes += [IO.FileInfo]::new($file).Length
+        }
+        [pscustomobject]@{ Path = $path; Bytes = $bytes }
+    })
+    [long] $totalBytes = 0
+    foreach ($target in $targets) { $totalBytes += $target.Bytes }
+    $content = [ordered]@{
+        SchemaVersion = 1
+        CaptureRoot = [IO.Path]::GetFullPath($CaptureRoot)
+        Targets = $targets
+        TotalBytes = $totalBytes
+    }
+    $json = ConvertTo-Json -InputObject $content -Depth 6 -Compress
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $hash = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($json)) }
+    finally { $sha.Dispose() }
+    $planSha256 = ([BitConverter]::ToString($hash) -replace '-', '').ToLowerInvariant()
+    [pscustomobject]@{
+        SchemaVersion = 1
+        CaptureRoot = $content.CaptureRoot
+        Targets = $targets
+        TotalBytes = $totalBytes
+        PlanSha256 = $planSha256
+    }
+}
+
+function Test-SuiteScreenshotRetentionConfirmation {
+    param(
+        [Parameter(Mandatory)] [object] $HistoricalRun,
+        [Parameter(Mandatory)] [string] $CaptureRoot
+    )
+    $retentionProperty = $HistoricalRun.PSObject.Properties['ScreenshotRetention']
+    if ($null -eq $retentionProperty -or $null -eq $retentionProperty.Value) { return $false }
+    $retention = $retentionProperty.Value
+    $confirmationProperty = $retention.PSObject.Properties['FirstRunConfirmation']
+    if ($retention.Status -ne 'Completed' -or $null -eq $confirmationProperty -or $null -eq $confirmationProperty.Value) { return $false }
+    $confirmation = $confirmationProperty.Value
+    $planProperty = $confirmation.PSObject.Properties['PlanSha256']
+    $rootProperty = $confirmation.PSObject.Properties['CaptureRoot']
+    return $null -ne $planProperty -and $null -ne $rootProperty -and
+        [string] $planProperty.Value -match '\A[0-9a-f]{64}\z' -and
+        [string]::Equals([IO.Path]::GetFullPath([string] $rootProperty.Value), [IO.Path]::GetFullPath($CaptureRoot), [StringComparison]::OrdinalIgnoreCase)
+}
+
 # 当前运行也占一个保留名额；只按截图目录的 UTC 时间戳回收早于第 30 次运行起点的目录。
 # run.json / summary.json 与无法解析时间的目录永不进入回收集合，部署引用因此不因截图清理失效。
 function Invoke-SuiteScreenshotRetention {
-    param([Parameter(Mandatory)] [object] $Run)
+    param(
+        [Parameter(Mandatory)] [object] $Run,
+        [scriptblock] $ConfirmScreenshotRetention
+    )
     $captureRoot = Join-Path (Split-Path -Parent $Run.LogDirectory) 'ui-captures'
     $runStarts = [Collections.Generic.List[DateTimeOffset]]::new()
+    $firstRunAlreadyConfirmed = $false
     $runStarts.Add([DateTimeOffset]::Parse([string] $Run.StartedAtUtc, [Globalization.CultureInfo]::InvariantCulture).ToUniversalTime())
     foreach ($runPath in [IO.Directory]::EnumerateFiles($Run.LogDirectory, '*-run.json')) {
         if ([string]::Equals([IO.Path]::GetFullPath($runPath), [IO.Path]::GetFullPath($Run.StatePath), [StringComparison]::OrdinalIgnoreCase)) { continue }
         $historicalRun = [IO.File]::ReadAllText($runPath, [Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json -DateKind String
         $runStarts.Add([DateTimeOffset]::Parse([string] $historicalRun.StartedAtUtc, [Globalization.CultureInfo]::InvariantCulture).ToUniversalTime())
+        if (-not $firstRunAlreadyConfirmed) {
+            $firstRunAlreadyConfirmed = Test-SuiteScreenshotRetentionConfirmation -HistoricalRun $historicalRun -CaptureRoot $captureRoot
+        }
     }
     $orderedStarts = @($runStarts | Sort-Object -Descending)
     $cutoff = if ($orderedStarts.Count -gt 30) { $orderedStarts[29] } else { $null }
-    $deletedCount = 0
+    $targets = [Collections.Generic.List[string]]::new()
     if ($null -ne $cutoff -and [IO.Directory]::Exists($captureRoot)) {
         foreach ($capture in [IO.Directory]::EnumerateDirectories($captureRoot)) {
             $name = [IO.Path]::GetFileName($capture)
@@ -292,14 +352,43 @@ function Invoke-SuiteScreenshotRetention {
             if (([IO.File]::GetAttributes($capture) -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                 throw [IO.IOException]::new("截图清理拒绝重解析点目录：$capture")
             }
-            Invoke-SuiteManagedRecycle -TargetPath $capture
-            $deletedCount++
+            $targets.Add($capture)
         }
     }
+    $confirmationPlan = $null
+    $requiresFirstRunConfirmation = $targets.Count -gt 0 -and -not $firstRunAlreadyConfirmed
+    if ($requiresFirstRunConfirmation) {
+        $confirmationPlan = Get-SuiteScreenshotRetentionPlan -CaptureRoot $captureRoot -TargetPath $targets.ToArray()
+        $approvedPlanSha256 = if ($null -ne $ConfirmScreenshotRetention) { & $ConfirmScreenshotRetention $confirmationPlan } else { $null }
+        if ($approvedPlanSha256 -isnot [string] -or $approvedPlanSha256 -cne $confirmationPlan.PlanSha256) {
+            return [pscustomobject]@{
+                Status = 'ConfirmationRequired'; RetainedRunLimit = 30
+                CutoffUtc = $cutoff.ToString('o'); DeletedDirectoryCount = 0; Error = $null
+                ConfirmationPlan = $confirmationPlan; FirstRunConfirmation = $null
+            }
+        }
+        $currentPlan = Get-SuiteScreenshotRetentionPlan -CaptureRoot $captureRoot -TargetPath $targets.ToArray()
+        if ($currentPlan.PlanSha256 -cne $confirmationPlan.PlanSha256) {
+            throw [IO.IOException]::new('首次截图清理的精确目标或字节数在确认后发生变化；未执行 Apply。')
+        }
+    }
+    $deletedCount = 0
+    foreach ($capture in $targets) {
+        Invoke-SuiteManagedRecycle -TargetPath $capture
+        $deletedCount++
+    }
+    $firstRunConfirmation = if ($requiresFirstRunConfirmation) {
+        [pscustomobject]@{
+            CaptureRoot = [IO.Path]::GetFullPath($captureRoot)
+            PlanSha256 = $confirmationPlan.PlanSha256
+            ConfirmedAtUtc = [DateTime]::UtcNow.ToString('o')
+        }
+    } else { $null }
     [pscustomobject]@{
         Status = 'Completed'; RetainedRunLimit = 30
         CutoffUtc = if ($null -eq $cutoff) { $null } else { $cutoff.ToString('o') }
         DeletedDirectoryCount = $deletedCount; Error = $null
+        ConfirmationPlan = $confirmationPlan; FirstRunConfirmation = $firstRunConfirmation
     }
 }
 
@@ -314,6 +403,7 @@ function Invoke-SuiteRun {
         [scriptblock] $Initialize,
         [scriptblock] $Finalize,
         [scriptblock] $FailureProbe,
+        [scriptblock] $ConfirmScreenshotRetention,
         [switch] $Closeout
     )
     [void][System.IO.Directory]::CreateDirectory($LogDirectory)
@@ -454,12 +544,12 @@ function Invoke-SuiteRun {
             if (-not $run.Closeout.Valid) { $run.Status='Failed';$run.ExitCode=1;$run.Failure=$run.Closeout.Failures -join '; ' }
         }
         try {
-            $screenshotRetention = Invoke-SuiteScreenshotRetention -Run $run
+            $screenshotRetention = Invoke-SuiteScreenshotRetention -Run $run -ConfirmScreenshotRetention $ConfirmScreenshotRetention
         }
         catch {
             $screenshotRetention = [pscustomobject]@{
                 Status = 'Failed'; RetainedRunLimit = 30; CutoffUtc = $null; DeletedDirectoryCount = $null
-                Error = $_.Exception.Message
+                Error = $_.Exception.Message; ConfirmationPlan = $null; FirstRunConfirmation = $null
             }
         }
         $run | Add-Member -NotePropertyName ScreenshotRetention -NotePropertyValue $screenshotRetention

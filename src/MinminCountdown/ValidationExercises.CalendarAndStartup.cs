@@ -971,8 +971,12 @@ internal static partial class ValidationExercises
         var missingRoot = Path.Combine(
             Path.GetTempPath(),
             $"MinminCountdown-holiday-missing-{Guid.NewGuid():N}");
+        var realPackagedRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"MinminCountdown-holiday-real-2027-{Guid.NewGuid():N}");
         var packagedDirectory = Path.Combine(packagedRoot, "holiday-data");
         var conflictDirectory = Path.Combine(conflictRoot, "holiday-data");
+        var realPackagedDirectory = Path.Combine(realPackagedRoot, "holiday-data");
         var preferences = new CountdownPreferences(
             "Second",
             6200m,
@@ -992,6 +996,15 @@ internal static partial class ValidationExercises
             Path.Combine(conflictDirectory, $"{packagedYear}.json"),
             packagedPayload,
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        Directory.CreateDirectory(realPackagedDirectory);
+        var realPackaged2027Path = Path.Combine(
+            ApplicationPaths.ResolveApplicationRoot(),
+            "holiday-data",
+            "2027.json");
+        File.Copy(
+            realPackaged2027Path,
+            Path.Combine(realPackagedDirectory, "2027.json"),
+            overwrite: false);
 
         static Task<string> OfflineDownload(int _, CancellationToken __) =>
             Task.FromException<string>(new HttpRequestException("synthetic offline"));
@@ -1052,6 +1065,35 @@ internal static partial class ValidationExercises
                     "未覆盖年份必须保持日历未就绪且不估算工资。");
             }
 
+            // #260：真实随包 2027 数据，而不是另一份 JSON 结构检查或 2037 合成数据。
+            // 2027-01-31 是周日调休工作日；01:30Z 即北京时间 09:30。按国务院通知，
+            // 一月有 21 个工作日，月薪 6804 元在 9 小时工作日的半小时后应累计 18 元。
+            var real2027NowUtc = new DateTimeOffset(2027, 1, 31, 1, 30, 0, TimeSpan.Zero);
+            var real2027Preferences = new CountdownPreferences(
+                "Second",
+                6804m,
+                TimeSpan.FromHours(9),
+                TimeSpan.FromHours(18));
+            Must(
+                !Directory.Exists(Path.Combine(realPackagedRoot, "holiday-cache")),
+                "真实 2027 随包数据场景必须从没有任何本地缓存开始。");
+            using (var real2027Calendar = new HolidayCalendar(realPackagedRoot, OfflineDownload))
+            {
+                var refreshed = real2027Calendar
+                    .RefreshAsync(real2027NowUtc, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult();
+                Must(
+                    refreshed &&
+                    real2027Calendar.State == "Ready" &&
+                    real2027Calendar.StatusText == "已加载 2027 年随包法定节假日与调休" &&
+                    real2027Calendar.GetWorkdayEndUtc(real2027NowUtc, real2027Preferences) ==
+                    new DateTimeOffset(2027, 1, 31, 10, 0, 0, TimeSpan.Zero) &&
+                    real2027Calendar.GetEarnings(real2027NowUtc, real2027Preferences) == 18m &&
+                    !Directory.Exists(Path.Combine(realPackagedRoot, "holiday-cache")),
+                    "真实 2027 随包数据未在无缓存、离线下支持周日调休的下班与工资行为。");
+            }
+
             return true;
         }
         finally
@@ -1059,6 +1101,7 @@ internal static partial class ValidationExercises
             DeleteDirectoryIfPresent(packagedRoot);
             DeleteDirectoryIfPresent(conflictRoot);
             DeleteDirectoryIfPresent(missingRoot);
+            DeleteDirectoryIfPresent(realPackagedRoot);
         }
     }
 

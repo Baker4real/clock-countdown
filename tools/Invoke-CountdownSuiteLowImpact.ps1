@@ -23,7 +23,9 @@ param(
     [string] $AppPath,
     [string] $ExpectedDllSha256,
     # 正式收尾必须前置检查清理能力，并以当前必过阶段和实际Clean/R2R回执计算完成状态。
-    [switch] $Closeout
+    [switch] $Closeout,
+    # 首次自动截图清理只在当场核对精确计划后放行；默认闭锁且不影响阶段结果。
+    [switch] $ConfirmFirstScreenshotRetention
 )
 
 Set-StrictMode -Version Latest
@@ -198,9 +200,27 @@ try {
         return @([System.IO.File]::ReadAllLines($watcher.LeakLog) | Where-Object { $_ -and $_ -notmatch '^watcher-done' }).Count -gt 0
     }.GetNewClosure()
 
-    $result = Invoke-SuiteRun -StageSpecs $specs -RepositoryRoot $repoRoot -LogDirectory (Join-Path $repoRoot 'logs/suite-runs') -MaxParallel $MaxParallel -StageTimeoutSeconds $StageTimeoutSeconds -Initialize $initialize -Finalize $finalize -FailureProbe $failureProbe -Closeout:$Closeout
+    $confirmScreenshotRetention = $null
+    if ($ConfirmFirstScreenshotRetention) {
+        $confirmScreenshotRetention = {
+            param($plan)
+            Write-Host "[suite] 首次自动截图清理计划：$($plan.Targets.Count) 个目录，合计 $($plan.TotalBytes) 字节。"
+            foreach ($target in $plan.Targets) {
+                Write-Host "[suite] 待回收：$($target.Path)（$($target.Bytes) 字节）"
+            }
+            $expected = 'RECYCLE ' + $plan.PlanSha256
+            $response = Read-Host "确认上述精确目标与字节数，输入 $expected"
+            if ($response -ceq $expected) { return $plan.PlanSha256 }
+            Write-Warning '首次自动截图清理确认不匹配；未执行 Apply。'
+            return $null
+        }.GetNewClosure()
+    }
+    $result = Invoke-SuiteRun -StageSpecs $specs -RepositoryRoot $repoRoot -LogDirectory (Join-Path $repoRoot 'logs/suite-runs') -MaxParallel $MaxParallel -StageTimeoutSeconds $StageTimeoutSeconds -Initialize $initialize -Finalize $finalize -FailureProbe $failureProbe -Closeout:$Closeout -ConfirmScreenshotRetention $confirmScreenshotRetention
     $result.Stages | Format-Table Stage, ExitCode, Status, ElapsedSeconds, Isolated, DesktopName -AutoSize
     Write-Host "[suite] $($result.Status)；summary：$($result.SummaryPath)"
+    if ($result.ScreenshotRetention.Status -eq 'ConfirmationRequired') {
+        Write-Host "[suite] 首次自动截图清理未确认，未执行 Apply；精确计划见 $($result.StatePath)。交互重跑并加 -ConfirmFirstScreenshotRetention 可当场核对确认。"
+    }
     if ($result.Failure) { Write-Host "[suite] $($result.Failure)" }
     foreach ($failedStage in @($result.Stages | Where-Object Status -In @('Failed', 'TimedOut'))) {
         $excerpt = Get-SuiteStageFailureExcerpt -Stage $failedStage

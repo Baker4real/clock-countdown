@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# 最小复现：以 SourceTree 模式跑应用 -ValidateOnly，触发悬浮窗与主窗口 v22 基线门。
+# 最小复现：以 SourceTree 模式直接启动应用 EXE 跑 --validate-only，触发悬浮窗与主窗口 v22 基线门。
 # -Isolated 时经不可见桌面启动；否则直接在用户桌面跑（窗口可见，约一分钟）。
 [CmdletBinding()]
 param(
@@ -18,11 +18,10 @@ $diagPath = Join-Path $env:TEMP 'minmin-baseline-repro-diag.jsonl'
 $stdoutPath = Join-Path $env:TEMP 'minmin-baseline-repro.out.log'
 $stderrPath = Join-Path $env:TEMP 'minmin-baseline-repro.err.log'
 
+$applicationPath = Join-Path $repoRoot 'app\MinminCountdown.exe'
 $argumentList = @(
-    '-NoLogo', '-NoProfile', '-NonInteractive', '-STA',
-    '-File', (Join-Path $repoRoot '敏敏子倒计时.ps1'),
-    '-ValidateOnly', '-SettingsFile', $settingsPath,
-    '-DiagnosticLogPath', $diagPath
+    '--validate-only', '--settings-file', $settingsPath,
+    '--diagnostic-log-path', $diagPath
 )
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -33,18 +32,19 @@ if ($Isolated) {
         $env:MINMIN_COUNTDOWN_MAIN_BASELINE_GENERATE = '1'
     }
     $exitCode = [int] (& (Join-Path $PSScriptRoot 'Start-IsolatedSuiteProcess.ps1') `
-        -FilePath (Get-Command pwsh).Source `
+        -FilePath $applicationPath `
         -ArgumentList $argumentList `
         -WorkingDirectory $repoRoot `
         -StdoutPath $stdoutPath -StderrPath $stderrPath | Select-Object -Last 1)
 }
 else {
     $env:MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT = $repoRoot
-    $process = Start-Process -FilePath (Get-Command pwsh).Source `
+    # 原 -WindowStyle Hidden 只为藏 pwsh 控制台；直接启动 WPF 应用时它会改写首个窗口的显示方式，故不再传。
+    $process = Start-Process -FilePath $applicationPath `
         -ArgumentList $argumentList `
         -WorkingDirectory $repoRoot `
         -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath `
-        -WindowStyle Hidden -PassThru
+        -PassThru
     $process.WaitForExit()
     $exitCode = $process.ExitCode
 }

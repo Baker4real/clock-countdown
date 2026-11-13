@@ -204,7 +204,7 @@ $assetManifest = @(
         [pscustomobject]@{
             Source = $source
             Target = $target
-            RelativePath = [System.IO.Path]::GetRelativePath($applicationAssetsOutput, $target)
+            RelativePath = [System.IO.Path]::GetRelativePath($applicationOutput, $target)
             SHA256 = [string] $asset.SHA256
         }
     }
@@ -318,11 +318,16 @@ foreach ($asset in $assetManifest) {
     [void] $expectedAssetPaths.Add($asset.RelativePath)
 }
 
+# 资产所在的程序目录子目录（assets、holiday-data）只能含契约声明的文件；app\ 根下的随包文件（图标）由下方逐个核对。
+$directoryAssets = @($assetManifest | Where-Object { $_.RelativePath.Contains('\') })
+$assetDirectoryNames = @($directoryAssets | ForEach-Object { $_.RelativePath.Split('\')[0] } | Sort-Object -Unique)
 $publishedAssets = @(
-    Get-ChildItem -LiteralPath $applicationAssetsOutput -File -Recurse
+    foreach ($assetDirectoryName in $assetDirectoryNames) {
+        Get-ChildItem -LiteralPath (Join-Path $applicationOutput $assetDirectoryName) -File -Recurse
+    }
 )
-if ($publishedAssets.Count -ne $assetManifest.Count) {
-    throw "发布资产数量无效：期望 $($assetManifest.Count)，实际 $($publishedAssets.Count)。"
+if ($publishedAssets.Count -ne $directoryAssets.Count) {
+    throw "发布资产数量无效：期望 $($directoryAssets.Count)，实际 $($publishedAssets.Count)。"
 }
 
 $assetResults = foreach ($asset in $assetManifest) {
@@ -348,7 +353,7 @@ $assetResults = foreach ($asset in $assetManifest) {
 
 foreach ($publishedAsset in $publishedAssets) {
     $relativePath = [System.IO.Path]::GetRelativePath(
-        $applicationAssetsOutput,
+        $applicationOutput,
         $publishedAsset.FullName
     )
     if (-not $expectedAssetPaths.Contains($relativePath)) {

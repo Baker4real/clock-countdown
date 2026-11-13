@@ -63,6 +63,38 @@ $script:buildAssetDefinitions = @(
         PublishedPath = 'app\assets\main-decorations\main-notes-scene-day.png'
         SHA256 = '2369048E05CB229115FBA119E4F4DFC833AEFC6D281C66655C8340B644526FDB'
         Category = 'MainDecoration'
+    },
+    # #275 程序目录自足：随包节假日数据与图标随载荷进 app\，应用从程序目录读取。
+    # 安装根的同名副本在分段迁移期间保留（见 offlineHolidayDataFiles 与安装文件清单）。
+    [pscustomobject]@{
+        SourcePath = 'holiday-data\2026.json'
+        PublishedPath = 'app\holiday-data\2026.json'
+        SHA256 = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
+        Category = 'OfflineHolidayData'
+    },
+    [pscustomobject]@{
+        SourcePath = 'holiday-data\2027.json'
+        PublishedPath = 'app\holiday-data\2027.json'
+        SHA256 = '618646318BA54CACE19C20BB9DEB8BF8FF6179ABF963628A608D47AEFDCCF082'
+        Category = 'OfflineHolidayData'
+    },
+    [pscustomobject]@{
+        SourcePath = 'holiday-data\README.md'
+        PublishedPath = 'app\holiday-data\README.md'
+        SHA256 = '2775B80BC9DA69F281FED7A89404F18CA592D5299B1E6788CEF9C425CBD61B35'
+        Category = 'OfflineHolidayData'
+    },
+    [pscustomobject]@{
+        SourcePath = 'holiday-data\LICENSE.txt'
+        PublishedPath = 'app\holiday-data\LICENSE.txt'
+        SHA256 = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
+        Category = 'OfflineHolidayData'
+    },
+    [pscustomobject]@{
+        SourcePath = 'countdown-icon.ico'
+        PublishedPath = 'app\countdown-icon.ico'
+        SHA256 = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
+        Category = 'ApplicationIcon'
     }
 )
 
@@ -176,7 +208,8 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\WindowWorkAreaGeometry.cs'
 )
 
-$script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @('countdown-icon.ico') + @(
+# countdown-icon.ico 既是 ApplicationIcon 也是程序目录资产，经 buildAssetDefinitions 只计一次。
+$script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @(
     $script:buildAssetDefinitions | ForEach-Object { [string] $_.SourcePath }
 )
 

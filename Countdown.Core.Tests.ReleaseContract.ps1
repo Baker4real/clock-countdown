@@ -10,7 +10,12 @@ $expectedBuildAssets = @(
     'assets\floating-plush\component-day-card-blank.png=>app\assets\floating-plush\component-day-card-blank.png',
     'assets\floating-plush\component-day-mascots.png=>app\assets\floating-plush\component-day-mascots.png',
     'assets\main-decorations\main-countdown-scene-day.png=>app\assets\main-decorations\main-countdown-scene-day.png',
-    'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png'
+    'assets\main-decorations\main-notes-scene-day.png=>app\assets\main-decorations\main-notes-scene-day.png',
+    'holiday-data\2026.json=>app\holiday-data\2026.json',
+    'holiday-data\2027.json=>app\holiday-data\2027.json',
+    'holiday-data\README.md=>app\holiday-data\README.md',
+    'holiday-data\LICENSE.txt=>app\holiday-data\LICENSE.txt',
+    'countdown-icon.ico=>app\countdown-icon.ico'
 )
 $actualBuildAssets = @($releaseContract.BuildAssets | ForEach-Object { "$($_.SourcePath)=>$($_.PublishedPath)" })
 $expectedFloatingPlushAssets = @(
@@ -24,8 +29,8 @@ $expectedFloatingPlushAssets = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 446 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
-Assert-Equal 443 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
+Assert-Equal 451 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
+Assert-Equal 448 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
 Assert-Equal $true ('src\MinminCountdown\NoteCompletionExit.cs' -in @($releaseContract.BuildInputFiles)) '#233 source rebuild checks the completion exit animation by commit identity'
 Assert-Equal $true ('src\MinminCountdown\app.manifest' -in @($releaseContract.BuildInputFiles)) '#219 source rebuild checks the PerMonitorV2 manifest by commit identity'
 foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
@@ -34,7 +39,7 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 100 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure separate from repository-only window verification sources'
+Assert-Equal 104 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure separate from repository-only window verification sources'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
@@ -70,7 +75,7 @@ Assert-Equal $true ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract
 Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight helper stays out of the office package'
 Assert-Equal $false ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight entry point stays out of the office package'
 Assert-Equal $false ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Design contract stays in the repository, outside the office package'
-Assert-Equal 9 @($releaseContract.BuildAssets).Count 'Release contract declares nine explicit application asset mappings'
+Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
 $expectedInstalledSupportFiles = @(
     'Countdown.InstallTransaction.psm1',
     'Countdown.Notes.psm1',
@@ -147,6 +152,30 @@ foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\2027.j
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
     Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
     Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
+}
+# #275 程序目录自足：随包节假日数据与图标随构建输出进 app\，载荷清单按仓库原字节覆盖它们，
+# 安装与完整性钉值一并包含。安装根的同名副本暂留（只增不删），由上面的断言继续守住。
+$expectedProgramDirectoryResources = [ordered]@{
+    'app\holiday-data\2026.json' = 'holiday-data\2026.json'
+    'app\holiday-data\2027.json' = 'holiday-data\2027.json'
+    'app\holiday-data\README.md' = 'holiday-data\README.md'
+    'app\holiday-data\LICENSE.txt' = 'holiday-data\LICENSE.txt'
+    'app\countdown-icon.ico' = 'countdown-icon.ico'
+}
+foreach ($programResource in $expectedProgramDirectoryResources.GetEnumerator()) {
+    $publishedPath = [string] $programResource.Key
+    $repositoryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot ([string] $programResource.Value))).Hash
+    $manifestEntries = @($publishedPayloadManifest.files | Where-Object { [string] $_.path -eq $publishedPath })
+    Assert-Equal 1 $manifestEntries.Count "#275 payload manifest covers the program-directory resource: $publishedPath"
+    $manifestHash = if ($manifestEntries.Count -eq 1) { [string] $manifestEntries[0].sha256 } else { '' }
+    Assert-Equal $repositoryHash $manifestHash "#275 payload manifest pins the repository bytes: $publishedPath"
+    $builtResource = Join-Path $PSScriptRoot $publishedPath
+    Assert-Equal $true (Test-Path -LiteralPath $builtResource -PathType Leaf) "#275 build output carries the program-directory resource: $publishedPath"
+    if (Test-Path -LiteralPath $builtResource -PathType Leaf) {
+        Assert-Equal $repositoryHash (Get-FileHash -Algorithm SHA256 -LiteralPath $builtResource).Hash "#275 build output copies the repository bytes: $publishedPath"
+    }
+    Assert-Equal $true ($publishedPath -in @($releaseContract.InstalledFiles)) "#275 install copies the program-directory resource: $publishedPath"
+    Assert-Equal $repositoryHash ([string] $releaseContract.IntegrityHashes[$publishedPath]) "#275 release integrity pins the program-directory resource: $publishedPath"
 }
 
 # #260 独立期望直接转录自国务院办公厅国办发明电〔2026〕10号，不读取上游数据或转换代码：
@@ -235,7 +264,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 109 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 113 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `

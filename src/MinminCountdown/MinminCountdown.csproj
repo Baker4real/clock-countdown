@@ -31,5 +31,10 @@
     <Content Include="..\..\assets\floating-plush\component-day-mascots.png" Link="assets\floating-plush\component-day-mascots.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\main-decorations\main-countdown-scene-day.png" Link="assets\main-decorations\main-countdown-scene-day.png" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\main-decorations\main-notes-scene-day.png" Link="assets\main-decorations\main-notes-scene-day.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\holiday-data\2026.json" Link="holiday-data\2026.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\holiday-data\2027.json" Link="holiday-data\2027.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\holiday-data\README.md" Link="holiday-data\README.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\holiday-data\LICENSE.txt" Link="holiday-data\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\countdown-icon.ico" Link="countdown-icon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

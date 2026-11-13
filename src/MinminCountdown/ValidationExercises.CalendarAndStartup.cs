@@ -998,7 +998,7 @@ internal static partial class ValidationExercises
             new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         Directory.CreateDirectory(realPackagedDirectory);
         var realPackaged2027Path = Path.Combine(
-            ApplicationPaths.ResolveApplicationRoot(),
+            AppContext.BaseDirectory,
             "holiday-data",
             "2027.json");
         File.Copy(

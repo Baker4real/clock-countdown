@@ -29,6 +29,12 @@ internal sealed class HolidayCalendar : IDisposable
     {
     }
 
+    // #275：应用宿主的节假日缓存是安装根的用户数据，随包年度数据从程序目录读取。
+    public HolidayCalendar(string cacheRoot, string packagedRoot)
+        : this(new HolidayCalendarSource(cacheRoot, packagedRoot, downloadOverride: null))
+    {
+    }
+
     internal HolidayCalendar(HolidayCalendarSource source)
     {
         _source = source;
@@ -450,15 +456,25 @@ internal sealed class HolidayCalendar : IDisposable
 internal sealed class HolidayCalendarSource : IDisposable
 {
     private static readonly UTF8Encoding Utf8NoBom = new(false);
-    private readonly string _applicationRoot;
+    private readonly string _cacheRoot;
+    private readonly string _packagedRoot;
     private readonly Func<int, CancellationToken, Task<string>>? _downloadOverride;
     private readonly HttpClient _client = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     public HolidayCalendarSource(
         string applicationRoot,
         Func<int, CancellationToken, Task<string>>? downloadOverride = null)
+        : this(applicationRoot, applicationRoot, downloadOverride)
     {
-        _applicationRoot = applicationRoot;
+    }
+
+    public HolidayCalendarSource(
+        string cacheRoot,
+        string packagedRoot,
+        Func<int, CancellationToken, Task<string>>? downloadOverride)
+    {
+        _cacheRoot = cacheRoot;
+        _packagedRoot = packagedRoot;
         _downloadOverride = downloadOverride;
     }
 
@@ -506,7 +522,7 @@ internal sealed class HolidayCalendarSource : IDisposable
 
     public void Dispose() => _client.Dispose();
 
-    private string GetCachePath(int year) => Path.Combine(_applicationRoot, "holiday-cache", $"{year}.json");
+    private string GetCachePath(int year) => Path.Combine(_cacheRoot, "holiday-cache", $"{year}.json");
 
-    private string GetPackagedPath(int year) => Path.Combine(_applicationRoot, "holiday-data", $"{year}.json");
+    private string GetPackagedPath(int year) => Path.Combine(_packagedRoot, "holiday-data", $"{year}.json");
 }

@@ -4067,6 +4067,145 @@ exit 23
         "独立窗口验证进程退出码；$($windowVerificationResult.Stderr)"
     Write-TestSegmentTiming -Name 'WindowVerification'
 
+    # #275 直接启动：安装根里只有程序目录和用户数据，没有 adapter、启动请求和安装根随包资源。
+    # 工作目录放一份诱饵 adapter：安装根只能由程序目录的位置决定。联网拉取经一个只绑定不监听的
+    # 本机端口代理立即被拒，节假日日历是否就绪只取决于程序目录随包数据与安装根缓存。
+    function Invoke-DirectProgramLaunch {
+        param(
+            [Parameter(Mandatory)] [string] $Application,
+            [Parameter(Mandatory)] [string] $InstallRoot,
+            [Parameter(Mandatory)] [string] $WorkingDirectory
+        )
+
+        $refusingProxy = [System.Net.Sockets.Socket]::new(
+            [System.Net.Sockets.AddressFamily]::InterNetwork,
+            [System.Net.Sockets.SocketType]::Stream,
+            [System.Net.Sockets.ProtocolType]::Tcp)
+        $process = $null
+        try {
+            $refusingProxy.Bind([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Loopback, 0))
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new($Application)
+            $startInfo.WorkingDirectory = $WorkingDirectory
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+            foreach ($argument in @('--exit-after-ready-for-test', '--exit-after-ready-seconds', '6')) {
+                $startInfo.ArgumentList.Add($argument)
+            }
+            foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
+                $startInfo.Environment[$proxyVariable] = "http://127.0.0.1:$($refusingProxy.LocalEndPoint.Port)"
+            }
+            [void] $startInfo.Environment.Remove('NO_PROXY')
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+            # 就绪后 6 秒按测试开关自退；有界等待覆盖隔离桌面上的冷启动，超时按失败收口并结束进程。
+            $exited = $process.WaitForExit(90000)
+            if (-not $exited) {
+                $process.Kill()
+                [void] $process.WaitForExit(5000)
+            }
+            $receiptText = Read-SharedTestEvidenceText -Path (Join-Path $InstallRoot 'runtime-status.json')
+            [pscustomobject]@{
+                ProcessId = $process.Id
+                Exited = $exited
+                ExitCode = if ($exited) { $process.ExitCode } else { $null }
+                Receipt = if ([string]::IsNullOrWhiteSpace($receiptText)) { $null } else { $receiptText | ConvertFrom-Json }
+                Stdout = $stdoutTask.GetAwaiter().GetResult()
+                Stderr = $stderrTask.GetAwaiter().GetResult()
+            }
+        }
+        finally {
+            if ($null -ne $process) {
+                if (-not $process.HasExited) {
+                    $process.Kill()
+                    [void] $process.WaitForExit(5000)
+                }
+                $process.Dispose()
+            }
+            $refusingProxy.Dispose()
+        }
+    }
+
+    function Assert-DirectProgramLaunchReady {
+        param(
+            [Parameter(Mandatory)] $Launch,
+            [Parameter(Mandatory)] [string] $DecoyRoot,
+            [Parameter(Mandatory)] [string] $Name
+        )
+
+        $detail = "exit=$($Launch.ExitCode)；stderr=$($Launch.Stderr)；诱饵工作目录内容=$(
+            @(Get-ChildItem -LiteralPath $DecoyRoot -Recurse -Force | ForEach-Object { $_.Name }) -join ',')；诱饵目录回执=$(
+            (Read-SharedTestEvidenceText -Path (Join-Path $DecoyRoot 'runtime-status.json')) -replace '\s+', ' ')"
+        Assert-Equal $true $Launch.Exited "$Name 在有界期限内按测试开关自退；$detail"
+        Assert-Equal 0 $Launch.ExitCode "$Name 正常退出；$detail"
+        Assert-Equal $true ($null -ne $Launch.Receipt) "$Name 在安装根写出运行状态回执；$detail"
+        Assert-Equal 4 ([int] $Launch.Receipt.schemaVersion) "$Name 回执 schemaVersion"
+        Assert-Equal 'window-ready' ([string] $Launch.Receipt.stage) "$Name 回执在悬浮窗首帧后写出"
+        Assert-Equal $Launch.ProcessId ([int] $Launch.Receipt.processId) "$Name 回执属于这次启动的 EXE"
+        Assert-Equal ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) ([int] $Launch.Receipt.sessionId) "$Name 回执属于当前会话"
+        Assert-Equal 'Ready' ([string] $Launch.Receipt.calendarState) "$Name 离线时节假日日历就绪；$detail"
+    }
+
+    $directLaunchRoot = Join-Path $testRoot 'direct-program-launch'
+    $directInstallRoot = Join-Path $directLaunchRoot 'install-root'
+    $directProgramDirectory = Join-Path $directInstallRoot 'app'
+    $directDecoyRoot = Join-Path $directLaunchRoot 'decoy-working-directory'
+    New-Item -ItemType Directory -Path $directInstallRoot, $directDecoyRoot | Out-Null
+    Copy-Item -LiteralPath (Split-Path -Parent $application) -Destination $directProgramDirectory -Recurse
+    Copy-Item -LiteralPath $adapter -Destination $directDecoyRoot
+    $directSettingsPath = Join-Path $directInstallRoot 'settings.json'
+    [System.IO.File]::WriteAllText($directSettingsPath, $fixture, $utf8NoBom)
+    $directProgramApplication = Join-Path $directProgramDirectory 'MinminCountdown.exe'
+    $directProgramFilesBefore = @(
+        Get-ChildItem -LiteralPath $directProgramDirectory -File -Recurse |
+            ForEach-Object { [System.IO.Path]::GetRelativePath($directProgramDirectory, $_.FullName) })
+
+    $directLaunch = Invoke-DirectProgramLaunch `
+        -Application $directProgramApplication `
+        -InstallRoot $directInstallRoot `
+        -WorkingDirectory $directDecoyRoot
+    Assert-DirectProgramLaunchReady -Launch $directLaunch -DecoyRoot $directDecoyRoot -Name '直接启动'
+    $directEvents = @(
+        Get-Content -LiteralPath (Join-Path $directInstallRoot 'logs\application.jsonl') -Encoding UTF8 |
+            ForEach-Object { [string] ($_ | ConvertFrom-Json).event })
+    foreach ($expectedEvent in @('ProcessStarted', 'WindowReady', 'HolidayCalendarReady')) {
+        Assert-Equal $true ($expectedEvent -in $directEvents) "直接启动的诊断日志写在安装根并记录 $expectedEvent"
+    }
+    foreach ($unexpectedEvent in @('AcceptanceReadOnlyEnabled', 'FatalUnhandledException', 'HolidayCalendarUnavailable')) {
+        Assert-Equal $false ($unexpectedEvent -in $directEvents) "直接启动不出现 $unexpectedEvent"
+    }
+    $directSettings = Get-Content -LiteralPath $directSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 10 ([int] $directSettings.schemaVersion) '直接启动可编辑：安装根的旧版设置被迁移并写回原处'
+
+    # 安装根缓存优先于随包数据：程序目录里当年的随包数据换成无效内容、安装根放一份有效缓存，
+    # 日历仍就绪只能来自安装根的节假日缓存。
+    $directBeijingYear = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+        [DateTimeOffset]::UtcNow, 'China Standard Time').Year
+    $directPackagedYearPath = Join-Path $directProgramDirectory "holiday-data\$directBeijingYear.json"
+    $directCacheDirectory = Join-Path $directInstallRoot 'holiday-cache'
+    New-Item -ItemType Directory -Path $directCacheDirectory | Out-Null
+    Copy-Item -LiteralPath $directPackagedYearPath -Destination (Join-Path $directCacheDirectory "$directBeijingYear.json")
+    [System.IO.File]::WriteAllText($directPackagedYearPath, '{}', $utf8NoBom)
+    $directCacheLaunch = Invoke-DirectProgramLaunch `
+        -Application $directProgramApplication `
+        -InstallRoot $directInstallRoot `
+        -WorkingDirectory $directDecoyRoot
+    Assert-DirectProgramLaunchReady -Launch $directCacheLaunch -DecoyRoot $directDecoyRoot -Name '安装根缓存直接启动'
+
+    $directProgramFilesAfter = @(
+        Get-ChildItem -LiteralPath $directProgramDirectory -File -Recurse |
+            ForEach-Object { [System.IO.Path]::GetRelativePath($directProgramDirectory, $_.FullName) })
+    Assert-Equal '' (@($directProgramFilesAfter | Where-Object { $_ -notin $directProgramFilesBefore }) -join ',') `
+        '直接启动不在程序目录写设置、备份、日志、回执或节假日缓存'
+    Assert-Equal $directProgramFilesBefore.Count $directProgramFilesAfter.Count '直接启动不增删程序目录文件'
+    Assert-Equal '敏敏子倒计时.ps1' (@(Get-ChildItem -LiteralPath $directDecoyRoot -Recurse -Force | ForEach-Object { $_.Name }) -join ',') `
+        '直接启动不把工作目录里的 adapter 当安装根，也不往那里写任何文件'
+    Write-TestSegmentTiming -Name 'DirectProgramLaunch'
+
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash
     Import-Module -Name $settingsModule -Force

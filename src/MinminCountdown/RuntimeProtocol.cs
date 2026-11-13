@@ -16,9 +16,10 @@ internal static class ApplicationPaths
             ? Path.GetDirectoryName(Path.GetFullPath(Environment.ProcessPath))!
             : Path.GetFullPath(AppContext.BaseDirectory);
         var executableParent = Directory.GetParent(executableDirectory)?.FullName;
+        // #275：安装布局里 EXE 在安装根下的程序目录 app\，安装根总是它的上一级，
+        // 不看 adapter 是否存在，也不随工作目录变化。
         if (executableParent is not null &&
-            string.Equals(Path.GetFileName(executableDirectory.TrimEnd(Path.DirectorySeparatorChar)), "app", StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(Path.Combine(executableParent, AdapterFileName)))
+            string.Equals(Path.GetFileName(executableDirectory.TrimEnd(Path.DirectorySeparatorChar)), "app", StringComparison.OrdinalIgnoreCase))
         {
             return executableParent;
         }

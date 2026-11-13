@@ -184,7 +184,8 @@ public sealed partial class App : Application
             var initialSnapshot = desktopWorkspace.Snapshot;
             _theme = new ApplicationTheme(Resources);
             _theme.Apply();
-            var calendar = new HolidayCalendar(_applicationRoot);
+            // #275：随包资源（节假日数据、图标、图片资产）都从程序目录读取，用户数据留在应用根目录。
+            var calendar = new HolidayCalendar(_applicationRoot, AppContext.BaseDirectory);
             _calendar = calendar;
             var logger = _logger ??
                          throw new InvalidOperationException("诊断日志尚未初始化。");
@@ -450,7 +451,7 @@ public sealed partial class App : Application
 
         _floatingTrayController = new FloatingTrayController(
             _floatingWindow,
-            Path.Combine(_applicationRoot, "countdown-icon.ico"),
+            Path.Combine(AppContext.BaseDirectory, "countdown-icon.ico"),
             () => !_shuttingDown,
             foregroundInterop: null,
             attachShellNotifyIcon: attachShellNotifyIcon,

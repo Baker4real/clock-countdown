@@ -93,7 +93,7 @@ internal static class ApplicationValidation
             var desktopWorkspace = DesktopWorkspace.Load(settingsPath);
             using var theme = new ApplicationTheme(resources);
             theme.Apply();
-            calendar = new HolidayCalendar(applicationRoot);
+            calendar = new HolidayCalendar(applicationRoot, AppContext.BaseDirectory);
             mainWindow = new MainWindow(
                 desktopWorkspace,
                 calendar,
@@ -107,7 +107,7 @@ internal static class ApplicationValidation
                 AppContext.BaseDirectory);
             floatingTrayController = new FloatingTrayController(
                 floatingWindow,
-                Path.Combine(applicationRoot, "countdown-icon.ico"),
+                Path.Combine(AppContext.BaseDirectory, "countdown-icon.ico"),
                 // Validate-only must be allowed to exercise tray transitions; this is not an acceptance gate.
                 static () => true,
                 foregroundInterop: null,

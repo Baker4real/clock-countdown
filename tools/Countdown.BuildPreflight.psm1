@@ -132,6 +132,26 @@ function Get-CountdownBuildPaths {
     }
 }
 
+# 载荷清单记录的提交标识（#276）：构建根是 Git 工作树顶层时取 HEAD，工作树有任何改动（含未跟踪文件）时加 -dirty。
+# 构建根不是工作树顶层（例如从 git archive 导出的源码、或嵌在别的仓库里）或找不到 git 时返回 $null，表示未知。
+function Get-CountdownBuildSourceCommit {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$RepositoryRoot)
+
+    if ($null -eq (Get-Command git -CommandType Application -ErrorAction SilentlyContinue)) { return $null }
+    # 不在工作树里时 git 以 128 退出，这是要识别的情况，不是错误。
+    $PSNativeCommandUseErrorActionPreference = $false
+    # --show-cdup 在顶层输出空行，只含 ASCII，不受控制台代码页影响。
+    $cdup = @(& git -C $RepositoryRoot rev-parse --show-cdup 2>$null)
+    if ($LASTEXITCODE -ne 0 -or ($cdup -join '').Trim() -ne '') { return $null }
+    $head = @(& git -C $RepositoryRoot rev-parse --verify HEAD 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $head.Count -ne 1 -or [string]$head[0] -notmatch '^[0-9a-f]{40,64}$') { return $null }
+    $changes = @(& git -C $RepositoryRoot --no-optional-locks status --porcelain=v1 --untracked-files=all 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    if ($changes.Count -gt 0) { return "$($head[0])-dirty" }
+    return [string]$head[0]
+}
+
 function Read-CountdownSafeDeletePolicy {
     [CmdletBinding()]
     param([string]$PolicyPath = 'D:\agents\projects\统一环境\managed\safe-tree-delete\policy.json')
@@ -183,4 +203,4 @@ function Get-CountdownSafeDeleteCheck {
     return [pscustomobject]$result
 }
 
-Export-ModuleMember -Function Resolve-CountdownBuildDotnet,Get-CountdownBuildSdkRequirement,Get-CountdownDotnetSdkVersion,Test-CountdownSdkVersionMatch,Get-CountdownBuildPaths,Read-CountdownSafeDeletePolicy,Get-CountdownSafeDeleteCheck
+Export-ModuleMember -Function Resolve-CountdownBuildDotnet,Get-CountdownBuildSdkRequirement,Get-CountdownDotnetSdkVersion,Test-CountdownSdkVersionMatch,Get-CountdownBuildPaths,Get-CountdownBuildSourceCommit,Read-CountdownSafeDeletePolicy,Get-CountdownSafeDeleteCheck

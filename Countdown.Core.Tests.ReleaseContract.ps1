@@ -34,13 +34,18 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 100 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure separate from repository-only window verification sources'
+Assert-Equal 101 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure separate from repository-only window verification sources'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $false ($equivalenceBuildInput -in @($releaseContract.PackageFiles)) "#272 equivalence source stays out of the office package: $equivalenceBuildInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($equivalenceBuildInput) "#272 equivalence source is not statically pinned: $equivalenceBuildInput"
 }
+$migrationCommandInput = 'src\MinminCountdown\SettingsMigrationCommand.cs'
+Assert-Equal $true ($migrationCommandInput -in @($releaseContract.SourceBuildFiles)) '#278 source-build closure contains the headless migration command'
+Assert-Equal $true ($migrationCommandInput -in @($releaseContract.BuildInputFiles)) '#278 deploy identity contains the headless migration command'
+Assert-Equal $false ($migrationCommandInput -in @($releaseContract.PackageFiles)) '#278 migration command source stays out of the office package'
+Assert-Equal $false $releaseContract.IntegrityHashes.Contains($migrationCommandInput) '#278 migration command source is not statically pinned'
 Assert-Equal $true ('src\MinminCountdown\MainWindowEmptyStateProbe.cs' -in @($releaseContract.SourceBuildFiles)) '#273 product closure contains only the narrow empty-state probe adapter'
 foreach ($migratedProductInput in @(
     'src\MinminCountdown\ValidationExercises.EmptyStates.cs',
@@ -235,7 +240,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 109 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 110 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `

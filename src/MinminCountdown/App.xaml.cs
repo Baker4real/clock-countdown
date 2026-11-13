@@ -60,6 +60,14 @@ public sealed partial class App : Application
                 return;
             }
 
+            // #278：无界面设置迁移命令同样在色板、启动请求、日志、单实例和窗口之前返回。
+            if (SettingsMigrationCommand.IsRequested(eventArgs.Args))
+            {
+                exitCode = SettingsMigrationCommand.Run(eventArgs.Args);
+                Shutdown(exitCode);
+                return;
+            }
+
             // App.xaml 不写色值：在任何窗口（含验证、激活失败与设置恢复提示）之前先写入日间色板。
             ApplicationTheme.WriteDayPalette(Resources);
             _options = HostOptions.Parse(eventArgs.Args);

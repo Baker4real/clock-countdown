@@ -36,12 +36,12 @@ try {
         $utf8.GetBytes("REMINDER_BATCH_RETRY_COMMITS: 1`n预热完成（UTF-8）`n"),
         $gbk.GetBytes((& $concise 100 '第一处失败')),
         $utf8.GetBytes("中间输出（UTF-8）`n"),
-        $gbk.GetBytes((& $concise 4218 '经 PowerShell adapter 运行 C# 应用 --validate-only 失败，退出码：1。')))
+        $gbk.GetBytes((& $concise 4218 '直接运行 C# 应用 --validate-only 失败，退出码：1。')))
     $excerpt = Get-SuiteStageFailureExcerpt -Stage (New-Stage $mixed)
     if ($null -eq $excerpt) { $failures.Add('有错误块的日志应返回摘要') }
     else {
         if ($excerpt.Lines[0] -ne 'Exception: D:\repo\Countdown.CSharp.Tests.ps1:4218') { $failures.Add("摘要应从最后一个错误块的块头开始，实际首行：$($excerpt.Lines[0])") }
-        if (-not ($excerpt.Lines -match '经 PowerShell adapter 运行 C# 应用 --validate-only 失败')) { $failures.Add("936 写的中文消息应还原：$($excerpt.Lines -join ' / ')") }
+        if (-not ($excerpt.Lines -match '直接运行 C# 应用 --validate-only 失败')) { $failures.Add("936 写的中文消息应还原：$($excerpt.Lines -join ' / ')") }
         if ($excerpt.Lines -match '第一处失败') { $failures.Add('摘要不应回到更早的错误块') }
         if ($excerpt.Path -ne $mixed) { $failures.Add("摘要应来自主 err 日志：$($excerpt.Path)") }
     }

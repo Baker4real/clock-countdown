@@ -247,7 +247,7 @@ function Invoke-CountdownIsolatedDesktopProcess {
 
 function Invoke-CountdownValidationProcess {
     param(
-        [Parameter(Mandatory)] [string] $PowerShell7Path,
+        [Parameter(Mandatory)] [string] $FilePath,
         [Parameter(Mandatory)] [string] $Operation,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
         [hashtable] $EnvironmentVariables = @{},
@@ -256,11 +256,11 @@ function Invoke-CountdownValidationProcess {
     )
 
     $processResult = Invoke-CountdownProcess `
-        -FilePath $PowerShell7Path `
+        -FilePath $FilePath `
         -Operation $Operation `
         -ArgumentList $ArgumentList `
         -EnvironmentVariables $EnvironmentVariables `
-        -StartFailureMessage "$Operation 无法启动 PowerShell 7 进程。" `
+        -StartFailureMessage "$Operation 无法启动进程：$FilePath" `
         -IsolatedDesktopName $IsolatedDesktopName -EvidenceDirectory $EvidenceDirectory
     try {
     $json = ([string] $processResult.StandardOutput).Trim()
@@ -505,7 +505,7 @@ function Invoke-CountdownValidationSuite {
         (Join-Path $resolvedRoot 'Countdown.Core.Tests.ps1')
     )
     $core = Invoke-CountdownValidationProcess `
-        -PowerShell7Path $resolvedPowerShell `
+        -FilePath $resolvedPowerShell `
         -Operation 'Core 回归' `
         -ArgumentList $coreArguments -EvidenceDirectory $EvidenceDirectory
     $corePassed = Assert-CountdownValidationTestReport -Report $core.Report -Label 'Core 回归'
@@ -534,7 +534,7 @@ function Invoke-CountdownValidationSuite {
         (Join-Path $resolvedRoot 'Countdown.CSharp.Tests.ps1')
     )
     $cSharp = Invoke-CountdownValidationProcess `
-        -PowerShell7Path $resolvedPowerShell `
+        -FilePath $resolvedPowerShell `
         -Operation 'C# 回归' `
         -ArgumentList $cSharpArguments `
         -EvidenceDirectory $EvidenceDirectory `
@@ -557,6 +557,11 @@ function Invoke-CountdownValidationSuite {
         # 安装验证永远严格：不继承窗口套件的参考基线延后。
         MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG = $null
     }
+    # 直接启动验证根里的应用 EXE，设置与诊断日志都显式指向本次的临时路径，不经 adapter、也不依赖应用根推断。
+    $applicationPath = Join-Path $resolvedRoot 'app\MinminCountdown.exe'
+    if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
+        throw "验证所需的 C# 应用宿主不存在：$applicationPath"
+    }
     $applicationValidationRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
     [System.IO.Directory]::CreateDirectory($applicationValidationRoot) | Out-Null
     $applicationValidationId = [guid]::NewGuid().ToString('N')
@@ -565,21 +570,15 @@ function Invoke-CountdownValidationSuite {
     $applicationFailureEvidence = $null
     try {
         $application = Invoke-CountdownValidationProcess `
-            -PowerShell7Path $resolvedPowerShell `
+            -FilePath $applicationPath `
             -Operation '应用 validate-only' `
             -EvidenceDirectory $EvidenceDirectory `
             -EnvironmentVariables $applicationEnvironment `
             -ArgumentList @(
-                '-NoLogo',
-                '-NoProfile',
-                '-NonInteractive',
-                '-STA',
-                '-File',
-                (Join-Path $resolvedRoot '敏敏子倒计时.ps1'),
-                '-ValidateOnly',
-                '-SettingsFile',
+                '--validate-only',
+                '--settings-file',
                 $applicationSettingsPath,
-                '-DiagnosticLogPath',
+                '--diagnostic-log-path',
                 $applicationDiagnosticPath
             ) `
             -IsolatedDesktopName 'MinminSuiteIso-ValidateApp'

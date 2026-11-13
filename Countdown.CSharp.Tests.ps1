@@ -163,207 +163,6 @@ function Invoke-CapturedNativeProcess {
     }
 }
 
-function Protect-CountdownDiagnosticText {
-    param(
-        [AllowNull()] [string] $Text,
-        [Parameter(Mandatory)] [hashtable] $PathReplacements
-    )
-
-    if ($null -eq $Text) {
-        return $null
-    }
-
-    $protected = $Text
-    foreach ($path in $PathReplacements.Keys) {
-        if (-not [string]::IsNullOrWhiteSpace([string] $path)) {
-            $protected = $protected.Replace(
-                [string] $path,
-                [string] $PathReplacements[$path],
-                [System.StringComparison]::OrdinalIgnoreCase)
-        }
-    }
-
-    return $protected
-}
-
-function Get-FalseValidationGateNames {
-    param([Parameter(Mandatory)] $Report)
-
-    $falseGateNames = [System.Collections.Generic.List[string]]::new()
-    foreach ($property in $Report.PSObject.Properties) {
-        if ($property.Value -is [bool] -and -not [bool] $property.Value) {
-            $falseGateNames.Add($property.Name)
-            continue
-        }
-
-        if ($property.Name -notmatch 'Gates$' -or $null -eq $property.Value) {
-            continue
-        }
-
-        foreach ($gate in $property.Value.PSObject.Properties) {
-            if ($gate.Value -is [bool] -and -not [bool] $gate.Value) {
-                $falseGateNames.Add("$($property.Name).$($gate.Name)")
-            }
-        }
-    }
-
-    return @($falseGateNames | Sort-Object -Unique)
-}
-
-function Write-AdapterFailureDiagnosticEvidence {
-    param(
-        [Parameter(Mandatory)] $AdapterResult,
-        [Parameter(Mandatory)] $DirectResult,
-        [Parameter(Mandatory)] [string] $DirectDiagnosticPath,
-        [Parameter(Mandatory)] [string] $RepositoryRoot,
-        [Parameter(Mandatory)] [string] $TestRoot,
-        [Parameter(Mandatory)] [System.Text.Encoding] $Encoding,
-        [Parameter(Mandatory)] [string] $ApplicationPath,
-        [Parameter(Mandatory)] [string] $FailureStage
-    )
-
-    $pathReplacements = @{
-        $RepositoryRoot = '<repo-root>'
-        $TestRoot = '<test-root>'
-    }
-    $directReport = $null
-    $parseErrors = [System.Collections.Generic.List[string]]::new()
-    if (-not [string]::IsNullOrWhiteSpace([string] $DirectResult.Stdout)) {
-        try {
-            $directReport = $DirectResult.Stdout | ConvertFrom-Json
-        }
-        catch {
-            $parseErrors.Add((Protect-CountdownDiagnosticText `
-                    -Text $_.Exception.Message `
-                    -PathReplacements $pathReplacements))
-        }
-    }
-
-    $fatal = $null
-    if (Test-Path -LiteralPath $DirectDiagnosticPath -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $DirectDiagnosticPath -Encoding UTF8) {
-            try {
-                $entry = $line | ConvertFrom-Json
-                if ($entry.event -eq 'FatalUnhandledException') {
-                    $fatal = [ordered]@{
-                        type = [string] $entry.exceptionType
-                        message = Protect-CountdownDiagnosticText `
-                            -Text ([string] $entry.exceptionMessage) `
-                            -PathReplacements $pathReplacements
-                    }
-                }
-            }
-            catch {
-                $parseErrors.Add((Protect-CountdownDiagnosticText `
-                        -Text $_.Exception.Message `
-                        -PathReplacements $pathReplacements))
-            }
-        }
-    }
-
-    $readReportProperty = {
-        param([string] $Name)
-        if ($null -eq $directReport) { return $null }
-        $property = $directReport.PSObject.Properties[$Name]
-        if ($null -eq $property) { return $null }
-        return $property.Value
-    }
-    $protectDiagnostics = {
-        param($Diagnostics)
-        return @($Diagnostics | ForEach-Object {
-                Protect-CountdownDiagnosticText `
-                    -Text ([string] $_) `
-                    -PathReplacements $pathReplacements
-            })
-    }
-
-    $summary = [ordered]@{
-        schemaVersion = 2
-        capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        failureStage = $FailureStage
-        retrySafe = ($AdapterResult.ExitCode -ne 0 -and $DirectResult.ExitCode -eq 0)
-        recommendedAction = if ($DirectResult.ExitCode -eq 0) { 'inspect-adapter-host' } else { 'inspect-native-process-and-WER' }
-        executable = [ordered]@{
-            path = Protect-CountdownDiagnosticText -Text $ApplicationPath -PathReplacements $pathReplacements
-            exists = Test-Path -LiteralPath $ApplicationPath -PathType Leaf
-            sha256 = if (Test-Path -LiteralPath $ApplicationPath -PathType Leaf) {
-                (Get-FileHash -LiteralPath $ApplicationPath -Algorithm SHA256).Hash
-            } else { $null }
-        }
-        adapter = [ordered]@{
-            exitCode = [int] $AdapterResult.ExitCode
-            stdoutEmpty = [string]::IsNullOrWhiteSpace([string] $AdapterResult.Stdout)
-            stderr = Protect-CountdownDiagnosticText `
-                -Text ([string] $AdapterResult.Stderr) `
-                -PathReplacements $pathReplacements
-        }
-        direct = [ordered]@{
-            exitCode = [int] $DirectResult.ExitCode
-            valid = & $readReportProperty 'Valid'
-            main = [ordered]@{
-                requested = & $readReportProperty 'MainReferenceBaselineRequested'
-                available = & $readReportProperty 'MainReferenceBaselineManifestAvailable'
-                validated = & $readReportProperty 'MainReferenceBaselineValidated'
-                captureCount = @(& $readReportProperty 'MainReferenceBaselineCaptures').Count
-                diagnostics = & $protectDiagnostics (& $readReportProperty 'MainReferenceBaselineDiagnostics')
-            }
-            floating = [ordered]@{
-                requested = & $readReportProperty 'FloatingReferenceBaselineRequested'
-                available = & $readReportProperty 'FloatingReferenceBaselineManifestAvailable'
-                validated = & $readReportProperty 'FloatingReferenceBaselineValidated'
-                captureCount = @(& $readReportProperty 'FloatingReferenceBaselineCaptures').Count
-                diagnostics = & $protectDiagnostics (& $readReportProperty 'FloatingReferenceBaselineDiagnostics')
-            }
-            falseGates = if ($null -eq $directReport) { @() } else { @(Get-FalseValidationGateNames -Report $directReport) }
-            fatalUnhandledException = $fatal
-            stderr = Protect-CountdownDiagnosticText `
-                -Text ([string] $DirectResult.Stderr) `
-                -PathReplacements $pathReplacements
-            parseErrors = @($parseErrors)
-        }
-    }
-
-    $summary.nativeFailureClassification = if ($DirectResult.ExitCode -in @(0, 1, 2)) {
-        'managed-validation-failure'
-    } elseif ($DirectResult.ExitCode -eq -1073740791 -or $DirectResult.ExitCode -eq 3221225786) {
-        'native-fail-fast'
-    } else {
-        'native-process-failure'
-    }
-    $summary.wer = [ordered]@{
-        applicationErrorEventObserved = $false
-        queryAttempted = $false
-    }
-    try {
-        $summary.wer.queryAttempted = $true
-        $exeName = [System.IO.Path]::GetFileName($ApplicationPath)
-        $summary.wer.applicationErrorEventObserved = $null -ne (Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = [DateTime]::Now.AddMinutes(-5) } -MaxEvents 50 -ErrorAction Stop | Where-Object { $_.Message -like "*$exeName*" } | Select-Object -First 1)
-    }
-    catch {
-        $summary.wer.queryError = Protect-CountdownDiagnosticText -Text $_.Exception.Message -PathReplacements $pathReplacements
-    }
-    $summary.dumps = @(
-        foreach ($candidate in @($DirectDiagnosticPath, "$DirectDiagnosticPath.dmp", [System.IO.Path]::ChangeExtension($DirectDiagnosticPath, '.dmp'))) {
-            [ordered]@{ path = Protect-CountdownDiagnosticText -Text $candidate -PathReplacements $pathReplacements; present = Test-Path -LiteralPath $candidate -PathType Leaf }
-        }
-    )
-
-    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-csharp-adapter-failures'
-    [void] [System.IO.Directory]::CreateDirectory($evidenceRoot)
-    $evidenceName = '{0}-{1}.json' -f `
-        [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
-        [guid]::NewGuid().ToString('N')
-    $evidencePath = Join-Path $evidenceRoot $evidenceName
-    [System.IO.File]::WriteAllText(
-        $evidencePath,
-        ($summary | ConvertTo-Json -Depth 8),
-        $Encoding)
-    return [pscustomobject]@{
-        Path = $evidencePath
-        Summary = $summary
-    }
-}
-
 function Assert-Equal {
     param(
         [AllowNull()] $Expected,
@@ -3872,8 +3671,6 @@ $mutexHolderErrorPath = Join-Path $testRoot 'mutex-holder.stderr.txt'
     $captureHelperProbePath = Join-Path $testRoot 'capture-helper-probe.ps1'
     $adapterDiagnosticPath = Join-Path $testRoot 'adapter-application.jsonl'
 $nightMigrationDiagnosticPath = Join-Path $testRoot 'night-migration-application.jsonl'
-$adapterFailureDirectDiagnosticPath = Join-Path $testRoot (
-    'adapter-failure-direct-' + [guid]::NewGuid().ToString('N') + '.jsonl')
 $failedValidationDiagnosticPath = Join-Path $testRoot 'failed-validation-application.jsonl'
 $noteExercisePath = Join-Path $testRoot 'note-exercise.settings.json'
 $noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jsonl'
@@ -4350,6 +4147,300 @@ exit 23
     ) '设置等价命令不写日志、备份、回执或其他文件'
     Write-TestSegmentTiming -Name 'SettingsEquivalenceCli'
 
+    # #278：无界面设置迁移命令。安装根按生产布局搭建：app 目录联接到发布输出，现役设置及两代备份留在安装根。
+    # 命令只读写调用方给出的设置文件及其同目录备份，迁移与备份轮转和正常启动相同；应用正在运行时也能对副本执行。
+    $migrationInstallRoot = Join-Path $testRoot 'settings-migration-install-root'
+    $migrationProgramDirectory = Join-Path $migrationInstallRoot 'app'
+    $migrationApplicationPath = Join-Path $migrationProgramDirectory 'MinminCountdown.exe'
+    $migrationLiveSettingsPath = Join-Path $migrationInstallRoot 'settings.json'
+    $migrationDiagnosticPath = Join-Path $migrationInstallRoot 'logs\application.jsonl'
+    $migrationAppErrorPath = Join-Path $testRoot 'settings-migration-app.stderr.txt'
+    $migrationAppProcess = $null
+    $migrationReportFields = @('schemaVersion', 'succeeded', 'migrated', 'migrationUtc', 'reasonCategory', 'message')
+    $migrationFixtures = @(
+        [pscustomobject]@{ Version = 1; Json = '{"schemaVersion":1,"timeZoneId":"China Standard Time","targetUtc":"2030-01-02T03:04:05.0000000+00:00"}' },
+        [pscustomobject]@{ Version = 2; Json = '{"schemaVersion":2,"timeZoneId":"China Standard Time","countdowns":[{"id":"countdown-v2","name":"版本二倒计时","targetUtc":"2030-02-03T04:05:06.0000000+00:00"}]}' },
+        [pscustomobject]@{ Version = 3; Json = '{"schemaVersion":3,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":12345.67,"workStart":"08:30","workEnd":"17:45","countdowns":[{"id":"countdown-v3","name":"版本三倒计时","targetUtc":"2030-03-04T05:06:07.0000000+00:00"}]}' },
+        [pscustomobject]@{ Version = 4; Json = '{"schemaVersion":4,"timeZoneId":"China Standard Time","displayPrecision":"Hour","monthlySalary":8800,"workStart":"09:00","workEnd":"18:00","countdowns":[{"id":"countdown-v4","name":"版本四倒计时","targetUtc":"2030-04-05T06:07:08.0000000+00:00"}],"notes":[{"id":"note-v4","text":"版本四便签","isCompleted":true}]}' },
+        [pscustomobject]@{ Version = 5; Json = '{"schemaVersion":5,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":10000,"workStart":"09:15","workEnd":"18:15","tags":[{"id":"tag-work","name":"工作","color":"#FF8A70"}],"countdowns":[{"id":"countdown-v5","name":"版本五倒计时","targetUtc":"2030-05-06T07:08:09.0000000+00:00","tagIds":["tag-work"]}],"notes":[{"id":"note-v5","text":"版本五便签","isCompleted":false,"tagIds":["tag-work"]}]}' },
+        [pscustomobject]@{ Version = 6; Json = '{"schemaVersion":6,"timeZoneId":"China Standard Time","displayPrecision":"Day","monthlySalary":15000,"workStart":"08:00","workEnd":"17:00","tags":[{"id":"tag-life","name":"生活"}],"countdowns":[{"id":"countdown-v6","name":"版本六倒计时","targetUtc":"2030-06-07T08:09:10.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v6","text":"版本六便签","date":"2030-06-07","isCompleted":false,"tagIds":["tag-life"]}]}' },
+        [pscustomobject]@{ Version = 7; Json = '{"schemaVersion":7,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","tags":[{"id":"tag-focus","name":"专注","color":"#FFD36B"}],"countdowns":[{"id":"countdown-v7","name":"版本七倒计时","targetUtc":"2030-07-08T09:10:11.0000000+00:00","tagIds":["tag-focus"]}],"notes":[{"id":"note-v7","text":"版本七便签","date":"2030-07-08","isCompleted":false,"tagIds":["tag-focus"],"reminderIntervalMinutes":30,"reminderStartUtc":"2030-07-08T01:00:00.0000000+00:00"}]}' },
+        [pscustomobject]@{ Version = 8; Json = '{"schemaVersion":8,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","tags":[{"id":"tag-focus","name":"专注","color":"#FFD36B"}],"countdowns":[{"id":"countdown-v8","name":"版本八倒计时","targetUtc":"2030-08-09T10:11:12.0000000+00:00","tagIds":["tag-focus"]}],"notes":[{"id":"note-v8","text":"版本八便签","date":"2030-08-09","isCompleted":false,"tagIds":["tag-focus"],"reminder":{"type":"none"}}]}' },
+        # v9 的循环提醒已经开始：迁移出的 cursor 取决于迁移时刻，演练链必须把命令报告的时刻原样交给等价判定。
+        [pscustomobject]@{ Version = 9; Json = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-pending","text":"待送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"pending"}},{"id":"note-v9-delivered","text":"已送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T02:30:00.0000000+00:00","delivery":"delivered"}},{"id":"note-v9-repeat","text":"已开始循环提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2026-01-01T00:00:00.0000000+00:00","intervalMinutes":30}}]}' },
+        [pscustomobject]@{ Version = 10; Json = '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":18000,"workStart":"08:30","workEnd":"17:30","themePreference":"Day","tags":[],"countdowns":[{"id":"countdown-v10","name":"版本十倒计时","targetUtc":"2032-10-11T12:13:14.0000000+00:00","tagIds":[],"reminderRules":[{"id":"rule-countdown-once","type":"absoluteOnce","scheduledUtc":"2032-10-11T10:00:00.0000000+00:00"},{"id":"rule-countdown-repeat","type":"fixedInterval","firstDueUtc":"2032-10-10T10:00:00.0000000+00:00","intervalMinutes":60}]}],"notes":[{"id":"note-v10","text":"版本十便签","date":"2032-10-11","isCompleted":false,"tagIds":[],"reminderRules":[{"id":"rule-note-once","type":"absoluteOnce","scheduledUtc":"2032-10-11T01:30:00.0000000+00:00"},{"id":"rule-note-repeat","type":"fixedInterval","firstDueUtc":"2032-10-11T02:00:00.0000000+00:00","intervalMinutes":30}]}],"reminderStates":{"rule-note-once":{"handledThroughUtc":"2032-10-11T01:30:00.0000000+00:00","lastDeliveredOccurrenceKey":"rule-note-once|2032-10-11T01:30:00.0000000+00:00","lastDispositionOccurrenceKey":"rule-note-once|2032-10-11T01:30:00.0000000+00:00","activeSnooze":null},"rule-note-repeat":{"handledThroughUtc":"2032-10-11T03:00:00.0000000+00:00","lastDeliveredOccurrenceKey":"rule-note-repeat|2032-10-11T03:00:00.0000000+00:00","lastDispositionOccurrenceKey":null,"activeSnooze":null}}}' }
+    )
+    # 每份副本都带两代既有备份：合法的 backup 1 迁移后应轮转为 backup 2。
+    $migrationPreviousBackup = '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}'
+    $migrationOlderBackup = ($migrationFixtures | Where-Object Version -eq 1).Json
+    $migrationLiveFixture = ($migrationFixtures | Where-Object Version -eq 6).Json
+    $writeSettingsFamily = {
+        param([Parameter(Mandatory)] [string] $SettingsPath, [Parameter(Mandatory)] [string] $MainJson)
+        $directory = Split-Path -Parent $SettingsPath
+        if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+            New-Item -ItemType Directory -Path $directory | Out-Null
+        }
+        [System.IO.File]::WriteAllText($SettingsPath, $MainJson, $utf8NoBom)
+        [System.IO.File]::WriteAllText("$SettingsPath.backup1", $migrationPreviousBackup, $utf8NoBom)
+        [System.IO.File]::WriteAllText("$SettingsPath.backup2", $migrationOlderBackup, $utf8NoBom)
+    }
+    $readSettingsFamily = {
+        param([Parameter(Mandatory)] [string] $SettingsPath)
+        $family = [ordered]@{}
+        foreach ($member in @(
+                [pscustomobject]@{ Name = 'Main'; Path = $SettingsPath },
+                [pscustomobject]@{ Name = 'Backup1'; Path = "$SettingsPath.backup1" },
+                [pscustomobject]@{ Name = 'Backup2'; Path = "$SettingsPath.backup2" })) {
+            $family[$member.Name] = if (Test-Path -LiteralPath $member.Path -PathType Leaf) {
+                (Get-FileHash -LiteralPath $member.Path -Algorithm SHA256).Hash
+            }
+            else {
+                $null
+            }
+        }
+        [pscustomobject] $family
+    }
+    $formatSettingsFamily = {
+        param([Parameter(Mandatory)] $Family)
+        'main={0};backup1={1};backup2={2}' -f $Family.Main, $Family.Backup1, $Family.Backup2
+    }
+    $listDirectory = {
+        param([Parameter(Mandatory)] [string] $Directory)
+        @(Get-ChildItem -LiteralPath $Directory -Force | ForEach-Object Name | Sort-Object) -join ','
+    }
+    $invokeSettingsMigration = {
+        param([Parameter(Mandatory)] [string[]] $Arguments, [Parameter(Mandatory)] [string] $Name)
+        $run = Invoke-CapturedNativeProcess `
+            -FilePath $migrationApplicationPath `
+            -WorkingDirectory $migrationInstallRoot `
+            -ArgumentList $Arguments
+        Assert-Equal '' $run.Stderr "${Name}：不写 stderr"
+        $report = $run.Stdout | ConvertFrom-Json -DateKind String
+        Assert-ExactReportFields -Report $report -ExpectedNames $migrationReportFields -Name "${Name}：JSON 字段"
+        Assert-Equal 1 ([int] $report.schemaVersion) "${Name}：JSON schema 版本"
+        if (-not $report.succeeded) {
+            Assert-Equal $false ([bool] $report.migrated) "${Name}：失败时不声称迁移"
+            Assert-Equal $null $report.migrationUtc "${Name}：失败时没有迁移时刻"
+            Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $report.message)) "${Name}：失败时给出明确消息"
+        }
+        [pscustomobject]@{ ExitCode = $run.ExitCode; Report = $report }
+    }
+
+    Copy-DesktopLauncherHostPayload -SourceHost $application -DestinationHost $migrationApplicationPath
+    try {
+        & $writeSettingsFamily -SettingsPath $migrationLiveSettingsPath -MainJson $migrationLiveFixture
+        $migrationLiveOriginal = & $readSettingsFamily -SettingsPath $migrationLiveSettingsPath
+        $migrationProgramListing = @(
+            Get-ChildItem -LiteralPath $migrationProgramDirectory -File -Recurse |
+                ForEach-Object { '{0}|{1}|{2}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.Ticks }
+        ) -join "`n"
+
+        foreach ($migrationFixture in $migrationFixtures) {
+            $migrationVersion = [int] $migrationFixture.Version
+            $migrationCase = "无界面迁移 schema v$migrationVersion"
+            $migrationSettingsPath = Join-Path $testRoot "settings-migration-v$migrationVersion\settings.json"
+            & $writeSettingsFamily -SettingsPath $migrationSettingsPath -MainJson $migrationFixture.Json
+            $migrationBefore = & $readSettingsFamily -SettingsPath $migrationSettingsPath
+            $migrationStartedUtc = [DateTimeOffset]::UtcNow
+            $migrationRun = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationSettingsPath) -Name $migrationCase
+            $migrationEndedUtc = [DateTimeOffset]::UtcNow
+            Assert-Equal 0 $migrationRun.ExitCode "${migrationCase}：成功退出码"
+            Assert-Equal $true ([bool] $migrationRun.Report.succeeded) "${migrationCase}：报告成功"
+            $reportedMigrationUtc = [DateTimeOffset]::ParseExact(
+                [string] $migrationRun.Report.migrationUtc,
+                'o',
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::RoundtripKind)
+            Assert-Equal ([TimeSpan]::Zero) $reportedMigrationUtc.Offset "${migrationCase}：迁移时刻是 UTC"
+            Assert-Equal $true (
+                $reportedMigrationUtc -ge $migrationStartedUtc.AddSeconds(-2) -and
+                $reportedMigrationUtc -le $migrationEndedUtc.AddSeconds(2)
+            ) "${migrationCase}：迁移时刻取自本次运行的时钟"
+            $migrationAfter = & $readSettingsFamily -SettingsPath $migrationSettingsPath
+            if ($migrationVersion -lt 10) {
+                Assert-Equal $true ([bool] $migrationRun.Report.migrated) "${migrationCase}：报告发生迁移"
+                Assert-Equal 'migrated' ([string] $migrationRun.Report.reasonCategory) "${migrationCase}：原因类别"
+                Assert-Equal $migrationBefore.Main $migrationAfter.Backup1 "${migrationCase}：backup1 是迁移前主文件的原始字节"
+                Assert-Equal $migrationBefore.Backup1 $migrationAfter.Backup2 "${migrationCase}：合法的旧 backup1 轮转为 backup2"
+                $migrationWritten = Get-Content -LiteralPath $migrationSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
+                Assert-Equal 10 ([int] $migrationWritten.schemaVersion) "${migrationCase}：落盘为当前 schema v10"
+
+                # 产品按当前 schema 读取迁移结果：再执行一次不再迁移，设置与两代备份逐字节不变。
+                $migrationReload = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationSettingsPath) -Name "${migrationCase} 结果复读"
+                Assert-Equal 0 $migrationReload.ExitCode "${migrationCase}：结果复读成功"
+                Assert-Equal $false ([bool] $migrationReload.Report.migrated) "${migrationCase}：结果已是当前 schema"
+                Assert-Equal 'current-schema' ([string] $migrationReload.Report.reasonCategory) "${migrationCase}：结果复读原因类别"
+                Assert-Equal (& $formatSettingsFamily -Family $migrationAfter) (
+                    & $formatSettingsFamily -Family (& $readSettingsFamily -SettingsPath $migrationSettingsPath)
+                ) "${migrationCase}：结果复读不改任何文件"
+
+                if ($migrationVersion -ge 3) {
+                    # 安装器的演练链：迁移前字节就在 backup1，命令报告的迁移时刻原样交给等价判定。
+                    $migrationChain = Invoke-CapturedNativeProcess `
+                        -FilePath $migrationApplicationPath `
+                        -WorkingDirectory $migrationInstallRoot `
+                        -ArgumentList @(
+                            '--settings-equivalence',
+                            '--before-settings', "$migrationSettingsPath.backup1",
+                            '--after-settings', $migrationSettingsPath,
+                            '--migration-utc', [string] $migrationRun.Report.migrationUtc)
+                    Assert-Equal 0 $migrationChain.ExitCode "${migrationCase}：等价判定接受迁移结果；$($migrationChain.Stdout)"
+                    Assert-Equal 'migrated' ([string] ($migrationChain.Stdout | ConvertFrom-Json).reasonCategory) "${migrationCase}：等价判定原因类别"
+                }
+            }
+            else {
+                Assert-Equal $false ([bool] $migrationRun.Report.migrated) "${migrationCase}：已是当前 schema 时报告没有迁移"
+                Assert-Equal 'current-schema' ([string] $migrationRun.Report.reasonCategory) "${migrationCase}：原因类别"
+                Assert-Equal (& $formatSettingsFamily -Family $migrationBefore) (
+                    & $formatSettingsFamily -Family $migrationAfter
+                ) "${migrationCase}：设置与两代备份逐字节不变"
+            }
+            Assert-Equal 'settings.json,settings.json.backup1,settings.json.backup2' (
+                & $listDirectory -Directory (Split-Path -Parent $migrationSettingsPath)
+            ) "${migrationCase}：只留下设置与两代备份"
+        }
+
+        $migrationMissingPath = Join-Path $testRoot 'settings-migration-missing\settings.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $migrationMissingPath) | Out-Null
+        $migrationMissing = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationMissingPath) -Name '无界面迁移缺失输入'
+        Assert-Equal 1 $migrationMissing.ExitCode '无界面迁移缺失输入使用失败退出码'
+        Assert-Equal 'invalid-input' ([string] $migrationMissing.Report.reasonCategory) '无界面迁移缺失输入原因类别'
+        Assert-Equal $true (([string] $migrationMissing.Report.message).Contains($migrationMissingPath, [StringComparison]::Ordinal)) '无界面迁移缺失输入消息指出具体文件'
+        Assert-Equal '' (& $listDirectory -Directory (Split-Path -Parent $migrationMissingPath)) '无界面迁移缺失输入不创建任何文件'
+
+        $migrationCorruptPath = Join-Path $testRoot 'settings-migration-corrupt\settings.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $migrationCorruptPath) | Out-Null
+        [System.IO.File]::WriteAllText($migrationCorruptPath, '{not-json', $utf8NoBom)
+        $migrationCorruptHash = (Get-FileHash -LiteralPath $migrationCorruptPath -Algorithm SHA256).Hash
+        $migrationCorrupt = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationCorruptPath) -Name '无界面迁移损坏输入'
+        Assert-Equal 1 $migrationCorrupt.ExitCode '无界面迁移损坏输入使用失败退出码'
+        Assert-Equal 'invalid-settings' ([string] $migrationCorrupt.Report.reasonCategory) '无界面迁移损坏输入原因类别'
+        Assert-Equal $migrationCorruptHash (Get-FileHash -LiteralPath $migrationCorruptPath -Algorithm SHA256).Hash '无界面迁移损坏输入保持原字节'
+        Assert-Equal 'settings.json' (& $listDirectory -Directory (Split-Path -Parent $migrationCorruptPath)) '无界面迁移损坏输入不生成备份或临时文件'
+
+        # 只读主文件无法替换：迁移结果没有落盘，返回失败而不是声称成功。
+        $migrationReadOnlyPath = Join-Path $testRoot 'settings-migration-read-only\settings.json'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $migrationReadOnlyPath) | Out-Null
+        [System.IO.File]::WriteAllText($migrationReadOnlyPath, ($migrationFixtures | Where-Object Version -eq 3).Json, $utf8NoBom)
+        $migrationReadOnlyHash = (Get-FileHash -LiteralPath $migrationReadOnlyPath -Algorithm SHA256).Hash
+        [System.IO.File]::SetAttributes($migrationReadOnlyPath, [System.IO.FileAttributes]::ReadOnly)
+        try {
+            $migrationReadOnly = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationReadOnlyPath) -Name '无界面迁移写入失败'
+        }
+        finally {
+            [System.IO.File]::SetAttributes($migrationReadOnlyPath, [System.IO.FileAttributes]::Normal)
+        }
+        Assert-Equal 1 $migrationReadOnly.ExitCode '无界面迁移写入失败使用失败退出码'
+        Assert-Equal 'write-failed' ([string] $migrationReadOnly.Report.reasonCategory) '无界面迁移写入失败原因类别'
+        Assert-Equal $migrationReadOnlyHash (Get-FileHash -LiteralPath $migrationReadOnlyPath -Algorithm SHA256).Hash '无界面迁移写入失败保持原字节'
+        Assert-Equal 'settings.json' (& $listDirectory -Directory (Split-Path -Parent $migrationReadOnlyPath)) '无界面迁移写入失败不留下备份或临时文件'
+
+        foreach ($migrationUsageCase in @(
+                [pscustomobject]@{ Name = '缺少设置路径'; Arguments = @('--settings-migration') },
+                [pscustomobject]@{ Name = '未知参数'; Arguments = @('--settings-migration', '--settings-path', $migrationMissingPath) })) {
+            $migrationUsage = & $invokeSettingsMigration -Arguments $migrationUsageCase.Arguments -Name "无界面迁移用法错误：$($migrationUsageCase.Name)"
+            Assert-Equal 2 $migrationUsage.ExitCode "无界面迁移用法错误使用独立退出码：$($migrationUsageCase.Name)"
+            Assert-Equal 'usage' ([string] $migrationUsage.Report.reasonCategory) "无界面迁移用法错误原因类别：$($migrationUsageCase.Name)"
+        }
+
+        Assert-Equal (& $formatSettingsFamily -Family $migrationLiveOriginal) (
+            & $formatSettingsFamily -Family (& $readSettingsFamily -SettingsPath $migrationLiveSettingsPath)
+        ) '无界面迁移不碰安装根里的现役设置与备份'
+        Assert-Equal 'app,settings.json,settings.json.backup1,settings.json.backup2' (
+            & $listDirectory -Directory $migrationInstallRoot
+        ) '无界面迁移不在安装根写日志、回执或其他文件'
+        Assert-Equal $migrationProgramListing (@(
+                Get-ChildItem -LiteralPath $migrationProgramDirectory -File -Recurse |
+                    ForEach-Object { '{0}|{1}|{2}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.Ticks }
+            ) -join "`n") '无界面迁移不改程序目录'
+
+        # 正常启动参照：应用经普通交互启动迁移安装根里的现役设置。运行期间命令对迁移前的副本执行，
+        # 落盘的设置与两代备份和正常启动逐字节相同，且命令不写应用日志、不触发单实例激活。
+        $migrationAppProcess = Start-Process -FilePath $migrationApplicationPath -ArgumentList @(
+            '--exit-after-ready-for-test',
+            '--exit-after-ready-seconds',
+            '15',
+            '--settings-file',
+            ('"{0}"' -f $migrationLiveSettingsPath),
+            '--diagnostic-log-path',
+            ('"{0}"' -f $migrationDiagnosticPath)
+        ) -WorkingDirectory $migrationInstallRoot -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $testRoot 'settings-migration-app.stdout.txt') `
+            -RedirectStandardError $migrationAppErrorPath
+        $migrationReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+        $migrationAppReady = $false
+        while (-not $migrationAppReady -and
+            -not $migrationAppProcess.HasExited -and
+            [DateTimeOffset]::UtcNow -lt $migrationReadyDeadline) {
+            $migrationAppReady = (Read-SharedTestEvidenceText -Path $migrationDiagnosticPath).Contains(
+                '"event":"WindowReady"',
+                [StringComparison]::Ordinal)
+            if (-not $migrationAppReady) {
+                Start-Sleep -Milliseconds 100
+            }
+        }
+        if (-not $migrationAppReady) {
+            throw "正常启动参照未进入窗口就绪：$(Read-SharedTestEvidenceText -Path $migrationAppErrorPath)"
+        }
+
+        $migrationLiveStarted = & $readSettingsFamily -SettingsPath $migrationLiveSettingsPath
+        Assert-Equal $migrationLiveOriginal.Main $migrationLiveStarted.Backup1 '正常启动参照把迁移前的现役设置轮转为 backup1'
+        $migrationCopyPath = Join-Path $testRoot 'settings-migration-running\settings.json'
+        & $writeSettingsFamily -SettingsPath $migrationCopyPath -MainJson $migrationLiveFixture
+        $migrationCopyRun = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationCopyPath) -Name '应用运行期间的无界面迁移'
+        $migrationAppProcess.Refresh()
+        Assert-Equal $false $migrationAppProcess.HasExited '命令返回时正在运行的应用仍存活'
+        Assert-Equal 0 $migrationCopyRun.ExitCode '应用运行期间命令对副本成功迁移'
+        Assert-Equal $true ([bool] $migrationCopyRun.Report.migrated) '应用运行期间命令报告发生迁移'
+        Assert-Equal (& $formatSettingsFamily -Family $migrationLiveStarted) (
+            & $formatSettingsFamily -Family (& $readSettingsFamily -SettingsPath $migrationCopyPath)
+        ) '命令落盘的设置与两代备份和正常启动的迁移逐字节相同'
+
+        # 与运行中实例同一安装根、同一设置路径的命令也不进单实例：现役设置已被正常启动迁移为当前 schema，
+        # 命令只读不写，运行中的实例收不到激活请求。
+        $migrationLiveRun = & $invokeSettingsMigration -Arguments @('--settings-migration', '--settings-file', $migrationLiveSettingsPath) -Name '应用运行期间对现役路径的无界面迁移'
+        $migrationAppProcess.Refresh()
+        Assert-Equal $false $migrationAppProcess.HasExited '现役路径命令返回时正在运行的应用仍存活'
+        Assert-Equal 0 $migrationLiveRun.ExitCode '应用运行期间现役路径命令成功'
+        Assert-Equal 'current-schema' ([string] $migrationLiveRun.Report.reasonCategory) '应用运行期间现役设置已是当前 schema'
+        Assert-Equal (& $formatSettingsFamily -Family $migrationLiveStarted) (
+            & $formatSettingsFamily -Family (& $readSettingsFamily -SettingsPath $migrationLiveSettingsPath)
+        ) '应用运行期间命令不碰现役设置'
+
+        if (-not $migrationAppProcess.WaitForExit(45000)) {
+            throw '正常启动参照未在自退期限内结束。'
+        }
+        $migrationAppProcess.WaitForExit()
+        Assert-Equal 0 $migrationAppProcess.ExitCode '正常启动参照按测试参数正常退出'
+        $migrationEntries = @(
+            (Read-SharedTestEvidenceText -Path $migrationDiagnosticPath) -split "`r?`n" |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                ForEach-Object { $_ | ConvertFrom-Json }
+        )
+        Assert-Equal 0 @($migrationEntries | Where-Object { [int] $_.processId -ne $migrationAppProcess.Id }).Count '命令不写正在运行应用的诊断日志'
+        Assert-Equal 0 @($migrationEntries | Where-Object { ([string] $_.event).StartsWith('InstanceActivation', [StringComparison]::Ordinal) }).Count '命令不触发单实例激活'
+        Assert-Equal 1 @($migrationEntries | Where-Object event -eq 'ProcessExited').Count '正常启动参照完整退出'
+    }
+    finally {
+        try {
+            if ($null -ne $migrationAppProcess) {
+                try {
+                    if (-not $migrationAppProcess.HasExited) {
+                        $migrationAppProcess.Kill()
+                        [void] $migrationAppProcess.WaitForExit(5000)
+                    }
+                }
+                finally {
+                    $migrationAppProcess.Dispose()
+                }
+            }
+        }
+        finally {
+            Remove-DesktopLauncherHostPayload -DestinationHost $migrationApplicationPath
+        }
+    }
+    Write-TestSegmentTiming -Name 'SettingsMigrationCli'
+
     # ExitAfterReadyForTest 自退间隔参数契约（#122）：默认 30 秒与现状一致、显式秒数生效、
     # 孤立开关与非法值 fail-closed。经源码构建 DLL 反射探针直接断言 HostOptions.Parse。
     $hostOptionsProbeAssembly = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
@@ -4529,10 +4620,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
 
     Write-TestSegmentTiming -Name 'MutexInterop'
     # #129 去重：直连 exe 的 validate-only 烟测（原 C1 执行点）删除。其唯一断言（设置哈希不变）
-    # 由 adapter validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
+    # 由 validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
     $canonicalHash = (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash
 
-    # #264：复用现役 Auto adapter 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
+    # #264：复用现役 Auto validate-only 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
+    # #277：现役测试直接启动应用 EXE 并显式传入设置与诊断日志路径，不再经 adapter。
     $populatedState = ConvertFrom-CountdownSettingsObject -Settings (
         $populatedFixture | ConvertFrom-Json)
     [System.IO.File]::WriteAllText(
@@ -4541,45 +4633,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
-    $adapterResult = Invoke-CapturedNativeProcess -FilePath $pwsh -WorkingDirectory $PSScriptRoot -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-SettingsFile',
+    $adapterResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--settings-file',
         $themeExercisePath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $adapterDiagnosticPath
     )
     if ($adapterResult.ExitCode -ne 0) {
-        if ([string]::IsNullOrWhiteSpace([string] $adapterResult.Stdout)) {
-            $directFailureResult = Invoke-CapturedNativeProcess `
-                -FilePath $application `
-                -WorkingDirectory $PSScriptRoot `
-                -ArgumentList @(
-                    '--validate-only',
-                    '--settings-file',
-                    $themeExercisePath,
-                    '--diagnostic-log-path',
-                    $adapterFailureDirectDiagnosticPath
-                )
-            $diagnosticEvidence = Write-AdapterFailureDiagnosticEvidence `
-                -AdapterResult $adapterResult `
-                -DirectResult $directFailureResult `
-                -DirectDiagnosticPath $adapterFailureDirectDiagnosticPath `
-                -RepositoryRoot $PSScriptRoot `
-                -TestRoot $testRoot `
-                -Encoding $utf8NoBom `
-                -ApplicationPath $application `
-                -FailureStage 'AdapterValidateOnly'
-            Write-Host "Adapter failure diagnostic evidence: $($diagnosticEvidence.Path)"
-            Write-Host ($diagnosticEvidence.Summary | ConvertTo-Json -Depth 8 -Compress)
-        }
-
         $adapterFailureDetail = @(
-            "经 PowerShell adapter 运行 C# 应用 --validate-only 失败，退出码：$($adapterResult.ExitCode)。",
+            "直接运行 C# 应用 --validate-only 失败，退出码：$($adapterResult.ExitCode)。",
             "标准输出：$([Environment]::NewLine)$($adapterResult.Stdout)",
             "标准错误：$([Environment]::NewLine)$($adapterResult.Stderr)"
         ) -join [Environment]::NewLine
@@ -4660,17 +4723,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 'Night' ([string] (Get-Content -LiteralPath $nightMigrationPath -Raw -Encoding UTF8 | ConvertFrom-Json).themePreference) '主题迁移启动用例隔离设置写入旧 Night 偏好'
     $nightMigrationHash = (Get-FileHash -LiteralPath $nightMigrationPath -Algorithm SHA256).Hash
-    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $pwsh -WorkingDirectory $PSScriptRoot -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-NightMigrationOnly',
-        '-SettingsFile',
+    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--night-migration-only',
+        '--settings-file',
         $nightMigrationPath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $nightMigrationDiagnosticPath
     )
     if ($nightMigrationResult.ExitCode -ne 0) {
@@ -4701,19 +4759,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
     New-Item -ItemType Directory -Path $blockedTemporaryPath | Out-Null
     $blockedTemporaryPathRemainsDirectory = $false
     try {
-        $failedValidationResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-STA',
-            '-File',
-            $adapter,
-            '-ValidateOnly',
-            '-ExercisePersistenceFailures',
-            '-SettingsFile',
+        # WPF 应用是 GUI 子系统：经 & 调用时 PowerShell 不等它退出，必须用显式等待的进程 helper；
+        # stderr 照旧转给本测试的 stderr（原先经 adapter 时由继承句柄直接写出）。
+        $failedValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+            '--validate-only',
+            '--exercise-persistence-failures',
+            '--settings-file',
             $persistenceExercisePath,
-            '-DiagnosticLogPath',
+            '--diagnostic-log-path',
             $failedValidationDiagnosticPath
         )
+        [Console]::Error.Write($failedValidationResult.Stderr)
     }
     finally {
         # #129 去重迁移（U6 独有磁盘证据）：演练结束后阻塞 tmp 路径必须仍是目录。
@@ -4724,7 +4780,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     Assert-Equal $true $blockedTemporaryPathRemainsDirectory '受控持久化失败演练后阻塞 tmp 路径仍为目录'
     Assert-Equal 0 $failedValidationResult.ExitCode 'validate-only 受控持久化失败演练退出码'
-    $persistenceFailureValidation = $failedValidationResult.Output | ConvertFrom-Json
+    $persistenceFailureValidation = $failedValidationResult.Stdout | ConvertFrom-Json
     Assert-Equal $true ([bool] $persistenceFailureValidation.Valid) 'validate-only 受控持久化失败演练报告有效'
     foreach ($fieldName in @(
         'CountdownSaveFailurePreservesState',
@@ -4772,22 +4828,19 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'Valid'
     ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
-    $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $pwsh -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-NonInteractive',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-ExercisePersistenceFailures',
-        '-SettingsFile',
-        $persistenceExercisePath
+    $unblockedPersistenceResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--exercise-persistence-failures',
+        '--settings-file',
+        $persistenceExercisePath,
+        '--diagnostic-log-path',
+        (Join-Path $testRoot 'unblocked-persistence-application.jsonl')
     )
+    [Console]::Error.Write($unblockedPersistenceResult.Stderr)
     Assert-Equal $true ($unblockedPersistenceResult.ExitCode -ne 0) '持久化失败演练拒绝未阻塞的临时路径'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '被拒绝的未阻塞临时路径演练不改设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
-    Assert-Equal $true ([bool] $adapterValidation.Valid) 'adapter validate-only 返回有效 C# 验证报告'
+    Assert-Equal $true ([bool] $adapterValidation.Valid) 'validate-only 返回有效 C# 验证报告'
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
     Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
     Assert-Equal 'Number' $adapterValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
@@ -5930,26 +5983,20 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $floatingNotesSource -match 'PopupFocusLifecycle\.Attach\(popup, trigger') '悬浮便签…菜单接入与筛选/标签选择器同一套弹层焦点生命周期（#149 升级 #143 键盘路径源码契约；Esc 归还焦点行为由 PopupFocusLifecycle 与运行态探针共同钉住）'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
-    Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'adapter validate-only 保持设置不变'
+    Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'validate-only 保持设置不变'
     Write-TestSegmentTiming -Name 'AdapterAssertions'
 
     # #264：迁入 Ui FatalDiagnosticExercise；这是预期失败的诊断演练，不产出整份验证报告。
     $fatalDiagnosticPath = Join-Path $testRoot 'fatal-diagnostic-application.jsonl'
     $fatalDiagnosticResult = Invoke-CapturedNativeProcess `
-        -FilePath $pwsh `
+        -FilePath $application `
         -WorkingDirectory $PSScriptRoot `
         -ArgumentList @(
-            '-NoLogo',
-            '-NoProfile',
-            '-NonInteractive',
-            '-STA',
-            '-File',
-            $adapter,
-            '-ValidateOnly',
-            '-ExerciseFatalDiagnostic',
-            '-SettingsFile',
+            '--validate-only',
+            '--exercise-fatal-diagnostic',
+            '--settings-file',
             $themeExercisePath,
-            '-DiagnosticLogPath',
+            '--diagnostic-log-path',
             $fatalDiagnosticPath
         )
     Assert-Equal $true ($fatalDiagnosticResult.ExitCode -ne 0) '致命诊断演练必须非零退出'
@@ -5973,21 +6020,20 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [DateTimeOffset]::UtcNow,
         'China Standard Time'
     ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-    $noteExerciseOutput = Invoke-CheckedNativeCommand -FilePath $pwsh -Operation '经真实 UI 点击验证跨天便签提醒' -ArgumentList @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        $adapter,
-        '-ValidateOnly',
-        '-ExerciseNoteAdd',
-        '-ExerciseTagInteractions',
-        '-SettingsFile',
+    $noteExerciseResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--exercise-note-add',
+        '--exercise-tag-interactions',
+        '--settings-file',
         $noteExercisePath,
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         $noteExerciseDiagnosticPath
     )
-    $noteExercise = $noteExerciseOutput | ConvertFrom-Json
+    [Console]::Error.Write($noteExerciseResult.Stderr)
+    if ($noteExerciseResult.ExitCode -ne 0) {
+        throw "经真实 UI 点击验证跨天便签提醒 失败，退出码：$($noteExerciseResult.ExitCode)。$([Environment]::NewLine)$($noteExerciseResult.Stdout)"
+    }
+    $noteExercise = $noteExerciseResult.Stdout | ConvertFrom-Json
     Assert-Equal $true ([bool] $noteExercise.NoteAddViaClick) '主窗口真实点击添加便签'
     Assert-Equal $true ([bool] $noteExercise.NoteReminderViaSelector) '主窗口真实点击保存跨天提醒时间'
     Assert-Equal $true ([bool] $noteExercise.FloatingCrossDayReminderViaClick) '悬浮窗真实点击保存跨天提醒时间'

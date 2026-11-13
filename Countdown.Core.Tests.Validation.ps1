@@ -13,6 +13,8 @@ $originalDotnetCliHome = $env:DOTNET_CLI_HOME
 $originalValidationArtifactMode = $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE
 $originalValidationArtifactRecord = $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD
 $originalValidationSiblingMarker = $env:COUNTDOWN_VALIDATION_SIBLING_MARKER
+$originalFakeApplicationRecord = $env:COUNTDOWN_FAKE_APPLICATION_RECORD
+$originalFakeApplicationReport = $env:COUNTDOWN_FAKE_APPLICATION_REPORT
 # 隔离断言自封闭：快照入口标记（启动器 -AllowUnisolatedDesktop 调试时会带上）并在 finally
 # 恢复；验证套件自身从不注入该标记，窗口化子步骤必须进各自的隔离桌面。
 $originalSuiteAllowUnisolated = $env:MINMIN_SUITE_ALLOW_UNISOLATED
@@ -21,44 +23,60 @@ $validationArtifactRecord = Join-Path $validationTestRoot 'application-settings-
 $validationArtifactRoot = 'D:\Codex\.codex\tmp\clock-countdown-validation-suite'
 $validationSiblingMarker = Join-Path $validationArtifactRoot (
     'unrelated-sibling-' + [guid]::NewGuid().ToString('N') + '.marker')
-$validationSettingsArtifactFixture = @'
-param(
-    [switch] $ValidateOnly,
-    [string] $SettingsFile,
-    [string] $DiagnosticLogPath
-)
-if (-not [string]::IsNullOrWhiteSpace($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE)) {
-    [System.IO.File]::WriteAllText(
-        $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD,
-        $SettingsFile,
-        [System.Text.UTF8Encoding]::new($false))
-    $artifactPaths = @(
-        $SettingsFile,
-        "$SettingsFile.tmp",
-        "$SettingsFile.backup1",
-        "$SettingsFile.backup1.tmp",
-        "$SettingsFile.backup1.rollback",
-        "$SettingsFile.backup2",
-        "$SettingsFile.backup2.tmp",
-        "$SettingsFile.backup2.rollback"
-    )
-    foreach ($artifactPath in $artifactPaths) {
-        if ($env:COUNTDOWN_VALIDATION_ARTIFACT_MODE -eq 'directory-backup1' -and
-            $artifactPath -eq "$SettingsFile.backup1") {
-            [void] [System.IO.Directory]::CreateDirectory($artifactPath)
+# 套件直接启动 <验证根>\app\MinminCountdown.exe：假应用按假 dotnet 的方式编译成同名 EXE，记录收到的进程路径与参数，
+# 按夹具模式写出设置临时产物，再把夹具报告原样写到 stdout。
+$fakeApplicationProgram = @'
+using System;
+using System.IO;
+using System.Text;
+using System.Text.Json;
+
+var utf8 = new UTF8Encoding(false);
+var invocationRecord = Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_APPLICATION_RECORD")
+    ?? throw new InvalidOperationException("COUNTDOWN_FAKE_APPLICATION_RECORD is required.");
+var reportPath = Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_APPLICATION_REPORT")
+    ?? throw new InvalidOperationException("COUNTDOWN_FAKE_APPLICATION_REPORT is required.");
+File.AppendAllText(
+    invocationRecord,
+    JsonSerializer.Serialize(new { ProcessPath = Environment.ProcessPath, Arguments = args }) + Environment.NewLine,
+    utf8);
+var artifactMode = Environment.GetEnvironmentVariable("COUNTDOWN_VALIDATION_ARTIFACT_MODE");
+if (!string.IsNullOrWhiteSpace(artifactMode))
+{
+    var settingsIndex = Array.IndexOf(args, "--settings-file");
+    if (settingsIndex < 0 || settingsIndex + 1 >= args.Length)
+    {
+        throw new InvalidOperationException("--settings-file is required.");
+    }
+    var settingsFile = args[settingsIndex + 1];
+    File.WriteAllText(
+        Environment.GetEnvironmentVariable("COUNTDOWN_VALIDATION_ARTIFACT_RECORD")
+            ?? throw new InvalidOperationException("COUNTDOWN_VALIDATION_ARTIFACT_RECORD is required."),
+        settingsFile,
+        utf8);
+    foreach (var suffix in new[] { "", ".tmp", ".backup1", ".backup1.tmp", ".backup1.rollback", ".backup2", ".backup2.tmp", ".backup2.rollback" })
+    {
+        if (artifactMode == "directory-backup1" && suffix == ".backup1")
+        {
+            Directory.CreateDirectory(settingsFile + suffix);
         }
-        else {
-            [System.IO.File]::WriteAllText(
-                $artifactPath,
-                'validation artifact',
-                [System.Text.UTF8Encoding]::new($false))
+        else
+        {
+            File.WriteAllText(settingsFile + suffix, "validation artifact", utf8);
         }
     }
-    [System.IO.File]::WriteAllText(
-        $env:COUNTDOWN_VALIDATION_SIBLING_MARKER,
-        'preserve sibling',
-        [System.Text.UTF8Encoding]::new($false))
+    File.WriteAllText(
+        Environment.GetEnvironmentVariable("COUNTDOWN_VALIDATION_SIBLING_MARKER")
+            ?? throw new InvalidOperationException("COUNTDOWN_VALIDATION_SIBLING_MARKER is required."),
+        "preserve sibling",
+        utf8);
 }
+var report = File.ReadAllBytes(reportPath);
+using (var stdout = Console.OpenStandardOutput())
+{
+    stdout.Write(report, 0, report.Length);
+}
+return 0;
 '@
 try {
     New-Item -ItemType Directory -Path $validationTestRoot -Force | Out-Null
@@ -183,7 +201,8 @@ try {
             -FloatingManifestRequired $false) `
         'Application validation report interface rejects package captures'
 
-    $validationApplicationFixture = $validationApplicationJson.Replace("'", "''")
+    $fakeApplicationReport = Join-Path $validationTestRoot 'fake-application-report.json'
+    [System.IO.File]::WriteAllText($fakeApplicationReport, $validationApplicationJson, $utf8NoBom)
     $validationFixtures = [ordered]@{
         'Countdown.Core.Tests.ps1' = "'{`"Passed`":11,`"Failed`":0}'"
         'Countdown.CSharp.Tests.ps1' = @"
@@ -226,7 +245,6 @@ public static class SuiteEvidenceDesktopProbe
     [System.Text.UTF8Encoding]::new(`$false))
 '{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
 "@
-        '敏敏子倒计时.ps1' = $validationSettingsArtifactFixture + "`r`n'$validationApplicationFixture'"
     }
     foreach ($fixture in $validationFixtures.GetEnumerator()) {
         [System.IO.File]::WriteAllText(
@@ -302,6 +320,35 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         throw "Fake dotnet fixture compilation failed: exit=$LASTEXITCODE$([Environment]::NewLine)$fixtureCompilerOutput"
     }
     $fixtureDotnet = Join-Path $fixtureDotnetPublish 'FakeDotnet.exe'
+    $fakeApplicationSource = Join-Path $validationTestRoot 'fake-application-source'
+    New-Item -ItemType Directory -Path $fakeApplicationSource -Force | Out-Null
+    [System.IO.File]::WriteAllText(
+        (Join-Path $fakeApplicationSource 'FakeApplication.csproj'),
+        @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>MinminCountdown</AssemblyName>
+  </PropertyGroup>
+</Project>
+"@,
+        $utf8NoBom)
+    [System.IO.File]::WriteAllText((Join-Path $fakeApplicationSource 'Program.cs'), $fakeApplicationProgram, $utf8NoBom)
+    $fakeApplicationCompilerOutput = & $fixtureCompiler publish (Join-Path $fakeApplicationSource 'FakeApplication.csproj') `
+        -c Release `
+        -r win-x64 `
+        --self-contained true `
+        --nologo `
+        -o (Join-Path $validationTestRoot 'app') 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        throw "Fake application fixture compilation failed: exit=$LASTEXITCODE$([Environment]::NewLine)$fakeApplicationCompilerOutput"
+    }
+    $fakeApplication = Join-Path $validationTestRoot 'app\MinminCountdown.exe'
+    $fakeApplicationRecord = Join-Path $validationTestRoot 'fake-application-record.jsonl'
+    $env:COUNTDOWN_FAKE_APPLICATION_RECORD = $fakeApplicationRecord
+    $env:COUNTDOWN_FAKE_APPLICATION_REPORT = $fakeApplicationReport
     $fixtureDotnetRecord = Join-Path $validationTestRoot 'fake-dotnet-record.jsonl'
     $validationOrderPath = Join-Path $validationTestRoot 'validation-order.txt'
     $env:COUNTDOWN_FAKE_DOTNET_RECORD = $fixtureDotnetRecord
@@ -335,6 +382,17 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
     Assert-Equal $false ($validationResult.PSObject.Properties.Name -contains 'UiTestOutput') 'Validation interface retires the compatibility UI stage output'
     Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
+    $applicationInvocation = [System.IO.File]::ReadAllLines($fakeApplicationRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json
+    $applicationArguments = @($applicationInvocation.Arguments)
+    Assert-Equal $true `
+        ([string]::Equals([string] $applicationInvocation.ProcessPath, $fakeApplication, [System.StringComparison]::OrdinalIgnoreCase) -and
+            $applicationArguments.Count -eq 5 -and
+            $applicationArguments[0] -eq '--validate-only' -and
+            $applicationArguments[1] -eq '--settings-file' -and
+            [System.IO.Path]::IsPathRooted([string] $applicationArguments[2]) -and
+            $applicationArguments[3] -eq '--diagnostic-log-path' -and
+            [System.IO.Path]::IsPathRooted([string] $applicationArguments[4])) `
+        'Validation interface launches the root application EXE directly with explicit settings and diagnostic log paths'
     $isolationEvidencePath = Join-Path $validationTestRoot 'csharp-isolation-evidence.txt'
     Assert-Equal $true (Test-Path -LiteralPath $isolationEvidencePath -PathType Leaf) 'Validation interface isolation evidence is written into the same validation run root'
     $isolationEvidenceLines = @()
@@ -451,8 +509,8 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'",
         $utf8NoBom)
     [System.IO.File]::WriteAllText(
-        (Join-Path $validationTestRoot '敏敏子倒计时.ps1'),
-        ($validationSettingsArtifactFixture + "`r`n'{`"Valid`":`"false`",`"FloatingWindowPresent`":true}'"),
+        $fakeApplicationReport,
+        '{"Valid":"false","FloatingWindowPresent":true}',
         $utf8NoBom)
     $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = 'files'
     $stringBooleanRejected = $false
@@ -477,10 +535,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $null
     Assert-Equal $true $stringBooleanRejected 'Validation interface rejects string values that only coerce to true'
 
-    [System.IO.File]::WriteAllText(
-        (Join-Path $validationTestRoot '敏敏子倒计时.ps1'),
-        ($validationSettingsArtifactFixture + "`r`n'$validationApplicationFixture'"),
-        $utf8NoBom)
+    [System.IO.File]::WriteAllText($fakeApplicationReport, $validationApplicationJson, $utf8NoBom)
     $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = 'directory-backup1'
     $nonFileArtifactRejected = $false
     try {
@@ -513,6 +568,8 @@ finally {
     $env:COUNTDOWN_VALIDATION_ARTIFACT_MODE = $originalValidationArtifactMode
     $env:COUNTDOWN_VALIDATION_ARTIFACT_RECORD = $originalValidationArtifactRecord
     $env:COUNTDOWN_VALIDATION_SIBLING_MARKER = $originalValidationSiblingMarker
+    $env:COUNTDOWN_FAKE_APPLICATION_RECORD = $originalFakeApplicationRecord
+    $env:COUNTDOWN_FAKE_APPLICATION_REPORT = $originalFakeApplicationReport
     $env:MINMIN_SUITE_ALLOW_UNISOLATED = $originalSuiteAllowUnisolated
     if (Test-Path -LiteralPath $validationSiblingMarker -PathType Leaf) {
         Remove-Item -LiteralPath $validationSiblingMarker -Force

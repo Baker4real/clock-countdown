@@ -169,6 +169,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\RuntimeProtocol.cs',
     'src\MinminCountdown\SegmentIndicator.cs',
     'src\MinminCountdown\SettingsEquivalenceCommand.cs',
+    'src\MinminCountdown\SettingsMigrationCommand.cs',
     'src\MinminCountdown\SettingsRecoveryWindow.cs',
     'src\MinminCountdown\TrayIconHost.cs',
     'src\MinminCountdown\UiControls.cs',

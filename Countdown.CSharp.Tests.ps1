@@ -1682,9 +1682,9 @@ function Invoke-InstanceActivationProcessTests {
     }
 
     try {
+        # #275：源码构建输出不在 app\ 下，应用根取各次启动显式给的工作目录 $testRoot；
+        # 测试根不再需要 adapter 作根标记，图标随程序目录（构建输出）读取。
         New-Item -ItemType Directory -Path $testRoot | Out-Null
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot '敏敏子倒计时.ps1') -Destination $testRoot
-        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'countdown-icon.ico') -Destination $testRoot
 
         $settingsPath = Join-Path $testRoot 'settings.json'
         $diagnosticPath = Join-Path $testRoot 'logs\application.jsonl'

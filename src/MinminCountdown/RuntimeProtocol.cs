@@ -10,38 +10,21 @@ internal static class ApplicationPaths
 {
     public const string AdapterFileName = "敏敏子倒计时.ps1";
 
+    // #275：应用根的判定不看 adapter 是否存在。安装布局里程序目录（应用自身与随包资源所在目录）
+    // 是应用根下的 app\，应用根总是它的上一级，与工作目录无关。源码构建输出等其他布局由调用方
+    // 经工作目录指定应用根；开发和测试运行另用命令行开关显式给出设置与日志位置。
     public static string ResolveApplicationRoot()
     {
-        var executableDirectory = !string.IsNullOrWhiteSpace(Environment.ProcessPath)
-            ? Path.GetDirectoryName(Path.GetFullPath(Environment.ProcessPath))!
-            : Path.GetFullPath(AppContext.BaseDirectory);
-        var executableParent = Directory.GetParent(executableDirectory)?.FullName;
-        // #275：安装布局里 EXE 在安装根下的程序目录 app\，安装根总是它的上一级，
-        // 不看 adapter 是否存在，也不随工作目录变化。
-        if (executableParent is not null &&
-            string.Equals(Path.GetFileName(executableDirectory.TrimEnd(Path.DirectorySeparatorChar)), "app", StringComparison.OrdinalIgnoreCase))
+        var programDirectory = Path.GetFullPath(AppContext.BaseDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var programParent = Directory.GetParent(programDirectory)?.FullName;
+        if (programParent is not null &&
+            string.Equals(Path.GetFileName(programDirectory), "app", StringComparison.OrdinalIgnoreCase))
         {
-            return executableParent;
+            return programParent;
         }
 
-        var currentDirectory = Path.GetFullPath(Environment.CurrentDirectory);
-        if (File.Exists(Path.Combine(currentDirectory, AdapterFileName)))
-        {
-            return currentDirectory;
-        }
-
-        var cursor = new DirectoryInfo(executableDirectory);
-        while (cursor is not null)
-        {
-            if (File.Exists(Path.Combine(cursor.FullName, AdapterFileName)))
-            {
-                return cursor.FullName;
-            }
-
-            cursor = cursor.Parent;
-        }
-
-        return executableParent ?? executableDirectory;
+        return Path.GetFullPath(Environment.CurrentDirectory);
     }
 }
 

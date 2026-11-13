@@ -16,7 +16,7 @@ adapter 指仓库根的 `敏敏子倒计时.ps1`。“经 adapter 启动应用�
 - #291 删除 adapter、桌面启动器与旧安装器；
 - #292 删除启动验收协议；
 - #290 删除旧远端部署；
-- #275 结束按 adapter 文件推断应用根。
+- #275 结束按 adapter 文件推断应用根：已完成，下表不再有它的行（规则见文末接口说明）。
 
 Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用。行号会随并行票漂移，下文按文件与符号、分段或断言名定位。
 
@@ -45,7 +45,8 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 | `敏敏子倒计时.ps1` | adapter 本体 | #291 |
 | `Countdown.CSharp.Tests.ps1` InteractiveLaunch 段（复制 adapter 到 `interactive-application-root`，pwsh 带 `-ExitAfterReadyForTest -ExitAfterReadyForTestSeconds -SettingsFile -DiagnosticLogPath` 交互启动） | 专门验证 adapter：生产参数映射、等待 EXE、退出码透传（“window-ready 时 adapter 仍在等待 C# EXE”“交互启动 adapter 透传 C# 正常退出码”） | #291 |
 | 同段断言“交互启动回执保持 adapter 路径身份” | 回执的应用身份 | #292 |
-| `Countdown.CSharp.Tests.ps1` `$adapter` 定义与存在性检查 | InteractiveLaunch 的输入；也保证直接启动时根推断第一步成立 | #291（根标记作用见 #275） |
+| `Countdown.CSharp.Tests.ps1` `$adapter` 定义与存在性检查 | InteractiveLaunch 的输入 | #291 |
+| `Countdown.CSharp.Tests.ps1` DirectProgramLaunch 段把 adapter 复制进诱饵工作目录 | 反证应用根不看工作目录里的 adapter（#275）；删 adapter 时改用同名占位文件 | #291 |
 | `Countdown.Core.Tests.SourceContracts.ps1` adapter 源码断言（`WaitForExit`、`$stayAttached`、`Win32_Process` 脱离作业） | 专门验证 adapter | #291 |
 | `Countdown.CSharp.Tests.ps1` `-DesktopLauncherOnly` 段（`$repoAdapter`、`$fixtureAdapter`、`-ExpectedAdapterPath`、`Assert-DesktopLauncherCommandLineAvoidsAdapter`、“登录任务仍用 pwsh 执行 adapter，而不是桌面启动器”“启动器进程没有 schtasks 或 adapter 参数”） | 桌面启动器与登录任务旧启动链 | #291 |
 | `tools/Invoke-DesktopLauncherLatencyProbe.ps1`（adapter 副本夹具） | 桌面启动器探针 | #291 |
@@ -62,10 +63,7 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 | `src/MinminCountdown/RuntimeProtocol.cs` 回执 `AdapterPath` | 启动回执身份 | #292 |
 | `src/MinminCountdown/ValidationExercises.CalendarAndStartup.cs`（回执 `ApplicationPath` 等于 adapter 路径） | 启动验收演练 | #292 |
 | `Countdown.Core.Tests.MainDomain.ps1` `$runtimeApplicationPath`、`Countdown.Core.Tests.TransactionAcceptance.ps1` `$acceptanceApplicationPath` | 回执身份夹具 | #292 |
-| `src/MinminCountdown/RuntimeProtocol.cs` `ApplicationPaths.AdapterFileName` 与 `ResolveApplicationRoot` | 按 adapter 文件推断应用根 | #275 |
-| `src/MinminCountdown/MonitorGeometryValidation.cs`（经 `ResolveApplicationRoot` 定位 EXE） | 根推断调用方 | #275 |
-| `Invoke-CountdownSourceValidation.ps1`（`dotnet MinminCountdown.dll`，cwd 为仓库根） | 靠 cwd 里的 adapter 推断根（第二步），本身不经 adapter 启动 | #275 |
-| `Countdown.CSharp.Tests.ps1` InstanceActivation 把 adapter 复制进测试根 | 根标记 | #275 |
+| `src/MinminCountdown/RuntimeProtocol.cs` `ApplicationPaths.AdapterFileName` | 只剩回执 `AdapterPath` 与启动验收演练在用；#275 起根推断不再用它 | #292 |
 | `Countdown.RemoteDeployment.psm1`（adapter 路径、`AdapterUiValidated` 回执字段） | 旧远端部署 | #290 |
 | `Countdown.Core.Tests.RemoteDeployment.ps1`（adapter 夹具、`-ValidateOnly` 令牌表、历史回执字段） | 旧远端部署 | #290 |
 | `tools/Test-CountdownDeploymentState.ps1`、`tools/Test-OfficeDeploymentStatus.ps1`（历史回执 `AdapterUiValidated`） | 旧远端部署状态 | #290 |
@@ -82,4 +80,4 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
   - 验证套件沿用调用方进程的当前目录；
   - CSharp 测试中经 `&` 启动的调用点沿用测试进程的当前位置。
 
-  应用根仍由 `ResolveApplicationRoot` 第一步得出：EXE 位于名为 `app` 的目录，且其上级目录有 adapter。#275 替换根推断时，这些调用点不能依赖工作目录；要么根推断与工作目录无关，要么由调用方显式传入根。
+  #275 起 `ResolveApplicationRoot` 不看 adapter：程序目录（`AppContext.BaseDirectory`）名为 `app` 时，应用根是它的上一级，与工作目录无关，上面这些直接启动 `<Root>\app\MinminCountdown.exe` 的调用点都属此类。其他布局（经 `dotnet` 运行源码构建输出：InstanceActivation 进程测试、`Invoke-CountdownSourceValidation.ps1`）以调用方给的工作目录为应用根：前者设为各自的测试根，后者设为仓库根。

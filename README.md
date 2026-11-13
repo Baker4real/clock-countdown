@@ -201,7 +201,7 @@ pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 ./CountdownLauncher.exe
 ```
 
-启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。#275 起，宿主位于 `app\` 时应用根目录总是它的上一级，不看 adapter 是否存在、也不随工作目录变化；随包节假日数据和图标从 `app\` 读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。不带参数直接启动 `app\MinminCountdown.exe` 可编辑，悬浮窗首帧后照常写出运行状态回执。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
+启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。#275 起，宿主不再按 adapter 文件推断应用根目录：宿主位于 `app\` 时应用根目录总是它的上一级，不随工作目录变化；其他布局（如经 `dotnet` 运行源码构建输出）以调用方给的工作目录为应用根目录。随包节假日数据和图标从程序目录（安装布局里即 `app\`）读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。不带参数直接启动 `app\MinminCountdown.exe` 可编辑，悬浮窗首帧后照常写出运行状态回执。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
 
 ## 安装
 

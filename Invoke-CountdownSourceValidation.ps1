@@ -57,11 +57,19 @@ $rootSettingsBefore = Get-RootSettingsSnapshot
 $validationOutput = $null
 $validationExitCode = $null
 try {
-    $validationOutput = & $DotnetPath $applicationDll `
-        '--validate-only' `
-        '--settings-file' $settingsPath `
-        '--diagnostic-log-path' $diagnosticPath | Out-String
-    $validationExitCode = $LASTEXITCODE
+    # #275：源码构建输出不在 app\ 下，应用以工作目录为应用根；显式设为仓库根，
+    # 根下的发布 EXE（PerMonitorV2 清单检查）与设置防护都以它为准，不随调用方位置变化。
+    Push-Location -LiteralPath $PSScriptRoot
+    try {
+        $validationOutput = & $DotnetPath $applicationDll `
+            '--validate-only' `
+            '--settings-file' $settingsPath `
+            '--diagnostic-log-path' $diagnosticPath | Out-String
+        $validationExitCode = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
     if ($validationExitCode -ne 0) {
         throw "源码 validate-only 失败（exit=$validationExitCode）：$validationOutput"
     }

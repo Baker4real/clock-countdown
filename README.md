@@ -67,7 +67,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Countdown.RemoteDeployment.psm1`：办公室候选安装（不跑测试）、事务验收、回滚、提交后收尾，以及成功/失败回执、部署 binding、独立回读与回滚前诊断的严格契约 module
 - `Countdown.TransferLedger.psm1`：办公室全部 SCP 与 SSH 证据回读共用的计时、吞吐和失败尝试账本 module
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
-- `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录和 safe-tree-delete 能力；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
+- `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
 - `CountdownLauncher.cs`：无控制台桌面启动器源码；仓库编译产物为 `CountdownLauncher.exe`
 - `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
 - `countdown-icon.ico`：窗口、托盘和桌面启动器图标；构建另复制一份进程序目录 `app\`，应用托盘从那里读取（#275）
@@ -78,6 +78,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - [DESIGN.md](DESIGN.md)：主窗口两页、悬浮窗两工作区与提醒中心的「暖粉日间」现役视觉、交互和单一日间主题合同
 - `Install-Countdown.ps1`：安装与更新入口；只做发布包校验、预检、本机直接安装时的验证套件与结果输出，安装本身交给安装事务生命周期
 - `Deploy-OfficeCountdown.ps1`：办公室设备的受校验部署入口
+- `Get-CountdownInstallStatus.ps1`：只读状态命令，默认读 `D:\敏敏子倒计时` 与登录任务 `Minmin Countdown`，输出一份 ASCII JSON：载荷清单状态（`present`/`missing`/`invalid`）、清单记录的提交与聚合哈希（清单缺失或没记提交时为 `null`，即未知；构建时工作树有改动则提交带 `-dirty`）、已安装 EXE 是否与清单一致、映像路径是已安装 EXE 的进程（路径、会话、启动时间）、登录任务与期望定义不符的项、设置文件的长度/修改时间/SHA-256，以及安装根下是否留有未完成安装的事务标记 `install-transaction.json`。不写文件、不启停进程，输出不含设置内容、凭据、主机名或账号；脚本自包含，可交给远端执行入口直接运行，`-Port` 只供测试注入进程与计划任务查询
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑；含 `-ReleaseContractOnly` 时会嵌套验证套件窗口步骤（自行隔离），不要当成全程无窗口。入口只留参数、公共断言、分段开关、计时与收尾，各分段正文在同目录 `Countdown.Core.Tests.<分段>.ps1`，由入口点源执行，不单独运行
 - `Countdown.CSharp.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
 - `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化 12 步收口验证 runner 与桌面启动 T0–T4 分段时延探针；收口包含 `Countdown.TransferLedger.Tests.ps1`，探针样本只用于归因，不汇入门槛样本池

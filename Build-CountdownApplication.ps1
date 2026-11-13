@@ -390,6 +390,8 @@ $payloadAggregate = [BitConverter]::ToString(
 $payloadManifestPath = Join-Path $applicationOutput 'published-payload.json'
 $payloadDocument = [ordered]@{
     schemaVersion = 1
+    # 载荷清单是已安装版本的唯一记录：提交标识供状态命令回答“装的是哪个提交”（#276）。
+    commit = Get-CountdownBuildSourceCommit -RepositoryRoot $PSScriptRoot
     aggregateSha256 = $payloadAggregate
     files = @($payloadFiles | ForEach-Object { [ordered]@{ path = $_.path; sha256 = $_.sha256 } })
 }

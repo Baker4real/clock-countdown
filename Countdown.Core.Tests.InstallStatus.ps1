@@ -2,9 +2,10 @@
 
 # #276 只读状态命令：在仓库根下的临时安装根上运行 Get-CountdownInstallStatus.ps1，进程与计划任务查询经测试 port 注入，
 # 断言输出 JSON 的字段值、每次读取后安装根逐项不变、输出不含设置内容与账号；再按远端执行入口的包装方式在子进程里用真实
-# Windows 查询跑一次。
+# Windows 查询跑一次。最后核对构建在载荷清单里记录的提交标识。
 $statusScript = Join-Path $PSScriptRoot 'Get-CountdownInstallStatus.ps1'
 $statusTestRoot = Join-Path $PSScriptRoot ('install-status-test-' + [guid]::NewGuid().ToString('N'))
+$statusGitFixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('clock-countdown-install-status-test-' + [guid]::NewGuid().ToString('N'))
 $statusUtf8 = [System.Text.UTF8Encoding]::new($false)
 # 期望值是独立算好的字面量：SHA-256('status exe v1')、SHA-256('status exe tampered')、SHA-256(设置夹具)。
 $statusExeSha256 = 'BC3378EBFBF2C5A7EDF92163E6DCA58B2FBD06032E1F47BD5B6CC16B68ADF36A'
@@ -249,7 +250,40 @@ try {
     Assert-Equal $false ([bool] $realStatus.transactionMarkerPresent) 'Real status reports no transaction marker'
     $identityLeaks = @(@($env:COMPUTERNAME, $env:USERNAME) | Where-Object { [string] $_ -and ([string] $_).Length -ge 4 -and $realText.IndexOf([string] $_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
     Assert-Equal 0 $identityLeaks.Count 'Real status output carries no host name or account'
+
+    # 构建在载荷清单里记录提交标识：构建根是 Git 工作树顶层时取 HEAD，有未提交改动时带 -dirty；不在 Git 工作树里
+    # （例如旧部署路径从 git archive 导出的源码）时为 null，状态命令据此报告未知。
+    Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.BuildPreflight.psm1') -Force
+    $statusHead = (@(& git -C $PSScriptRoot rev-parse --verify HEAD) -join '').Trim()
+    Assert-Equal $true ((Get-CountdownBuildSourceCommit -RepositoryRoot $PSScriptRoot) -match "^$statusHead(-dirty)?$") 'Build source commit of the checkout is its HEAD'
+    Assert-Equal $true ($null -eq (Get-CountdownBuildSourceCommit -RepositoryRoot (Join-Path $PSScriptRoot 'src'))) 'A build root below the work tree top records no commit'
+    New-Item -ItemType Directory -Path $statusGitFixtureRoot -Force | Out-Null
+    Assert-Equal $true ($null -eq (Get-CountdownBuildSourceCommit -RepositoryRoot $statusGitFixtureRoot)) 'A build root outside any Git work tree records no commit'
+    foreach ($gitArguments in @(
+            @('init', '--quiet'),
+            @('config', 'user.name', 'Install status fixture'),
+            @('config', 'user.email', 'fixture@example.invalid'),
+            @('config', 'core.autocrlf', 'false'))) {
+        & git -C $statusGitFixtureRoot @gitArguments | Out-Null
+    }
+    [System.IO.File]::WriteAllText((Join-Path $statusGitFixtureRoot 'source.txt'), "built`n", $statusUtf8)
+    & git -C $statusGitFixtureRoot add source.txt | Out-Null
+    & git -C $statusGitFixtureRoot commit --quiet -m 'fixture build source' | Out-Null
+    $fixtureHead = (@(& git -C $statusGitFixtureRoot rev-parse --verify HEAD) -join '').Trim()
+    Assert-Equal $fixtureHead (Get-CountdownBuildSourceCommit -RepositoryRoot $statusGitFixtureRoot) 'A clean work tree records the bare commit'
+    [System.IO.File]::WriteAllText((Join-Path $statusGitFixtureRoot 'untracked.txt'), "not committed`n", $statusUtf8)
+    Assert-Equal "$fixtureHead-dirty" (Get-CountdownBuildSourceCommit -RepositoryRoot $statusGitFixtureRoot) 'Uncommitted files mark the recorded commit dirty'
+    # 本次套件的构建输出（Build 或 IncrementalBuild 阶段）把提交标识写进了载荷清单。
+    $builtManifest = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json
+    Assert-Equal $true ([string] $builtManifest.commit -match "^$statusHead(-dirty)?$") 'Build output payload manifest records the commit it was built from'
 }
 finally {
     Remove-CountdownIsolatedTestTree -Path $statusTestRoot -AllowedRoot $PSScriptRoot
+    # Windows 上 git init 把 .git 设为隐藏，入口的清理函数不枚举隐藏项，所以先去掉隐藏属性。
+    $statusGitDirectory = Join-Path $statusGitFixtureRoot '.git'
+    if (Test-Path -LiteralPath $statusGitDirectory -PathType Container) {
+        $statusGitDirectoryItem = Get-Item -LiteralPath $statusGitDirectory -Force
+        $statusGitDirectoryItem.Attributes = $statusGitDirectoryItem.Attributes -band -bnot [System.IO.FileAttributes]::Hidden
+    }
+    Remove-CountdownIsolatedTestTree -Path $statusGitFixtureRoot -AllowedRoot ([System.IO.Path]::GetTempPath())
 }

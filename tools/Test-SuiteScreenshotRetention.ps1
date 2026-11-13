@@ -63,7 +63,8 @@ function Invoke-ScreenshotRetentionProbe {
     param(
         [Parameter(Mandatory)] [string] $LogRoot,
         [switch] $IncludeStageFailure,
-        [scriptblock] $ConfirmScreenshotRetention
+        [scriptblock] $ConfirmScreenshotRetention,
+        [string] $ManagedRecyclePath = $script:fixtureManagedRecyclePath
     )
     $spec = [ordered]@{
         Stage = 'RetentionProbe'; FilePath = $pwsh
@@ -87,12 +88,76 @@ function Invoke-ScreenshotRetentionProbe {
     }
     $confirmationArgument = @{}
     if ($null -ne $ConfirmScreenshotRetention) { $confirmationArgument.ConfirmScreenshotRetention = $ConfirmScreenshotRetention }
+    if (-not [string]::IsNullOrWhiteSpace($ManagedRecyclePath)) { $confirmationArgument.ManagedRecyclePath = $ManagedRecyclePath }
     Invoke-SuiteRun -StageSpecs $specs -RepositoryRoot $repoRoot -LogDirectory $LogRoot -MaxParallel 1 -StageTimeoutSeconds 10 -Initialize $initialize @confirmationArgument
 }
 
 $testBase = 'D:/Codex/.codex/tmp/clock-countdown-screenshot-retention'
 $testRoot = Join-Path $testBase ([guid]::NewGuid().ToString('N'))
 [void] [IO.Directory]::CreateDirectory($testRoot)
+$script:fixtureManagedRecyclePath = Join-Path $testRoot 'Invoke-ManagedRecycle.Fixture.ps1'
+$fixtureManagedRecycleSource = @'
+#requires -Version 7.0
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)] [ValidateSet('Check', 'Plan', 'Apply')] [string] $Mode,
+    [string] $TargetPath,
+    [string] $Purpose,
+    [string] $Authorization,
+    [string] $PlanPath,
+    [string] $ApprovedPlanSha256,
+    [switch] $ConfirmRecycle
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$fixtureRoot = [IO.Path]::GetFullPath($PSScriptRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+
+function Assert-FixtureTarget {
+    param([string] $Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Fixture recycle requires a target.' }
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    if (-not $fullPath.StartsWith($fixtureRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Fixture recycle target escapes the fixture root: $fullPath"
+    }
+    if (-not [IO.Directory]::Exists($fullPath)) { throw "Fixture recycle target is missing: $fullPath" }
+    return $fullPath
+}
+
+if ($Mode -eq 'Check') {
+    $target = Assert-FixtureTarget -Path $TargetPath
+    foreach ($file in [IO.Directory]::EnumerateFiles($target, '*', [IO.SearchOption]::AllDirectories)) {
+        $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        $stream.Dispose()
+    }
+    [pscustomobject]@{ status = 'checked' } | ConvertTo-Json -Compress
+    exit 0
+}
+
+if ($Mode -eq 'Plan') {
+    $target = Assert-FixtureTarget -Path $TargetPath
+    $planDirectory = Join-Path $PSScriptRoot 'fixture-recycle-plans'
+    [void] [IO.Directory]::CreateDirectory($planDirectory)
+    $newPlanPath = Join-Path $planDirectory ([guid]::NewGuid().ToString('N') + '.json')
+    [IO.File]::WriteAllText($newPlanPath, (@{ TargetPath = $target } | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    $planSha256 = (Get-FileHash -LiteralPath $newPlanPath -Algorithm SHA256).Hash
+    [pscustomobject]@{ status = 'planned'; planPath = $newPlanPath; planSha256 = $planSha256 } | ConvertTo-Json -Compress
+    exit 0
+}
+
+if (-not $ConfirmRecycle) { throw 'Fixture recycle Apply requires ConfirmRecycle.' }
+if (-not [IO.File]::Exists($PlanPath)) { throw "Fixture recycle plan is missing: $PlanPath" }
+$actualPlanSha256 = (Get-FileHash -LiteralPath $PlanPath -Algorithm SHA256).Hash
+if ($actualPlanSha256 -cne $ApprovedPlanSha256) { throw 'Fixture recycle plan hash differs from approval.' }
+$plan = Get-Content -LiteralPath $PlanPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$target = Assert-FixtureTarget -Path ([string] $plan.TargetPath)
+$recycleRoot = Join-Path $PSScriptRoot 'fixture-recycle'
+[void] [IO.Directory]::CreateDirectory($recycleRoot)
+$destination = Join-Path $recycleRoot ([guid]::NewGuid().ToString('N') + '-' + [IO.Path]::GetFileName($target))
+[IO.Directory]::Move($target, $destination)
+[pscustomobject]@{ status = 'recycled'; targetStillExists = [IO.Directory]::Exists($target) } | ConvertTo-Json -Compress
+exit 0
+'@
+[IO.File]::WriteAllText($script:fixtureManagedRecyclePath, $fixtureManagedRecycleSource, [Text.UTF8Encoding]::new($false))
 try {
     $boundary = New-ScreenshotRetentionFixture -CaseRoot (Join-Path $testRoot 'boundary') -HistoricalRunCount 29
     $boundaryResult = Invoke-ScreenshotRetentionProbe -LogRoot $boundary.LogRoot
@@ -110,6 +175,16 @@ try {
     Assert-ScreenshotRetention ($unconfirmedResult.ScreenshotRetention.ConfirmationPlan.Targets.Count -eq 1) '首次自动清理计划必须列出精确目标'
     Assert-ScreenshotRetention ($unconfirmedResult.ScreenshotRetention.ConfirmationPlan.Targets[0].Path -eq $unconfirmed.Captures[0]) '首次自动清理计划路径必须匹配实际旧截图'
     Assert-ScreenshotRetention ($unconfirmedResult.ScreenshotRetention.ConfirmationPlan.Targets[0].Bytes -eq 5 -and $unconfirmedResult.ScreenshotRetention.ConfirmationPlan.TotalBytes -eq 5) '首次自动清理计划必须绑定精确字节数'
+
+    $missingHost = New-ScreenshotRetentionFixture -CaseRoot (Join-Path $testRoot 'missing-host') -HistoricalRunCount 30
+    $missingHostPath = Join-Path $testRoot 'absent-host/Invoke-ManagedRecycle.ps1'
+    $missingHostResult = Invoke-ScreenshotRetentionProbe -LogRoot $missingHost.LogRoot -ManagedRecyclePath $missingHostPath -ConfirmScreenshotRetention { param($plan) $plan.PlanSha256 }
+    Assert-ScreenshotRetention ($missingHostResult.Status -eq 'Completed' -and $missingHostResult.Stages[0].Status -eq 'Completed') '宿主回收入口缺失不得改变已完成阶段'
+    Assert-ScreenshotRetention ($missingHostResult.ScreenshotRetention.Status -eq 'Failed') '宿主回收入口缺失必须失败闭锁'
+    Assert-ScreenshotRetention ([string] $missingHostResult.ScreenshotRetention.Error -like '*受管回收入口不存在*') '宿主回收入口缺失必须保留明确错误'
+    Assert-ScreenshotRetention ([IO.Directory]::Exists($missingHost.Captures[0])) '宿主回收入口缺失不得移动原目标'
+    $persistedMissingHost = Get-Content -LiteralPath $missingHostResult.StatePath -Raw -Encoding UTF8 | ConvertFrom-Json -DateKind String
+    Assert-ScreenshotRetention ($persistedMissingHost.ScreenshotRetention.Status -eq 'Failed' -and [string] $persistedMissingHost.ScreenshotRetention.Error -like '*受管回收入口不存在*') '宿主回收入口缺失错误必须写入运行记录'
 
     $retention = New-ScreenshotRetentionFixture -CaseRoot (Join-Path $testRoot 'retention') -HistoricalRunCount 30
     $oldestStamp = ([IO.Path]::GetFileName($retention.Captures[0]) -split '-')[0]
@@ -134,7 +209,8 @@ try {
     }.GetNewClosure()
     $result = Invoke-ScreenshotRetentionProbe -LogRoot $retention.LogRoot -ConfirmScreenshotRetention $confirmRetention
     Assert-ScreenshotRetention ($result.Status -eq 'Completed' -and $result.ExitCode -eq 0 -and $result.Stages[0].Status -eq 'Completed') '超过 30 次运行时阶段结果仍应完成'
-    Assert-ScreenshotRetention ($result.ScreenshotRetention.Status -eq 'Completed' -and $result.ScreenshotRetention.DeletedDirectoryCount -eq 2) '最早普通截图与 tray-menu 截图均应经受管回收完成'
+    Assert-ScreenshotRetention ($result.ScreenshotRetention.Status -eq 'Completed' -and $result.ScreenshotRetention.DeletedDirectoryCount -eq 2) "最早普通截图与 tray-menu 截图均应经受管回收完成：$($result.ScreenshotRetention.Error)"
+    Assert-ScreenshotRetention (@(Get-ChildItem -LiteralPath (Join-Path $testRoot 'fixture-recycle') -File -Recurse).Count -eq 2) 'fixture 必须把两个目标移动到临时回收目录而非永久删除'
     Assert-ScreenshotRetention (-not [IO.Directory]::Exists($retention.Captures[0])) '第 31 次运行结束后应删除最早一次截图'
     Assert-ScreenshotRetention (-not [IO.Directory]::Exists($oldTrayCapture)) '最早一次运行的 tray-menu 截图也应受同一留存边界约束'
     Assert-ScreenshotRetention (@($retention.Captures[1..29] | Where-Object { -not [IO.Directory]::Exists($_) }).Count -eq 0) '最近 30 次运行内的历史截图必须保留'
@@ -147,6 +223,7 @@ try {
 
     $regularResult = Invoke-ScreenshotRetentionProbe -LogRoot $retention.LogRoot
     Assert-ScreenshotRetention ($regularResult.ScreenshotRetention.Status -eq 'Completed' -and $regularResult.ScreenshotRetention.DeletedDirectoryCount -eq 1) '首次确认后应按常规留存自动清理'
+    Assert-ScreenshotRetention (@(Get-ChildItem -LiteralPath (Join-Path $testRoot 'fixture-recycle') -File -Recurse).Count -eq 3) '首次确认后的常规清理也必须移动到 fixture 回收目录'
     Assert-ScreenshotRetention (-not [IO.Directory]::Exists($retention.Captures[1])) '首次确认后的下一轮应清理新的越界截图'
     Assert-ScreenshotRetention (@($retention.Captures[2..29] | Where-Object { -not [IO.Directory]::Exists($_) }).Count -eq 0) '首次确认后的常规清理仍须保留最近 30 次运行'
     Assert-ScreenshotRetention ([IO.File]::Exists($result.StatePath)) '后续常规清理不得删除首次确认运行记录'
@@ -185,7 +262,7 @@ try {
         $lockedStream.Dispose()
     }
 
-    Write-Output 'PASS: 30-run boundary, first-apply confirmation lock, exact path/byte binding, confirmed and subsequent regular retention, active/recent captures, all summaries, deployment-reference protection, cleanup-failure isolation'
+    Write-Output 'PASS: isolated fixture recycle, missing-host failure, 30-run boundary, first-apply confirmation lock, exact path/byte binding, confirmed and subsequent regular retention, active/recent captures, all summaries, deployment-reference protection, cleanup-failure isolation'
 }
 finally {
     if ([IO.Directory]::Exists($testRoot) -and [IO.Path]::GetFullPath($testRoot).StartsWith([IO.Path]::GetFullPath($testBase) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {

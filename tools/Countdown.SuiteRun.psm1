@@ -250,18 +250,20 @@ function ConvertTo-SuiteManagedRecycleResult {
 }
 
 function Invoke-SuiteManagedRecycle {
-    param([Parameter(Mandatory)] [string] $TargetPath)
-    $recycle = 'D:/Codex/.codex/scripts/Invoke-ManagedRecycle.ps1'
-    if (-not [IO.File]::Exists($recycle)) { throw "受管回收入口不存在：$recycle" }
-    $output = @(& $recycle -Mode Check -TargetPath $TargetPath 2>&1)
+    param(
+        [Parameter(Mandatory)] [string] $TargetPath,
+        [string] $ManagedRecyclePath = 'D:/Codex/.codex/scripts/Invoke-ManagedRecycle.ps1'
+    )
+    if (-not [IO.File]::Exists($ManagedRecyclePath)) { throw "受管回收入口不存在：$ManagedRecyclePath" }
+    $output = @(& $ManagedRecyclePath -Mode Check -TargetPath $TargetPath 2>&1)
     $checked = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
     if ($checked.status -ne 'checked') { throw "受管回收 Check 未通过：$TargetPath" }
-    $output = @(& $recycle -Mode Plan -TargetPath $TargetPath `
+    $output = @(& $ManagedRecyclePath -Mode Plan -TargetPath $TargetPath `
         -Purpose '工单 #267：套件运行结束只保留最近 30 次运行截图' `
         -Authorization '用户要求“低影响套件启动器在运行结束时只保留最近 30 次运行的截图”' 2>&1)
     $planned = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
     if ($planned.status -ne 'planned') { throw "受管回收 Plan 未通过：$TargetPath" }
-    $output = @(& $recycle -Mode Apply -PlanPath ([string] $planned.planPath) `
+    $output = @(& $ManagedRecyclePath -Mode Apply -PlanPath ([string] $planned.planPath) `
         -ApprovedPlanSha256 ([string] $planned.planSha256) -ConfirmRecycle 2>&1)
     $applied = ConvertTo-SuiteManagedRecycleResult -Output $output -ExitCode $LASTEXITCODE -TargetPath $TargetPath
     if ($applied.status -ne 'recycled' -or $applied.targetStillExists) {
@@ -327,7 +329,8 @@ function Test-SuiteScreenshotRetentionConfirmation {
 function Invoke-SuiteScreenshotRetention {
     param(
         [Parameter(Mandatory)] [object] $Run,
-        [scriptblock] $ConfirmScreenshotRetention
+        [scriptblock] $ConfirmScreenshotRetention,
+        [string] $ManagedRecyclePath = 'D:/Codex/.codex/scripts/Invoke-ManagedRecycle.ps1'
     )
     $captureRoot = Join-Path (Split-Path -Parent $Run.LogDirectory) 'ui-captures'
     $runStarts = [Collections.Generic.List[DateTimeOffset]]::new()
@@ -374,7 +377,7 @@ function Invoke-SuiteScreenshotRetention {
     }
     $deletedCount = 0
     foreach ($capture in $targets) {
-        Invoke-SuiteManagedRecycle -TargetPath $capture
+        Invoke-SuiteManagedRecycle -TargetPath $capture -ManagedRecyclePath $ManagedRecyclePath
         $deletedCount++
     }
     $firstRunConfirmation = if ($requiresFirstRunConfirmation) {
@@ -404,6 +407,7 @@ function Invoke-SuiteRun {
         [scriptblock] $Finalize,
         [scriptblock] $FailureProbe,
         [scriptblock] $ConfirmScreenshotRetention,
+        [string] $ManagedRecyclePath = 'D:/Codex/.codex/scripts/Invoke-ManagedRecycle.ps1',
         [switch] $Closeout
     )
     [void][System.IO.Directory]::CreateDirectory($LogDirectory)
@@ -544,7 +548,7 @@ function Invoke-SuiteRun {
             if (-not $run.Closeout.Valid) { $run.Status='Failed';$run.ExitCode=1;$run.Failure=$run.Closeout.Failures -join '; ' }
         }
         try {
-            $screenshotRetention = Invoke-SuiteScreenshotRetention -Run $run -ConfirmScreenshotRetention $ConfirmScreenshotRetention
+            $screenshotRetention = Invoke-SuiteScreenshotRetention -Run $run -ConfirmScreenshotRetention $ConfirmScreenshotRetention -ManagedRecyclePath $ManagedRecyclePath
         }
         catch {
             $screenshotRetention = [pscustomobject]@{

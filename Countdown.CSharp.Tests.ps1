@@ -4326,7 +4326,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     New-Item -ItemType Directory -Path $blockedTemporaryPath | Out-Null
     $blockedTemporaryPathRemainsDirectory = $false
     try {
-        $failedValidationResult = Invoke-NativeCommandResult -FilePath $application -ArgumentList @(
+        # WPF 应用是 GUI 子系统：经 & 调用时 PowerShell 不等它退出，必须用显式等待的进程 helper；
+        # stderr 照旧转给本测试的 stderr（原先经 adapter 时由继承句柄直接写出）。
+        $failedValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
             '--validate-only',
             '--exercise-persistence-failures',
             '--settings-file',
@@ -4334,6 +4336,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
             '--diagnostic-log-path',
             $failedValidationDiagnosticPath
         )
+        [Console]::Error.Write($failedValidationResult.Stderr)
     }
     finally {
         # #129 去重迁移（U6 独有磁盘证据）：演练结束后阻塞 tmp 路径必须仍是目录。
@@ -4344,7 +4347,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     Assert-Equal $true $blockedTemporaryPathRemainsDirectory '受控持久化失败演练后阻塞 tmp 路径仍为目录'
     Assert-Equal 0 $failedValidationResult.ExitCode 'validate-only 受控持久化失败演练退出码'
-    $persistenceFailureValidation = $failedValidationResult.Output | ConvertFrom-Json
+    $persistenceFailureValidation = $failedValidationResult.Stdout | ConvertFrom-Json
     Assert-Equal $true ([bool] $persistenceFailureValidation.Valid) 'validate-only 受控持久化失败演练报告有效'
     foreach ($fieldName in @(
         'CountdownSaveFailurePreservesState',
@@ -4392,7 +4395,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'Valid'
     ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
-    $unblockedPersistenceResult = Invoke-NativeCommandResult -FilePath $application -ArgumentList @(
+    $unblockedPersistenceResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--exercise-persistence-failures',
         '--settings-file',
@@ -4400,6 +4403,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '--diagnostic-log-path',
         (Join-Path $testRoot 'unblocked-persistence-application.jsonl')
     )
+    [Console]::Error.Write($unblockedPersistenceResult.Stderr)
     Assert-Equal $true ($unblockedPersistenceResult.ExitCode -ne 0) '持久化失败演练拒绝未阻塞的临时路径'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '被拒绝的未阻塞临时路径演练不改设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
@@ -5583,7 +5587,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [DateTimeOffset]::UtcNow,
         'China Standard Time'
     ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-    $noteExerciseOutput = Invoke-CheckedNativeCommand -FilePath $application -Operation '经真实 UI 点击验证跨天便签提醒' -ArgumentList @(
+    $noteExerciseResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--exercise-note-add',
         '--exercise-tag-interactions',
@@ -5592,7 +5596,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '--diagnostic-log-path',
         $noteExerciseDiagnosticPath
     )
-    $noteExercise = $noteExerciseOutput | ConvertFrom-Json
+    [Console]::Error.Write($noteExerciseResult.Stderr)
+    if ($noteExerciseResult.ExitCode -ne 0) {
+        throw "经真实 UI 点击验证跨天便签提醒 失败，退出码：$($noteExerciseResult.ExitCode)。$([Environment]::NewLine)$($noteExerciseResult.Stdout)"
+    }
+    $noteExercise = $noteExerciseResult.Stdout | ConvertFrom-Json
     Assert-Equal $true ([bool] $noteExercise.NoteAddViaClick) '主窗口真实点击添加便签'
     Assert-Equal $true ([bool] $noteExercise.NoteReminderViaSelector) '主窗口真实点击保存跨天提醒时间'
     Assert-Equal $true ([bool] $noteExercise.FloatingCrossDayReminderViaClick) '悬浮窗真实点击保存跨天提醒时间'

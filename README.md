@@ -53,7 +53,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex、部署设置等价规则，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约、PowerShell 部署等价夹具快照与互操作验证程序；只引用 Core，保持无窗口
 - `src/MinminCountdown.WindowVerification`：#273 独立 WPF 窗口验证项目，引用产品程序集并产出第一条迁出的空态事实；仅由低影响 CSharp 阶段在隔离桌面启动，不并入纯 C# runner，也不进入办公室载荷
-- `Build-CountdownApplication.ps1`：生成 self-contained 的应用、纯 C# 验证与独立窗口验证 EXE，并复制、校验 9 个现役应用资产（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
+- `Build-CountdownApplication.ps1`：生成 self-contained 的应用、纯 C# 验证与独立窗口验证 EXE，并复制、校验发布契约声明的 14 个程序目录随包资源：9 个现役图片资产，以及 #275 起的随包节假日数据 `app\holiday-data\` 与图标 `app\countdown-icon.ico`（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
@@ -70,7 +70,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录和 safe-tree-delete 能力；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
 - `CountdownLauncher.cs`：无控制台桌面启动器源码；仓库编译产物为 `CountdownLauncher.exe`
 - `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
-- `countdown-icon.ico`：窗口和桌面启动器图标
+- `countdown-icon.ico`：窗口、托盘和桌面启动器图标；构建另复制一份进程序目录 `app\`，应用托盘从那里读取（#275）
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
 - `assets/floating-plush/*.png`：悬浮窗现役视觉资产；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入留在仓库，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - `assets/main-decorations/*.png`：主窗口暖色日间装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
@@ -200,11 +200,11 @@ pwsh.exe -NoLogo -NoProfile -File ./Deploy-OfficeCountdown.ps1 -ValidateOnly
 ./CountdownLauncher.exe
 ```
 
-启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
+启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。#275 起，宿主位于 `app\` 时应用根目录总是它的上一级，不看 adapter 是否存在、也不随工作目录变化；随包节假日数据和图标从 `app\` 读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。不带参数直接启动 `app\MinminCountdown.exe` 可编辑，悬浮窗首帧后照常写出运行状态回执。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
 
 ## 安装
 
-安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的文件（办公室安装会加载的 PowerShell 模块与 adapter、启动器、图标、节假日数据、根目录官方立绘和 9 个应用资产）后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256：先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1`（读暂存区 blob 改写钉值；`-Check` 只列出全部不一致项、不改文件）。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值，改它们不用重算钉值。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
+安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的文件（办公室安装会加载的 PowerShell 模块与 adapter、启动器、图标、节假日数据、根目录官方立绘和 14 个程序目录随包资源）后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256：先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1`（读暂存区 blob 改写钉值；`-Check` 只列出全部不一致项、不改文件）。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值，改它们不用重算钉值。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1

@@ -299,143 +299,143 @@ try {
     # 曳光弹：把已推送的 main 部署到一台还没装过的办公室。
     $deployCase = New-CountdownDeployTestCase -Name 'first'
     $deployed = Invoke-CountdownDeployTest -Label 'first deploy'
-    $result = $deployed.Result
-    Assert-Equal 'deploy' ([string] $result.mode) 'Deploy reports the deploy mode'
-    Assert-Equal $true ([bool] $result.succeeded) "Deploy succeeds: $($result.failedStep) $($result.error)"
-    Assert-Equal $true ($null -eq $result.failedStep) 'A successful deploy names no failed step'
-    Assert-Equal $deployRepo.Head ([string] $result.commit) 'Deploy reports the pushed main commit it deployed'
-    Assert-Equal $deployRepo.SuiteRunId ([string] $result.suiteRun.runId) 'Deploy names the suite run that tested the shipped build output'
-    Assert-Equal $deployAggregate ([string] $result.buildOutput.payloadAggregateSha256) 'Deploy reports the aggregate hash of the build output it shipped'
+    $deployResult = $deployed.Result
+    Assert-Equal 'deploy' ([string] $deployResult.mode) 'Deploy reports the deploy mode'
+    Assert-Equal $true ([bool] $deployResult.succeeded) "Deploy succeeds: $($deployResult.failedStep) $($deployResult.error)"
+    Assert-Equal $true ($null -eq $deployResult.failedStep) 'A successful deploy names no failed step'
+    Assert-Equal $deployRepo.Head ([string] $deployResult.commit) 'Deploy reports the pushed main commit it deployed'
+    Assert-Equal $deployRepo.SuiteRunId ([string] $deployResult.suiteRun.runId) 'Deploy names the suite run that tested the shipped build output'
+    Assert-Equal $deployAggregate ([string] $deployResult.buildOutput.payloadAggregateSha256) 'Deploy reports the aggregate hash of the build output it shipped'
 
     # 各步骤按顺序发生：办公室依次看到只读探测、传输、写操作安装、只读状态读取；进度在标准错误上逐步报告。
     Assert-Equal 'remote-read,transfer,remote-write,remote-read' ($deployCase.Calls -join ',') 'The office sees the read-only probe, the transfer, the install as a write and then a read-only status read'
     Assert-Equal 0 $deployCase.ReadOnlyChanges.Count 'Read-only remote calls change nothing on the office'
     Assert-Equal $true ($deployCase.MaxEncodedLength -gt 0 -and $deployCase.MaxEncodedLength -le 29000) "Every remote script fits the remote entry's encoded command limit: $($deployCase.MaxEncodedLength)"
-    $progressSteps = @([regex]::Matches($deployed.Stderr, '(?m)^\[deploy\] \d\d:\d\d:\d\d \d+/\d+ (?<step>[a-z]+) ') | ForEach-Object { $_.Groups['step'].Value })
-    Assert-Equal 'preflight,package,probe,transfer,install,status,record' ($progressSteps -join ',') 'Deploy reports each step on standard error in order'
+    $deployProgressSteps = @([regex]::Matches($deployed.Stderr, '(?m)^\[deploy\] \d\d:\d\d:\d\d \d+/\d+ (?<step>[a-z]+) ') | ForEach-Object { $_.Groups['step'].Value })
+    Assert-Equal 'preflight,package,probe,transfer,install,status,record' ($deployProgressSteps -join ',') 'Deploy reports each step on standard error in order'
 
     # 打包内容来自套件测过的构建输出：办公室程序目录里的文件与载荷清单和本机构建输出逐字节相同；
     # 本机构建输出与工作树都没被动过，没有重新导出或重新构建。
-    foreach ($file in $deployBuildFiles) {
-        Assert-Equal $file.Sha256 (Get-CountdownDeployTestFileHash -Path (Join-Path $deployCase.InstallRoot $file.Path)) "The office runs the suite-tested build output file: $($file.Path)"
+    foreach ($deployFile in $deployBuildFiles) {
+        Assert-Equal $deployFile.Sha256 (Get-CountdownDeployTestFileHash -Path (Join-Path $deployCase.InstallRoot $deployFile.Path)) "The office runs the suite-tested build output file: $($deployFile.Path)"
     }
     Assert-Equal (Get-CountdownDeployTestFileHash -Path (Join-Path $deployRepo.Root 'app\published-payload.json')) (Get-CountdownDeployTestFileHash -Path (Join-Path $deployCase.InstallRoot 'app\published-payload.json')) 'The office keeps the payload manifest the suite-tested build wrote'
     Assert-Equal $deployAppTree (Get-CountdownDeployTestTree -Root (Join-Path $deployRepo.Root 'app')) 'Deploy leaves the local build output untouched: nothing re-exported or rebuilt'
     Assert-Equal '' (@(Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) -join ',') 'Deploy leaves the work tree clean'
 
     # 成功判定来自安装后的状态读取：提交、聚合哈希、EXE 哈希与运行中的进程。
-    Assert-Equal $true ([bool] $result.install.succeeded) 'The package installer reports success'
-    Assert-Equal 7001 ([int] $result.install.readyProcess.processId) 'The install result names the process that reached startup readiness'
-    Assert-Equal $deployRepo.Head ([string] $result.status.commit) 'The status read after the install reports the deployed commit'
-    Assert-Equal $deployAggregate ([string] $result.status.aggregateSha256) 'The status read after the install reports the shipped aggregate hash'
-    Assert-Equal $deployBuildFiles[2].Sha256 ([string] $result.status.exe.sha256) 'The status read after the install reports the shipped EXE hash'
-    Assert-Equal $true ([bool] $result.status.exe.matchesManifest) 'The status read after the install reports the EXE matching the manifest'
-    Assert-Equal $true ([bool] $result.status.running) 'The status read after the install reports the application running'
-    Assert-Equal '7001' (@($result.status.processes | ForEach-Object { [int] $_.processId }) -join ',') 'The status read lists the process that reached startup readiness'
-    Assert-Equal $false ([bool] $result.status.transactionMarkerPresent) 'The status read reports no unfinished install'
-    Assert-Equal 0 @($result.statusMismatches).Count 'The status read matches every expectation'
+    Assert-Equal $true ([bool] $deployResult.install.succeeded) 'The package installer reports success'
+    Assert-Equal 7001 ([int] $deployResult.install.readyProcess.processId) 'The install result names the process that reached startup readiness'
+    Assert-Equal $deployRepo.Head ([string] $deployResult.status.commit) 'The status read after the install reports the deployed commit'
+    Assert-Equal $deployAggregate ([string] $deployResult.status.aggregateSha256) 'The status read after the install reports the shipped aggregate hash'
+    Assert-Equal $deployBuildFiles[2].Sha256 ([string] $deployResult.status.exe.sha256) 'The status read after the install reports the shipped EXE hash'
+    Assert-Equal $true ([bool] $deployResult.status.exe.matchesManifest) 'The status read after the install reports the EXE matching the manifest'
+    Assert-Equal $true ([bool] $deployResult.status.running) 'The status read after the install reports the application running'
+    Assert-Equal '7001' (@($deployResult.status.processes | ForEach-Object { [int] $_.processId }) -join ',') 'The status read lists the process that reached startup readiness'
+    Assert-Equal $false ([bool] $deployResult.status.transactionMarkerPresent) 'The status read reports no unfinished install'
+    Assert-Equal 0 @($deployResult.statusMismatches).Count 'The status read matches every expectation'
 
     # 包和暂存内容不长期保留。
-    Assert-Equal $true ([string] $result.package.sha256 -match '^[0-9A-F]{64}$') 'Deploy reports the package SHA-256'
-    Assert-Equal ([string] $result.package.sha256) ([string] $result.transfer.remoteSha256) 'The transfer verified the package hash on the office'
-    Assert-Equal $false (Test-Path -LiteralPath ([string] $result.remoteStagingDirectory)) 'The office staging directory is removed after the install'
-    Assert-Equal $true ([bool] $result.install.stagingRemoved) 'The remote install reports the staging directory removed'
-    Assert-Equal $false ([bool] $result.package.retained) 'Deploy reports the local package not retained'
+    Assert-Equal $true ([string] $deployResult.package.sha256 -match '^[0-9A-F]{64}$') 'Deploy reports the package SHA-256'
+    Assert-Equal ([string] $deployResult.package.sha256) ([string] $deployResult.transfer.remoteSha256) 'The transfer verified the package hash on the office'
+    Assert-Equal $false (Test-Path -LiteralPath ([string] $deployResult.remoteStagingDirectory)) 'The office staging directory is removed after the install'
+    Assert-Equal $true ([bool] $deployResult.install.stagingRemoved) 'The remote install reports the staging directory removed'
+    Assert-Equal $false ([bool] $deployResult.package.retained) 'Deploy reports the local package not retained'
     Assert-Equal 0 @(Get-ChildItem -LiteralPath $deployCase.RecordRoot -Recurse -Force -File | Where-Object { $_.Extension -eq '.zip' }).Count 'No package is kept under the local record root'
 
     # 本地部署记录：提交、包哈希、安装结果、状态快照与传输账本引用。
-    $recordText = [System.IO.File]::ReadAllText([string] $result.recordPath)
-    $record = $recordText | ConvertFrom-Json -DateKind String
-    Assert-Equal $deployRepo.Head ([string] $record.commit) 'The deployment record names the commit'
-    Assert-Equal ([string] $result.package.sha256) ([string] $record.package.sha256) 'The deployment record names the package hash'
-    Assert-Equal $true ([bool] $record.install.succeeded) 'The deployment record carries the install result'
-    Assert-Equal $deployRepo.Head ([string] $record.status.commit) 'The deployment record carries the status snapshot'
-    Assert-Equal $true ([bool] $record.succeeded) 'The deployment record carries the verdict'
-    Assert-Equal $true (Test-Path -LiteralPath ([string] $record.transfer.ledgerPath) -PathType Leaf) 'The deployment record references the transfer ledger'
-    $ledger = [System.IO.File]::ReadAllText([string] $record.transfer.ledgerPath) | ConvertFrom-Json
-    Assert-Equal ([string] $record.transfer.attemptId) ([string] $ledger.attempts[0].id) 'The ledger reference names the transfer attempt'
+    $deployRecordText = [System.IO.File]::ReadAllText([string] $deployResult.recordPath)
+    $deployRecord = $deployRecordText | ConvertFrom-Json -DateKind String
+    Assert-Equal $deployRepo.Head ([string] $deployRecord.commit) 'The deployment record names the commit'
+    Assert-Equal ([string] $deployResult.package.sha256) ([string] $deployRecord.package.sha256) 'The deployment record names the package hash'
+    Assert-Equal $true ([bool] $deployRecord.install.succeeded) 'The deployment record carries the install result'
+    Assert-Equal $deployRepo.Head ([string] $deployRecord.status.commit) 'The deployment record carries the status snapshot'
+    Assert-Equal $true ([bool] $deployRecord.succeeded) 'The deployment record carries the verdict'
+    Assert-Equal $true (Test-Path -LiteralPath ([string] $deployRecord.transfer.ledgerPath) -PathType Leaf) 'The deployment record references the transfer ledger'
+    $deployLedger = [System.IO.File]::ReadAllText([string] $deployRecord.transfer.ledgerPath) | ConvertFrom-Json
+    Assert-Equal ([string] $deployRecord.transfer.attemptId) ([string] $deployLedger.attempts[0].id) 'The ledger reference names the transfer attempt'
 
     # 标准输出、进度与记录都不含主机名或账号。
     Assert-CountdownDeployNoLeak -Text $deployed.Text -Name 'Deploy standard output'
     Assert-CountdownDeployNoLeak -Text $deployed.Stderr -Name 'Deploy progress'
-    Assert-CountdownDeployNoLeak -Text $recordText -Name 'Deployment record'
+    Assert-CountdownDeployNoLeak -Text $deployRecordText -Name 'Deployment record'
 
     # 只查状态：一次只读的状态读取，办公室与本地记录都不变。
-    $officeBefore = Get-CountdownDeployTestOfficeState
-    $recordsBefore = Get-CountdownDeployTestTree -Root $deployCase.RecordRoot
+    $deployOfficeBefore = Get-CountdownDeployTestOfficeState
+    $deployRecordsBefore = Get-CountdownDeployTestTree -Root $deployCase.RecordRoot
     $deployCase.Calls.Clear()
-    $statusOnly = Invoke-CountdownDeployTest -Label 'status only' -StatusOnly
-    Assert-Equal 'status' ([string] $statusOnly.Result.mode) 'Status-only mode reports the status mode'
-    Assert-Equal $true ([bool] $statusOnly.Result.succeeded) "Status-only mode reads the status: $($statusOnly.Result.error)"
+    $deployStatusOnly = Invoke-CountdownDeployTest -Label 'status only' -StatusOnly
+    Assert-Equal 'status' ([string] $deployStatusOnly.Result.mode) 'Status-only mode reports the status mode'
+    Assert-Equal $true ([bool] $deployStatusOnly.Result.succeeded) "Status-only mode reads the status: $($deployStatusOnly.Result.error)"
     Assert-Equal 'remote-read' ($deployCase.Calls -join ',') 'Status-only mode makes one read-only remote call and no transfer'
-    Assert-Equal $officeBefore (Get-CountdownDeployTestOfficeState) 'Status-only mode changes nothing on the office'
-    Assert-Equal $recordsBefore (Get-CountdownDeployTestTree -Root $deployCase.RecordRoot) 'Status-only mode writes nothing locally'
-    Assert-Equal $deployRepo.Head ([string] $statusOnly.Result.status.commit) 'Status-only mode reports the installed commit'
-    Assert-Equal $true ([bool] $statusOnly.Result.status.running) 'Status-only mode reports the application running'
-    Assert-CountdownDeployNoLeak -Text $statusOnly.Text -Name 'Status-only standard output'
-    Assert-CountdownDeployNoLeak -Text $statusOnly.Stderr -Name 'Status-only progress'
+    Assert-Equal $deployOfficeBefore (Get-CountdownDeployTestOfficeState) 'Status-only mode changes nothing on the office'
+    Assert-Equal $deployRecordsBefore (Get-CountdownDeployTestTree -Root $deployCase.RecordRoot) 'Status-only mode writes nothing locally'
+    Assert-Equal $deployRepo.Head ([string] $deployStatusOnly.Result.status.commit) 'Status-only mode reports the installed commit'
+    Assert-Equal $true ([bool] $deployStatusOnly.Result.status.running) 'Status-only mode reports the application running'
+    Assert-CountdownDeployNoLeak -Text $deployStatusOnly.Text -Name 'Status-only standard output'
+    Assert-CountdownDeployNoLeak -Text $deployStatusOnly.Stderr -Name 'Status-only progress'
 
     # 成功只看安装后的状态读取：安装器报告成功，但读状态时应用已经退出，部署不报告成功。
     $deployCase = New-CountdownDeployTestCase -Name 'exited'
     $deployCase.BeforeRead = { if ($deployCase.Calls.Contains('remote-write')) { $deployCase.Processes = @() } }
-    $exited = Invoke-CountdownDeployTest -Label 'application exited before the status read'
-    Assert-Equal $true ([bool] $exited.Result.install.succeeded) 'The installer reports success before the application exits'
-    Assert-Equal $false ([bool] $exited.Result.succeeded) 'Deploy does not report success when the status read finds the application not running'
-    Assert-Equal 'status' ([string] $exited.Result.failedStep) 'Deploy names the status read as the failed step'
-    Assert-Equal 'process' (@($exited.Result.statusMismatches) -join ',') 'Deploy names the missing process as the status mismatch'
+    $deployExited = Invoke-CountdownDeployTest -Label 'application exited before the status read'
+    Assert-Equal $true ([bool] $deployExited.Result.install.succeeded) 'The installer reports success before the application exits'
+    Assert-Equal $false ([bool] $deployExited.Result.succeeded) 'Deploy does not report success when the status read finds the application not running'
+    Assert-Equal 'status' ([string] $deployExited.Result.failedStep) 'Deploy names the status read as the failed step'
+    Assert-Equal 'process' (@($deployExited.Result.statusMismatches) -join ',') 'Deploy names the missing process as the status mismatch'
 
     # 生产 port 接主机入口：入口换成临时目录里的假脚本（形参、写操作断言与摘要格式同主机入口），不碰真实入口、不连任何设备。
     # 入口的杂项输出与摘要里的主机名不外漏，port 只回已知字段。
     Import-Module (Join-Path $PSScriptRoot 'Countdown.Deployer.psm1') -Force
-    $hostEntryRoot = Join-Path $deployTestRoot 'host-entries'
-    New-Item -ItemType Directory -Path $hostEntryRoot -Force | Out-Null
-    $hostStepCalls = Join-Path $hostEntryRoot 'step-calls.jsonl'
-    $hostTransferCalls = Join-Path $hostEntryRoot 'transfer-calls.jsonl'
-    $hostStepEntry = Join-Path $hostEntryRoot 'Invoke-RemoteStep.ps1'
-    $hostTransferEntry = Join-Path $hostEntryRoot 'Invoke-OfficeScpTransfer.ps1'
-    $hostCallsLiteral = "'" + $hostStepCalls.Replace("'", "''") + "'"
-    [System.IO.File]::WriteAllText($hostStepEntry, @"
+    $deployEntryRoot = Join-Path $deployTestRoot 'host-entries'
+    New-Item -ItemType Directory -Path $deployEntryRoot -Force | Out-Null
+    $deployEntryStepCalls = Join-Path $deployEntryRoot 'step-calls.jsonl'
+    $deployEntryTransferCalls = Join-Path $deployEntryRoot 'transfer-calls.jsonl'
+    $deployEntryStep = Join-Path $deployEntryRoot 'Invoke-RemoteStep.ps1'
+    $deployEntryTransfer = Join-Path $deployEntryRoot 'Invoke-OfficeScpTransfer.ps1'
+    $deployEntryCallsLiteral = "'" + $deployEntryStepCalls.Replace("'", "''") + "'"
+    [System.IO.File]::WriteAllText($deployEntryStep, @"
 param([string] `$Target, [string] `$ScriptPath, [string] `$OutputPath, [string] `$StdinScript, [int] `$TimeoutSeconds = 300, [switch] `$WriteOperation, [switch] `$IncludeOutput, [int] `$MaxOutputChars = 65536)
 `$tokens = `$null
 `$errors = `$null
 `$ast = [System.Management.Automation.Language.Parser]::ParseInput([System.IO.File]::ReadAllText(`$ScriptPath), [ref] `$tokens, [ref] `$errors)
 `$first = @(`$ast.EndBlock.Statements | Select-Object -First 1)
 `$refused = `$WriteOperation -and (`$first.Count -ne 1 -or -not `$first[0].Extent.Text.StartsWith("if (```$env:CODEX_REMOTE_EXECUTION_TARGET -ne '`$Target')"))
-Add-Content -LiteralPath $hostCallsLiteral -Value (@{ target = `$Target; write = [bool] `$WriteOperation; includeOutput = [bool] `$IncludeOutput; refused = `$refused } | ConvertTo-Json -Compress)
+Add-Content -LiteralPath $deployEntryCallsLiteral -Value (@{ target = `$Target; write = [bool] `$WriteOperation; includeOutput = [bool] `$IncludeOutput; refused = `$refused } | ConvertTo-Json -Compress)
 Write-Host 'ssh $deployAccountSentinel@$deployHostSentinel'
 Write-Warning 'connected to $deployHostSentinel'
 if (`$refused) { [ordered]@{ status = 'refused'; target = `$Target; exitCode = 2; helperExitCode = 2; outputPath = ''; reason = 'remote-context-assertion-missing'; output = `$null; outputTruncated = `$false } | ConvertTo-Json -Compress; exit 1 }
 [ordered]@{ status = 'ok'; target = `$Target; exitCode = 0; helperExitCode = 0; outputPath = 'out.txt'; output = '{"probe":"ok"}'; outputTruncated = `$false } | ConvertTo-Json -Compress
 "@, $deployUtf8)
-    [System.IO.File]::WriteAllText($hostTransferEntry, @"
+    [System.IO.File]::WriteAllText($deployEntryTransfer, @"
 param([Parameter(Mandatory)] [string] `$SourcePath, [Parameter(Mandatory)] [string] `$RemotePath, [Parameter(Mandatory)] [string] `$AttemptId, [Parameter(Mandatory)] [string] `$ExpectedHash, [Parameter(Mandatory)] [string] `$LedgerPath)
-Add-Content -LiteralPath '$($hostTransferCalls.Replace("'", "''"))' -Value (@{ remotePath = `$RemotePath; expectedHash = `$ExpectedHash; attemptId = `$AttemptId } | ConvertTo-Json -Compress)
+Add-Content -LiteralPath '$($deployEntryTransferCalls.Replace("'", "''"))' -Value (@{ remotePath = `$RemotePath; expectedHash = `$ExpectedHash; attemptId = `$AttemptId } | ConvertTo-Json -Compress)
 Write-Host 'scp to $deployHostSentinel'
 [System.IO.File]::WriteAllText(`$LedgerPath, '{"attempts":[{"id":"' + `$AttemptId + '"}]}')
 [pscustomobject]@{ status = 'succeeded'; attemptId = `$AttemptId; bytes = 5; elapsedSeconds = 0.1; ledger = `$LedgerPath; sha256 = `$ExpectedHash; hostname = '$deployHostSentinel' } | ConvertTo-Json -Compress
 "@, $deployUtf8)
-    $hostLedgerRoot = Join-Path $hostEntryRoot 'ledgers'
-    $hostPorts = New-CountdownDeployerHostPorts -RemoteStepEntry $hostStepEntry -TransferEntry $hostTransferEntry -LedgerRoot $hostLedgerRoot
-    $hostScript = Join-Path $hostEntryRoot 'read.ps1'
-    [System.IO.File]::WriteAllText($hostScript, "'{}'", $deployUtf8)
-    $hostRead = @(& $hostPorts.InvokeRemoteScript $hostScript $false *>&1)
-    Assert-Equal 1 $hostRead.Count 'The host remote port returns one result and lets none of the entry output through'
-    Assert-Equal '0|{"probe":"ok"}' ("$($hostRead[0].ExitCode)|$($hostRead[0].Output)") 'The host remote port returns the exit code and the remote output'
-    $hostRefused = @(& $hostPorts.InvokeRemoteScript $hostScript $true *>&1)
-    Assert-Equal $true ([int] $hostRefused[0].ExitCode -ne 0) 'The host remote port reports a write payload the entry refused as failed'
-    $hostPackage = Join-Path $hostEntryRoot 'package.zip'
-    [System.IO.File]::WriteAllText($hostPackage, 'bytes', $deployUtf8)
-    $hostPackageSha256 = (Get-FileHash -LiteralPath $hostPackage -Algorithm SHA256).Hash
-    $hostSent = @(& $hostPorts.SendFile $hostPackage 'D:\deploy-staging\clock-countdown-run-1\package.zip' $hostPackageSha256 'run-1' *>&1)
-    Assert-Equal 1 $hostSent.Count 'The host transfer port returns one result and lets none of the entry output through'
-    Assert-Equal "succeeded|run-1|$hostPackageSha256" ("$($hostSent[0].Status)|$($hostSent[0].AttemptId)|$(([string] $hostSent[0].Sha256).ToUpperInvariant())") 'The host transfer port returns the status, attempt and remote hash'
-    Assert-Equal $true ([string] $hostSent[0].LedgerPath).StartsWith($hostLedgerRoot + '\') 'The host transfer port keeps the ledger under its ledger root'
-    Assert-Equal $true (Test-Path -LiteralPath ([string] $hostSent[0].LedgerPath) -PathType Leaf) 'The host transfer port returns the ledger the entry wrote'
-    Assert-CountdownDeployNoLeak -Text ($hostSent[0] | ConvertTo-Json -Compress) -Name 'Host transfer port result'
-    $hostStepLog = @([System.IO.File]::ReadAllLines($hostStepCalls) | ForEach-Object { $_ | ConvertFrom-Json })
-    Assert-Equal 'office:False:True:False,office:True:True:True,office:True:True:False' (@($hostStepLog | ForEach-Object { "$($_.target):$($_.write):$($_.includeOutput):$($_.refused)" }) -join ',') 'The host ports run reads and writes on the office with output, and create the staging directory with an accepted write payload'
-    $hostTransferLog = [System.IO.File]::ReadAllText($hostTransferCalls) | ConvertFrom-Json
-    Assert-Equal "D:/deploy-staging/clock-countdown-run-1/package.zip|$($hostPackageSha256.ToLowerInvariant())" "$($hostTransferLog.remotePath)|$($hostTransferLog.expectedHash)" 'The host transfer port passes a forward-slash remote path and a lower-case hash'
+    $deployEntryLedgerRoot = Join-Path $deployEntryRoot 'ledgers'
+    $deployProductionPorts = New-CountdownDeployerHostPorts -RemoteStepEntry $deployEntryStep -TransferEntry $deployEntryTransfer -LedgerRoot $deployEntryLedgerRoot
+    $deployEntryScript = Join-Path $deployEntryRoot 'read.ps1'
+    [System.IO.File]::WriteAllText($deployEntryScript, "'{}'", $deployUtf8)
+    $deployEntryRead = @(& $deployProductionPorts.InvokeRemoteScript $deployEntryScript $false *>&1)
+    Assert-Equal 1 $deployEntryRead.Count 'The host remote port returns one result and lets none of the entry output through'
+    Assert-Equal '0|{"probe":"ok"}' ("$($deployEntryRead[0].ExitCode)|$($deployEntryRead[0].Output)") 'The host remote port returns the exit code and the remote output'
+    $deployEntryRefused = @(& $deployProductionPorts.InvokeRemoteScript $deployEntryScript $true *>&1)
+    Assert-Equal $true ([int] $deployEntryRefused[0].ExitCode -ne 0) 'The host remote port reports a write payload the entry refused as failed'
+    $deployEntryPackage = Join-Path $deployEntryRoot 'package.zip'
+    [System.IO.File]::WriteAllText($deployEntryPackage, 'bytes', $deployUtf8)
+    $deployEntryPackageSha256 = (Get-FileHash -LiteralPath $deployEntryPackage -Algorithm SHA256).Hash
+    $deployEntrySent = @(& $deployProductionPorts.SendFile $deployEntryPackage 'D:\deploy-staging\clock-countdown-run-1\package.zip' $deployEntryPackageSha256 'run-1' *>&1)
+    Assert-Equal 1 $deployEntrySent.Count 'The host transfer port returns one result and lets none of the entry output through'
+    Assert-Equal "succeeded|run-1|$deployEntryPackageSha256" ("$($deployEntrySent[0].Status)|$($deployEntrySent[0].AttemptId)|$(([string] $deployEntrySent[0].Sha256).ToUpperInvariant())") 'The host transfer port returns the status, attempt and remote hash'
+    Assert-Equal $true ([string] $deployEntrySent[0].LedgerPath).StartsWith($deployEntryLedgerRoot + '\') 'The host transfer port keeps the ledger under its ledger root'
+    Assert-Equal $true (Test-Path -LiteralPath ([string] $deployEntrySent[0].LedgerPath) -PathType Leaf) 'The host transfer port returns the ledger the entry wrote'
+    Assert-CountdownDeployNoLeak -Text ($deployEntrySent[0] | ConvertTo-Json -Compress) -Name 'Host transfer port result'
+    $deployEntryStepLog = @([System.IO.File]::ReadAllLines($deployEntryStepCalls) | ForEach-Object { $_ | ConvertFrom-Json })
+    Assert-Equal 'office:False:True:False,office:True:True:True,office:True:True:False' (@($deployEntryStepLog | ForEach-Object { "$($_.target):$($_.write):$($_.includeOutput):$($_.refused)" }) -join ',') 'The host ports run reads and writes on the office with output, and create the staging directory with an accepted write payload'
+    $deployEntryTransferLog = [System.IO.File]::ReadAllText($deployEntryTransferCalls) | ConvertFrom-Json
+    Assert-Equal "D:/deploy-staging/clock-countdown-run-1/package.zip|$($deployEntryPackageSha256.ToLowerInvariant())" "$($deployEntryTransferLog.remotePath)|$($deployEntryTransferLog.expectedHash)" 'The host transfer port passes a forward-slash remote path and a lower-case hash'
 }
 finally {
     # Windows 上 git init 把 .git 设为隐藏，入口的清理函数不枚举隐藏项，所以先去掉隐藏属性。

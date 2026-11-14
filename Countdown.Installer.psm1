@@ -116,14 +116,14 @@ function Exit-CountdownInstallLock {
 }
 
 # 短暂占用：目录树里只要有一个文件开着（杀毒软件扫描刚复制或刚运行过的文件、映像还没释放），目录改名就报拒绝访问，即使那个
-# 句柄允许删除也一样（.NET 对目录给的是 HResult 为 E_ACCESSDENIED 的 IOException）；文件删除与替换报拒绝访问、共享冲突或锁冲突。
-# 只认这几种；路径不存在、目标已存在等确定性失败不重试。
+# 句柄允许删除也一样（.NET 对目录给的是 HResult 为 E_ACCESSDENIED 的 IOException）；文件删除与替换报拒绝访问、共享冲突或锁冲突，
+# 删除目录树时里面的文件还被允许删除的句柄开着，目录报不是空的。只认这几种；路径不存在、目标已存在等确定性失败不重试。
 function Test-CountdownTransientFileLock {
     param([Parameter(Mandatory)] [System.Exception] $Exception)
 
     for ($current = $Exception; $null -ne $current; $current = $current.InnerException) {
         if ($current -is [System.UnauthorizedAccessException]) { return $true }
-        if ($current -is [System.IO.IOException] -and ($current.HResult -band 0xFFFF) -in @(5, 32, 33)) { return $true }
+        if ($current -is [System.IO.IOException] -and ($current.HResult -band 0xFFFF) -in @(5, 32, 33, 145)) { return $true }
     }
     $false
 }
@@ -493,10 +493,11 @@ function Test-CountdownSameFileBytes {
     (Get-FileHash -LiteralPath $Left -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $Right -Algorithm SHA256).Hash
 }
 
-# 用本次安装拍下的快照恢复设置及其两代备份（#283）。只在同一次安装运行里、新版本达到启动就绪之前调用：那时悬浮窗还没渲染，
-# 用户无法编辑，恢复不会丢用户的修改。逐个比较，与快照逐字节相同的不动；不同的先复制到事务目录里的临时文件，再整份替换现役
-# 文件（同卷改名，替换要么完成要么没发生）；快照里没有的（安装前就不存在，例如新版本迁移时轮转出的 backup 2）删除。主文件最先
-# 恢复：中途失败时旧版本至少读到安装前的主文件。返回 restored（写回或删除过）或 unchanged。
+# 用本次安装拍下的快照恢复设置及其两代备份（#283）。只在同一次安装运行里、安装器确认新版本达到启动就绪之前调用：在那之前
+# 新版本至多运行了等待就绪的时限，通常还没渲染悬浮窗；就绪之后用户可能已经在编辑，不再覆盖。逐个比较，与快照逐字节相同的
+# 不动；不同的先复制到事务目录里的临时文件，再整份替换现役文件（同卷改名，替换要么完成要么没发生）；快照里没有的（安装前
+# 就不存在，例如新版本迁移时轮转出的 backup 2）删除。主文件最先恢复：中途失败时旧版本至少读到安装前的主文件。
+# 返回 restored（写回或删除过）或 unchanged。
 function Restore-CountdownSettingsSnapshot {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -667,7 +668,7 @@ function Start-CountdownPreviousVersion {
 # 按顺序：停止已安装 EXE 的进程（换程序之后就是新版本，它占着程序目录里的文件）；按目录现状把程序目录放回；程序换过时用本次
 # 安装的快照恢复设置及两代备份；恢复本次改过的登录任务；首次安装删除本次创建的桌面快捷方式；有旧版本时经登录任务重新启动它并
 # 等到启动就绪。这些都做到了才清除事务标记（回滚完成的分界），再删除候选与事务目录，结论为 rolled-back；后两者删不掉只记下
-# 问题，残留由下一次安装清理。任何一步没做到，结论为 rollback-failed：事务标记、事务目录（含快照）与候选原样留下，由中断恢复
+# 问题，残留留给下一次安装的中断恢复清掉（#284）。任何一步没做到，结论为 rollback-failed：事务标记、事务目录（含快照）与候选原样留下，由中断恢复
 # （#284）接手；停不掉新版本或换不回程序目录时不再往下做，其余各步失败照样继续。问题逐条截短，不含设置内容。
 function Undo-CountdownInstall {
     param(
@@ -730,7 +731,7 @@ function Undo-CountdownInstall {
     if ($report.outcome -eq 'rolled-back') {
         foreach ($path in @($Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
             try { Remove-CountdownInstallEntry -Path $path -RetrySeconds $RetrySeconds }
-            catch { & $note "删除 $([System.IO.Path]::GetFileName($path)) 失败（下一次安装清理）" $_ }
+            catch { & $note "删除 $([System.IO.Path]::GetFileName($path)) 失败（留给下一次安装的中断恢复清掉）" $_ }
         }
     }
     $report.problems = $problems.ToArray()

@@ -14,6 +14,8 @@ $script:InstallLockName = 'Global\MinminCountdownInstallTransaction-v1'
 $script:ApplicationProcessName = 'MinminCountdown.exe'
 $script:ExecutableManifestPath = 'app\MinminCountdown.exe'
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+# 设置及其两代备份（docs/设置与持久化.md）：快照与迁移演练的对象，安装器从不写安装根里的这三份文件。
+$script:SettingsFamilyNames = @('settings.json', 'settings.json.backup1', 'settings.json.backup2')
 
 function New-CountdownInstallRejection {
     param(
@@ -73,6 +75,7 @@ function Resolve-CountdownInstallerLayout {
         CandidateDirectory = Join-Path $root 'app.candidate'
         PreviousDirectory = Join-Path $root 'app.previous'
         MarkerPath = Join-Path $root 'install-transaction.json'
+        TransactionDirectory = Join-Path $root 'install-transaction'
         RuntimeStatusPath = Join-Path $root 'runtime-status.json'
         SettingsPath = Join-Path $root 'settings.json'
         ExecutablePath = Join-Path $root 'app\MinminCountdown.exe'
@@ -332,6 +335,136 @@ function Write-CountdownInstallMarker {
     [System.IO.File]::Move($temporaryPath, $Path)
 }
 
+function Copy-CountdownSettingsFamily {
+    param(
+        [Parameter(Mandatory)] [string] $SourceDirectory,
+        [Parameter(Mandatory)] [string] $DestinationDirectory
+    )
+
+    [void] [System.IO.Directory]::CreateDirectory($DestinationDirectory)
+    foreach ($name in $script:SettingsFamilyNames) {
+        $source = Join-Path $SourceDirectory $name
+        if (Test-Path -LiteralPath $source -PathType Leaf) { [System.IO.File]::Copy($source, (Join-Path $DestinationDirectory $name)) }
+    }
+}
+
+# 事务目录 install-transaction\ 在写下事务标记之后建立，提交或撤回本次安装时整个删除。settings-snapshot\ 是设置及其两代
+# 备份在本次安装前的逐字节快照，不在快照里的文件安装前就不存在；它只供本次安装在新版本达到启动就绪之前恢复设置（#283）。
+function Save-CountdownSettingsSnapshot {
+    param([Parameter(Mandatory)] [object] $Layout)
+
+    $snapshotDirectory = Join-Path $Layout.TransactionDirectory 'settings-snapshot'
+    Copy-CountdownSettingsFamily -SourceDirectory $Layout.Root -DestinationDirectory $snapshotDirectory
+    $snapshotDirectory
+}
+
+# 经 port 运行候选 EXE 的一个无界面命令；stdout 应是一份 JSON 报告，读不出时 Report 为 $null。
+function Invoke-CountdownCandidateCommand {
+    param(
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [string] $WorkingDirectory,
+        [Parameter(Mandatory)] [string[]] $Arguments
+    )
+
+    $run = & $Ports.RunHeadlessCommand $ExecutablePath $Arguments $WorkingDirectory
+    $report = $null
+    try { $report = [string] (Get-CountdownInstallerProperty -Object $run -Name 'Output') | ConvertFrom-Json -DateKind String }
+    catch { $report = $null }
+    [pscustomobject]@{ ExitCode = Get-CountdownInstallerProperty -Object $run -Name 'ExitCode'; Report = $report }
+}
+
+# 迁移演练：在事务目录 settings-rehearsal\ 里的设置副本上运行候选 EXE 的无界面迁移（#278），再用候选 EXE 的等价判定（#272）
+# 核对快照与迁移结果，迁移命令报告的迁移时刻原样交给判定。没有设置文件时跳过（首次安装）。Report 是结果 JSON 里的演练
+# 结论，只含原因类别，不含设置内容或命令消息；不等价或演练没能完成时另带 Rejection，调用方据此撤回本次安装。
+function Invoke-CountdownSettingsRehearsal {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $SnapshotDirectory,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    $report = [ordered]@{ outcome = 'skipped-no-settings'; migration = $null; equivalence = $null }
+    $snapshotSettings = Join-Path $SnapshotDirectory 'settings.json'
+    if (-not (Test-Path -LiteralPath $snapshotSettings -PathType Leaf)) { return [pscustomobject]@{ Report = $report; Rejection = $null } }
+
+    $rehearsalDirectory = Join-Path $Layout.TransactionDirectory 'settings-rehearsal'
+    $rehearsalSettings = Join-Path $rehearsalDirectory 'settings.json'
+    $candidateExecutable = Join-Path $Layout.CandidateDirectory 'MinminCountdown.exe'
+    Copy-CountdownSettingsFamily -SourceDirectory $SnapshotDirectory -DestinationDirectory $rehearsalDirectory
+    $failed = {
+        param([string] $Detail)
+        $report.outcome = 'failed'
+        [pscustomobject]@{
+            Report = $report
+            Rejection = New-CountdownInstallRejection -Reason 'settings-rehearsal-failed' -Message "设置迁移演练没能完成（$Detail）：没有替换程序，现役设置未被改动。"
+        }
+    }
+    $category = { param([object] $Run) $value = [string] (Get-CountdownInstallerProperty -Object $Run.Report -Name 'reasonCategory'); if ($value) { $value } else { 'no-report' } }
+
+    try { $migration = Invoke-CountdownCandidateCommand -Ports $Ports -ExecutablePath $candidateExecutable -WorkingDirectory $rehearsalDirectory -Arguments @('--settings-migration', '--settings-file', $rehearsalSettings) }
+    catch { return (& $failed "迁移命令：$($_.Exception.Message)") }
+    $report.migration = & $category $migration
+    $migrationUtc = [string] (Get-CountdownInstallerProperty -Object $migration.Report -Name 'migrationUtc')
+    if ($migration.ExitCode -ne 0 -or (Get-CountdownInstallerProperty -Object $migration.Report -Name 'succeeded') -ne $true -or [string]::IsNullOrWhiteSpace($migrationUtc)) {
+        return (& $failed "迁移命令退出码 $($migration.ExitCode)，$($report.migration)")
+    }
+
+    try { $equivalence = Invoke-CountdownCandidateCommand -Ports $Ports -ExecutablePath $candidateExecutable -WorkingDirectory $rehearsalDirectory -Arguments @('--settings-equivalence', '--before-settings', $snapshotSettings, '--after-settings', $rehearsalSettings, '--migration-utc', $migrationUtc) }
+    catch { return (& $failed "等价判定：$($_.Exception.Message)") }
+    $report.equivalence = & $category $equivalence
+    $equivalent = Get-CountdownInstallerProperty -Object $equivalence.Report -Name 'equivalent'
+    if ($equivalence.ExitCode -eq 0 -and $equivalent -eq $true) {
+        $report.outcome = 'equivalent'
+        return [pscustomobject]@{ Report = $report; Rejection = $null }
+    }
+    if ($equivalence.ExitCode -eq 1 -and $equivalent -eq $false) {
+        $report.outcome = 'not-equivalent'
+        return [pscustomobject]@{
+            Report = $report
+            Rejection = New-CountdownInstallRejection -Reason 'settings-not-equivalent' -Message "候选版本对现役设置的迁移不等价（$($report.equivalence)）：没有替换程序，现役设置未被改动。"
+        }
+    }
+    & $failed "等价判定退出码 $($equivalence.ExitCode)，$($report.equivalence)"
+}
+
+# 换程序之前撤回本次安装（设置快照或迁移演练失败、迁移不等价）：先清除事务标记，再删除候选和事务目录，然后经登录任务重新
+# 启动旧版本，等它达到启动就绪。此时程序目录与现役设置都没被动过；清除标记之前中断时，标记、候选和现役的旧版本都还在，
+# 按恢复表删除候选即可（#284）。清理失败也照样重新启动旧版本。首次安装没有旧版本或登录任务，不启动。程序目录没被动过，
+# 所以就绪核对的 EXE 哈希取现役 EXE 本身。返回重新启动的进程（没有启动时为 $null）与清理、启动中遇到的问题。
+function Undo-CountdownInstallBeforeReplace {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $ReadyTimeoutSeconds
+    )
+
+    $problems = [System.Collections.Generic.List[string]]::new()
+    try {
+        if (Test-Path -LiteralPath $Layout.MarkerPath) { [System.IO.File]::Delete($Layout.MarkerPath) }
+        foreach ($directory in @($Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
+            if (Test-Path -LiteralPath $directory) { [System.IO.Directory]::Delete($directory, $true) }
+        }
+    }
+    catch { $problems.Add("清除事务标记或删除候选失败：$($_.Exception.Message)") }
+
+    $restarted = $null
+    try {
+        if ((Test-Path -LiteralPath $Layout.ExecutablePath -PathType Leaf) -and $null -ne (& $Ports.GetTask $TaskName)) {
+            if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+            if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
+            [void] (& $Ports.StartTask $TaskName)
+            $installedSha256 = (Get-FileHash -LiteralPath $Layout.ExecutablePath -Algorithm SHA256).Hash
+            $process = Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $installedSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+            $restarted = [ordered]@{ processId = [int] $process.ProcessId; sessionId = [int] $process.SessionId }
+        }
+    }
+    catch { $problems.Add("重新启动旧版本失败：$($_.Exception.Message)") }
+    [pscustomobject]@{ RestartedProcess = $restarted; Problems = $problems.ToArray() }
+}
+
 # 登录任务的定义（#279「登录任务的最终定义」），其中状态命令（#276）核对的各项与它的期望一致：登录时触发，交互式、
 # 非提升、不限运行时长、已在运行时忽略新实例；动作是已安装 EXE 本身，不带参数，不设工作目录。优先级取 4：#279 实测 4 的
 # 优先级类、I/O 与内存优先级都与正常启动一致（5 的内存优先级低一级，默认 7 是 BelowNormal）。电池供电时也启动、拔电不停：
@@ -450,12 +583,15 @@ function Install-CountdownProgram {
         stoppedProcessCount = 0
         readyProcess = $null
         settings = [ordered]@{ before = $null; after = $null }
+        settingsRehearsal = $null
+        restartedProcess = $null
     }
     $stage = 'preflight'
     $lock = $null
     $layout = $null
     $rootCreated = $false
     $candidateOwned = $false
+    $transactionUndoable = $false
     try {
         # 安装路径检查与设置指纹只读、不需要锁：被安装锁拒绝的结果里也有设置指纹。
         $layout = Resolve-CountdownInstallerLayout -InstallRoot $InstallRoot
@@ -501,6 +637,16 @@ function Install-CountdownProgram {
             Write-CountdownInstallMarker -Path $layout.MarkerPath -Manifest $manifest
             $candidateOwned = $false
 
+            # 换程序之前的设置保护（#282）：这一段失败时撤回本次安装并重新启动旧版本，程序目录与现役设置都没被动过。
+            $transactionUndoable = $true
+            $stage = 'snapshot-settings'
+            $snapshotDirectory = Save-CountdownSettingsSnapshot -Layout $layout
+            $stage = 'settings-rehearsal'
+            $rehearsal = Invoke-CountdownSettingsRehearsal -Layout $layout -SnapshotDirectory $snapshotDirectory -Ports $Ports
+            $result.settingsRehearsal = $rehearsal.Report
+            if ($null -ne $rehearsal.Rejection) { throw $rehearsal.Rejection }
+            $transactionUndoable = $false
+
             $stage = 'replace-program-directory'
             if (Test-Path -LiteralPath $layout.ProgramDirectory) {
                 [void] (& $Ports.MoveDirectory $layout.ProgramDirectory $layout.PreviousDirectory)
@@ -523,6 +669,7 @@ function Install-CountdownProgram {
             $stage = 'commit'
             [System.IO.File]::Delete($layout.MarkerPath)
             if (Test-Path -LiteralPath $layout.PreviousDirectory) { [System.IO.Directory]::Delete($layout.PreviousDirectory, $true) }
+            if (Test-Path -LiteralPath $layout.TransactionDirectory) { [System.IO.Directory]::Delete($layout.TransactionDirectory, $true) }
             $result.succeeded = $true
         }
     }
@@ -538,6 +685,11 @@ function Install-CountdownProgram {
                 if ($rootCreated -and @(Get-ChildItem -LiteralPath $layout.Root -Force).Count -eq 0) { [System.IO.Directory]::Delete($layout.Root) }
             }
             catch { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；删除候选失败：$($_.Exception.Message)" }
+        }
+        if ($transactionUndoable) {
+            $undo = Undo-CountdownInstallBeforeReplace -Layout $layout -TaskName $TaskName -Session $session -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds
+            $result.restartedProcess = $undo.RestartedProcess
+            if ($undo.Problems.Count -gt 0) { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；$($undo.Problems -join '；')" }
         }
     }
     finally {

@@ -37,7 +37,9 @@ $installerUserDataTimeUtc = [datetime]::new(2026, 11, 1, 8, 0, 0, [System.DateTi
 # 设置指纹的期望值：上面设置正文的长度与 SHA-256，修改时间即固定的安装前时间。
 $installerSettingsFingerprint = 'True|59|2026-11-01T08:00:00.0000000Z|D1990AECF05D08877897A23666B929C3AAB7ADC93E5986E052E06529BEC82151'
 # 安装器自己的条目；其余都是用户数据。
-$installerOwnEntries = @('app', 'app.candidate', 'app.previous', 'install-transaction.json', 'runtime-status.json')
+$installerOwnEntries = @('app', 'app.candidate', 'app.previous', 'install-transaction', 'install-transaction.json', 'runtime-status.json')
+# 假迁移命令报告的迁移时刻（#282）：等价判定只有收到这个时刻才认可迁移结果。
+$installerMigrationUtc = '2026-11-14T09:19:30.0000000+00:00'
 $installerCase = $null
 
 # 测试 port 只读写当前 $installerCase：安装器回调时按动态作用域解析到这里的变量。
@@ -111,6 +113,39 @@ $installerPorts = [pscustomobject]@{
         [System.IO.Directory]::Move($Source, $Destination)
         if ($null -ne $installerCase.OnMoveDirectory) { & $installerCase.OnMoveDirectory }
     }
+    # 候选 EXE 的无界面命令：设置迁移（#278）与设置等价判定（#272），按 $installerCase.Rehearsal 作答并记下每次调用。
+    # 迁移像产品一样只读写交给它的设置文件：Migration 为 migrated 时轮转两代备份、改写主文件并报告固定的迁移时刻，
+    # current-schema 时不写文件，其他值是失败类别。等价判定在两份字节相同时报告未变化；字节不同时，只有收到这次迁移
+    # 报告的时刻才按 Rehearsal.Equivalence 作答，否则报告数据不一致：迁移结果取决于迁移时刻，判定必须用同一时刻。
+    RunHeadlessCommand = {
+        param([string] $ExecutablePath, [string[]] $Arguments, [string] $WorkingDirectory)
+        $installerCase.Commands.Add([pscustomobject]@{ ExecutablePath = $ExecutablePath; Arguments = @($Arguments); WorkingDirectory = $WorkingDirectory })
+        $value = { param([string] $Option) $Arguments[[array]::IndexOf($Arguments, $Option) + 1] }
+        if ($Arguments[0] -eq '--settings-migration') {
+            $path = & $value '--settings-file'
+            $category = [string] $installerCase.Rehearsal.Migration
+            if ($category -eq 'migrated') {
+                if (Test-Path -LiteralPath "$path.backup1") { [System.IO.File]::Copy("$path.backup1", "$path.backup2", $true) }
+                [System.IO.File]::Copy($path, "$path.backup1", $true)
+                [System.IO.File]::WriteAllText($path, '{"schemaVersion":10,"note":"migrated by the candidate"}', $installerUtf8)
+            }
+            $succeeded = $category -in @('migrated', 'current-schema')
+            $report = [ordered]@{
+                schemaVersion = 1
+                succeeded = $succeeded
+                migrated = $category -eq 'migrated'
+                migrationUtc = if ($succeeded) { $installerMigrationUtc } else { $null }
+                reasonCategory = $category
+                message = 'fake settings migration'
+            }
+            return [pscustomobject]@{ ExitCode = if ($succeeded) { 0 } else { 1 }; Output = $report | ConvertTo-Json -Compress }
+        }
+        $sameBytes = (Get-FileHash -LiteralPath (& $value '--before-settings')).Hash -eq (Get-FileHash -LiteralPath (& $value '--after-settings')).Hash
+        $category = if ($sameBytes) { 'unchanged' } elseif ((& $value '--migration-utc') -ne $installerMigrationUtc) { 'data-mismatch' } else { [string] $installerCase.Rehearsal.Equivalence }
+        $equivalent = $category -in @('unchanged', 'migrated')
+        $report = [ordered]@{ schemaVersion = 1; equivalent = $equivalent; reasonCategory = $category; message = 'fake settings equivalence' }
+        [pscustomobject]@{ ExitCode = if ($equivalent) { 0 } else { 1 }; Output = $report | ConvertTo-Json -Compress }
+    }
 }
 
 function New-CountdownInstallerTestProcess {
@@ -168,6 +203,8 @@ function New-CountdownInstallerTestCase {
         OnStopProcess = $null
         OnMoveDirectory = $null
         OnStartTask = $null
+        Rehearsal = [pscustomobject]@{ Migration = 'current-schema'; Equivalence = 'migrated' }
+        Commands = [System.Collections.Generic.List[object]]::new()
         Observed = @{}
         Json = $null
     }
@@ -270,6 +307,12 @@ function Get-CountdownInstallerTestFileHash {
     (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
 }
 
+# 设置及其两代备份的 SHA-256（不在的记 missing），核对快照与现役设置用。
+function Get-CountdownInstallerTestSettingsFamily {
+    param([Parameter(Mandatory)] [string] $Directory)
+    (@('settings.json', 'settings.json.backup1', 'settings.json.backup2') | ForEach-Object { "$_=$(Get-CountdownInstallerTestFileHash -Path (Join-Path $Directory $_))" }) -join ';'
+}
+
 try {
     # 曳光弹：首次安装。安装根还不存在，也没有登录任务；装完后程序目录与包一致，登录任务已创建，应用经任务启动到启动就绪，
     # 事务标记、旧版本目录和候选目录都不在；状态命令读回运行中的已安装 EXE、与期望一致的登录任务和清单记录的提交。
@@ -352,6 +395,53 @@ try {
     $reusedPid = Invoke-CountdownInstallerTest
     Assert-Equal $true ([bool] $reusedPid.succeeded) "Install succeeds when a PID is reused while the application stops: $($reusedPid.failedStage) $($reusedPid.error)"
     Assert-Equal '4102,4103,6001' (Get-CountdownInstallerTestRunning) 'Install does not stop a process whose PID was reused by another program'
+
+    # #282 换程序前的设置保护：写下事务标记后，把设置及其两代备份快照到事务目录 install-transaction\settings-snapshot\，
+    # 用候选 EXE 的无界面迁移在事务目录里的副本上演练，再用产品的等价判定核对快照与迁移结果。迁移等价时安装继续；
+    # 安装器从不改写现役设置：假迁移改写交给它的文件，现役设置与两代备份在新版本启动时与提交后都与安装前逐字节相同。
+    $installerCase = New-CountdownInstallerTestCase -Name 'rehearsal-equivalent'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.Rehearsal.Migration = 'migrated'
+    $familyBefore = Get-CountdownInstallerTestSettingsFamily -Directory $installerCase.Root
+    $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+    $installerCase.OnStartTask = {
+        $installerCase.Observed.Snapshot = Get-CountdownInstallerTestSettingsFamily -Directory (Join-Path $installerCase.Root 'install-transaction\settings-snapshot')
+        $installerCase.Observed.UserData = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+    }
+    $rehearsed = Invoke-CountdownInstallerTest
+    Assert-Equal $true ([bool] $rehearsed.succeeded) "Install continues when the rehearsed migration is equivalent: $($rehearsed.failedStage) $($rehearsed.error)"
+    Assert-Equal 'equivalent|migrated|migrated' "$($rehearsed.settingsRehearsal.outcome)|$($rehearsed.settingsRehearsal.migration)|$($rehearsed.settingsRehearsal.equivalence)" 'Result JSON names the rehearsal conclusion and both verdicts'
+    Assert-Equal $familyBefore ([string] $installerCase.Observed.Snapshot) 'The transaction directory holds a snapshot of the settings and both backups'
+    Assert-Equal (Join-Path $installerCase.Root 'app.candidate\MinminCountdown.exe') ((@($installerCase.Commands | ForEach-Object ExecutablePath | Sort-Object -Unique)) -join ',') 'The rehearsal runs the candidate EXE'
+    Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) 'Live settings and both backups are untouched when the new version starts'
+    Assert-Equal $userDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed) 'The installer never writes the live settings or their backups'
+    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction')) 'Commit removes the transaction directory'
+    Assert-Equal $false ($installerCase.Json.Contains('settings-content-sentinel-280', [System.StringComparison]::Ordinal)) 'Result JSON with a rehearsal leaves out settings content'
+
+    # 迁移不等价，或演练没能完成（迁移命令报告设置损坏）时安装失败：清除事务标记、删除候选与事务目录、经登录任务重新启动
+    # 旧版本并报告。程序目录、现役设置及两代备份与安装前逐字节相同，安装根不留事务标记、候选或事务目录，登录任务照旧。
+    foreach ($refusedRehearsal in @(
+            [pscustomobject]@{ Name = 'rehearsal-not-equivalent'; Migration = 'migrated'; Equivalence = 'data-mismatch'; Reason = 'settings-not-equivalent'; Report = 'not-equivalent|migrated|data-mismatch' }
+            [pscustomobject]@{ Name = 'rehearsal-migration-failed'; Migration = 'invalid-settings'; Equivalence = 'migrated'; Reason = 'settings-rehearsal-failed'; Report = 'failed|invalid-settings|' }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $refusedRehearsal.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        $installerCase.Rehearsal.Migration = $refusedRehearsal.Migration
+        $installerCase.Rehearsal.Equivalence = $refusedRehearsal.Equivalence
+        $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        $tasksBefore = Get-CountdownInstallerTestTasks
+        $refused = Invoke-CountdownInstallerTest
+        Assert-Equal "False|settings-rehearsal|$($refusedRehearsal.Reason)" "$($refused.succeeded)|$($refused.failedStage)|$($refused.reason)" "Install fails when the settings rehearsal does not pass: $($refusedRehearsal.Name)"
+        Assert-Equal $refusedRehearsal.Report "$($refused.settingsRehearsal.outcome)|$($refused.settingsRehearsal.migration)|$($refused.settingsRehearsal.equivalence)" "Result JSON names the rehearsal conclusion: $($refusedRehearsal.Name)"
+        Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) "Program directory is byte-for-byte as before the install: $($refusedRehearsal.Name)"
+        Assert-Equal $userDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed) "Live settings and both backups are byte-for-byte as before the install: $($refusedRehearsal.Name)"
+        Assert-Equal 'app,runtime-status.json' ((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',') "No transaction marker, candidate or transaction directory is left behind: $($refusedRehearsal.Name)"
+        Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) "The previous version runs again: $($refusedRehearsal.Name)"
+        Assert-Equal '6001|3' "$($refused.restartedProcess.processId)|$($refused.restartedProcess.sessionId)" "Result JSON reports the restarted previous version: $($refusedRehearsal.Name)"
+        Assert-Equal $tasksBefore (Get-CountdownInstallerTestTasks) "The login task is left as it was: $($refusedRehearsal.Name)"
+        Assert-Equal $false ($installerCase.Json.Contains('settings-content-sentinel-280', [System.StringComparison]::Ordinal)) "Result JSON of a refused rehearsal leaves out settings content: $($refusedRehearsal.Name)"
+    }
 
     # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。

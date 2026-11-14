@@ -810,7 +810,7 @@ function Install-CountdownProgram {
         $stage = 'preflight'
         $session = Get-CountdownSingleInteractiveSession -Ports $Ports
         $desktopDirectory = Resolve-CountdownDesktopDirectory -Session $session -Ports $Ports
-        $sourceDirectory =Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
+        $sourceDirectory = Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
         $manifest = Read-CountdownPayloadManifest -ProgramDirectory $sourceDirectory
         $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
         $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container)

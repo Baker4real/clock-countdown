@@ -41,6 +41,7 @@ public sealed partial class App : Application
     private int _activationCallbackFailureInjected;
     private bool _runtimeReceiptWritten;
     private bool _firstFrameWorkStarted;
+    private bool _floatingWindowClosed;
     private bool _shuttingDown;
 
     private void OnStartup(object sender, StartupEventArgs eventArgs)
@@ -404,9 +405,10 @@ public sealed partial class App : Application
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
         _floatingWindow.Closed += (_, _) =>
         {
+            _floatingWindowClosed = true;
             if (!_shuttingDown)
             {
-                ShutdownInteractiveHost();
+                ShutdownAfterExternalClose();
             }
         };
         _floatingWindow.ContentRendered += OnFloatingContentRendered;
@@ -712,6 +714,33 @@ public sealed partial class App : Application
         _logger?.Info("AcceptanceReadOnlyReleased");
     }
 
+    // #295 外部关闭：悬浮窗没走应用自己的关停就收到 Closed，说明它是被外部关掉的。任务计划停止任务时向进程的
+    // 窗口发 WM_CLOSE；悬浮窗 ShowInTaskbar="False"，WPF 给它挂的隐藏所有者窗口收到 WM_CLOSE 就销毁自己，
+    // 系统随之销毁悬浮窗，悬浮窗不经 Closing 与关闭桥。还有打开且可见的窗口能挂退出确认时照应用内退出确认；
+    // 没有就跳过确认、记一条可区分的事件后以 0 正常结束，未保存的输入按进程被结束处理（DESIGN.md「外部关闭」）。
+    private void ShutdownAfterExternalClose()
+    {
+        if (FindVisibleExitConfirmationOwner() is not null)
+        {
+            ShutdownInteractiveHost();
+            return;
+        }
+
+        _logger?.Info("ExitConfirmationSkippedExternalClose");
+        ShutdownInteractiveHost(confirmDirtyExit: false);
+    }
+
+    // 退出确认挂在仍打开、可见的窗口上：悬浮退出时归悬浮窗，托盘退出（悬浮已隐藏）时归管理窗口。
+    private Window? FindVisibleExitConfirmationOwner()
+    {
+        if (!_floatingWindowClosed && _floatingWindow?.IsVisible == true)
+        {
+            return _floatingWindow;
+        }
+
+        return _mainWindow?.IsVisible == true ? _mainWindow : null;
+    }
+
     private void ShutdownInteractiveHost(bool confirmDirtyExit = true)
     {
         if (_shuttingDown)
@@ -720,7 +749,7 @@ public sealed partial class App : Application
         }
 
         // #155 / #213：用户发起的进程退出（悬浮退出、托盘退出、悬浮窗关闭、Alt+F4）每次都先确认。
-        // 测试自动退出（ExitAfterReadyForTest）不进交互确认。
+        // 测试自动退出（ExitAfterReadyForTest）和没有窗口能挂确认的外部关闭（#295）不进交互确认。
         // 管理窗口关闭/隐藏不经过本方法（AttachManagerWindow 继续 Cancel+Hide 并保留草稿）。
         // 取消时在置 _shuttingDown 与释放提醒派发之前返回，进程和悬浮窗都留在。
         if (confirmDirtyExit && !ConfirmDirtyExitAllowed())
@@ -739,7 +768,10 @@ public sealed partial class App : Application
         _instanceActivationServer = null;
         _floatingTrayController?.Dispose();
         _floatingTrayController = null;
-        _floatingWindow?.Close();
+        if (!_floatingWindowClosed)
+        {
+            _floatingWindow?.Close();
+        }
         _mainWindow?.Close();
         _calendar?.Dispose();
         _singleInstanceLease?.Dispose();
@@ -761,12 +793,10 @@ public sealed partial class App : Application
             reasons.Add(floatingReason);
         }
 
-        // 对话框归属当前可见窗口：悬浮退出时归悬浮窗，托盘退出（悬浮已隐藏）时归管理窗口。
+        // 两扇窗都不可见时（托盘退出且管理窗口已收起）挂在仍打开的悬浮窗上；#295：已关闭的悬浮窗不作所有者。
         // #213：没有未保存内容时也要确认，不能在这里直接放行。
-        Window? owner =
-            _floatingWindow?.IsVisible == true ? _floatingWindow :
-            _mainWindow?.IsVisible == true ? _mainWindow :
-            (Window?)_floatingWindow ?? _mainWindow;
+        Window? owner = FindVisibleExitConfirmationOwner() ??
+            (_floatingWindowClosed ? null : (Window?)_floatingWindow) ?? _mainWindow;
         if (owner is null)
         {
             return false;

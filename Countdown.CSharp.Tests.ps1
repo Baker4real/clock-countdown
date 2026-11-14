@@ -291,6 +291,10 @@ public static class MinminCountdownActivationWindowProbe
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool PostMessage(IntPtr windowHandle, uint message, IntPtr wParam, IntPtr lParam);
+
+    // uCmd 4 = GW_OWNER：取顶层窗口的所有者窗口。
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetWindow(IntPtr windowHandle, uint command);
 }
 '@
 }
@@ -4141,6 +4145,137 @@ exit 23
         $shortcutRefusingProxy.Dispose()
     }
     Write-TestSegmentTiming -Name 'DesktopShortcutLaunch'
+
+    # #295 外部关闭：任务计划停止任务时先向任务进程的窗口发 WM_CLOSE，进程不响应才在允许硬终止时结束它
+    # （ITaskSettings::AllowHardTerminate 文档）。悬浮窗 ShowInTaskbar="False"，WPF 为此给它挂了一个不可见的
+    # 所有者窗口；所有者收到 WM_CLOSE 按默认处理销毁自己，系统先销毁它拥有的悬浮窗，悬浮窗只收到 Closed，
+    # 不经 Closing 与关闭桥。#279 的真实任务探针在这里得到退出码 1 和 FatalUnhandledException。
+    # 本段对真实 EXE 复现这一步：首帧就绪后向悬浮窗的所有者投递 WM_CLOSE，再按 DESIGN.md「外部关闭」读退出码与诊断日志。
+    # 测试开关只为隔离桌面上的托盘替身；兜底自退远晚于等待期限，不会替外部关闭退出。
+    function Invoke-ExternalCloseProgramLaunch {
+        param(
+            [Parameter(Mandatory)] [string] $Application,
+            [Parameter(Mandatory)] [string] $InstallRoot
+        )
+
+        $refusingProxy = [System.Net.Sockets.Socket]::new(
+            [System.Net.Sockets.AddressFamily]::InterNetwork,
+            [System.Net.Sockets.SocketType]::Stream,
+            [System.Net.Sockets.ProtocolType]::Tcp)
+        $process = $null
+        try {
+            $refusingProxy.Bind([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Loopback, 0))
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new($Application)
+            $startInfo.WorkingDirectory = $InstallRoot
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+            foreach ($argument in @('--exit-after-ready-for-test', '--exit-after-ready-seconds', '300')) {
+                $startInfo.ArgumentList.Add($argument)
+            }
+            foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
+                $startInfo.Environment[$proxyVariable] = "http://127.0.0.1:$($refusingProxy.LocalEndPoint.Port)"
+            }
+            [void] $startInfo.Environment.Remove('NO_PROXY')
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+
+            # 回执确认这次进程的悬浮窗首帧已渲染后再按标题找它；隔离桌面上不要求 Win32 可见枚举。
+            $receiptPath = Join-Path $InstallRoot 'runtime-status.json'
+            $readyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(90)
+            $floating = $null
+            while ($null -eq $floating -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $readyDeadline) {
+                $receipt = Read-DesktopLauncherRuntimeReceipt -Path $receiptPath
+                if ($null -ne $receipt -and
+                    [string] $receipt.stage -eq 'window-ready' -and
+                    [int] $receipt.processId -eq $process.Id) {
+                    $floating = @(
+                        Get-ProcessTopLevelWindows -ProcessId $process.Id |
+                            Where-Object Title -eq '敏敏子悬浮窗'
+                    ) | Select-Object -First 1
+                }
+                if ($null -eq $floating) {
+                    Start-Sleep -Milliseconds 50
+                }
+            }
+
+            $owner = $null
+            $ownerVisible = $null
+            $posted = $false
+            if ($null -ne $floating) {
+                $ownerHandle = [MinminCountdownActivationWindowProbe]::GetWindow([IntPtr]::new([long] $floating.Handle), 4)
+                $owner = @(
+                    Get-ProcessTopLevelWindows -ProcessId $process.Id |
+                        Where-Object Handle -eq $ownerHandle.ToInt64()
+                ) | Select-Object -First 1
+                if ($null -ne $owner) {
+                    $ownerVisible = [MinminCountdownActivationWindowProbe]::IsWindowVisible($ownerHandle)
+                    $posted = [MinminCountdownActivationWindowProbe]::PostMessage($ownerHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                }
+            }
+
+            if ($posted) {
+                [void] $process.WaitForExit(30000)
+            }
+            $exitedOnItsOwn = $process.HasExited
+            if (-not $exitedOnItsOwn) {
+                $process.Kill()
+                [void] $process.WaitForExit(5000)
+            }
+            [void] $stdoutTask.GetAwaiter().GetResult()
+            [pscustomobject]@{
+                ProcessId = $process.Id
+                FloatingFound = $null -ne $floating
+                OwnerFound = $null -ne $owner
+                OwnerTitle = if ($null -ne $owner) { [string] $owner.Title } else { $null }
+                OwnerVisible = $ownerVisible
+                Posted = $posted
+                ExitedAfterClose = $posted -and $exitedOnItsOwn
+                ExitCode = if ($exitedOnItsOwn) { $process.ExitCode } else { $null }
+                Stderr = $stderrTask.GetAwaiter().GetResult()
+            }
+        }
+        finally {
+            if ($null -ne $process) {
+                if (-not $process.HasExited) {
+                    $process.Kill()
+                    [void] $process.WaitForExit(5000)
+                }
+                $process.Dispose()
+            }
+            $refusingProxy.Dispose()
+        }
+    }
+
+    $externalCloseInstallRoot = Join-Path $testRoot 'external-close\install-root'
+    $externalCloseProgramDirectory = Join-Path $externalCloseInstallRoot 'app'
+    New-Item -ItemType Directory -Path $externalCloseInstallRoot | Out-Null
+    Copy-Item -LiteralPath (Split-Path -Parent $application) -Destination $externalCloseProgramDirectory -Recurse
+    $externalClose = Invoke-ExternalCloseProgramLaunch `
+        -Application (Join-Path $externalCloseProgramDirectory 'MinminCountdown.exe') `
+        -InstallRoot $externalCloseInstallRoot
+    $externalCloseEvents = @(
+        (Read-SharedTestEvidenceText -Path (Join-Path $externalCloseInstallRoot 'logs\application.jsonl')) -split "`r?`n" |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { $_ | ConvertFrom-Json } |
+            Where-Object { [int] $_.processId -eq $externalClose.ProcessId } |
+            ForEach-Object { [string] $_.event })
+    $externalCloseDetail = "exit=$($externalClose.ExitCode)；events=$($externalCloseEvents -join ',')；owner=$($externalClose.OwnerTitle) visible=$($externalClose.OwnerVisible)；stderr=$($externalClose.Stderr)"
+    Assert-Equal $true $externalClose.FloatingFound "外部关闭：悬浮窗首帧就绪；$externalCloseDetail"
+    Assert-Equal $true $externalClose.OwnerFound "外部关闭：悬浮窗归本进程的一个顶层所有者窗口；$externalCloseDetail"
+    Assert-Equal $false ([bool] $externalClose.OwnerVisible) "外部关闭：悬浮窗的所有者是 ShowInTaskbar=False 带来的不可见窗口；$externalCloseDetail"
+    Assert-Equal $true $externalClose.Posted "外部关闭：向悬浮窗的所有者投递 WM_CLOSE；$externalCloseDetail"
+    Assert-Equal $true $externalClose.ExitedAfterClose "外部关闭：所有者收到 WM_CLOSE 后应用在期限内自行结束；$externalCloseDetail"
+    Assert-Equal 0 $externalClose.ExitCode "外部关闭：应用正常结束，退出码 0；$externalCloseDetail"
+    Assert-Equal 0 @($externalCloseEvents | Where-Object { $_ -eq 'FatalUnhandledException' }).Count "外部关闭：不记 FatalUnhandledException；$externalCloseDetail"
+    Assert-Equal 0 @($externalCloseEvents | Where-Object { $_ -eq 'ExitConfirmationOffered' }).Count "外部关闭：不弹退出确认；$externalCloseDetail"
+    Assert-Equal 1 @($externalCloseEvents | Where-Object { $_ -eq 'ExitConfirmationSkippedExternalClose' }).Count "外部关闭：诊断日志记一条外部关闭、跳过确认事件；$externalCloseDetail"
+    Assert-Equal 1 @($externalCloseEvents | Where-Object { $_ -eq 'ProcessExited' }).Count "外部关闭：走完正常关停；$externalCloseDetail"
+    Write-TestSegmentTiming -Name 'ExternalClose'
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash

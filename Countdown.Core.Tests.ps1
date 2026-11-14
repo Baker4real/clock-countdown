@@ -225,6 +225,9 @@ Write-TestSegmentTiming -Name 'InstallerValidation'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.SourceContracts.ps1')
 
 Write-TestSegmentTiming -Name 'SourceContracts'
+# 放在最后：假办公室在本进程里运行包内安装器，它从暂存目录的副本重新导入 Countdown.Installer.psm1。
+. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.DeployEntry.ps1')
+Write-TestSegmentTiming -Name 'DeployEntry'
 Write-TestSegmentTotal
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { Write-Error $_ -ErrorAction Continue }

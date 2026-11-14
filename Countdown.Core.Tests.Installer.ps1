@@ -282,9 +282,9 @@ function Get-CountdownInstallerTestTree {
 }
 
 function Invoke-CountdownInstallerTest {
-    param([switch] $CheckOnly)
+    param([switch] $CheckOnly, [object] $Ports = $installerPorts)
 
-    $output = @(& $installerScript -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -CheckOnly:$CheckOnly -Port $installerPorts -LockName $installerLockName)
+    $output = @(& $installerScript -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -CheckOnly:$CheckOnly -Port $Ports -LockName $installerLockName)
     Assert-Equal 1 $output.Count "Installer writes exactly one JSON document: $($installerCase.Name)"
     $installerCase.Json = [string] $output[-1]
     $installerCase.Json | ConvertFrom-Json -DateKind String
@@ -559,6 +559,52 @@ try {
         if (-not $transactionOpened) {
             Assert-Equal $installerProgramFilesV1[1].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "Program directory stays the installed version before the transaction began: $($shortWait.Name)"
         }
+    }
+
+    # 用真实的候选 EXE 走通演练与判定（#282）。包是本次构建输出 app\（与下面只读一侧的实测同一份），候选 EXE 的无界面命令经
+    # 生产 port 真的运行，在创建窗口之前返回、不开窗口；交互会话、进程、计划任务与目录改名仍是测试 port，新版本不会真的启动。
+    # 设置都是夹具：等价的旧版本夹具是 schema v9（循环提醒已经开始，迁移出的 cursor 取决于迁移时刻）带两代备份，安装继续并
+    # 提交；不等价反例是 schema v2，产品迁移得了，等价判定却只认 v3-v9 到 v10（unsupported-schema），安装失败、旧版本重新运行。
+    # 第三例的候选 EXE 不是可执行文件（测试包里的文本），演练没能完成，同样不换程序。各例现役设置与两代备份都与安装前逐字节相同。
+    Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
+    $installerCommandPorts = $installerPorts.PSObject.Copy()
+    $installerCommandPorts.RunHeadlessCommand = (New-CountdownInstallerWindowsPorts).RunHeadlessCommand
+    $installerBuiltExeSha256 = Get-CountdownInstallerTestFileHash -Path (Join-Path $PSScriptRoot 'app\MinminCountdown.exe')
+    $installerFixtureV9 = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-pending","text":"待送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"pending"}},{"id":"note-v9-delivered","text":"已送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T02:30:00.0000000+00:00","delivery":"delivered"}},{"id":"note-v9-repeat","text":"已开始循环提醒 settings-sentinel-282","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2026-01-01T00:00:00.0000000+00:00","intervalMinutes":30}}]}'
+    $installerFixtureV2 = '{"schemaVersion":2,"timeZoneId":"China Standard Time","countdowns":[{"id":"countdown-v2","name":"倒计时 settings-sentinel-282","targetUtc":"2030-02-03T04:05:06.0000000+00:00"}]}'
+    $installerFixtureBackups = @(
+        '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}'
+        '{"schemaVersion":1,"timeZoneId":"China Standard Time","targetUtc":"2030-01-02T03:04:05.0000000+00:00"}'
+    )
+    foreach ($realRehearsal in @(
+            [pscustomobject]@{ Name = 'real-exe-v9-equivalent'; BuiltPackage = $true; Settings = $installerFixtureV9; Outcome = 'True||'; Report = 'equivalent|migrated|migrated' }
+            [pscustomobject]@{ Name = 'real-exe-v2-not-equivalent'; BuiltPackage = $true; Settings = $installerFixtureV2; Outcome = 'False|settings-rehearsal|settings-not-equivalent'; Report = 'not-equivalent|migrated|unsupported-schema' }
+            [pscustomobject]@{ Name = 'real-port-unrunnable-candidate'; BuiltPackage = $false; Settings = $installerFixtureV9; Outcome = 'False|settings-rehearsal|settings-rehearsal-failed'; Report = 'failed||' }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $realRehearsal.Name
+        if ($realRehearsal.BuiltPackage) { $installerCase.PackageRoot = $PSScriptRoot }
+        Initialize-CountdownInstallerTestInstalledVersion
+        foreach ($member in @(@('settings.json', $realRehearsal.Settings), @('settings.json.backup1', $installerFixtureBackups[0]), @('settings.json.backup2', $installerFixtureBackups[1]))) {
+            $memberPath = Join-Path $installerCase.Root $member[0]
+            [System.IO.File]::WriteAllText($memberPath, $member[1], $installerUtf8)
+            [System.IO.File]::SetCreationTimeUtc($memberPath, $installerUserDataTimeUtc)
+            [System.IO.File]::SetLastWriteTimeUtc($memberPath, $installerUserDataTimeUtc)
+        }
+        $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        $realRun = Invoke-CountdownInstallerTest -Ports $installerCommandPorts
+        Assert-Equal $realRehearsal.Outcome "$($realRun.succeeded)|$($realRun.failedStage)|$($realRun.reason)" "Install with the real candidate EXE ends as the rehearsal says: $($realRehearsal.Name) $($realRun.error)"
+        Assert-Equal $realRehearsal.Report "$($realRun.settingsRehearsal.outcome)|$($realRun.settingsRehearsal.migration)|$($realRun.settingsRehearsal.equivalence)" "Result JSON names the real rehearsal conclusion: $($realRehearsal.Name)"
+        Assert-Equal $userDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed) "Live settings and both backups are byte-for-byte as before: $($realRehearsal.Name)"
+        if ([bool] $realRun.succeeded) {
+            Assert-Equal $installerBuiltExeSha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "The built program replaces the previous version: $($realRehearsal.Name)"
+        }
+        else {
+            Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) "Program directory is byte-for-byte as before: $($realRehearsal.Name)"
+            Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) "The previous version runs again: $($realRehearsal.Name)"
+        }
+        Assert-Equal 'app,runtime-status.json' ((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',') "No transaction marker, candidate or transaction directory is left behind: $($realRehearsal.Name)"
+        Assert-Equal $false ($installerCase.Json.Contains('settings-sentinel-282', [System.StringComparison]::Ordinal)) "Result JSON leaves out the settings content: $($realRehearsal.Name)"
     }
 
     # 生产 port 的只读一侧：子进程按命令行方式运行入口，-CheckOnly 指向临时安装根和一个不存在的任务名，以本次构建输出为包。

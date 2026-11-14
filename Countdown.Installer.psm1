@@ -403,7 +403,7 @@ function Invoke-CountdownSettingsRehearsal {
     $category = { param([object] $Run) $value = [string] (Get-CountdownInstallerProperty -Object $Run.Report -Name 'reasonCategory'); if ($value) { $value } else { 'no-report' } }
 
     try { $migration = Invoke-CountdownCandidateCommand -Ports $Ports -ExecutablePath $candidateExecutable -WorkingDirectory $rehearsalDirectory -Arguments @('--settings-migration', '--settings-file', $rehearsalSettings) }
-    catch { return (& $failed "迁移命令：$($_.Exception.Message)") }
+    catch { return (& $failed "迁移命令：$($_.Exception.GetBaseException().Message)") }
     $report.migration = & $category $migration
     $migrationUtc = [string] (Get-CountdownInstallerProperty -Object $migration.Report -Name 'migrationUtc')
     if ($migration.ExitCode -ne 0 -or (Get-CountdownInstallerProperty -Object $migration.Report -Name 'succeeded') -ne $true -or [string]::IsNullOrWhiteSpace($migrationUtc)) {
@@ -411,7 +411,7 @@ function Invoke-CountdownSettingsRehearsal {
     }
 
     try { $equivalence = Invoke-CountdownCandidateCommand -Ports $Ports -ExecutablePath $candidateExecutable -WorkingDirectory $rehearsalDirectory -Arguments @('--settings-equivalence', '--before-settings', $snapshotSettings, '--after-settings', $rehearsalSettings, '--migration-utc', $migrationUtc) }
-    catch { return (& $failed "等价判定：$($_.Exception.Message)") }
+    catch { return (& $failed "等价判定：$($_.Exception.GetBaseException().Message)") }
     $report.equivalence = & $category $equivalence
     $equivalent = Get-CountdownInstallerProperty -Object $equivalence.Report -Name 'equivalent'
     if ($equivalence.ExitCode -eq 0 -and $equivalent -eq $true) {
@@ -430,8 +430,8 @@ function Invoke-CountdownSettingsRehearsal {
 
 # 换程序之前撤回本次安装（设置快照或迁移演练失败、迁移不等价）：先清除事务标记，再删除候选和事务目录，然后经登录任务重新
 # 启动旧版本，等它达到启动就绪。此时程序目录与现役设置都没被动过；清除标记之前中断时，标记、候选和现役的旧版本都还在，
-# 按恢复表删除候选即可（#284）。清理失败也照样重新启动旧版本。首次安装没有旧版本或登录任务，不启动。程序目录没被动过，
-# 所以就绪核对的 EXE 哈希取现役 EXE 本身。返回重新启动的进程（没有启动时为 $null）与清理、启动中遇到的问题。
+# 按恢复表删除候选即可（#284）。各项清理互不依赖，哪一项失败都照样重新启动旧版本。首次安装没有旧版本或登录任务，不启动。
+# 程序目录没被动过，所以就绪核对的 EXE 哈希取现役 EXE 本身。返回重新启动的进程（没有启动时为 $null）与遇到的问题。
 function Undo-CountdownInstallBeforeReplace {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -442,13 +442,13 @@ function Undo-CountdownInstallBeforeReplace {
     )
 
     $problems = [System.Collections.Generic.List[string]]::new()
-    try {
-        if (Test-Path -LiteralPath $Layout.MarkerPath) { [System.IO.File]::Delete($Layout.MarkerPath) }
-        foreach ($directory in @($Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
-            if (Test-Path -LiteralPath $directory) { [System.IO.Directory]::Delete($directory, $true) }
+    foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
+        try {
+            if (Test-Path -LiteralPath $path -PathType Container) { [System.IO.Directory]::Delete($path, $true) }
+            elseif (Test-Path -LiteralPath $path) { [System.IO.File]::Delete($path) }
         }
+        catch { $problems.Add("删除 $([System.IO.Path]::GetFileName($path)) 失败：$($_.Exception.Message)") }
     }
-    catch { $problems.Add("清除事务标记或删除候选失败：$($_.Exception.Message)") }
 
     $restarted = $null
     try {
@@ -772,6 +772,33 @@ function New-CountdownInstallerWindowsPorts {
         MoveDirectory = {
             param([string] $Source, [string] $Destination)
             [System.IO.Directory]::Move($Source, $Destination)
+        }
+        # 候选 EXE 的无界面命令（#278 设置迁移、#272 设置等价判定）：命令在创建窗口之前返回，stdout 是一份 UTF-8 JSON。
+        # 不经 shell、不开控制台窗口；最多等 60 秒，超时结束整个进程树并报错。命令只读写参数给出的路径。
+        RunHeadlessCommand = {
+            param([string] $ExecutablePath, [string[]] $Arguments, [string] $WorkingDirectory)
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new($ExecutablePath)
+            foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
+            $startInfo.WorkingDirectory = $WorkingDirectory
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            try {
+                $stdout = $process.StandardOutput.ReadToEndAsync()
+                $stderr = $process.StandardError.ReadToEndAsync()
+                if (-not $process.WaitForExit(60000)) {
+                    $process.Kill($true)
+                    throw "候选 EXE 的无界面命令 60 秒内没有结束，已结束它：$($Arguments[0])"
+                }
+                $process.WaitForExit()
+                [void] $stderr.GetAwaiter().GetResult()
+                [pscustomobject]@{ ExitCode = $process.ExitCode; Output = $stdout.GetAwaiter().GetResult() }
+            }
+            finally { $process.Dispose() }
         }
     }
 }

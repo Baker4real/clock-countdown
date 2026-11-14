@@ -47,9 +47,14 @@ $installerPorts = [pscustomobject]@{
         param([string] $Name)
         @($installerCase.Processes | Where-Object { $_.Name -eq $Name })
     }
+    # 结束进程；由任务启动的进程一退出，任务实例随之结束（#279 实测 Stop-Process 后任务回到 Ready）。
     StopProcess = {
         param([int] $ProcessId)
+        foreach ($process in @($installerCase.Processes | Where-Object { $_.ProcessId -eq $ProcessId -and $_.StartedByTask })) {
+            $installerCase.Tasks[$process.StartedByTask].State = 'Ready'
+        }
         $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
+        if ($null -ne $installerCase.OnStopProcess) { & $installerCase.OnStopProcess $ProcessId }
     }
     GetTask = {
         param([string] $Name)
@@ -67,13 +72,10 @@ $installerPorts = [pscustomobject]@{
             Priority = $Definition.Priority
             ExecutionTimeLimit = $Definition.ExecutionTimeLimit
             MultipleInstances = $Definition.MultipleInstances
+            DisallowStartIfOnBatteries = $Definition.DisallowStartIfOnBatteries
+            StopIfGoingOnBatteries = $Definition.StopIfGoingOnBatteries
             UserId = $Session.User
         }
-    }
-    StopTask = {
-        param([string] $Name)
-        $installerCase.Tasks[$Name].State = 'Ready'
-        $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.StartedByTask -ne $Name })
     }
     StartTask = {
         param([string] $Name)
@@ -107,6 +109,7 @@ $installerPorts = [pscustomobject]@{
     MoveDirectory = {
         param([string] $Source, [string] $Destination)
         [System.IO.Directory]::Move($Source, $Destination)
+        if ($null -ne $installerCase.OnMoveDirectory) { & $installerCase.OnMoveDirectory }
     }
 }
 
@@ -162,6 +165,8 @@ function New-CountdownInstallerTestCase {
         Tasks = @{}
         NextProcessId = 6001
         Launch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true }
+        OnStopProcess = $null
+        OnMoveDirectory = $null
         OnStartTask = $null
         Observed = @{}
         Json = $null
@@ -177,7 +182,7 @@ function New-CountdownInstallerTestTask {
         Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true })
         LogonType = 'Interactive'
         RunLevel = 'Limited'
-        Priority = 5
+        Priority = 4
         ExecutionTimeLimit = 'PT0S'
         MultipleInstances = 'IgnoreNew'
         UserId = $UserId
@@ -274,6 +279,8 @@ try {
     Assert-Equal $true ($null -eq $firstInstall.failedStage) 'First install reports no failed stage'
     Assert-Equal $true ([bool] $firstInstall.firstInstall) 'First install is reported as a first install'
     Assert-Equal $true ([bool] $firstInstall.loginTaskCreated) 'First install creates the missing login task'
+    $firstTask = $installerCase.Tasks[$installerCase.TaskName]
+    Assert-Equal '4|False|False' "$($firstTask.Priority)|$($firstTask.DisallowStartIfOnBatteries)|$($firstTask.StopIfGoingOnBatteries)" 'First install registers the login task at priority 4, starting and staying on battery power'
     Assert-Equal 6001 ([int] $firstInstall.readyProcess.processId) 'First install reports the process that reached startup readiness'
     Assert-Equal 3 ([int] $firstInstall.readyProcess.sessionId) 'First install reports the interactive session of the ready process'
     foreach ($file in $installerPackageFilesV2) {
@@ -331,6 +338,20 @@ try {
     $upgradeStatus = Invoke-CountdownInstallerStatusRead
     Assert-Equal $installerCommitV2 ([string] $upgradeStatus.commit) 'Status reads the new commit after the upgrade'
     Assert-Equal '6001' ((@($upgradeStatus.processes) | ForEach-Object { $_.processId }) -join ',') 'Status reads only the new version running from the install root after the upgrade'
+
+    # 结束进程前按 PID 重新读映像路径：4101 被结束的同时 4102 自行退出，它的 PID 被开发目录里的同名 EXE 复用。
+    # 安装器不能凭先前的枚举结束这个进程。
+    $installerCase = New-CountdownInstallerTestCase -Name 'pid-reused-before-stop'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.OnStopProcess = {
+        param([int] $ProcessId)
+        if ($ProcessId -eq 4101) {
+            $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne 4102 }) + @(New-CountdownInstallerTestProcess -ProcessId 4102 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe')
+        }
+    }
+    $reusedPid = Invoke-CountdownInstallerTest
+    Assert-Equal $true ([bool] $reusedPid.succeeded) "Install succeeds when a PID is reused while the application stops: $($reusedPid.failedStage) $($reusedPid.error)"
+    Assert-Equal '4102,4103,6001' (Get-CountdownInstallerTestRunning) 'Install does not stop a process whose PID was reused by another program'
 
     # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。
@@ -395,7 +416,7 @@ try {
         $secondInstall = Start-ThreadJob -ArgumentList $installerScript, $installerCase.PackageRoot, $installerCase.Root, $installerCase.TaskName, $installerLockName -ScriptBlock {
             param($Script, $PackageRoot, $InstallRoot, $TaskName, $LockName)
             $refuse = { throw '第二个安装越过了安装锁。' }
-            $ports = [pscustomobject]@{ GetInteractiveSessions = $refuse; GetProcesses = $refuse; StopProcess = $refuse; GetTask = $refuse; RegisterTask = $refuse; StopTask = $refuse; StartTask = $refuse; MoveDirectory = $refuse }
+            $ports = [pscustomobject]@{ GetInteractiveSessions = $refuse; GetProcesses = $refuse; StopProcess = $refuse; GetTask = $refuse; RegisterTask = $refuse; StartTask = $refuse; MoveDirectory = $refuse }
             & $Script -PackageRoot $PackageRoot -InstallRoot $InstallRoot -TaskName $TaskName -Port $ports -LockName $LockName
         }
         $installerCase.Observed.SecondInstall = @(Receive-Job -Job $secondInstall -Wait -AutoRemoveJob)
@@ -408,25 +429,35 @@ try {
     Assert-Equal $true ([bool] $firstOfTwo.succeeded) "The install holding the lock commits: $($firstOfTwo.failedStage) $($firstOfTwo.error)"
     Assert-Equal $false (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json')) 'The install holding the lock leaves no transaction marker'
 
+    # 下面几例经导出的 module 函数把停止与启动就绪的等待时限缩短到 1 秒，都在已装好的 v1 上升级。
     # 启动就绪只认：回执由一个存活进程写出，其映像路径是已安装 EXE，会话是交互会话，EXE 哈希与载荷清单一致。每例只违反一条，
     # 等待时限内达不到启动就绪就不提交：失败在启动阶段，事务标记与旧版本目录都还在（回滚由 #283 实现）。
-    # 等待时限经导出的 module 函数缩短到 1 秒。
+    # 登录任务有运行中的实例时，经它启动会被 IgnoreNew 悄悄拒绝（#279）：应用进程都结束后实例仍在（例如任务的动作不是
+    # 已安装 EXE），就在写事务标记之前停下，候选删除，程序目录不变；替换程序目录期间任务又运行起来时，不再触发它。
     Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
-    $installerNotReady = @(
-        [pscustomobject]@{ Name = 'not-ready-no-receipt'; Arrange = { $installerCase.Launch.WritesReceipt = $false } }
-        [pscustomobject]@{ Name = 'not-ready-process-exited'; Arrange = { $installerCase.Launch.StaysAlive = $false } }
-        [pscustomobject]@{ Name = 'not-ready-other-session'; Arrange = { $installerCase.Launch.SessionId = 4 } }
-        [pscustomobject]@{ Name = 'not-ready-exe-changed'; Arrange = { $installerCase.OnStartTask = { [System.IO.File]::WriteAllText($installerCase.ExePath, 'installer exe v2 changed after placement', $installerUtf8) } } }
+    $installerShortWaits = @(
+        [pscustomobject]@{ Name = 'not-ready-no-receipt'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Running = '4103,6001'; Arrange = { $installerCase.Launch.WritesReceipt = $false } }
+        [pscustomobject]@{ Name = 'not-ready-process-exited'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Running = '4103'; Arrange = { $installerCase.Launch.StaysAlive = $false } }
+        [pscustomobject]@{ Name = 'not-ready-other-session'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Running = '4103,6001'; Arrange = { $installerCase.Launch.SessionId = 4 } }
+        [pscustomobject]@{ Name = 'not-ready-exe-changed'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Running = '4103,6001'; Arrange = { $installerCase.OnStartTask = { [System.IO.File]::WriteAllText($installerCase.ExePath, 'installer exe v2 changed after placement', $installerUtf8) } } }
+        [pscustomobject]@{ Name = 'task-instance-outlives-app'; Stage = 'stop-application'; Reason = 'login-task-still-running'; Running = '4103'; Arrange = { $installerCase.Processes[0].StartedByTask = $null } }
+        [pscustomobject]@{ Name = 'task-runs-during-replace'; Stage = 'start-and-wait-ready'; Reason = 'login-task-still-running'; Running = '4103'; Arrange = { $installerCase.OnMoveDirectory = { $installerCase.Tasks[$installerCase.TaskName].State = 'Running' } } }
     )
-    foreach ($notReady in $installerNotReady) {
-        $installerCase = New-CountdownInstallerTestCase -Name $notReady.Name
+    foreach ($shortWait in $installerShortWaits) {
+        $installerCase = New-CountdownInstallerTestCase -Name $shortWait.Name
         Initialize-CountdownInstallerTestInstalledVersion
-        & $notReady.Arrange
-        $notReadyResult = Install-CountdownProgram -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -Ports $installerPorts -LockName $installerLockName -ReadyTimeoutSeconds 1 |
+        & $shortWait.Arrange
+        $shortWaitResult = Install-CountdownProgram -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -Ports $installerPorts -LockName $installerLockName -ReadyTimeoutSeconds 1 -StopTimeoutSeconds 1 |
             ConvertTo-Json -Depth 6 | ConvertFrom-Json -DateKind String
-        Assert-Equal 'False|start-and-wait-ready|startup-not-ready' "$($notReadyResult.succeeded)|$($notReadyResult.failedStage)|$($notReadyResult.reason)" "Install does not commit without startup readiness: $($notReady.Name) $($notReadyResult.error)"
-        Assert-Equal $true (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json')) "Install without startup readiness leaves the transaction open: $($notReady.Name)"
-        Assert-Equal $true (Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.previous')) "Install without startup readiness keeps the previous version: $($notReady.Name)"
+        Assert-Equal "False|$($shortWait.Stage)|$($shortWait.Reason)" "$($shortWaitResult.succeeded)|$($shortWaitResult.failedStage)|$($shortWaitResult.reason)" "Install does not commit: $($shortWait.Name) $($shortWaitResult.error)"
+        Assert-Equal $shortWait.Running (Get-CountdownInstallerTestRunning) "Install starts the new version only through an idle login task: $($shortWait.Name)"
+        $transactionOpened = $shortWait.Stage -ne 'stop-application'
+        Assert-Equal $transactionOpened (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json')) "Transaction marker stays only once the transaction began: $($shortWait.Name)"
+        Assert-Equal $transactionOpened (Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.previous')) "Previous version is kept aside only once the transaction began: $($shortWait.Name)"
+        Assert-Equal $false (Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.candidate')) "No candidate is left behind: $($shortWait.Name)"
+        if (-not $transactionOpened) {
+            Assert-Equal $installerProgramFilesV1[1].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "Program directory stays the installed version before the transaction began: $($shortWait.Name)"
+        }
     }
 
     # 生产 port 的只读一侧：子进程按命令行方式运行入口，-CheckOnly 指向临时安装根和一个不存在的任务名，以本次构建输出为包。

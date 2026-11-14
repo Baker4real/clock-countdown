@@ -266,8 +266,29 @@ function Test-CountdownTaskRunning {
     $null -ne $Task -and [string] (Get-CountdownInstallerProperty -Object $Task -Name 'State') -eq 'Running'
 }
 
-# 停止应用：结束登录任务的实例，有界等待它结束，再结束映像路径是已安装 EXE 的进程，直到它们都退出。
-# 未保存的编辑草稿会丢失，与现有安装器相同。返回开始时在运行的应用进程数。
+function New-CountdownTaskStillRunningRejection {
+    param([Parameter(Mandatory)] [string] $TaskName)
+
+    New-CountdownInstallRejection -Reason 'login-task-still-running' -Message "登录任务 $TaskName 仍有运行中的实例：经它启动会被「已在运行时忽略新实例」悄悄拒绝，等不到新的运行状态回执。"
+}
+
+# 结束前按 PID 重新读一次映像路径，仍是已安装 EXE 才结束：枚举之后进程可能已经退出，PID 也可能已被别的进程复用。
+function Stop-CountdownInstalledProcess {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $ProcessId
+    )
+
+    if (@(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports | Where-Object { [int] $_.ProcessId -eq $ProcessId }).Count -gt 0) {
+        [void] (& $Ports.StopProcess $ProcessId)
+    }
+}
+
+# 停止应用：结束映像路径是已安装 EXE 的进程，直到它们都退出，并且登录任务没有运行中的实例。不经计划任务停止：
+# #279 实测停止任务会让应用走崩溃路径（日志留下致命异常，退出码 1），也停不掉在任务之外启动的实例。
+# 任务实例还在时经任务启动会被 IgnoreNew 拒绝，所以这里一并等它结束。未保存的编辑草稿会丢失，与现有安装器相同。
+# 返回开始时在运行的应用进程数。
 function Stop-CountdownInstalledApplication {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -276,24 +297,19 @@ function Stop-CountdownInstalledApplication {
         [Parameter(Mandatory)] [int] $TimeoutSeconds
     )
 
-    $running = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports).Count
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) {
-        [void] (& $Ports.StopTask $TaskName)
-        while ((Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) -and [DateTime]::UtcNow -lt $deadline) {
-            Start-Sleep -Milliseconds 200
-        }
-    }
-    foreach ($process in @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports)) {
-        [void] (& $Ports.StopProcess ([int] $process.ProcessId))
-    }
+    $running = $null
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ($true) {
         $remaining = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports)
+        if ($null -eq $running) { $running = $remaining.Count }
         $taskRunning = Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)
         if ($remaining.Count -eq 0 -and -not $taskRunning) { return $running }
         if ([DateTime]::UtcNow -ge $deadline) {
-            throw (New-CountdownInstallRejection -Reason 'application-still-running' -Message "$TimeoutSeconds 秒内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程，登录任务运行中=$taskRunning。")
+            if ($remaining.Count -eq 0) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+            throw (New-CountdownInstallRejection -Reason 'application-still-running' -Message "$TimeoutSeconds 秒内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程。")
+        }
+        foreach ($process in $remaining) {
+            Stop-CountdownInstalledProcess -Layout $Layout -Ports $Ports -ProcessId ([int] $process.ProcessId)
         }
         Start-Sleep -Milliseconds 200
     }
@@ -316,8 +332,10 @@ function Write-CountdownInstallMarker {
     [System.IO.File]::Move($temporaryPath, $Path)
 }
 
-# 登录任务的期望定义，与状态命令（#276）核对的各项一致：登录时触发，交互式、非提升、普通优先级、不限运行时长、
-# 已在运行时忽略新实例；动作是已安装 EXE 本身，不带参数。优先级 5 落在“普通”区间 4-6，真实任务上的表现由 #279 实测。
+# 登录任务的定义（#279「登录任务的最终定义」），其中状态命令（#276）核对的各项与它的期望一致：登录时触发，交互式、
+# 非提升、不限运行时长、已在运行时忽略新实例；动作是已安装 EXE 本身，不带参数，不设工作目录。优先级取 4：#279 实测 4 的
+# 优先级类、I/O 与内存优先级都与正常启动一致（5 的内存优先级低一级，默认 7 是 BelowNormal）。电池供电时也启动、拔电不停：
+# 计划任务的默认值相反。
 function Get-CountdownLoginTaskDefinition {
     param([Parameter(Mandatory)] [string] $ExecutablePath)
 
@@ -327,9 +345,11 @@ function Get-CountdownLoginTaskDefinition {
         Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true })
         LogonType = 'Interactive'
         RunLevel = 'Limited'
-        Priority = 5
+        Priority = 4
         ExecutionTimeLimit = 'PT0S'
         MultipleInstances = 'IgnoreNew'
+        DisallowStartIfOnBatteries = $false
+        StopIfGoingOnBatteries = $false
     }
 }
 
@@ -347,7 +367,8 @@ function Read-CountdownRuntimeReceipt {
 }
 
 # 启动就绪：运行状态回执由一个存活进程写出，其映像路径是已安装 EXE，会话是交互会话，EXE 哈希与载荷清单一致。
-# 启动前已删除旧回执，回执里的进程身份证明它来自这一次启动；不使用启动令牌。
+# 启动前已删除旧回执，回执里的进程身份证明它来自这一次启动；不使用启动令牌，不比较回执的 applicationPath（#279：
+# 它仍指向 adapter），也不看任务状态或上次结果。
 function Wait-CountdownStartupReady {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -393,9 +414,10 @@ function Install-CountdownProgram {
     把包里的程序目录装到安装根：首次安装与升级同一流程，等到启动就绪后提交，返回结果（由入口脚本输出为 JSON）。
     .DESCRIPTION
     步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；安装根留有上次未完成安装的
-    痕迹时拒绝（恢复在 #284）；前置检查（唯一的交互会话、把候选程序目录放到安装根下并按载荷清单逐项核对）；停止应用；
-    写下事务标记；现役程序目录改名为旧版本目录、候选改名为现役；登录任务不存在时创建；删除旧回执，经登录任务启动，
-    等到启动就绪；先清除事务标记，再删除旧版本目录。前置检查任何一项失败时只删除候选（及为它新建的安装根），
+    痕迹时拒绝（恢复在 #284）；前置检查（唯一的交互会话、把候选程序目录放到安装根下并按载荷清单逐项核对）；停止应用
+    （结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；现役程序目录改名为旧版本目录、候选改名为现役；
+    登录任务不存在时创建；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪；先清除事务标记，
+    再删除旧版本目录。前置检查任何一项失败时只删除候选（及为它新建的安装根），
     其余什么都不改。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选，报告将要执行的步骤。
     写下事务标记之后的失败只报告、不回滚，事务标记留在原处（回滚在 #283）。
     #>
@@ -492,6 +514,7 @@ function Install-CountdownProgram {
             }
 
             $stage = 'start-and-wait-ready'
+            if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
             if (Test-Path -LiteralPath $layout.RuntimeStatusPath) { [System.IO.File]::Delete($layout.RuntimeStatusPath) }
             [void] (& $Ports.StartTask $TaskName)
             $ready = Wait-CountdownStartupReady -Layout $layout -SessionId ([int] $session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
@@ -574,20 +597,19 @@ function New-CountdownInstallerWindowsPorts {
                 MultipleInstances = [string] $task.Settings.MultipleInstances
             }
         }
+        # 按 #279「登录任务的最终定义」注册。非提升时能否注册登录触发器未实测（#279 第 7 项），留给 #288 在真实任务上确认。
         RegisterTask = {
             param([string] $Name, [object] $Definition, [object] $Session)
             $action = New-ScheduledTaskAction -Execute ([string] $Definition.Actions[0].Execute)
             $trigger = New-ScheduledTaskTrigger -AtLogOn -User ([string] $Session.User)
             $principal = New-ScheduledTaskPrincipal -UserId ([string] $Session.User) -LogonType ([string] $Definition.LogonType) -RunLevel ([string] $Definition.RunLevel)
-            $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+            $settings = New-ScheduledTaskSettingsSet -Priority ([int] $Definition.Priority) `
                 -ExecutionTimeLimit ([System.Xml.XmlConvert]::ToTimeSpan([string] $Definition.ExecutionTimeLimit)) `
-                -MultipleInstances ([string] $Definition.MultipleInstances) -Priority ([int] $Definition.Priority)
+                -MultipleInstances ([string] $Definition.MultipleInstances) `
+                -AllowStartIfOnBatteries:(-not [bool] $Definition.DisallowStartIfOnBatteries) `
+                -DontStopIfGoingOnBatteries:(-not [bool] $Definition.StopIfGoingOnBatteries)
             Register-ScheduledTask -TaskPath '\' -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings `
                 -Description '登录后直接启动敏敏子倒计时。' -ErrorAction Stop | Out-Null
-        }
-        StopTask = {
-            param([string] $Name)
-            Stop-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop
         }
         StartTask = {
             param([string] $Name)

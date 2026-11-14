@@ -1,0 +1,2175 @@
+{
+  "schemaVersion": 1,
+  "issue": 279,
+  "spec": 259,
+  "probedUtc": {
+    "from": "2026-11-14T02:41:07.2041616+00:00",
+    "to": "2026-11-14T02:47:57.5397424+00:00"
+  },
+  "build": {
+    "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+    "gateRun": "20261114T100443604-81df41a0",
+    "source": "gate-259-01\\app"
+  },
+  "redactions": [
+    "<probeRoot> = the temporary install root %TEMP%\\minmin-probe-279-e39103a6 (recycled after the probe)",
+    "<worktree> = the implementer worktree that ran Get-CountdownInstallStatus.ps1 at 29860c2",
+    "no account name, SID or host name is recorded; the root task folder is recorded as count and aggregate hash only"
+  ],
+  "runOrder": [
+    "A: copy the gate build to <probeRoot>\\app, register the probe task (priority 5, no trigger)",
+    "B / run 1: start via task; facts while running; status readback; trigger again while running; Stop-ScheduledTask",
+    "C / run 2: start via task; Process.CloseMainWindow(); Stop-Process -Id",
+    "D / run 3: start the app outside the task (Win32_Process.Create); trigger the task; Stop-ScheduledTask while Ready; Stop-Process",
+    "E / run 4: same task with priority 7 (Task Scheduler default); facts; status readback; Stop-ScheduledTask",
+    "G / run 5: priority 5 restored; top-level windows; taskkill /PID without /F; Stop-Process",
+    "H / run 6: same task with priority 4; facts; status readback; Stop-ScheduledTask",
+    "F: unregister the probe task; real-task and root-folder after-check"
+  ],
+  "phases": {
+    "A": {
+      "phase": "A-prepare",
+      "environment": {
+        "atUtc": "2026-11-14T02:41:07.2041616+00:00",
+        "osBuild": "26300",
+        "pwsh": "7.6.9",
+        "probeShellElevated": false,
+        "probeShellSessionId": 1,
+        "activeConsoleSessionId": 1,
+        "explorerSessionIds": [
+          1
+        ],
+        "minminProcessesBefore": 0,
+        "kryptexProcesses": 0,
+        "realInstallRootPresent": false,
+        "taskSchedulerOperationalLogEnabled": false
+      },
+      "realTaskBefore": {
+        "atUtc": "2026-11-14T02:41:08.8243217+00:00",
+        "named": [
+          {
+            "name": "Minmin Countdown",
+            "present": false,
+            "sha256": null,
+            "error": "ObjectNotFound"
+          },
+          {
+            "name": "敏敏子倒计时",
+            "present": false,
+            "sha256": null,
+            "error": "ObjectNotFound"
+          }
+        ],
+        "matchingNamesInAnyVisibleFolder": 0
+      },
+      "rootFolderBefore": {
+        "count": 19,
+        "exported": 19,
+        "aggregateSha256": "E1371342FC62BBF8FA6D866460BB30A68B69BF71D7BF3A911CAF2F114CF7B71F"
+      },
+      "probe": {
+        "id": "e39103a6",
+        "root": "<probeRoot>",
+        "taskName": "MinminCountdown-Probe-279-e39103a6",
+        "exe": "<probeRoot>\\app\\MinminCountdown.exe",
+        "statusScript": "<worktree>\\Get-CountdownInstallStatus.ps1",
+        "createdUtc": "2026-11-14T02:41:16.6595291+00:00"
+      },
+      "copy": {
+        "source": "gate-259-01\\app (gate run 20261114T100443604-81df41a0, commit 29860c2)",
+        "manifest": {
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        },
+        "manifestEntriesMismatched": [],
+        "filesNotInManifest": [
+          "app\\published-payload.json"
+        ],
+        "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+      },
+      "registration": {
+        "attemptedUtc": "2026-11-14T02:41:16.6643725+00:00",
+        "succeeded": true,
+        "error": null
+      },
+      "definition": {
+        "actions": [
+          {
+            "execute": "<probeRoot>\\app\\MinminCountdown.exe",
+            "arguments": "",
+            "workingDirectory": ""
+          }
+        ],
+        "triggerCount": 0,
+        "logonType": "Interactive",
+        "runLevel": "Limited",
+        "priority": 5,
+        "executionTimeLimit": "PT0S",
+        "multipleInstances": "IgnoreNew",
+        "disallowStartIfOnBatteries": false,
+        "stopIfGoingOnBatteries": false,
+        "allowHardTerminate": true,
+        "allowDemandStart": true,
+        "enabled": true
+      },
+      "taskInfoBeforeFirstRun": {
+        "atUtc": "2026-11-14T02:41:17.5917880+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "1999-11-29T16:00:00.0000000Z",
+        "lastTaskResult": 267011,
+        "lastTaskResultHex": "0x00041303",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "statusBeforeFirstRun": {
+        "exitCode": 0,
+        "elapsedMs": 1415,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": false,
+          "processes": [],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Ready",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      }
+    },
+    "B": {
+      "phase": "B-run1",
+      "startedUtc": "2026-11-14T02:41:31.8294052+00:00",
+      "receiptMovedAside": null,
+      "taskBeforeStart": {
+        "atUtc": "2026-11-14T02:41:32.8668020+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "1999-11-29T16:00:00.0000000Z",
+        "lastTaskResult": 267011,
+        "lastTaskResultHex": "0x00041303",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "startCalledUtc": "2026-11-14T02:41:32.8810310+00:00",
+      "startCallMs": 26,
+      "ready": {
+        "processId": 85488,
+        "processSeenMs": 429,
+        "receiptSeenMs": 941,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "1724021026ce4477b22f9899e47770ef",
+          "processId": 85488,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:41:33.7781293+00:00",
+          "calendarState": "Pending",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "process": {
+        "atUtc": "2026-11-14T02:41:34.5956422+00:00",
+        "processId": 85488,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "Normal",
+        "priorityClassValue": "0x20",
+        "priorityClassDotNet": "Normal",
+        "basePriority": 8,
+        "ioPriority": "Normal",
+        "pagePriority": 4,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "svchost.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:41:32.9244083Z",
+        "creationDateCimUtc": "2026-11-14T02:41:32.9244080Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "taskWhileRunning": {
+        "atUtc": "2026-11-14T02:41:35.0050692+00:00",
+        "state": "Running",
+        "lastRunTimeUtc": "2026-11-14T02:41:32.0000000Z",
+        "lastTaskResult": 267009,
+        "lastTaskResultHex": "0x00041301",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 1,
+        "runningInstances": [
+          {
+            "enginePid": 85488,
+            "state": 4,
+            "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+          }
+        ]
+      },
+      "taskWhileRunningLater": {
+        "atUtc": "2026-11-14T02:41:37.0114319+00:00",
+        "state": "Running",
+        "lastRunTimeUtc": "2026-11-14T02:41:32.0000000Z",
+        "lastTaskResult": 267009,
+        "lastTaskResultHex": "0x00041301",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 1,
+        "runningInstances": [
+          {
+            "enginePid": 85488,
+            "state": 4,
+            "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+          }
+        ]
+      },
+      "probeProcessesWhileRunning": [
+        85488
+      ],
+      "statusWhileRunning": {
+        "exitCode": 0,
+        "elapsedMs": 1310,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": true,
+          "processes": [
+            {
+              "processId": 85488,
+              "path": "<probeRoot>\\app\\MinminCountdown.exe",
+              "sessionId": 1,
+              "startTimeUtc": "2026-11-14T02:41:32.9244080Z"
+            }
+          ],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Running",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      },
+      "statusComparisonWhileRunning": {
+        "allMatch": true,
+        "mismatchedFields": [],
+        "loginTaskMismatches": [
+          "trigger"
+        ],
+        "rows": [
+          {
+            "field": "installRoot",
+            "status": "<probeRoot>",
+            "direct": "<probeRoot>",
+            "match": true
+          },
+          {
+            "field": "manifest",
+            "status": "present",
+            "direct": "present",
+            "match": true
+          },
+          {
+            "field": "commit",
+            "status": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "direct": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "match": true
+          },
+          {
+            "field": "aggregateSha256",
+            "status": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "direct": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "match": true
+          },
+          {
+            "field": "exe.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "exe.sha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "exe.matchesManifest",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "running",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "processes.count",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].processId",
+            "status": "85488",
+            "direct": "85488",
+            "match": true
+          },
+          {
+            "field": "processes[0].path",
+            "status": "<probeRoot>\\app\\MinminCountdown.exe",
+            "direct": "<probeRoot>\\app\\MinminCountdown.exe",
+            "match": true
+          },
+          {
+            "field": "processes[0].sessionId",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].startTimeUtc",
+            "status": "2026-11-14T02:41:32.9244080Z",
+            "direct": "2026-11-14T02:41:32.9244083Z",
+            "match": true,
+            "deltaMs": 0.0003
+          },
+          {
+            "field": "processes[0].runningImageSha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "loginTask.name",
+            "status": "MinminCountdown-Probe-279-e39103a6",
+            "direct": "MinminCountdown-Probe-279-e39103a6",
+            "match": true
+          },
+          {
+            "field": "loginTask.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "loginTask.state",
+            "status": "Running",
+            "direct": "Running",
+            "match": true
+          },
+          {
+            "field": "settings.present",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "transactionMarkerPresent",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          }
+        ]
+      },
+      "triggerAgain": {
+        "calledUtc": "2026-11-14T02:41:39.1951973+00:00",
+        "startError": null,
+        "taskBefore": {
+          "atUtc": "2026-11-14T02:41:39.1942123+00:00",
+          "state": "Running",
+          "lastRunTimeUtc": "2026-11-14T02:41:32.0000000Z",
+          "lastTaskResult": 267009,
+          "lastTaskResultHex": "0x00041301",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 1,
+          "runningInstances": [
+            {
+              "enginePid": 85488,
+              "state": 4,
+              "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+            }
+          ]
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:41:45.7087081+00:00",
+          "state": "Running",
+          "lastRunTimeUtc": "2026-11-14T02:41:39.0000000Z",
+          "lastTaskResult": 2147946720,
+          "lastTaskResultHex": "0x800710E0",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 1,
+          "runningInstances": [
+            {
+              "enginePid": 85488,
+              "state": 4,
+              "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+            }
+          ]
+        },
+        "probeProcessIdsSeenWithin6s": [
+          85488
+        ],
+        "originalStillRunning": true,
+        "diagnosticsFromOtherProcesses": []
+      },
+      "stopTask": {
+        "calledUtc": "2026-11-14T02:41:45.7482933+00:00",
+        "stopCallMs": 47,
+        "appExit": {
+          "exited": true,
+          "waitedMs": 133,
+          "exitTimeUtc": "2026-11-14T02:41:45.9044035Z",
+          "exitCode": 1,
+          "exitCodeHex": "0x00000001"
+        },
+        "msFromStopCallToExitObserved": 183,
+        "taskAfterStop": {
+          "atUtc": "2026-11-14T02:41:46.4668595+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:41:39.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "probeProcessesAfter": [],
+        "taskAfterStopLater": {
+          "atUtc": "2026-11-14T02:41:48.6119764+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:41:39.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "diagnostics": [
+        {
+          "timestampUtc": "2026-11-14T02:41:33.1696657+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 85488,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:41:33.7811399+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 85488,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:41:34.0430943+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 85488,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:41:45.8164802+00:00",
+          "level": "Info",
+          "event": "ExitConfirmationOffered",
+          "processId": 85488,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:41:45.8469963+00:00",
+          "level": "Error",
+          "event": "FatalUnhandledException",
+          "processId": 85488,
+          "sessionId": 1,
+          "exceptionType": "System.InvalidOperationException",
+          "exceptionMessage": "无法将 Owner 属性设置为已关闭的 Window。",
+          "hResult": -2146233079
+        }
+      ],
+      "statusAfterStop": {
+        "exitCode": 0,
+        "elapsedMs": 1335,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": false,
+          "processes": [],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Ready",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      },
+      "statusComparisonAfterStop": {
+        "allMatch": true,
+        "mismatchedFields": [],
+        "loginTaskMismatches": [
+          "trigger"
+        ],
+        "rows": [
+          {
+            "field": "installRoot",
+            "status": "<probeRoot>",
+            "direct": "<probeRoot>",
+            "match": true
+          },
+          {
+            "field": "manifest",
+            "status": "present",
+            "direct": "present",
+            "match": true
+          },
+          {
+            "field": "commit",
+            "status": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "direct": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "match": true
+          },
+          {
+            "field": "aggregateSha256",
+            "status": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "direct": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "match": true
+          },
+          {
+            "field": "exe.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "exe.sha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "exe.matchesManifest",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "running",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "processes.count",
+            "status": "0",
+            "direct": "0",
+            "match": true
+          },
+          {
+            "field": "loginTask.name",
+            "status": "MinminCountdown-Probe-279-e39103a6",
+            "direct": "MinminCountdown-Probe-279-e39103a6",
+            "match": true
+          },
+          {
+            "field": "loginTask.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "loginTask.state",
+            "status": "Ready",
+            "direct": "Ready",
+            "match": true
+          },
+          {
+            "field": "settings.present",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "transactionMarkerPresent",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          }
+        ]
+      },
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:41:50.2332970+00:00"
+    },
+    "C": {
+      "phase": "C-run2",
+      "startedUtc": "2026-11-14T02:44:13.2043430+00:00",
+      "receiptMovedAside": "<probeRoot>\\runtime-status.run1.json",
+      "taskBeforeStart": {
+        "atUtc": "2026-11-14T02:44:14.4621500+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "2026-11-14T02:41:39.0000000Z",
+        "lastTaskResult": 267014,
+        "lastTaskResultHex": "0x00041306",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "startCalledUtc": "2026-11-14T02:44:14.4765631+00:00",
+      "ready": {
+        "processId": 48556,
+        "processSeenMs": 444,
+        "receiptSeenMs": 1001,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "2598f948823d4b848a02ed4599308c03",
+          "processId": 48556,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:44:15.3971558+00:00",
+          "calendarState": "Ready",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "process": {
+        "atUtc": "2026-11-14T02:44:17.3950184+00:00",
+        "processId": 48556,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "Normal",
+        "priorityClassValue": "0x20",
+        "priorityClassDotNet": "Normal",
+        "basePriority": 8,
+        "ioPriority": "Normal",
+        "pagePriority": 4,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "svchost.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:44:14.4869947Z",
+        "creationDateCimUtc": "2026-11-14T02:44:14.4869940Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "taskWhileRunning": {
+        "atUtc": "2026-11-14T02:44:17.8543970+00:00",
+        "state": "Running",
+        "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+        "lastTaskResult": 267009,
+        "lastTaskResultHex": "0x00041301",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 1,
+        "runningInstances": [
+          {
+            "enginePid": 48556,
+            "state": 4,
+            "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+          }
+        ]
+      },
+      "closeMainWindow": {
+        "calledUtc": "2026-11-14T02:44:17.8552558+00:00",
+        "returned": false,
+        "mainWindowHandleWasZero": true,
+        "appExitWithin4s": {
+          "exited": false,
+          "waitedMs": 4015,
+          "exitTimeUtc": null,
+          "exitCode": null,
+          "exitCodeHex": null
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:44:22.5123901+00:00",
+          "state": "Running",
+          "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+          "lastTaskResult": 267009,
+          "lastTaskResultHex": "0x00041301",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 1,
+          "runningInstances": [
+            {
+              "enginePid": 48556,
+              "state": 4,
+              "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+            }
+          ]
+        },
+        "diagnostics": [
+          {
+            "timestampUtc": "2026-11-14T02:44:14.7099318+00:00",
+            "level": "Info",
+            "event": "ProcessStarted",
+            "processId": 48556,
+            "sessionId": 1
+          },
+          {
+            "timestampUtc": "2026-11-14T02:44:15.326082+00:00",
+            "level": "Info",
+            "event": "WindowReady",
+            "processId": 48556,
+            "sessionId": 1
+          },
+          {
+            "timestampUtc": "2026-11-14T02:44:15.3981619+00:00",
+            "level": "Info",
+            "event": "HolidayCalendarReady",
+            "processId": 48556,
+            "sessionId": 1
+          }
+        ]
+      },
+      "stopProcess": {
+        "calledUtc": "2026-11-14T02:44:22.5286415+00:00",
+        "result": "stopped",
+        "appExit": {
+          "exited": true,
+          "waitedMs": 44,
+          "exitTimeUtc": "2026-11-14T02:44:23.0097322Z",
+          "exitCode": 4294967295,
+          "exitCodeHex": "0xFFFFFFFF"
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:44:23.6765486+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+          "lastTaskResult": 4294967295,
+          "lastTaskResultHex": "0xFFFFFFFF",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "taskAfterLater": {
+          "atUtc": "2026-11-14T02:44:25.6980415+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+          "lastTaskResult": 4294967295,
+          "lastTaskResultHex": "0xFFFFFFFF",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "diagnostics": [
+        {
+          "timestampUtc": "2026-11-14T02:44:14.7099318+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 48556,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:15.326082+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 48556,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:15.3981619+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 48556,
+          "sessionId": 1
+        }
+      ],
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:44:26.1156793+00:00"
+    },
+    "D": {
+      "phase": "D-run3",
+      "startedUtc": "2026-11-14T02:44:34.4739730+00:00",
+      "receiptMovedAside": "<probeRoot>\\runtime-status.run2.json",
+      "taskBeforeOutsideStart": {
+        "atUtc": "2026-11-14T02:44:35.8099874+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+        "lastTaskResult": 4294967295,
+        "lastTaskResultHex": "0xFFFFFFFF",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "outsideCreate": {
+        "returnValue": 0,
+        "processId": 80940,
+        "calledUtc": "2026-11-14T02:44:35.8421778+00:00"
+      },
+      "outsideReady": {
+        "processId": 80940,
+        "receiptSeenMs": 1130,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "9449054229bc4475a9cc3fdf06986d4e",
+          "processId": 80940,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:44:36.8484564+00:00",
+          "calendarState": "Ready",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "outsideProcess": {
+        "atUtc": "2026-11-14T02:44:38.7903549+00:00",
+        "processId": 80940,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "Normal",
+        "priorityClassValue": "0x20",
+        "priorityClassDotNet": "Normal",
+        "basePriority": 8,
+        "ioPriority": "Normal",
+        "pagePriority": 5,
+        "inJob": false,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "WmiPrvSE.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:44:35.8357503Z",
+        "creationDateCimUtc": "2026-11-14T02:44:35.8357500Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "taskWhileOutsideRuns": {
+        "atUtc": "2026-11-14T02:44:39.2327861+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+        "lastTaskResult": 4294967295,
+        "lastTaskResultHex": "0xFFFFFFFF",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "statusWhileOutsideRuns": {
+        "exitCode": 0,
+        "elapsedMs": 1454,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": true,
+          "processes": [
+            {
+              "processId": 80940,
+              "path": "<probeRoot>\\app\\MinminCountdown.exe",
+              "sessionId": 1,
+              "startTimeUtc": "2026-11-14T02:44:35.8357500Z"
+            }
+          ],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Ready",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      },
+      "statusComparisonWhileOutsideRuns": {
+        "allMatch": true,
+        "mismatchedFields": [],
+        "loginTaskMismatches": [
+          "trigger"
+        ],
+        "rows": [
+          {
+            "field": "installRoot",
+            "status": "<probeRoot>",
+            "direct": "<probeRoot>",
+            "match": true
+          },
+          {
+            "field": "manifest",
+            "status": "present",
+            "direct": "present",
+            "match": true
+          },
+          {
+            "field": "commit",
+            "status": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "direct": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "match": true
+          },
+          {
+            "field": "aggregateSha256",
+            "status": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "direct": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "match": true
+          },
+          {
+            "field": "exe.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "exe.sha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "exe.matchesManifest",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "running",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "processes.count",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].processId",
+            "status": "80940",
+            "direct": "80940",
+            "match": true
+          },
+          {
+            "field": "processes[0].path",
+            "status": "<probeRoot>\\app\\MinminCountdown.exe",
+            "direct": "<probeRoot>\\app\\MinminCountdown.exe",
+            "match": true
+          },
+          {
+            "field": "processes[0].sessionId",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].startTimeUtc",
+            "status": "2026-11-14T02:44:35.8357500Z",
+            "direct": "2026-11-14T02:44:35.8357503Z",
+            "match": true,
+            "deltaMs": 0.0003
+          },
+          {
+            "field": "processes[0].runningImageSha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "loginTask.name",
+            "status": "MinminCountdown-Probe-279-e39103a6",
+            "direct": "MinminCountdown-Probe-279-e39103a6",
+            "match": true
+          },
+          {
+            "field": "loginTask.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "loginTask.state",
+            "status": "Ready",
+            "direct": "Ready",
+            "match": true
+          },
+          {
+            "field": "settings.present",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "transactionMarkerPresent",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          }
+        ]
+      },
+      "trigger": {
+        "calledUtc": "2026-11-14T02:44:41.1059338+00:00",
+        "taskBefore": {
+          "atUtc": "2026-11-14T02:44:41.1050918+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:14.0000000Z",
+          "lastTaskResult": 4294967295,
+          "lastTaskResultHex": "0xFFFFFFFF",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "taskSamples": [
+          {
+            "ms": 764,
+            "state": "Ready",
+            "lastTaskResultHex": "0x00000000",
+            "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+            "instances": 0
+          },
+          {
+            "ms": 1843,
+            "state": "Ready",
+            "lastTaskResultHex": "0x00000000",
+            "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+            "instances": 0
+          },
+          {
+            "ms": 2892,
+            "state": "Ready",
+            "lastTaskResultHex": "0x00000000",
+            "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+            "instances": 0
+          },
+          {
+            "ms": 3887,
+            "state": "Ready",
+            "lastTaskResultHex": "0x00000000",
+            "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+            "instances": 0
+          },
+          {
+            "ms": 4712,
+            "state": "Ready",
+            "lastTaskResultHex": "0x00000000",
+            "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+            "instances": 0
+          }
+        ],
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:44:46.1882883+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+          "lastTaskResult": 0,
+          "lastTaskResultHex": "0x00000000",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "taskLaunchedProcessIdsSeen": [],
+        "taskLaunchedProcessesStillRunning": [],
+        "outsideStillRunning": true,
+        "diagnosticsOtherProcesses": [
+          {
+            "timestampUtc": "2026-11-14T02:44:41.3426124+00:00",
+            "level": "Info",
+            "event": "ProcessStarted",
+            "processId": 57260,
+            "sessionId": 1
+          },
+          {
+            "timestampUtc": "2026-11-14T02:44:41.4306545+00:00",
+            "level": "Info",
+            "event": "InstanceActivationSucceeded",
+            "processId": 57260,
+            "sessionId": 1,
+            "activationResult": "Succeeded",
+            "activationServerProcessId": 80940,
+            "activationForegroundPermissionGranted": false
+          }
+        ],
+        "diagnosticsOutsideAfterTrigger": [
+          {
+            "timestampUtc": "2026-11-14T02:44:41.4040507+00:00",
+            "level": "Info",
+            "event": "InstanceActivationRequestReceived",
+            "processId": 80940,
+            "sessionId": 1,
+            "activationResult": "Received"
+          },
+          {
+            "timestampUtc": "2026-11-14T02:44:41.4140602+00:00",
+            "level": "Info",
+            "event": "InstanceActivationHandled",
+            "processId": 80940,
+            "sessionId": 1,
+            "activationResult": "Activated",
+            "activationStateBefore": "VisibleNormal",
+            "activationStateAfter": "VisibleNormal"
+          }
+        ]
+      },
+      "stopTaskWhileOutsideRuns": {
+        "calledUtc": "2026-11-14T02:44:46.6612361+00:00",
+        "outsideStillRunning": true,
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:44:49.9861782+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+          "lastTaskResult": 0,
+          "lastTaskResultHex": "0x00000000",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "stopOutside": {
+        "result": "stopped",
+        "appExit": {
+          "exited": true,
+          "waitedMs": 41,
+          "exitTimeUtc": "2026-11-14T02:44:50.3438927Z",
+          "exitCode": 4294967295,
+          "exitCodeHex": "0xFFFFFFFF"
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:44:50.7140389+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:44:41.0000000Z",
+          "lastTaskResult": 0,
+          "lastTaskResultHex": "0x00000000",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "diagnosticsOutside": [
+        {
+          "timestampUtc": "2026-11-14T02:44:36.1018804+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 80940,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:36.772935+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 80940,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:36.8495623+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 80940,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:41.4040507+00:00",
+          "level": "Info",
+          "event": "InstanceActivationRequestReceived",
+          "processId": 80940,
+          "sessionId": 1,
+          "activationResult": "Received"
+        },
+        {
+          "timestampUtc": "2026-11-14T02:44:41.4140602+00:00",
+          "level": "Info",
+          "event": "InstanceActivationHandled",
+          "processId": 80940,
+          "sessionId": 1,
+          "activationResult": "Activated",
+          "activationStateBefore": "VisibleNormal",
+          "activationStateAfter": "VisibleNormal"
+        }
+      ],
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:44:50.9719194+00:00"
+    },
+    "E": {
+      "phase": "E-run4-priority7",
+      "startedUtc": "2026-11-14T02:45:02.5024478+00:00",
+      "definitionAfterSet": {
+        "priority": 7,
+        "triggerCount": 0,
+        "execute": "<probeRoot>\\app\\MinminCountdown.exe",
+        "arguments": "",
+        "logonType": "Interactive",
+        "runLevel": "Limited",
+        "executionTimeLimit": "PT0S",
+        "multipleInstances": "IgnoreNew"
+      },
+      "receiptMovedAside": "<probeRoot>\\runtime-status.run3.json",
+      "startCalledUtc": "2026-11-14T02:45:04.0280780+00:00",
+      "ready": {
+        "processId": 84140,
+        "processSeenMs": 596,
+        "receiptSeenMs": 1298,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "1130a6e6319b463885c8f14744ba4cd8",
+          "processId": 84140,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:45:05.0953893+00:00",
+          "calendarState": "Ready",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "process": {
+        "atUtc": "2026-11-14T02:45:07.1934583+00:00",
+        "processId": 84140,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "BelowNormal",
+        "priorityClassValue": "0x4000",
+        "priorityClassDotNet": "BelowNormal",
+        "basePriority": 6,
+        "ioPriority": "Low",
+        "pagePriority": 2,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "svchost.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:45:04.0826335Z",
+        "creationDateCimUtc": "2026-11-14T02:45:04.0826330Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "taskWhileRunning": {
+        "atUtc": "2026-11-14T02:45:07.9193308+00:00",
+        "state": "Running",
+        "lastRunTimeUtc": "2026-11-14T02:45:04.0000000Z",
+        "lastTaskResult": 267009,
+        "lastTaskResultHex": "0x00041301",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 1,
+        "runningInstances": [
+          {
+            "enginePid": 84140,
+            "state": 4,
+            "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+          }
+        ]
+      },
+      "statusWhileRunning": {
+        "exitCode": 0,
+        "elapsedMs": 1948,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": true,
+          "processes": [
+            {
+              "processId": 84140,
+              "path": "<probeRoot>\\app\\MinminCountdown.exe",
+              "sessionId": 1,
+              "startTimeUtc": "2026-11-14T02:45:04.0826330Z"
+            }
+          ],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Running",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger",
+              "priority"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      },
+      "statusComparisonWhileRunning": {
+        "allMatch": true,
+        "mismatchedFields": [],
+        "loginTaskMismatches": [
+          "trigger",
+          "priority"
+        ],
+        "rows": [
+          {
+            "field": "installRoot",
+            "status": "<probeRoot>",
+            "direct": "<probeRoot>",
+            "match": true
+          },
+          {
+            "field": "manifest",
+            "status": "present",
+            "direct": "present",
+            "match": true
+          },
+          {
+            "field": "commit",
+            "status": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "direct": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "match": true
+          },
+          {
+            "field": "aggregateSha256",
+            "status": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "direct": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "match": true
+          },
+          {
+            "field": "exe.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "exe.sha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "exe.matchesManifest",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "running",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "processes.count",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].processId",
+            "status": "84140",
+            "direct": "84140",
+            "match": true
+          },
+          {
+            "field": "processes[0].path",
+            "status": "<probeRoot>\\app\\MinminCountdown.exe",
+            "direct": "<probeRoot>\\app\\MinminCountdown.exe",
+            "match": true
+          },
+          {
+            "field": "processes[0].sessionId",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].startTimeUtc",
+            "status": "2026-11-14T02:45:04.0826330Z",
+            "direct": "2026-11-14T02:45:04.0826335Z",
+            "match": true,
+            "deltaMs": 0.0005
+          },
+          {
+            "field": "processes[0].runningImageSha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "loginTask.name",
+            "status": "MinminCountdown-Probe-279-e39103a6",
+            "direct": "MinminCountdown-Probe-279-e39103a6",
+            "match": true
+          },
+          {
+            "field": "loginTask.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "loginTask.state",
+            "status": "Running",
+            "direct": "Running",
+            "match": true
+          },
+          {
+            "field": "settings.present",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "transactionMarkerPresent",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          }
+        ]
+      },
+      "stopTask": {
+        "calledUtc": "2026-11-14T02:45:09.9366115+00:00",
+        "stopCallMs": 14,
+        "appExit": {
+          "exited": true,
+          "waitedMs": 175,
+          "exitTimeUtc": "2026-11-14T02:45:10.1135439Z",
+          "exitCode": 1,
+          "exitCodeHex": "0x00000001"
+        },
+        "taskAfterStop": {
+          "atUtc": "2026-11-14T02:45:10.8309604+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:45:04.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "taskAfterStopLater": {
+          "atUtc": "2026-11-14T02:45:12.9673953+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:45:04.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "diagnostics": [
+        {
+          "timestampUtc": "2026-11-14T02:45:04.3344843+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 84140,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:45:05.0132703+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 84140,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:45:05.0968328+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 84140,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:45:09.9808671+00:00",
+          "level": "Info",
+          "event": "ExitConfirmationOffered",
+          "processId": 84140,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:45:10.039712+00:00",
+          "level": "Error",
+          "event": "FatalUnhandledException",
+          "processId": 84140,
+          "sessionId": 1,
+          "exceptionType": "System.InvalidOperationException",
+          "exceptionMessage": "无法将 Owner 属性设置为已关闭的 Window。",
+          "hResult": -2146233079
+        }
+      ],
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:45:13.4689213+00:00"
+    },
+    "G": {
+      "phase": "G-run5",
+      "startedUtc": "2026-11-14T02:46:17.4463044+00:00",
+      "definitionRestored": {
+        "priority": 5,
+        "triggerCount": 0,
+        "executionTimeLimit": "PT0S",
+        "multipleInstances": "IgnoreNew"
+      },
+      "receiptMovedAside": "<probeRoot>\\runtime-status.run4.json",
+      "startCalledUtc": "2026-11-14T02:46:18.9534584+00:00",
+      "ready": {
+        "processId": 82800,
+        "processSeenMs": 515,
+        "receiptSeenMs": 1095,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "be05dccde5e54e4e949d9290f5a6febe",
+          "processId": 82800,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:46:19.9207921+00:00",
+          "calendarState": "Ready",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "process": {
+        "atUtc": "2026-11-14T02:46:22.4619786+00:00",
+        "processId": 82800,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "Normal",
+        "priorityClassValue": "0x20",
+        "priorityClassDotNet": "Normal",
+        "basePriority": 8,
+        "ioPriority": "Normal",
+        "pagePriority": 4,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "svchost.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:46:18.9681453Z",
+        "creationDateCimUtc": "2026-11-14T02:46:18.9681450Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "topLevelWindows": [
+        {
+          "handle": "0x172A0E3A",
+          "className": "HwndWrapper[MinminCountdown;;52fd863e-a818-4ae5-9f29-38d3c66c53a8]",
+          "title": "敏敏子悬浮窗",
+          "visible": true,
+          "owner": "0xB67034C"
+        },
+        {
+          "handle": "0x1050FA2",
+          "className": "H.NotifyIcon_a07cedee-4b72-4211-b139-682c334d9bd2",
+          "title": "H.NotifyIcon_a07cedee-4b72-4211-b139-682c334d9bd2",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0x9F5056A",
+          "className": "TabletPenServiceHelperClass",
+          "title": "WISPTIS",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0x12D012A",
+          "className": "HwndWrapper[MinminCountdown;;4508e196-315a-4ff6-b6dd-daf705206bc0]",
+          "title": "",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0xB67034C",
+          "className": "HwndWrapper[MinminCountdown;;a67c0ad9-b623-4c47-b771-f12ab47bd227]",
+          "title": "Hidden Window",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0x13603D4",
+          "className": "HwndWrapper[MinminCountdown;;ef91ed51-2bf4-4b62-893c-ad65325c0c28]",
+          "title": "MediaContextNotificationWindow",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0xF90696",
+          "className": ".NET-BroadcastEventWindow.3b95145.0",
+          "title": ".NET-BroadcastEventWindow.3b95145.0",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0xE030172",
+          "className": "HwndWrapper[MinminCountdown;;22c09561-4603-4361-8738-f5616bb21de4]",
+          "title": "",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0xE021076",
+          "className": "HwndWrapper[MinminCountdown;;b42bd469-866a-4f81-8258-cb3d62a4133e]",
+          "title": "SystemResourceNotifyWindow",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0xB1504B8",
+          "className": "CiceroUIWndFrame",
+          "title": "CiceroUIWndFrame",
+          "visible": false,
+          "owner": "0x8B30FAE"
+        },
+        {
+          "handle": "0x42103FA",
+          "className": "MSCTFIME UI",
+          "title": "MSCTFIME UI",
+          "visible": false,
+          "owner": "0x11F71056"
+        },
+        {
+          "handle": "0x11F71056",
+          "className": "IME",
+          "title": "Default IME",
+          "visible": false,
+          "owner": "0x172A0E3A"
+        },
+        {
+          "handle": "0x8B30FAE",
+          "className": "CiceroUIWndFrame",
+          "title": "CiceroUIWndFrame",
+          "visible": false,
+          "owner": "0x0"
+        },
+        {
+          "handle": "0x8060478",
+          "className": "IME",
+          "title": "Default IME",
+          "visible": false,
+          "owner": "0x9F5056A"
+        },
+        {
+          "handle": "0x8B60C6E",
+          "className": "IME",
+          "title": "Default IME",
+          "visible": false,
+          "owner": "0xF90696"
+        }
+      ],
+      "gracefulCloseRequest": {
+        "method": "taskkill.exe /PID <pid> (no /F)",
+        "calledUtc": "2026-11-14T02:46:22.9707780+00:00",
+        "taskkillExitCode": 0,
+        "taskkillOutputLines": 1,
+        "appExitWithin8s": {
+          "exited": false,
+          "waitedMs": 8001,
+          "exitTimeUtc": null,
+          "exitCode": null,
+          "exitCodeHex": null
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:46:32.0009949+00:00",
+          "state": "Running",
+          "lastRunTimeUtc": "2026-11-14T02:46:18.0000000Z",
+          "lastTaskResult": 267009,
+          "lastTaskResultHex": "0x00041301",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 1,
+          "runningInstances": [
+            {
+              "enginePid": 82800,
+              "state": 4,
+              "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+            }
+          ]
+        }
+      },
+      "stopProcess": {
+        "result": "stopped",
+        "appExit": {
+          "exited": true,
+          "waitedMs": 39,
+          "exitTimeUtc": "2026-11-14T02:46:32.4460187Z",
+          "exitCode": 4294967295,
+          "exitCodeHex": "0xFFFFFFFF"
+        },
+        "taskAfter": {
+          "atUtc": "2026-11-14T02:46:33.0409704+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:46:18.0000000Z",
+          "lastTaskResult": 4294967295,
+          "lastTaskResultHex": "0xFFFFFFFF",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "taskAfterLater": {
+        "atUtc": "2026-11-14T02:46:35.1649080+00:00",
+        "state": "Ready",
+        "lastRunTimeUtc": "2026-11-14T02:46:18.0000000Z",
+        "lastTaskResult": 4294967295,
+        "lastTaskResultHex": "0xFFFFFFFF",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 0,
+        "runningInstances": []
+      },
+      "diagnostics": [
+        {
+          "timestampUtc": "2026-11-14T02:46:19.2251102+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 82800,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:46:19.8492702+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 82800,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:46:19.9218224+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 82800,
+          "sessionId": 1
+        }
+      ],
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:46:35.6465108+00:00"
+    },
+    "H": {
+      "phase": "H-run6-priority4",
+      "startedUtc": "2026-11-14T02:47:32.5801684+00:00",
+      "definitionAfterSet": {
+        "priority": 4,
+        "triggerCount": 0,
+        "execute": "<probeRoot>\\app\\MinminCountdown.exe",
+        "arguments": "",
+        "logonType": "Interactive",
+        "runLevel": "Limited",
+        "executionTimeLimit": "PT0S",
+        "multipleInstances": "IgnoreNew"
+      },
+      "receiptMovedAside": "<probeRoot>\\runtime-status.run5.json",
+      "startCalledUtc": "2026-11-14T02:47:33.8851325+00:00",
+      "ready": {
+        "processId": 45016,
+        "processSeenMs": 462,
+        "receiptSeenMs": 1050,
+        "timedOut": false,
+        "receipt": {
+          "schemaVersion": 4,
+          "stage": "window-ready",
+          "launchToken": "f130cda9f9ff466884c22cde463c310d",
+          "processId": 45016,
+          "sessionId": 1,
+          "applicationPath": "<probeRoot>\\敏敏子倒计时.ps1",
+          "readyAtUtc": "2026-11-14T02:47:34.7996022+00:00",
+          "calendarState": "Ready",
+          "timeZoneId": "China Standard Time"
+        }
+      },
+      "process": {
+        "atUtc": "2026-11-14T02:47:36.8829153+00:00",
+        "processId": 45016,
+        "imagePathQueryFullProcessImageName": "<probeRoot>\\app\\MinminCountdown.exe",
+        "imagePathCim": "<probeRoot>\\app\\MinminCountdown.exe",
+        "sessionIdProcessIdToSessionId": 1,
+        "sessionIdCim": 1,
+        "activeConsoleSessionId": 1,
+        "priorityClass": "Normal",
+        "priorityClassValue": "0x20",
+        "priorityClassDotNet": "Normal",
+        "basePriority": 8,
+        "ioPriority": "Normal",
+        "pagePriority": 5,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "svchost.exe",
+        "startTimeUtcDotNet": "2026-11-14T02:47:33.8979395Z",
+        "creationDateCimUtc": "2026-11-14T02:47:33.8979390Z",
+        "hasMainWindow": false,
+        "nativeError": null
+      },
+      "taskWhileRunning": {
+        "atUtc": "2026-11-14T02:47:37.6203294+00:00",
+        "state": "Running",
+        "lastRunTimeUtc": "2026-11-14T02:47:33.0000000Z",
+        "lastTaskResult": 267009,
+        "lastTaskResultHex": "0x00041301",
+        "numberOfMissedRuns": 0,
+        "runningInstanceCount": 1,
+        "runningInstances": [
+          {
+            "enginePid": 45016,
+            "state": 4,
+            "currentAction": "<probeRoot>\\app\\MinminCountdown.exe"
+          }
+        ]
+      },
+      "statusWhileRunning": {
+        "exitCode": 0,
+        "elapsedMs": 1674,
+        "json": {
+          "schemaVersion": 1,
+          "installRoot": "<probeRoot>",
+          "manifest": "present",
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "exe": {
+            "present": true,
+            "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "matchesManifest": true
+          },
+          "running": true,
+          "processes": [
+            {
+              "processId": 45016,
+              "path": "<probeRoot>\\app\\MinminCountdown.exe",
+              "sessionId": 1,
+              "startTimeUtc": "2026-11-14T02:47:33.8979390Z"
+            }
+          ],
+          "loginTask": {
+            "name": "MinminCountdown-Probe-279-e39103a6",
+            "present": true,
+            "state": "Running",
+            "matchesExpected": false,
+            "mismatches": [
+              "trigger"
+            ]
+          },
+          "settings": {
+            "present": false,
+            "length": null,
+            "lastWriteTimeUtc": null,
+            "sha256": null
+          },
+          "transactionMarkerPresent": false
+        }
+      },
+      "statusComparisonWhileRunning": {
+        "allMatch": true,
+        "mismatchedFields": [],
+        "loginTaskMismatches": [
+          "trigger"
+        ],
+        "rows": [
+          {
+            "field": "installRoot",
+            "status": "<probeRoot>",
+            "direct": "<probeRoot>",
+            "match": true
+          },
+          {
+            "field": "manifest",
+            "status": "present",
+            "direct": "present",
+            "match": true
+          },
+          {
+            "field": "commit",
+            "status": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "direct": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "match": true
+          },
+          {
+            "field": "aggregateSha256",
+            "status": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "direct": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "match": true
+          },
+          {
+            "field": "exe.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "exe.sha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "exe.matchesManifest",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "running",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "processes.count",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].processId",
+            "status": "45016",
+            "direct": "45016",
+            "match": true
+          },
+          {
+            "field": "processes[0].path",
+            "status": "<probeRoot>\\app\\MinminCountdown.exe",
+            "direct": "<probeRoot>\\app\\MinminCountdown.exe",
+            "match": true
+          },
+          {
+            "field": "processes[0].sessionId",
+            "status": "1",
+            "direct": "1",
+            "match": true
+          },
+          {
+            "field": "processes[0].startTimeUtc",
+            "status": "2026-11-14T02:47:33.8979390Z",
+            "direct": "2026-11-14T02:47:33.8979395Z",
+            "match": true,
+            "deltaMs": 0.0005
+          },
+          {
+            "field": "processes[0].runningImageSha256",
+            "status": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "direct": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "match": true
+          },
+          {
+            "field": "loginTask.name",
+            "status": "MinminCountdown-Probe-279-e39103a6",
+            "direct": "MinminCountdown-Probe-279-e39103a6",
+            "match": true
+          },
+          {
+            "field": "loginTask.present",
+            "status": "True",
+            "direct": "True",
+            "match": true
+          },
+          {
+            "field": "loginTask.state",
+            "status": "Running",
+            "direct": "Running",
+            "match": true
+          },
+          {
+            "field": "settings.present",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          },
+          {
+            "field": "transactionMarkerPresent",
+            "status": "False",
+            "direct": "False",
+            "match": true
+          }
+        ]
+      },
+      "stopTask": {
+        "calledUtc": "2026-11-14T02:47:39.3590938+00:00",
+        "stopCallMs": 13,
+        "appExit": {
+          "exited": true,
+          "waitedMs": 171,
+          "exitTimeUtc": "2026-11-14T02:47:39.5297665Z",
+          "exitCode": 1,
+          "exitCodeHex": "0x00000001"
+        },
+        "taskAfterStop": {
+          "atUtc": "2026-11-14T02:47:40.1404618+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:47:33.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        },
+        "taskAfterStopLater": {
+          "atUtc": "2026-11-14T02:47:42.2683335+00:00",
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-14T02:47:33.0000000Z",
+          "lastTaskResult": 267014,
+          "lastTaskResultHex": "0x00041306",
+          "numberOfMissedRuns": 0,
+          "runningInstanceCount": 0,
+          "runningInstances": []
+        }
+      },
+      "diagnostics": [
+        {
+          "timestampUtc": "2026-11-14T02:47:34.1297463+00:00",
+          "level": "Info",
+          "event": "ProcessStarted",
+          "processId": 45016,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:47:34.7321152+00:00",
+          "level": "Info",
+          "event": "WindowReady",
+          "processId": 45016,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:47:34.8007783+00:00",
+          "level": "Info",
+          "event": "HolidayCalendarReady",
+          "processId": 45016,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:47:39.3974155+00:00",
+          "level": "Info",
+          "event": "ExitConfirmationOffered",
+          "processId": 45016,
+          "sessionId": 1
+        },
+        {
+          "timestampUtc": "2026-11-14T02:47:39.4608276+00:00",
+          "level": "Error",
+          "event": "FatalUnhandledException",
+          "processId": 45016,
+          "sessionId": 1,
+          "exceptionType": "System.InvalidOperationException",
+          "exceptionMessage": "无法将 Owner 属性设置为已关闭的 Window。",
+          "hResult": -2146233079
+        }
+      ],
+      "leftoversStopped": [],
+      "finishedUtc": "2026-11-14T02:47:42.7224932+00:00"
+    },
+    "F": {
+      "phase": "F-cleanup",
+      "startedUtc": "2026-11-14T02:47:52.1702316+00:00",
+      "leftoversStopped": [],
+      "probeProcessesRemaining": [],
+      "taskStateBeforeUnregister": "Ready",
+      "unregisteredUtc": "2026-11-14T02:47:54.7012353+00:00",
+      "probeTaskGone": true,
+      "probeTaskGoneByAnyPath": true,
+      "realTaskAfter": {
+        "atUtc": "2026-11-14T02:47:56.6743492+00:00",
+        "named": [
+          {
+            "name": "Minmin Countdown",
+            "present": false,
+            "sha256": null,
+            "error": "ObjectNotFound"
+          },
+          {
+            "name": "敏敏子倒计时",
+            "present": false,
+            "sha256": null,
+            "error": "ObjectNotFound"
+          }
+        ],
+        "matchingNamesInAnyVisibleFolder": 0
+      },
+      "rootFolderAfter": {
+        "count": 19,
+        "exported": 19,
+        "aggregateSha256": "E1371342FC62BBF8FA6D866460BB30A68B69BF71D7BF3A911CAF2F114CF7B71F",
+        "aggregateEqualsBefore": true,
+        "addedNames": [],
+        "removedNames": [],
+        "changedNames": []
+      },
+      "rootDirectoryListing": [
+        "app",
+        "holiday-cache",
+        "logs",
+        "runtime-status.json",
+        "runtime-status.run1.json",
+        "runtime-status.run2.json",
+        "runtime-status.run3.json",
+        "runtime-status.run4.json",
+        "runtime-status.run5.json"
+      ],
+      "finishedUtc": "2026-11-14T02:47:57.5397424+00:00"
+    }
+  }
+}

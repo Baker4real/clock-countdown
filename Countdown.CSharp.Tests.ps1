@@ -4087,7 +4087,11 @@ exit 23
         $shortcutPrimaryStart.WorkingDirectory = $directProgramDirectory
         $shortcutPrimaryStart.UseShellExecute = $false
         $shortcutPrimaryStart.CreateNoWindow = $true
-        foreach ($argument in @('--exit-after-ready-for-test', '--instance-activation-test-state', 'Tray')) {
+        # 激活测试状态要求显式给出设置与诊断路径；这里给的正是安装布局的默认路径，快捷方式不带参数启动的第二个实例
+        # 按默认路径落进同一个单实例范围。
+        foreach ($argument in @(
+                '--exit-after-ready-for-test', '--instance-activation-test-state', 'Tray',
+                '--settings-file', $directSettingsPath, '--diagnostic-log-path', $directDiagnosticPath)) {
             $shortcutPrimaryStart.ArgumentList.Add($argument)
         }
         foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
@@ -4096,7 +4100,9 @@ exit 23
         [void] $shortcutPrimaryStart.Environment.Remove('NO_PROXY')
         $shortcutPrimaryProcess = [System.Diagnostics.Process]::Start($shortcutPrimaryStart)
         $shortcutPrimaryReceipt = Wait-DirectWindowReadyReceipt -Path $directRuntimeStatusPath -Process $shortcutPrimaryProcess
-        Assert-Equal $true ($null -ne $shortcutPrimaryReceipt -and -not $shortcutPrimaryProcess.HasExited) '已安装 EXE 作为主实例运行，悬浮窗收在托盘'
+        Assert-Equal $true ($null -ne $shortcutPrimaryReceipt -and -not $shortcutPrimaryProcess.HasExited) `
+            "已安装 EXE 作为主实例运行，悬浮窗收在托盘；已退出=$($shortcutPrimaryProcess.HasExited)；诊断日志末尾=$(
+                @((Read-SharedTestEvidenceText -Path $directDiagnosticPath) -split "`r?`n" | Where-Object { $_ } | Select-Object -Last 3) -join ' ')"
 
         $shortcutSecondProcess = Start-DesktopShortcutForTest -Path $shortcutPath
         Assert-Equal $true $shortcutSecondProcess.WaitForExit(30000) '应用已在运行时，双击快捷方式启动的第二个实例在有界期限内退出'

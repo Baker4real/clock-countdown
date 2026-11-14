@@ -443,6 +443,13 @@ try {
         Assert-Equal $false ($installerCase.Json.Contains('settings-content-sentinel-280', [System.StringComparison]::Ordinal)) "Result JSON of a refused rehearsal leaves out settings content: $($refusedRehearsal.Name)"
     }
 
+    # 首次安装没有设置文件：跳过演练，安装继续，候选 EXE 一个命令都不运行。
+    $installerCase = New-CountdownInstallerTestCase -Name 'rehearsal-first-install'
+    $firstRehearsal = Invoke-CountdownInstallerTest
+    Assert-Equal $true ([bool] $firstRehearsal.succeeded) "First install without a settings file continues: $($firstRehearsal.failedStage) $($firstRehearsal.error)"
+    Assert-Equal 'skipped-no-settings||' "$($firstRehearsal.settingsRehearsal.outcome)|$($firstRehearsal.settingsRehearsal.migration)|$($firstRehearsal.settingsRehearsal.equivalence)" 'Result JSON reports the rehearsal skipped without a settings file'
+    Assert-Equal 0 $installerCase.Commands.Count 'First install without a settings file runs no candidate command'
+
     # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。
     # “只检查、不改动”同样核对包。上次安装没走完（留有事务标记与旧版本目录）时，中断恢复由 #284 实现，在那之前拒绝。
@@ -458,6 +465,10 @@ try {
                 Write-CountdownInstallerTestProgram -Root (Join-Path $installerCase.Root 'previous-layout') -Files $installerProgramFilesV1 -Commit $installerCommitV1 -AggregateSha256 $installerAggregateV1
                 [System.IO.Directory]::Move((Join-Path $installerCase.Root 'previous-layout\app'), (Join-Path $installerCase.Root 'app.previous'))
                 [System.IO.Directory]::Delete((Join-Path $installerCase.Root 'previous-layout'))
+            } }
+        # 提交或撤回时删除事务目录之前中断，只留下事务目录（#282）。
+        [pscustomobject]@{ Name = 'reject-leftover-transaction-directory'; Installed = $true; CheckOnly = $false; Stage = 'recovery'; Reason = 'unfinished-install'; Arrange = {
+                New-Item -ItemType Directory -Path (Join-Path $installerCase.Root 'install-transaction\settings-snapshot') -Force | Out-Null
             } }
     )
     foreach ($rejection in $installerRejections) {
@@ -478,10 +489,10 @@ try {
     }
 
     # 只检查、不改动：执行到前置检查为止（核对包本身，不放候选），报告将要执行的步骤；包、安装根、应用与登录任务都不变。
-    # 已有登录任务时不计划创建它；首次安装时计划创建，安装根也不会被建出来。
+    # 已有登录任务时不计划创建它；首次安装时计划创建，安装根也不会被建出来。设置快照总在计划里，迁移演练只在有设置文件时。
     foreach ($checkOnly in @(
-            [pscustomobject]@{ Name = 'check-only-upgrade'; Installed = $true; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,start-and-wait-ready,commit' }
-            [pscustomobject]@{ Name = 'check-only-first-install'; Installed = $false; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,start-and-wait-ready,commit' }
+            [pscustomobject]@{ Name = 'check-only-upgrade'; Installed = $true; Steps = 'place-candidate,stop-application,write-transaction-marker,snapshot-settings,settings-rehearsal,replace-program-directory,start-and-wait-ready,commit' }
+            [pscustomobject]@{ Name = 'check-only-first-install'; Installed = $false; Steps = 'place-candidate,stop-application,write-transaction-marker,snapshot-settings,replace-program-directory,create-login-task,start-and-wait-ready,commit' }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $checkOnly.Name
         if ($checkOnly.Installed) { Initialize-CountdownInstallerTestInstalledVersion }
@@ -563,7 +574,7 @@ try {
     $installerReal = $installerRealText | ConvertFrom-Json -DateKind String
     Assert-Equal $true ([bool] $installerReal.checkOnly) 'Real check-only reports check-only mode'
     if ([bool] $installerReal.succeeded) {
-        Assert-Equal 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,start-and-wait-ready,commit' (@($installerReal.plannedSteps) -join ',') 'Real check-only plans to create the missing login task'
+        Assert-Equal 'place-candidate,stop-application,write-transaction-marker,snapshot-settings,replace-program-directory,create-login-task,start-and-wait-ready,commit' (@($installerReal.plannedSteps) -join ',') 'Real check-only plans to create the missing login task'
         $installerBuiltAggregate = [string] ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json).aggregateSha256
         Assert-Equal $installerBuiltAggregate ([string] $installerReal.package.aggregateSha256) 'Real check-only verifies this build output as the package'
     }

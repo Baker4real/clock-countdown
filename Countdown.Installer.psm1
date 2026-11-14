@@ -135,7 +135,7 @@ function Assert-CountdownNoUnfinishedInstall {
     param([Parameter(Mandatory)] [object] $Layout)
 
     $leftovers = @(
-        foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.PreviousDirectory)) {
+        foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.PreviousDirectory, $Layout.TransactionDirectory)) {
             if (Test-Path -LiteralPath $path) { [System.IO.Path]::GetFileName($path) }
         }
     )
@@ -611,7 +611,9 @@ function Install-CountdownProgram {
         $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
         $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container)
         $plan = [System.Collections.Generic.List[string]]::new()
-        $plan.AddRange([string[]] @('place-candidate', 'stop-application', 'write-transaction-marker', 'replace-program-directory'))
+        $plan.AddRange([string[]] @('place-candidate', 'stop-application', 'write-transaction-marker', 'snapshot-settings'))
+        if (Test-Path -LiteralPath $layout.SettingsPath -PathType Leaf) { $plan.Add('settings-rehearsal') }
+        $plan.Add('replace-program-directory')
         if ($null -eq (& $Ports.GetTask $TaskName)) { $plan.Add('create-login-task') }
         $plan.AddRange([string[]] @('start-and-wait-ready', 'commit'))
 

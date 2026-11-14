@@ -218,6 +218,8 @@ Write-TestSegmentTiming -Name 'MainDomain'
 Write-TestSegmentTiming -Name 'InstallLifecycle'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.InstallStatus.ps1')
 Write-TestSegmentTiming -Name 'InstallStatus'
+. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.Installer.ps1')
+Write-TestSegmentTiming -Name 'Installer'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.InstallerValidation.ps1')
 Write-TestSegmentTiming -Name 'InstallerValidation'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.SourceContracts.ps1')

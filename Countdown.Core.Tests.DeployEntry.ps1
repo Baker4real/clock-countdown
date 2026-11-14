@@ -3,9 +3,10 @@
 # #285 新部署入口的成功路径：主机的远端执行入口与传输入口换成假 port，办公室是一个临时文件夹，不连接任何设备。
 # 夹具是一个临时 Git 仓库：main 已推送到本地裸仓库，app\ 与 logs\ 被忽略；app\ 里是一份假的构建输出与载荷清单，
 # logs\suite-runs\ 里有同一提交全部必过阶段通过、干净构建回执带聚合哈希的套件记录。假远端执行在本进程里运行部署端送来的
-# 脚本，把假办公室的 Windows port（与安装器测试同形：任务启动时起一个假进程并写出运行状态回执）绑定到脚本的测试参数
-# Port 与 LockName；假传输把包复制到暂存目录、核对哈希并写一份账本。断言结果 JSON、标准错误上的进度、假办公室看到的
-# 调用顺序与安装根、本地部署记录，以及输出、进度和记录里没有主机名与账号。
+# 脚本，把假办公室的 Windows port（与安装器测试同形：交互会话带 SID，任务按 SID 记用户，任务启动时起一个假进程并写出
+# 运行状态回执；桌面是假办公室里的目录，快捷方式经生产 port 读写）绑定到脚本的测试参数 Port 与 LockName；假传输把包
+# 复制到暂存目录、核对哈希并写一份账本。断言结果 JSON、标准错误上的进度、假办公室看到的调用顺序与安装根、本地部署记录，
+# 以及输出、进度和记录里没有主机名、账号与 SID。
 $deployScript = Join-Path $PSScriptRoot 'Deploy-CountdownProgram.ps1'
 $deployTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('clock-countdown-deploy-test-' + [guid]::NewGuid().ToString('N'))
 $deployUtf8 = [System.Text.UTF8Encoding]::new($false)
@@ -21,9 +22,14 @@ $deployAggregate = '93D1974BBA1182448C8B8FB941E4743959C6040BD438045B966FD5010EF7
 # 主机名与账号只出现在假 port 的返回值与假办公室的交互会话里，每次运行随机生成；出现在输出、进度或记录里就算泄漏。
 $deployHostSentinel = 'deploy-host-' + [guid]::NewGuid().ToString('N')
 $deployAccountSentinel = 'deploy-account-' + [guid]::NewGuid().ToString('N')
+# 交互会话登录用户的 SID（假值）：安装器按 SID 认登录任务的主体与登录触发器（#281）；它和账号一样不得出现在输出与记录里。
+$deploySessionSid = 'S-1-5-21-2850000000-2850000001-2850000002-1001'
 $deployRepo = $null
 $deployCase = $null
 Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.SuiteStages.psm1') -Force
+# 桌面快捷方式用安装器的生产 port（WScript.Shell）读写，只落在每个用例假办公室里的桌面目录；本分段自己导入安装器模块取 port。
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
+$deployShortcutPorts = New-CountdownInstallerWindowsPorts
 
 function Invoke-CountdownDeployTestGit {
     param(
@@ -103,16 +109,19 @@ function New-CountdownDeployTestCase {
     param([Parameter(Mandatory)] [string] $Name)
 
     $officeRoot = Join-Path $deployTestRoot "office-$Name"
-    New-Item -ItemType Directory -Path $officeRoot -Force | Out-Null
+    # 交互用户的桌面也在假办公室里：只读调用前后的办公室现状连桌面一起比较。
+    $desktop = Join-Path $officeRoot 'desktop'
+    New-Item -ItemType Directory -Path $officeRoot, $desktop -Force | Out-Null
     [pscustomobject]@{
         Name = $Name
         OfficeRoot = $officeRoot
         StagingRoot = Join-Path $officeRoot 'deploy'
         InstallRoot = Join-Path $officeRoot 'install'
+        Desktop = $desktop
         TaskName = "Minmin Countdown Deploy $Name"
         RecordRoot = Join-Path $deployTestRoot "records-$Name"
         LedgerRoot = Join-Path $deployTestRoot "ledgers-$Name"
-        Sessions = @([pscustomobject]@{ SessionId = 3; User = "$deployHostSentinel\$deployAccountSentinel" })
+        Sessions = @([pscustomobject]@{ SessionId = 3; User = "$deployHostSentinel\$deployAccountSentinel"; Sid = $deploySessionSid })
         Processes = @()
         Tasks = @{}
         NextProcessId = 7001
@@ -141,25 +150,33 @@ $deployWindowsPorts = [pscustomobject]@{
         param([string] $Name)
         if ($deployCase.Tasks.ContainsKey($Name)) { $deployCase.Tasks[$Name] }
     }
+    # 注册即整份替换；主体与登录触发器都记交互会话登录用户的 SID（#281），UserId 记注册时的显示名。
     RegisterTask = {
         param([string] $Name, [object] $Definition, [object] $Session)
         $deployCase.Tasks[$Name] = [pscustomobject]@{
             State = 'Ready'
             Enabled = [bool] $Definition.Enabled
-            Actions = @($Definition.Actions | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Execute = $_.Execute; Arguments = $_.Arguments } })
-            Triggers = @($Definition.Triggers | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Enabled = $_.Enabled } })
+            Actions = @($Definition.Actions | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Execute = $_.Execute; Arguments = $_.Arguments; WorkingDirectory = $_.WorkingDirectory } })
+            Triggers = @($Definition.Triggers | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Enabled = $_.Enabled; UserSid = $Session.Sid } })
+            UserSid = $Session.Sid
             LogonType = $Definition.LogonType
             RunLevel = $Definition.RunLevel
             Priority = $Definition.Priority
             ExecutionTimeLimit = $Definition.ExecutionTimeLimit
             MultipleInstances = $Definition.MultipleInstances
+            DisallowStartIfOnBatteries = $Definition.DisallowStartIfOnBatteries
+            StopIfGoingOnBatteries = $Definition.StopIfGoingOnBatteries
+            AllowDemandStart = $Definition.AllowDemandStart
+            AllowHardTerminate = $Definition.AllowHardTerminate
             UserId = $Session.User
         }
     }
     # 任务按动作启动 EXE：起一个假进程，像应用渲染首帧后那样在应用根（app\ 的上一级）写出运行状态回执。
+    # 与任务计划一样，停用的任务和不允许按需启动的任务不能按需启动。
     StartTask = {
         param([string] $Name)
         $task = $deployCase.Tasks[$Name]
+        if (-not $task.Enabled -or -not $task.AllowDemandStart) { throw "任务 $Name 不能按需启动。" }
         $task.State = 'Running'
         $exePath = ([string] $task.Actions[0].Execute).Trim('"')
         $processId = $deployCase.NextProcessId
@@ -179,6 +196,13 @@ $deployWindowsPorts = [pscustomobject]@{
         param([string] $Source, [string] $Destination)
         [System.IO.Directory]::Move($Source, $Destination)
     }
+    # 交互用户的桌面目录是假办公室里的目录；快捷方式经生产 port 读写，安装器按 Shell Link 文件头认出自己的快捷方式（#281）。
+    GetDesktopDirectory = {
+        param([object] $Session)
+        $deployCase.Desktop
+    }
+    ReadShortcut = $deployShortcutPorts.ReadShortcut
+    WriteShortcut = $deployShortcutPorts.WriteShortcut
 }
 
 # 假办公室的现状：文件树（长度、修改时间与 SHA-256）、计划任务与进程。只读调用前后必须相同。
@@ -287,8 +311,8 @@ function Assert-CountdownDeployNoLeak {
         [Parameter(Mandatory)] [AllowEmptyString()] [string] $Text,
         [Parameter(Mandatory)] [string] $Name
     )
-    $leaks = @(@($deployHostSentinel, $deployAccountSentinel) | Where-Object { $Text.Contains($_) })
-    Assert-Equal 0 $leaks.Count "$Name carries no host name or account"
+    $leaks = @(@($deployHostSentinel, $deployAccountSentinel, $deploySessionSid) | Where-Object { $Text.Contains($_) })
+    Assert-Equal 0 $leaks.Count "$Name carries no host name, account or SID"
 }
 
 try {
@@ -326,6 +350,7 @@ try {
     # 成功判定来自安装后的状态读取：提交、聚合哈希、EXE 哈希与运行中的进程。
     Assert-Equal $true ([bool] $deployResult.install.succeeded) 'The package installer reports success'
     Assert-Equal 7001 ([int] $deployResult.install.readyProcess.processId) 'The install result names the process that reached startup readiness'
+    Assert-Equal 'created|created' "$($deployResult.install.loginTask.action)|$($deployResult.install.desktopShortcut.action)" 'The package installer creates the login task and the desktop shortcut on the office'
     Assert-Equal $deployRepo.Head ([string] $deployResult.status.commit) 'The status read after the install reports the deployed commit'
     Assert-Equal $deployAggregate ([string] $deployResult.status.aggregateSha256) 'The status read after the install reports the shipped aggregate hash'
     Assert-Equal $deployBuildFiles[2].Sha256 ([string] $deployResult.status.exe.sha256) 'The status read after the install reports the shipped EXE hash'

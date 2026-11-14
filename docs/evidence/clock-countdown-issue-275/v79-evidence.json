@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "issue": 275,
+  "reason": "#275 changed src/MinminCountdown/MinminCountdown.csproj (bound by both windows) and src/MinminCountdown/HolidayCalendar.cs (bound by the floating window); on 3994cd2 CSharp exited 75 with only SourceHashesMatch deferred while all 14 frames had 0 pixel difference against v78.",
+  "integrationTip": "3994cd21ecafe127716d26761050faea40eb2141",
+  "from": "2026-11-11-v78",
+  "to": "2026-11-14-v79",
+  "buildRun": "20261114T094833876-dabd4814",
+  "buildMode": "CleanR2R",
+  "baselineRun": "20261114T095041355-350b5f3b",
+  "csharpRun": "20261114T095237972-0e664134",
+  "csharpExitCode": 0,
+  "loadPreflight": {
+    "skipped": false,
+    "baselineGenerate": "CPU 15%, GPU 3d engine 5%",
+    "csharp": "CPU 11%, GPU 3d engine 6%"
+  },
+  "display": {
+    "appliedDpi": 144,
+    "floatingAnchorTraceDpi": "144x144",
+    "workArea": "0,0,2560,1600"
+  },
+  "candidateDllSha256": "AD86CD9433B590251120615F28D099C52274590A919E46A79ACA16D56B609A6D",
+  "facts": {
+    "Valid": true,
+    "MainReferenceBaselineValidated": true,
+    "FloatingReferenceBaselineValidated": true,
+    "CrossInterfaceReferenceBaselinesCurrent": true
+  },
+  "baselines": [
+    {
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/manifest.json",
+      "version": "2026-11-14-v79",
+      "captureCount": 9,
+      "sourceBindingCount": 23,
+      "sourceAggregate": "B7974DA410A3260DCA5B43BBA2B74C8525F6FD3B5F655FF6421B2D004C36E151",
+      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "capturedFileSha256": "99FA3C1326654895BA8274470A3B321454CCF2282219B182C6E6681AAB382B8A",
+      "committedBlobOid": "3deeb1eafa27874e9480019eca9f8f253f25acee",
+      "capturedBytesAreUtf8Lf": true
+    },
+    {
+      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json",
+      "version": "2026-11-14-v79",
+      "captureCount": 5,
+      "sourceBindingCount": 28,
+      "sourceAggregate": "0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283",
+      "executableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+      "capturedFileSha256": "2E1F033ED4413DD91A62814014115972574FD50EC1E5581429B822174CCD7F97",
+      "committedBlobOid": "a20295959588560b1c56b4bbac87ba9d9f131ce7",
+      "capturedBytesAreUtf8Lf": true
+    }
+  ],
+  "removedPreviousBaseline": [
+    "assets/ui-references/main-window/864x1000/2026-11-11-v78",
+    "assets/ui-references/floating-window/520x390/2026-11-11-v78"
+  ],
+  "comparison": {
+    "file": "v78-v79-comparison.txt",
+    "fromCommit": "3994cd21ecafe127716d26761050faea40eb2141",
+    "pngIdentical": 14,
+    "stateFingerprintIdentical": 14,
+    "executableUnchanged": true,
+    "bindingChanges": {
+      "main-window": [
+        "src/MinminCountdown/MinminCountdown.csproj"
+      ],
+      "floating-window": [
+        "src/MinminCountdown/HolidayCalendar.cs",
+        "src/MinminCountdown/MinminCountdown.csproj"
+      ]
+    }
+  },
+  "currentSourceBindingPointer": "docs/evidence/clock-countdown-issue-253-final-surfaces/final-source-binding.json"
+}

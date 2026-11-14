@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineVersion": "2026-11-11-v78",
+  "baselineVersion": "2026-11-14-v79",
   "captureKind": "actual-wpf-main-window",
   "canvas": {
     "width": 864,
@@ -16,8 +16,8 @@
     "pixelCount": 864000
   },
   "sourceBinding": {
-    "aggregateAlgorithm": "SHA-256 of UTF-8(path \u002B NUL \u002B uppercase file SHA-256 \u002B LF), ordinal path order",
-    "aggregateSha256": "1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C",
+    "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
+    "aggregateSha256": "B7974DA410A3260DCA5B43BBA2B74C8525F6FD3B5F655FF6421B2D004C36E151",
     "files": [
       {
         "path": "assets/main-decorations/main-countdown-scene-day.png",
@@ -77,7 +77,7 @@
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
-        "sha256": "34DDC5260BA973D4C5485F90D325DF634A0DD60C61754AEBD57D213DB09FAE88"
+        "sha256": "23D6E3F1A2AE628BD366F8CF7C53674767EA30322E9DBEE0B73E03FF3066B705"
       },
       {
         "path": "src/MinminCountdown/MotionBehavior.cs",
@@ -131,7 +131,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Empty",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-countdowns-empty.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-countdowns-empty.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -176,7 +176,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Representative",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-countdowns-representative.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-countdowns-representative.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -221,7 +221,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Stress",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-countdowns-stress.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-countdowns-stress.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -266,7 +266,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Empty",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-empty.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-empty.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -311,7 +311,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Representative",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-representative.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-representative.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -356,7 +356,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Stress",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-stress.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-stress.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -401,7 +401,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Edit",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-edit.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-edit.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -446,7 +446,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "FilterOpen",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-filter-open.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-filter-open.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -491,7 +491,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Selected",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-11-v78/main-day-notes-selected.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-14-v79/main-day-notes-selected.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,

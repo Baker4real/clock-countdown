@@ -572,7 +572,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v78 基线 `assets/ui-references/floating-window/520x390/2026-11-11-v78/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v79 基线 `assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -660,11 +660,13 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 行内动作契约深化（2026-11-11，#257，v78）：倒计时、便签、标签与提醒规则的目标动作统一由现有 `UiControls.cs` 中的 `InlineActionButton` 构造，Content、Name/HelpText、表面样式、危险语义、焦点资格与 ToolTip 不再由调用方分别补齐；主行 53×33/4 DIP、标签 65×39/7 DIP、规则 MinWidth 58/6 DIP 及既有铅笔、垃圾桶、Delete 提示均保留。官方 BaselineGenerate `20261111T083857440-1c181a59` 退出 0；主窗源码绑定聚合 SHA-256 `1FA92C596B2262F3A9613A6496838E18E64E384E5352381098ED6758ECEE463C`，悬浮窗 `4D574BABAC0D501E1307B982BA8D79CB41D1EC7C69E6ED3B1A2F9F0DDDC36239`，双 manifest 的 EXE 哈希仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`。v77→v78 的 14 张参考 PNG 与状态指纹全部逐字节一致；绑定变化仅为主窗 `MainWindow.xaml.cs` 与两窗 `UiControls.cs`。生成后新增的真实标签窗口探针只改未绑定验证源码，生产 sourceBinding 不变。行为、真实交互、实拍和运行回执见 [本票证据](docs/evidence/clock-countdown-issue-257/README.md)；不以构造夹具或静态帧一致替代交互验收。
 
-1. #189 的 WPF 改版使用纯日间 **v78** 真实渲染系列，版本目录为 `2026-11-11-v78`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+程序目录资源重拍（2026-11-14，#275，v79）：#275 让构建把随包节假日数据与应用图标复制进 `app\`（`MinminCountdown.csproj` 新增对应构建资产），`HolidayCalendar` 改从程序目录读取随包年份、缓存仍写安装根。`MinminCountdown.csproj` 在两窗源码绑定内，`HolidayCalendar.cs` 只在悬浮窗绑定内，v78 因此只剩 `SourceHashesMatch` 失配（CSharp 以 75 延后），14 帧实拍与 v78 零像素差。官方 Build `20261114T094833876-dabd4814`（Clean + R2R）与独立 BaselineGenerate `20261114T095041355-350b5f3b` 均退出 0，负载预检正常放行、未跳过；v79 主窗源码绑定聚合 SHA-256 `B7974DA410A3260DCA5B43BBA2B74C8525F6FD3B5F655FF6421B2D004C36E151`，悬浮窗 `0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283`；相对 v78 的绑定文件变化主窗仅 `src/MinminCountdown/MinminCountdown.csproj`，悬浮窗为该文件与 `src/MinminCountdown/HolidayCalendar.cs`。14 张参考 PNG 与状态指纹全部逐字节一致，EXE 哈希仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，候选 DLL SHA-256 为 `AD86CD9433B590251120615F28D099C52274590A919E46A79ACA16D56B609A6D`。生成器按 #268 移除了 v78 目录；独立 CSharp 复验 `20261114T095237972-0e664134` 退出 0，日志中悬浮窗 DPI 为 144。比对与回执见 [本票证据](docs/evidence/clock-countdown-issue-275/README.md)；不以生成或静态帧一致替代 #275 的行为验收。
 
-2. v78 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-11-v78/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v78 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. #268 起工作树只保留现役版本（当前 v78）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v78，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
+1. #189 的 WPF 改版使用纯日间 **v79** 真实渲染系列，版本目录为 `2026-11-14-v79`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v79 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-14-v79/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v79 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. #268 起工作树只保留现役版本（当前 v79）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v79，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

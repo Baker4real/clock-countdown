@@ -38,6 +38,13 @@ $installerUserDataTimeUtc = [datetime]::new(2026, 11, 1, 8, 0, 0, [System.DateTi
 $installerSettingsFingerprint = 'True|59|2026-11-01T08:00:00.0000000Z|D1990AECF05D08877897A23666B929C3AAB7ADC93E5986E052E06529BEC82151'
 # 安装器自己的条目；其余都是用户数据。
 $installerOwnEntries = @('app', 'app.candidate', 'app.previous', 'install-transaction.json', 'runtime-status.json')
+# 交互会话登录用户与另一个用户的 SID（假值）：登录任务的主体与登录触发器按 SID 判断是不是交互用户（#281）。
+$installerSessionSid = 'S-1-5-21-2810000000-2810000001-2810000002-1001'
+$installerOtherSid = 'S-1-5-21-2810000000-2810000001-2810000002-2002'
+# 桌面快捷方式的读写用生产 port（WScript.Shell），只落在每个用例自己的临时桌面目录里；桌面目录本身经假 port 给出（#281）。
+Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
+$installerWindowsPorts = New-CountdownInstallerWindowsPorts
+$installerShortcutName = '敏敏子倒计时.lnk'
 $installerCase = $null
 
 # 测试 port 只读写当前 $installerCase：安装器回调时按动态作用域解析到这里的变量。
@@ -60,13 +67,16 @@ $installerPorts = [pscustomobject]@{
         param([string] $Name)
         if ($installerCase.Tasks.ContainsKey($Name)) { $installerCase.Tasks[$Name] }
     }
+    # 注册即整份替换（同名任务已存在时也一样），触发器与主体都给交互会话的登录用户；UserId 记注册时的显示名，
+    # 只用来看出任务有没有被重新注册。
     RegisterTask = {
         param([string] $Name, [object] $Definition, [object] $Session)
         $installerCase.Tasks[$Name] = [pscustomobject]@{
             State = 'Ready'
             Enabled = [bool] $Definition.Enabled
-            Actions = @($Definition.Actions | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Execute = $_.Execute; Arguments = $_.Arguments } })
-            Triggers = @($Definition.Triggers | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Enabled = $_.Enabled } })
+            Actions = @($Definition.Actions | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Execute = $_.Execute; Arguments = $_.Arguments; WorkingDirectory = $_.WorkingDirectory } })
+            Triggers = @($Definition.Triggers | ForEach-Object { [pscustomobject]@{ Type = $_.Type; Enabled = $_.Enabled; UserSid = $Session.Sid } })
+            UserSid = $Session.Sid
             LogonType = $Definition.LogonType
             RunLevel = $Definition.RunLevel
             Priority = $Definition.Priority
@@ -74,6 +84,8 @@ $installerPorts = [pscustomobject]@{
             MultipleInstances = $Definition.MultipleInstances
             DisallowStartIfOnBatteries = $Definition.DisallowStartIfOnBatteries
             StopIfGoingOnBatteries = $Definition.StopIfGoingOnBatteries
+            AllowDemandStart = $Definition.AllowDemandStart
+            AllowHardTerminate = $Definition.AllowHardTerminate
             UserId = $Session.User
         }
     }
@@ -81,7 +93,9 @@ $installerPorts = [pscustomobject]@{
         param([string] $Name)
         # 任务按动作启动 EXE；EXE 存在时应用渲染首帧，在应用根（app\ 的上一级）写出运行状态回执，形同 C# 的 RuntimeReceipt。
         # 用例可改写这次启动：进程落在哪个会话、写完回执后是否还在运行、是否写出回执。
+        # 与任务计划一样，停用的任务和不允许按需启动的任务不能按需启动。
         $task = $installerCase.Tasks[$Name]
+        if (-not $task.Enabled -or -not $task.AllowDemandStart) { throw "任务 $Name 不能按需启动。" }
         $task.State = 'Running'
         if ($null -ne $installerCase.OnStartTask) { & $installerCase.OnStartTask }
         $exePath = ([string] $task.Actions[0].Execute).Trim('"')
@@ -111,6 +125,43 @@ $installerPorts = [pscustomobject]@{
         [System.IO.Directory]::Move($Source, $Destination)
         if ($null -ne $installerCase.OnMoveDirectory) { & $installerCase.OnMoveDirectory }
     }
+    # 交互用户的桌面目录是用例自己的临时目录；用例把它置空时模拟读不到桌面位置。
+    GetDesktopDirectory = {
+        param([object] $Session)
+        if ($null -eq $installerCase.Desktop) { throw '读不到交互用户的桌面位置。' }
+        $installerCase.Desktop
+    }
+    ReadShortcut = $installerWindowsPorts.ReadShortcut
+    WriteShortcut = $installerWindowsPorts.WriteShortcut
+}
+
+# 在临时桌面上直接用 WScript.Shell 写一个快捷方式（不经安装器），时间戳固定在安装之前：被改写时字节或时间会变。
+function Write-CountdownInstallerTestShortcut {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [string] $TargetPath,
+        [AllowEmptyString()] [string] $Arguments = '',
+        [AllowEmptyString()] [string] $WorkingDirectory = '',
+        [AllowEmptyString()] [string] $IconLocation = ''
+    )
+
+    $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+    $link.TargetPath = $TargetPath
+    $link.Arguments = $Arguments
+    $link.WorkingDirectory = $WorkingDirectory
+    # WScript.Shell 不接受空的图标位置；不给时保留快捷方式默认的“无图标”。
+    if (-not [string]::IsNullOrEmpty($IconLocation)) { $link.IconLocation = $IconLocation }
+    $link.Save()
+    [System.IO.File]::SetCreationTimeUtc($Path, $installerUserDataTimeUtc)
+    [System.IO.File]::SetLastWriteTimeUtc($Path, $installerUserDataTimeUtc)
+}
+
+# 直接用 WScript.Shell 读回快捷方式：目标|参数|工作目录|图标。
+function Read-CountdownInstallerTestShortcut {
+    param([Parameter(Mandatory)] [string] $Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return '<missing>' }
+    $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+    "$($link.TargetPath)|$($link.Arguments)|$($link.WorkingDirectory)|$($link.IconLocation)"
 }
 
 function New-CountdownInstallerTestProcess {
@@ -154,13 +205,16 @@ function New-CountdownInstallerTestCase {
     $packageRoot = Join-Path $caseRoot 'package'
     Write-CountdownInstallerTestProgram -Root $packageRoot -Files $installerPackageFilesV2 -Commit $installerCommitV2 -AggregateSha256 $installerAggregateV2
     $root = Join-Path $caseRoot 'install'
+    $desktop = Join-Path $caseRoot 'desktop'
+    New-Item -ItemType Directory -Path $desktop -Force | Out-Null
     [pscustomobject]@{
         Name = $Name
         PackageRoot = $packageRoot
         Root = $root
+        Desktop = $desktop
         ExePath = Join-Path $root 'app\MinminCountdown.exe'
         TaskName = "Minmin Countdown Installer $Name"
-        Sessions = @([pscustomobject]@{ SessionId = 3; User = 'MINMIN-OFFICE\installer-account-sentinel' })
+        Sessions = @([pscustomobject]@{ SessionId = 3; User = 'MINMIN-OFFICE\installer-account-sentinel'; Sid = $installerSessionSid })
         Processes = @()
         Tasks = @{}
         NextProcessId = 6001
@@ -173,20 +227,34 @@ function New-CountdownInstallerTestCase {
     }
 }
 
+# 与期望定义逐项一致的登录任务，属于交互会话的登录用户（SID 相同）。UserId 是当初注册时的显示名：账号改过名时
+# 与交互会话的显示名不同，SID 不变。
 function New-CountdownInstallerTestTask {
     param([string] $ExecutablePath, [string] $State, [string] $UserId)
     [pscustomobject]@{
         State = $State
         Enabled = $true
-        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $ExecutablePath; Arguments = $null })
-        Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true })
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $ExecutablePath; Arguments = $null; WorkingDirectory = $null })
+        Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $installerSessionSid })
+        UserSid = $installerSessionSid
         LogonType = 'Interactive'
         RunLevel = 'Limited'
         Priority = 4
         ExecutionTimeLimit = 'PT0S'
         MultipleInstances = 'IgnoreNew'
+        DisallowStartIfOnBatteries = $false
+        StopIfGoingOnBatteries = $false
+        AllowDemandStart = $true
+        AllowHardTerminate = $true
         UserId = $UserId
     }
+}
+
+# 任务定义的逐项快照（不含随运行变化的状态），用来比较安装前后有没有被动过。
+function Get-CountdownInstallerTestTaskDefinition {
+    param([AllowNull()] [object] $Task)
+    if ($null -eq $Task) { return '<missing>' }
+    $Task | Select-Object -Property * -ExcludeProperty State | ConvertTo-Json -Depth 4 -Compress
 }
 
 function Write-CountdownInstallerTestUserData {
@@ -278,7 +346,10 @@ try {
     Assert-Equal $true ([bool] $firstInstall.succeeded) 'First install succeeds'
     Assert-Equal $true ($null -eq $firstInstall.failedStage) 'First install reports no failed stage'
     Assert-Equal $true ([bool] $firstInstall.firstInstall) 'First install is reported as a first install'
-    Assert-Equal $true ([bool] $firstInstall.loginTaskCreated) 'First install creates the missing login task'
+    Assert-Equal 'created|0' "$($firstInstall.loginTask.action)|$(@($firstInstall.loginTask.changes).Count)" 'First install creates the missing login task'
+    Assert-Equal "$installerShortcutName|created||0" "$($firstInstall.desktopShortcut.name)|$($firstInstall.desktopShortcut.action)|$($firstInstall.desktopShortcut.reason)|$(@($firstInstall.desktopShortcut.changes).Count)" 'First install creates the missing desktop shortcut'
+    Assert-Equal "$($installerCase.ExePath)||$(Join-Path $installerCase.Root 'app')|$($installerCase.ExePath),0" (Read-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName)) 'The desktop shortcut starts the installed EXE with no arguments from the program directory and shows the icon embedded in the EXE'
+    Assert-Equal $installerShortcutName ((@(Get-ChildItem -LiteralPath $installerCase.Desktop -Force) | ForEach-Object { $_.Name }) -join ',') 'First install puts only the shortcut on the desktop'
     $firstTask = $installerCase.Tasks[$installerCase.TaskName]
     Assert-Equal '4|False|False' "$($firstTask.Priority)|$($firstTask.DisallowStartIfOnBatteries)|$($firstTask.StopIfGoingOnBatteries)" 'First install registers the login task at priority 4, starting and staying on battery power'
     Assert-Equal 6001 ([int] $firstInstall.readyProcess.processId) 'First install reports the process that reached startup readiness'
@@ -302,6 +373,7 @@ try {
     $installerCase = New-CountdownInstallerTestCase -Name 'upgrade'
     Initialize-CountdownInstallerTestInstalledVersion
     $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+    $upgradeTaskBefore = Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]
     $installerCase.OnStartTask = {
         $installerCase.Observed.UserData = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
         $installerCase.Observed.MarkerPresent = Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json')
@@ -312,8 +384,9 @@ try {
     $upgrade = Invoke-CountdownInstallerTest
     Assert-Equal $true ([bool] $upgrade.succeeded) "Upgrade succeeds: $($upgrade.failedStage) $($upgrade.error)"
     Assert-Equal $false ([bool] $upgrade.firstInstall) 'Upgrade is reported as an upgrade'
-    Assert-Equal $false ([bool] $upgrade.loginTaskCreated) 'Upgrade does not create a login task when one exists'
+    Assert-Equal 'unchanged|0' "$($upgrade.loginTask.action)|$(@($upgrade.loginTask.changes).Count)" 'Upgrade reports a login task that matches the expected definition as unchanged'
     Assert-Equal "$($installerCase.TaskName)=Running/existing-task-owner" (Get-CountdownInstallerTestTasks) 'Upgrade keeps the existing login task as it is'
+    Assert-Equal $upgradeTaskBefore (Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]) 'Upgrade leaves every item of a matching login task as it was'
     Assert-Equal 2 ([int] $upgrade.stoppedProcessCount) 'Upgrade stops the task-started and the desktop-started application'
     Assert-Equal '4103' ([string] $installerCase.Observed.RunningBeforeStart) 'Upgrade stops only processes of the installed EXE before starting the new version'
     Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) 'Upgrade leaves the same-named EXE outside the install root running'
@@ -353,6 +426,108 @@ try {
     Assert-Equal $true ([bool] $reusedPid.succeeded) "Install succeeds when a PID is reused while the application stops: $($reusedPid.failedStage) $($reusedPid.error)"
     Assert-Equal '4102,4103,6001' (Get-CountdownInstallerTestRunning) 'Install does not stop a process whose PID was reused by another program'
 
+    # 登录任务与期望定义（#279「登录任务的最终定义」）逐项不一致（#281）：旧式动作（pwsh 加 adapter 参数与工作目录）、停用、
+    # 触发器与主体都是另一个用户、密码登录、提升、默认优先级 7、运行时限 72 小时、允许并行、电池供电不启动且拔电即停、不能按需
+    # 启动也不能强制结束。安装按期望定义重新注册它，结果逐项写明改前改后的值（用户只写类别，不写账号或 SID），
+    # 新版本经更新后的任务启动到启动就绪。
+    $installerCase = New-CountdownInstallerTestCase -Name 'login-task-update'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.Processes[0].StartedByTask = $null
+    $legacyPwsh = Join-Path (Split-Path -Parent $installerCase.Root) 'no-such-pwsh\pwsh.exe'
+    $legacyArguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $installerCase.Root '敏敏子倒计时.ps1')`""
+    $installerCase.Tasks[$installerCase.TaskName] = [pscustomobject]@{
+        State = 'Disabled'
+        Enabled = $false
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $legacyPwsh; Arguments = $legacyArguments; WorkingDirectory = $installerCase.Root })
+        Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $installerOtherSid })
+        UserSid = $installerOtherSid
+        LogonType = 'Password'
+        RunLevel = 'Highest'
+        Priority = 7
+        ExecutionTimeLimit = 'PT72H'
+        MultipleInstances = 'Parallel'
+        DisallowStartIfOnBatteries = $true
+        StopIfGoingOnBatteries = $true
+        AllowDemandStart = $false
+        AllowHardTerminate = $false
+        UserId = 'legacy-task-owner'
+    }
+    $taskUpdate = Invoke-CountdownInstallerTest
+    Assert-Equal $true ([bool] $taskUpdate.succeeded) "Install with a mismatched login task succeeds: $($taskUpdate.failedStage) $($taskUpdate.error)"
+    Assert-Equal 'updated' ([string] $taskUpdate.loginTask.action) 'Result JSON reports the mismatched login task as updated'
+    $expectedTaskChanges = @(
+        'enabled=False->True'
+        "action=Exec $legacyPwsh $legacyArguments (in $($installerCase.Root))->Exec $($installerCase.ExePath)"
+        'trigger=Logon for other user->Logon for interactive user'
+        'principal=other user->interactive user'
+        'logonType=Password->Interactive'
+        'runLevel=Highest->Limited'
+        'priority=7->4'
+        'executionTimeLimit=PT72H->PT0S'
+        'multipleInstances=Parallel->IgnoreNew'
+        'disallowStartIfOnBatteries=True->False'
+        'stopIfGoingOnBatteries=True->False'
+        'allowDemandStart=False->True'
+        'allowHardTerminate=False->True'
+    ) -join '|'
+    Assert-Equal $expectedTaskChanges ((@($taskUpdate.loginTask.changes) | ForEach-Object { "$($_.item)=$($_.before)->$($_.after)" }) -join '|') 'Result JSON names every login task item that changed, with its value before and after'
+    $updatedTask = $installerCase.Tasks[$installerCase.TaskName]
+    $updatedAction = @($updatedTask.Actions)
+    $updatedTrigger = @($updatedTask.Triggers)
+    Assert-Equal "1|Exec|$($installerCase.ExePath)|||1|Logon|True|$installerSessionSid" "$($updatedAction.Count)|$($updatedAction[0].Type)|$($updatedAction[0].Execute)|$($updatedAction[0].Arguments)|$($updatedAction[0].WorkingDirectory)|$($updatedTrigger.Count)|$($updatedTrigger[0].Type)|$($updatedTrigger[0].Enabled)|$($updatedTrigger[0].UserSid)" 'The updated login task runs the installed EXE with no arguments at the interactive user''s logon'
+    Assert-Equal "True|$installerSessionSid|Interactive|Limited|4|PT0S|IgnoreNew|False|False|True|True" "$($updatedTask.Enabled)|$($updatedTask.UserSid)|$($updatedTask.LogonType)|$($updatedTask.RunLevel)|$($updatedTask.Priority)|$($updatedTask.ExecutionTimeLimit)|$($updatedTask.MultipleInstances)|$($updatedTask.DisallowStartIfOnBatteries)|$($updatedTask.StopIfGoingOnBatteries)|$($updatedTask.AllowDemandStart)|$($updatedTask.AllowHardTerminate)" 'The updated login task has every other item of the expected definition'
+    Assert-Equal 6001 ([int] $taskUpdate.readyProcess.processId) 'The new version starts through the updated login task'
+    Assert-Equal $true ([bool] (Invoke-CountdownInstallerStatusRead).loginTask.matchesExpected) 'Status reads the updated login task as the expected definition'
+    foreach ($secret in @('installer-account-sentinel', 'MINMIN-OFFICE', 'legacy-task-owner', 'S-1-5-21-2810000000')) {
+        Assert-Equal $false ($installerCase.Json.Contains($secret, [System.StringComparison]::OrdinalIgnoreCase)) "Result JSON reports the login task change without accounts or SIDs: $secret"
+    }
+
+    # 桌面快捷方式的三种情况（#281），都在已装好的 v1 上升级；桌面上另有旧安装器的启动器 敏敏子倒计时.exe（遗留启动器属于
+    # 一次性切换，安装器不碰）。属于安装器的判定：同名的 敏敏子倒计时.lnk 是一个 Shell Link，且目标是本安装根的已安装 EXE。
+    # 是安装器的：与期望一致时不动（字节与时间都不变），参数、工作目录或图标不一致时改回期望，结果写明改了什么。
+    # 不是安装器的（目标指向别处的快捷方式、碰巧同名的普通文件或目录）：原样保留，结果写明原因，安装照常成功。
+    $installerShortcutCases = @(
+        [pscustomobject]@{ Name = 'shortcut-owned-current'; Action = 'unchanged'; Reason = ''; Changes = { '' }; Arrange = {
+                Write-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName) -TargetPath $installerCase.ExePath -WorkingDirectory (Join-Path $installerCase.Root 'app') -IconLocation "$($installerCase.ExePath),0"
+            } }
+        [pscustomobject]@{ Name = 'shortcut-owned-stale'; Action = 'updated'; Reason = ''; Arrange = {
+                Write-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName) -TargetPath $installerCase.ExePath -Arguments '--legacy-launcher' -WorkingDirectory $installerCase.Root -IconLocation "$(Join-Path $installerCase.Root 'countdown-icon.ico'),0"
+            }; Changes = { "arguments=--legacy-launcher->|workingDirectory=$($installerCase.Root)->$(Join-Path $installerCase.Root 'app')|iconLocation=$(Join-Path $installerCase.Root 'countdown-icon.ico'),0->$($installerCase.ExePath),0" } }
+        [pscustomobject]@{ Name = 'shortcut-foreign-target'; Action = 'kept-foreign'; Reason = 'other-target'; Changes = { '' }; Arrange = {
+                Write-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName) -TargetPath (Join-Path (Split-Path -Parent $installerCase.Root) 'elsewhere\other-app.exe')
+            } }
+        [pscustomobject]@{ Name = 'shortcut-foreign-file'; Action = 'kept-foreign'; Reason = 'not-a-shell-link'; Changes = { '' }; Arrange = {
+                $foreignPath = Join-Path $installerCase.Desktop $installerShortcutName
+                [System.IO.File]::WriteAllText($foreignPath, 'my own notes that happen to share the shortcut name', $installerUtf8)
+                [System.IO.File]::SetLastWriteTimeUtc($foreignPath, $installerUserDataTimeUtc)
+            } }
+        [pscustomobject]@{ Name = 'shortcut-foreign-directory'; Action = 'kept-foreign'; Reason = 'not-a-shell-link'; Changes = { '' }; Arrange = {
+                $foreignDirectory = Join-Path $installerCase.Desktop $installerShortcutName
+                New-Item -ItemType Directory -Path $foreignDirectory | Out-Null
+                [System.IO.File]::WriteAllText((Join-Path $foreignDirectory 'inside.txt'), 'a folder that shares the shortcut name', $installerUtf8)
+            } }
+    )
+    foreach ($shortcutCase in $installerShortcutCases) {
+        $installerCase = New-CountdownInstallerTestCase -Name $shortcutCase.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        [System.IO.File]::WriteAllText((Join-Path $installerCase.Desktop '敏敏子倒计时.exe'), 'legacy desktop launcher', $installerUtf8)
+        & $shortcutCase.Arrange
+        $desktopBefore = Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Detailed
+        $restOfDesktopBefore = Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Exclude @($installerShortcutName) -Detailed
+        $shortcutResult = Invoke-CountdownInstallerTest
+        Assert-Equal $true ([bool] $shortcutResult.succeeded) "Install succeeds whatever shares the shortcut name: $($shortcutCase.Name) $($shortcutResult.failedStage) $($shortcutResult.error)"
+        $reportedChanges = (@($shortcutResult.desktopShortcut.changes) | ForEach-Object { "$($_.item)=$($_.before)->$($_.after)" }) -join '|'
+        Assert-Equal "$installerShortcutName|$($shortcutCase.Action)|$($shortcutCase.Reason)|$(& $shortcutCase.Changes)" "$($shortcutResult.desktopShortcut.name)|$($shortcutResult.desktopShortcut.action)|$($shortcutResult.desktopShortcut.reason)|$reportedChanges" "Result JSON reports what the install did with the desktop shortcut: $($shortcutCase.Name)"
+        Assert-Equal $restOfDesktopBefore (Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Exclude @($installerShortcutName) -Detailed) "Install leaves the rest of the desktop, the legacy launcher included, as it was: $($shortcutCase.Name)"
+        Assert-Equal $false ($installerCase.Json.Contains('other-app.exe', [System.StringComparison]::OrdinalIgnoreCase)) "Result JSON does not echo where a foreign shortcut points: $($shortcutCase.Name)"
+        if ($shortcutCase.Action -eq 'updated') {
+            Assert-Equal "$($installerCase.ExePath)||$(Join-Path $installerCase.Root 'app')|$($installerCase.ExePath),0" (Read-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName)) "Install points its own stale shortcut back at the expected definition: $($shortcutCase.Name)"
+        }
+        else {
+            Assert-Equal $desktopBefore (Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Detailed) "Install leaves the same-named desktop item byte for byte as it was: $($shortcutCase.Name)"
+        }
+    }
+
     # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。
     # “只检查、不改动”同样核对包。上次安装没走完（留有事务标记与旧版本目录）时，中断恢复由 #284 实现，在那之前拒绝。
@@ -360,7 +535,8 @@ try {
         [pscustomobject]@{ Name = 'reject-tampered-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-missing-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::Delete((Join-Path $installerCase.PackageRoot 'app\holiday-data\2027.json')) } }
         [pscustomobject]@{ Name = 'reject-no-session'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'no-interactive-session'; Arrange = { $installerCase.Sessions = @() } }
-        [pscustomobject]@{ Name = 'reject-two-sessions'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'multiple-interactive-sessions'; Arrange = { $installerCase.Sessions = @($installerCase.Sessions) + @([pscustomobject]@{ SessionId = 5; User = 'MINMIN-OFFICE\second-account' }) } }
+        [pscustomobject]@{ Name = 'reject-two-sessions'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'multiple-interactive-sessions'; Arrange = { $installerCase.Sessions = @($installerCase.Sessions) + @([pscustomobject]@{ SessionId = 5; User = 'MINMIN-OFFICE\second-account'; Sid = $installerOtherSid }) } }
+        [pscustomobject]@{ Name = 'reject-no-desktop'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'desktop-unavailable'; Arrange = { $installerCase.Desktop = $null } }
         [pscustomobject]@{ Name = 'reject-first-install-tampered'; Installed = $false; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.dll'), 'installer dll v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-check-only-tampered'; Installed = $true; CheckOnly = $true; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-unfinished-install'; Installed = $true; CheckOnly = $false; Stage = 'recovery'; Reason = 'unfinished-install'; Arrange = {
@@ -375,11 +551,14 @@ try {
         if ($rejection.Installed) { Initialize-CountdownInstallerTestInstalledVersion }
         & $rejection.Arrange
         $treeBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed
+        $rejectionDesktop = Join-Path (Split-Path -Parent $installerCase.Root) 'desktop'
+        $desktopTreeBefore = Get-CountdownInstallerTestTree -Root $rejectionDesktop -Detailed
         $runningBefore = Get-CountdownInstallerTestRunning
         $tasksBefore = Get-CountdownInstallerTestTasks
         $rejected = Invoke-CountdownInstallerTest -CheckOnly:$rejection.CheckOnly
         Assert-Equal "False|$($rejection.Stage)|$($rejection.Reason)" "$($rejected.succeeded)|$($rejected.failedStage)|$($rejected.reason)" "The install is rejected: $($rejection.Name)"
         Assert-Equal $treeBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed) "Rejected install leaves the install root as it was: $($rejection.Name)"
+        Assert-Equal $desktopTreeBefore (Get-CountdownInstallerTestTree -Root $rejectionDesktop -Detailed) "Rejected install leaves the desktop as it was: $($rejection.Name)"
         Assert-Equal $runningBefore (Get-CountdownInstallerTestRunning) "Rejected install stops no application: $($rejection.Name)"
         Assert-Equal $tasksBefore (Get-CountdownInstallerTestTasks) "Rejected install leaves the login tasks alone: $($rejection.Name)"
         if ($rejection.Installed) {
@@ -387,14 +566,18 @@ try {
         }
     }
 
-    # 只检查、不改动：执行到前置检查为止（核对包本身，不放候选），报告将要执行的步骤；包、安装根、应用与登录任务都不变。
-    # 已有登录任务时不计划创建它；首次安装时计划创建，安装根也不会被建出来。
+    # 只检查、不改动：执行到前置检查为止（核对包本身，不放候选），报告将要执行的步骤；包、安装根、桌面、应用与登录任务都不变。
+    # 已有登录任务与期望定义一致时不计划动它，不一致时计划更新；首次安装时计划创建，安装根也不会被建出来。只检查不读桌面上的
+    # 快捷方式，计划里总有登记快捷方式这一步（到时缺失则创建、是安装器的则更新、不是则保留）。
     foreach ($checkOnly in @(
-            [pscustomobject]@{ Name = 'check-only-upgrade'; Installed = $true; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,start-and-wait-ready,commit' }
-            [pscustomobject]@{ Name = 'check-only-first-install'; Installed = $false; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,start-and-wait-ready,commit' }
+            [pscustomobject]@{ Name = 'check-only-upgrade'; Installed = $true; Arrange = $null; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,register-desktop-shortcut,start-and-wait-ready,commit' }
+            [pscustomobject]@{ Name = 'check-only-task-mismatch'; Installed = $true; Arrange = { $installerCase.Tasks[$installerCase.TaskName].Priority = 7 }; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,update-login-task,register-desktop-shortcut,start-and-wait-ready,commit' }
+            [pscustomobject]@{ Name = 'check-only-first-install'; Installed = $false; Arrange = $null; Steps = 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,register-desktop-shortcut,start-and-wait-ready,commit' }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $checkOnly.Name
         if ($checkOnly.Installed) { Initialize-CountdownInstallerTestInstalledVersion }
+        if ($null -ne $checkOnly.Arrange) { & $checkOnly.Arrange }
+        $taskDefinitionBefore = Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]
         $caseRoot = Split-Path -Parent $installerCase.Root
         $caseTreeBefore = Get-CountdownInstallerTestTree -Root $caseRoot -Detailed
         $runningBefore = Get-CountdownInstallerTestRunning
@@ -406,6 +589,7 @@ try {
         Assert-Equal $caseTreeBefore (Get-CountdownInstallerTestTree -Root $caseRoot -Detailed) "Check-only changes nothing in the package or the install root: $($checkOnly.Name)"
         Assert-Equal $runningBefore (Get-CountdownInstallerTestRunning) "Check-only stops no application: $($checkOnly.Name)"
         Assert-Equal $tasksBefore (Get-CountdownInstallerTestTasks) "Check-only creates or changes no login task: $($checkOnly.Name)"
+        Assert-Equal $taskDefinitionBefore (Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]) "Check-only leaves every login task item as it was: $($checkOnly.Name)"
     }
 
     # 另一个安装正在进行（持有全机安装锁）时，第二个安装被拒绝：在第一个安装启动新版本的那一刻从另一个线程发起，
@@ -416,7 +600,7 @@ try {
         $secondInstall = Start-ThreadJob -ArgumentList $installerScript, $installerCase.PackageRoot, $installerCase.Root, $installerCase.TaskName, $installerLockName -ScriptBlock {
             param($Script, $PackageRoot, $InstallRoot, $TaskName, $LockName)
             $refuse = { throw '第二个安装越过了安装锁。' }
-            $ports = [pscustomobject]@{ GetInteractiveSessions = $refuse; GetProcesses = $refuse; StopProcess = $refuse; GetTask = $refuse; RegisterTask = $refuse; StartTask = $refuse; MoveDirectory = $refuse }
+            $ports = [pscustomobject]@{ GetInteractiveSessions = $refuse; GetProcesses = $refuse; StopProcess = $refuse; GetTask = $refuse; RegisterTask = $refuse; StartTask = $refuse; MoveDirectory = $refuse; GetDesktopDirectory = $refuse; ReadShortcut = $refuse; WriteShortcut = $refuse }
             & $Script -PackageRoot $PackageRoot -InstallRoot $InstallRoot -TaskName $TaskName -Port $ports -LockName $LockName
         }
         $installerCase.Observed.SecondInstall = @(Receive-Job -Job $secondInstall -Wait -AutoRemoveJob)
@@ -461,7 +645,8 @@ try {
     }
 
     # 生产 port 的只读一侧：子进程按命令行方式运行入口，-CheckOnly 指向临时安装根和一个不存在的任务名，以本次构建输出为包。
-    # 只查询交互会话、进程与任务，不做任何改动。本机恰有一个交互会话时报告将要执行的步骤（含创建登录任务），否则在前置检查拒绝。
+    # 只查询交互会话、进程与任务，并从交互用户的注册表读出桌面目录的位置（不读桌面上的任何东西），不做任何改动。
+    # 本机恰有一个交互会话时报告将要执行的步骤（含创建登录任务与登记桌面快捷方式），否则在前置检查拒绝。
     $installerRealParent = Join-Path $installerTestRoot 'real-ports'
     New-Item -ItemType Directory -Path $installerRealParent -Force | Out-Null
     $installerRealRoot = Join-Path $installerRealParent 'install'
@@ -473,7 +658,7 @@ try {
     $installerReal = $installerRealText | ConvertFrom-Json -DateKind String
     Assert-Equal $true ([bool] $installerReal.checkOnly) 'Real check-only reports check-only mode'
     if ([bool] $installerReal.succeeded) {
-        Assert-Equal 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,start-and-wait-ready,commit' (@($installerReal.plannedSteps) -join ',') 'Real check-only plans to create the missing login task'
+        Assert-Equal 'place-candidate,stop-application,write-transaction-marker,replace-program-directory,create-login-task,register-desktop-shortcut,start-and-wait-ready,commit' (@($installerReal.plannedSteps) -join ',') 'Real check-only plans to create the missing login task and to register the desktop shortcut'
         $installerBuiltAggregate = [string] ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json).aggregateSha256
         Assert-Equal $installerBuiltAggregate ([string] $installerReal.package.aggregateSha256) 'Real check-only verifies this build output as the package'
     }
@@ -483,6 +668,20 @@ try {
     Assert-Equal '<missing>' (Get-CountdownInstallerTestTree -Root $installerRealRoot) 'Real check-only creates no install root'
     $installerRealLeaks = @(@($env:COMPUTERNAME, $env:USERNAME) | Where-Object { [string] $_ -and ([string] $_).Length -ge 4 -and $installerRealText.IndexOf([string] $_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
     Assert-Equal 0 $installerRealLeaks.Count 'Real check-only output carries no host name or account'
+
+    # 生产 port 的另两处只读查询（#281）。桌面目录按交互用户的注册表环境解析：当前用户就是交互用户时，与当前用户的 Desktop
+    # 已知文件夹一致（DoNotVerify：两边都不访问桌面）。读一个已有的根目录任务（不读倒计时的任务）不出错。
+    $installerRealSessions = @(& $installerWindowsPorts.GetInteractiveSessions)
+    if ($installerRealSessions.Count -eq 1 -and [string]::Equals([string] $installerRealSessions[0].Sid, [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $installerRealDesktop = [string] (& $installerWindowsPorts.GetDesktopDirectory $installerRealSessions[0])
+        $installerKnownDesktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory, [Environment+SpecialFolderOption]::DoNotVerify)
+        Assert-Equal $true ([string]::Equals($installerRealDesktop.TrimEnd('\'), $installerKnownDesktop.TrimEnd('\'), [System.StringComparison]::OrdinalIgnoreCase)) 'The desktop port resolves the interactive user''s Desktop known folder from the registry'
+    }
+    $installerRealExistingTask = @(Get-ScheduledTask -TaskPath '\' -ErrorAction Stop | Where-Object { $_.TaskName -notmatch '敏敏子|Minmin|Countdown' } | Select-Object -First 1)
+    if ($installerRealExistingTask.Count -eq 1) {
+        $installerRealTaskRead = & $installerWindowsPorts.GetTask $installerRealExistingTask[0].TaskName
+        Assert-Equal $true ($null -ne $installerRealTaskRead -and @($installerRealTaskRead.Actions).Count -ge 1) 'The task port reads an existing task'
+    }
 }
 finally {
     Remove-CountdownIsolatedTestTree -Path $installerTestRoot -AllowedRoot $installerTempRoot

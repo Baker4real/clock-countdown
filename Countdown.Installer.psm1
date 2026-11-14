@@ -5,14 +5,17 @@ $ErrorActionPreference = 'Stop'
 
 # 新安装器（#259）：只替换程序目录。安装根下只动现役程序目录 app、候选 app.candidate、旧版本 app.previous、
 # 事务标记 install-transaction.json 与运行状态回执 runtime-status.json；设置、设置备份、恢复证据、诊断日志和节假日缓存
-# 不被移动、复制或改写。计划任务、进程、交互会话与目录改名经 port 调用：生产用 New-CountdownInstallerWindowsPorts，
+# 不被移动、复制或改写；安装根之外只登记登录任务与交互用户桌面上的快捷方式。计划任务、进程、交互会话、桌面目录、
+# 快捷方式与目录改名经 port 调用：生产用 New-CountdownInstallerWindowsPorts，
 # 测试注入假 port。本机与远端是同一个安装器；它不运行测试套件，不检查构建工具链，不触碰 Windows 时间服务。
-# #280 只走成功路径：设置保护（#282）、任务与快捷方式的完整登记（#281）、失败回滚（#283）与中断恢复（#284）在后续票。
+# 已有成功路径（#280）与登录任务、桌面快捷方式的登记（#281）；设置保护（#282）、失败回滚（#283）与中断恢复（#284）在后续票。
 
 # 与旧安装器（Countdown.InstallTransaction.psm1）同名：新旧安装器在同一台机器上互斥。
 $script:InstallLockName = 'Global\MinminCountdownInstallTransaction-v1'
 $script:ApplicationProcessName = 'MinminCountdown.exe'
 $script:ExecutableManifestPath = 'app\MinminCountdown.exe'
+# 桌面快捷方式的名字沿用旧安装器放在桌面上的启动器 敏敏子倒计时.exe（#281）。
+$script:DesktopShortcutName = '敏敏子倒计时.lnk'
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 
 function New-CountdownInstallRejection {
@@ -335,13 +338,14 @@ function Write-CountdownInstallMarker {
 # 登录任务的定义（#279「登录任务的最终定义」），其中状态命令（#276）核对的各项与它的期望一致：登录时触发，交互式、
 # 非提升、不限运行时长、已在运行时忽略新实例；动作是已安装 EXE 本身，不带参数，不设工作目录。优先级取 4：#279 实测 4 的
 # 优先级类、I/O 与内存优先级都与正常启动一致（5 的内存优先级低一级，默认 7 是 BelowNormal）。电池供电时也启动、拔电不停：
-# 计划任务的默认值相反。
+# 计划任务的默认值相反。允许按需启动（安装器经它启动新版本）与强制结束取计划任务的默认值。登录触发器与主体都是交互会话的
+# 登录用户，注册时由 port 按会话填写。
 function Get-CountdownLoginTaskDefinition {
     param([Parameter(Mandatory)] [string] $ExecutablePath)
 
     [pscustomobject]@{
         Enabled = $true
-        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $ExecutablePath; Arguments = $null })
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $ExecutablePath; Arguments = $null; WorkingDirectory = $null })
         Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true })
         LogonType = 'Interactive'
         RunLevel = 'Limited'
@@ -350,7 +354,201 @@ function Get-CountdownLoginTaskDefinition {
         MultipleInstances = 'IgnoreNew'
         DisallowStartIfOnBatteries = $false
         StopIfGoingOnBatteries = $false
+        AllowDemandStart = $true
+        AllowHardTerminate = $true
     }
+}
+
+# 任务里的用户只按 SID 认：交互会话的登录用户、别的用户，或不限用户（没写用户）。结果里只写这三类，不写账号或 SID。
+function Get-CountdownTaskUserCategory {
+    param(
+        [AllowNull()] [object] $Sid,
+        [Parameter(Mandatory)] [object] $Session
+    )
+
+    if ([string]::IsNullOrWhiteSpace([string] $Sid)) { return 'any user' }
+    $sessionSid = [string] (Get-CountdownInstallerProperty -Object $Session -Name 'Sid')
+    if ([string]::Equals([string] $Sid, $sessionSid, [System.StringComparison]::OrdinalIgnoreCase)) { return 'interactive user' }
+    'other user'
+}
+
+# 把一个任务读成逐项可比、可写进结果的值（#279「登录任务的最终定义」的各项）。动作与触发器各写成一行文字，用户只写类别。
+function Get-CountdownLoginTaskItems {
+    param(
+        [Parameter(Mandatory)] [object] $Task,
+        [Parameter(Mandatory)] [object] $Session
+    )
+
+    $get = { param($Object, [string] $Name) Get-CountdownInstallerProperty -Object $Object -Name $Name }
+    $actions = @(& $get $Task 'Actions' | Where-Object { $null -ne $_ })
+    $triggers = @(& $get $Task 'Triggers' | Where-Object { $null -ne $_ })
+    $actionText = @(foreach ($action in $actions) {
+            $text = "$(& $get $action 'Type') $(([string] (& $get $action 'Execute')).Trim('"'))"
+            $arguments = [string] (& $get $action 'Arguments')
+            $workingDirectory = [string] (& $get $action 'WorkingDirectory')
+            if (-not [string]::IsNullOrWhiteSpace($arguments)) { $text += " $arguments" }
+            if (-not [string]::IsNullOrWhiteSpace($workingDirectory)) { $text += " (in $workingDirectory)" }
+            $text
+        })
+    $triggerText = @(foreach ($trigger in $triggers) {
+            $type = [string] (& $get $trigger 'Type')
+            $text = $type
+            if (-not [bool] (& $get $trigger 'Enabled')) { $text += ' disabled' }
+            if ($type -eq 'Logon') { $text += " for $(Get-CountdownTaskUserCategory -Sid (& $get $trigger 'UserSid') -Session $Session)" }
+            $text
+        })
+    $priority = & $get $Task 'Priority'
+    [ordered]@{
+        enabled = [bool] (& $get $Task 'Enabled')
+        action = if ($actionText.Count -eq 0) { '(none)' } else { $actionText -join '; ' }
+        trigger = if ($triggerText.Count -eq 0) { '(none)' } else { $triggerText -join '; ' }
+        principal = Get-CountdownTaskUserCategory -Sid (& $get $Task 'UserSid') -Session $Session
+        logonType = [string] (& $get $Task 'LogonType')
+        runLevel = [string] (& $get $Task 'RunLevel')
+        priority = if ($null -eq $priority) { $null } else { [int] $priority }
+        executionTimeLimit = [string] (& $get $Task 'ExecutionTimeLimit')
+        multipleInstances = [string] (& $get $Task 'MultipleInstances')
+        disallowStartIfOnBatteries = [bool] (& $get $Task 'DisallowStartIfOnBatteries')
+        stopIfGoingOnBatteries = [bool] (& $get $Task 'StopIfGoingOnBatteries')
+        allowDemandStart = [bool] (& $get $Task 'AllowDemandStart')
+        allowHardTerminate = [bool] (& $get $Task 'AllowHardTerminate')
+    }
+}
+
+# 已有登录任务与期望定义逐项比较，返回不一致的项及其改前改后的值；一致时返回空。运行时限按时长比较（PT0S 与 P0D 相同），
+# 文字项不分大小写。写进结果的值截到 1000 字符。
+function Compare-CountdownLoginTask {
+    param(
+        [Parameter(Mandatory)] [object] $Task,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [object] $Session
+    )
+
+    $definition = Get-CountdownLoginTaskDefinition -ExecutablePath $ExecutablePath
+    $sessionSid = Get-CountdownInstallerProperty -Object $Session -Name 'Sid'
+    $expectedTask = $definition | Select-Object -Property *, @{ Name = 'UserSid'; Expression = { $sessionSid } }
+    $expectedTask.Triggers = @($definition.Triggers | Select-Object -Property *, @{ Name = 'UserSid'; Expression = { $sessionSid } })
+    $actual = Get-CountdownLoginTaskItems -Task $Task -Session $Session
+    $expected = Get-CountdownLoginTaskItems -Task $expectedTask -Session $Session
+    foreach ($item in $expected.Keys) {
+        $same = $actual[$item] -eq $expected[$item]
+        if ($item -eq 'executionTimeLimit') {
+            try { $same = [System.Xml.XmlConvert]::ToTimeSpan([string] $actual[$item]) -eq [System.Xml.XmlConvert]::ToTimeSpan([string] $expected[$item]) }
+            catch { $same = $false }
+        }
+        if (-not $same) { New-CountdownInstallChange -Item $item -Before $actual[$item] -After $expected[$item] }
+    }
+}
+
+# 结果里一项改动：改前改后的值，文字截到 1000 字符。
+function New-CountdownInstallChange {
+    param(
+        [Parameter(Mandatory)] [string] $Item,
+        [AllowNull()] [object] $Before,
+        [AllowNull()] [object] $After
+    )
+
+    $bound = { param($Value) if ($Value -is [string] -and $Value.Length -gt 1000) { $Value.Substring(0, 1000) + '…' } else { $Value } }
+    [ordered]@{ item = $Item; before = & $bound $Before; after = & $bound $After }
+}
+
+# “只检查、不改动”计划里登录任务的一步：不存在时创建，与期望定义不一致时更新，一致时没有这一步。
+function Get-CountdownLoginTaskPlanStep {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    $task = & $Ports.GetTask $TaskName
+    if ($null -eq $task) { return 'create-login-task' }
+    if (@(Compare-CountdownLoginTask -Task $task -ExecutablePath $ExecutablePath -Session $Session).Count -gt 0) { return 'update-login-task' }
+    $null
+}
+
+# 登录任务的登记（#281）：不存在时按期望定义创建；存在时逐项比较，一致时不动，不一致时按期望定义整份重新注册，
+# 结果写明改了哪些项。常规升级里任务定义与期望一致，所以不改动计划任务。
+function Register-CountdownLoginTask {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    $definition = Get-CountdownLoginTaskDefinition -ExecutablePath $ExecutablePath
+    $task = & $Ports.GetTask $TaskName
+    if ($null -eq $task) {
+        [void] (& $Ports.RegisterTask $TaskName $definition $Session)
+        return [ordered]@{ action = 'created'; changes = @() }
+    }
+    $changes = @(Compare-CountdownLoginTask -Task $task -ExecutablePath $ExecutablePath -Session $Session)
+    if ($changes.Count -eq 0) { return [ordered]@{ action = 'unchanged'; changes = @() } }
+    [void] (& $Ports.RegisterTask $TaskName $definition $Session)
+    [ordered]@{ action = 'updated'; changes = $changes }
+}
+
+# 桌面快捷方式的期望定义（#281）：目标是已安装 EXE，不带参数，从程序目录启动，图标取 EXE 里的第一个图标。
+function Get-CountdownDesktopShortcutDefinition {
+    param([Parameter(Mandatory)] [string] $ExecutablePath)
+
+    [pscustomobject]@{
+        TargetPath = $ExecutablePath
+        Arguments = ''
+        WorkingDirectory = [System.IO.Path]::GetDirectoryName($ExecutablePath)
+        IconLocation = "$ExecutablePath,0"
+    }
+}
+
+# 交互用户的桌面目录：由 port 按交互会话读出，必须是完整路径；读不到时在前置检查拒绝。只解析位置，不访问桌面上的东西，
+# 所以只检查时也解析它。
+function Resolve-CountdownDesktopDirectory {
+    param(
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    try { $directory = [string] (& $Ports.GetDesktopDirectory $Session) }
+    catch { throw (New-CountdownInstallRejection -Reason 'desktop-unavailable' -Message "读不到交互用户的桌面目录：$($_.Exception.Message)") }
+    if ([string]::IsNullOrWhiteSpace($directory) -or -not [System.IO.Path]::IsPathFullyQualified($directory)) {
+        throw (New-CountdownInstallRejection -Reason 'desktop-unavailable' -Message '交互用户的桌面目录不是完整路径。')
+    }
+    [System.IO.Path]::GetFullPath($directory)
+}
+
+# 桌面快捷方式的登记（#281）。“属于安装器”的判定：桌面上同名的项是一个 Shell Link（文件头是 Shell Link 的头长与 CLSID），
+# 且目标是本安装根的已安装 EXE（路径不分大小写）。缺失时创建；属于安装器时逐项比较参数、工作目录与图标，一致时不动，
+# 不一致时改回期望定义，结果写明改了什么；不属于安装器（目标指向别处的快捷方式、碰巧同名的普通文件或目录）时原样保留，
+# 结果写明原因，不写它指向哪里。
+function Register-CountdownDesktopShortcut {
+    param(
+        [Parameter(Mandatory)] [string] $DesktopDirectory,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    $name = $script:DesktopShortcutName
+    $path = Join-Path $DesktopDirectory $name
+    $definition = Get-CountdownDesktopShortcutDefinition -ExecutablePath $ExecutablePath
+    $existing = & $Ports.ReadShortcut $path
+    if ($null -eq $existing) {
+        [void] (& $Ports.WriteShortcut $path $definition)
+        return [ordered]@{ name = $name; action = 'created'; reason = $null; changes = @() }
+    }
+    $target = ([string] (Get-CountdownInstallerProperty -Object $existing -Name 'TargetPath')).Trim('"')
+    $foreignReason = if (-not [bool] (Get-CountdownInstallerProperty -Object $existing -Name 'IsShellLink')) { 'not-a-shell-link' }
+    elseif (-not [string]::Equals($target, $definition.TargetPath, [System.StringComparison]::OrdinalIgnoreCase)) { 'other-target' }
+    if ($null -ne $foreignReason) { return [ordered]@{ name = $name; action = 'kept-foreign'; reason = $foreignReason; changes = @() } }
+    $changes = @(foreach ($item in @('Arguments', 'WorkingDirectory', 'IconLocation')) {
+            $before = [string] (Get-CountdownInstallerProperty -Object $existing -Name $item)
+            if (-not [string]::Equals($before, $definition.$item, [System.StringComparison]::OrdinalIgnoreCase)) {
+                New-CountdownInstallChange -Item ($item.Substring(0, 1).ToLowerInvariant() + $item.Substring(1)) -Before $before -After $definition.$item
+            }
+        })
+    if ($changes.Count -eq 0) { return [ordered]@{ name = $name; action = 'unchanged'; reason = $null; changes = @() } }
+    [void] (& $Ports.WriteShortcut $path $definition)
+    [ordered]@{ name = $name; action = 'updated'; reason = $null; changes = $changes }
 }
 
 function Read-CountdownRuntimeReceipt {
@@ -414,11 +612,12 @@ function Install-CountdownProgram {
     把包里的程序目录装到安装根：首次安装与升级同一流程，等到启动就绪后提交，返回结果（由入口脚本输出为 JSON）。
     .DESCRIPTION
     步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；安装根留有上次未完成安装的
-    痕迹时拒绝（恢复在 #284）；前置检查（唯一的交互会话、把候选程序目录放到安装根下并按载荷清单逐项核对）；停止应用
-    （结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；现役程序目录改名为旧版本目录、候选改名为现役；
-    登录任务不存在时创建；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪；先清除事务标记，
+    痕迹时拒绝（恢复在 #284）；前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并按载荷清单逐项核对）；
+    停止应用（结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；现役程序目录改名为旧版本目录、候选改名为现役；
+    登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时改回期望定义，不属于时保留）；
+    确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪；先清除事务标记，
     再删除旧版本目录。前置检查任何一项失败时只删除候选（及为它新建的安装根），
-    其余什么都不改。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选，报告将要执行的步骤。
+    其余什么都不改。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选、不读桌面上的快捷方式，报告将要执行的步骤。
     写下事务标记之后的失败只报告、不回滚，事务标记留在原处（回滚在 #283）。
     #>
     [CmdletBinding()]
@@ -446,7 +645,8 @@ function Install-CountdownProgram {
         package = $null
         firstInstall = $null
         plannedSteps = @()
-        loginTaskCreated = $false
+        loginTask = $null
+        desktopShortcut = $null
         stoppedProcessCount = 0
         readyProcess = $null
         settings = [ordered]@{ before = $null; after = $null }
@@ -470,14 +670,16 @@ function Install-CountdownProgram {
 
         $stage = 'preflight'
         $session = Get-CountdownSingleInteractiveSession -Ports $Ports
-        $sourceDirectory = Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
+        $desktopDirectory = Resolve-CountdownDesktopDirectory -Session $session -Ports $Ports
+        $sourceDirectory =Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
         $manifest = Read-CountdownPayloadManifest -ProgramDirectory $sourceDirectory
         $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
         $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container)
         $plan = [System.Collections.Generic.List[string]]::new()
         $plan.AddRange([string[]] @('place-candidate', 'stop-application', 'write-transaction-marker', 'replace-program-directory'))
-        if ($null -eq (& $Ports.GetTask $TaskName)) { $plan.Add('create-login-task') }
-        $plan.AddRange([string[]] @('start-and-wait-ready', 'commit'))
+        $loginTaskStep = Get-CountdownLoginTaskPlanStep -TaskName $TaskName -ExecutablePath $layout.ExecutablePath -Session $session -Ports $Ports
+        if ($null -ne $loginTaskStep) { $plan.Add($loginTaskStep) }
+        $plan.AddRange([string[]] @('register-desktop-shortcut', 'start-and-wait-ready', 'commit'))
 
         if ($CheckOnly) {
             Assert-CountdownProgramDirectoryMatchesManifest -Directory $sourceDirectory -Manifest $manifest
@@ -507,11 +709,11 @@ function Install-CountdownProgram {
             }
             [void] (& $Ports.MoveDirectory $layout.CandidateDirectory $layout.ProgramDirectory)
 
-            $stage = 'create-login-task'
-            if ($null -eq (& $Ports.GetTask $TaskName)) {
-                [void] (& $Ports.RegisterTask $TaskName (Get-CountdownLoginTaskDefinition -ExecutablePath $layout.ExecutablePath) $session)
-                $result.loginTaskCreated = $true
-            }
+            $stage = 'register-login-task'
+            $result.loginTask = Register-CountdownLoginTask -TaskName $TaskName -ExecutablePath $layout.ExecutablePath -Session $session -Ports $Ports
+
+            $stage = 'register-desktop-shortcut'
+            $result.desktopShortcut = Register-CountdownDesktopShortcut -DesktopDirectory $desktopDirectory -ExecutablePath $layout.ExecutablePath -Ports $Ports
 
             $stage = 'start-and-wait-ready'
             if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
@@ -551,23 +753,25 @@ function Install-CountdownProgram {
 }
 
 function New-CountdownInstallerWindowsPorts {
-    $field = { param($Object, [string] $Name) $property = $Object.PSObject.Properties[$Name]; if ($property) { $property.Value } }
     [pscustomobject]@{
         # 交互会话按 explorer.exe 所在的会话认：同一会话里的多个 explorer 进程算一个会话。只有一个会话时才读它的登录用户
-        # （登记登录任务要用）；多个会话反正会被拒绝，读别的用户的进程属主可能没有权限，不去读。
+        # 与 SID（登记登录任务、找桌面目录要用）；多个会话反正会被拒绝，读别的用户的进程属主可能没有权限，不去读。
         GetInteractiveSessions = {
             $sessions = @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -OperationTimeoutSec 10 -ErrorAction Stop |
                     Where-Object { [int] $_.SessionId -gt 0 } | Group-Object -Property SessionId)
             if ($sessions.Count -ne 1) {
-                return @($sessions | ForEach-Object { [pscustomobject]@{ SessionId = [int] $_.Name; User = $null } })
+                return @($sessions | ForEach-Object { [pscustomobject]@{ SessionId = [int] $_.Name; User = $null; Sid = $null } })
             }
             $owner = Invoke-CimMethod -InputObject $sessions[0].Group[0] -MethodName GetOwner -OperationTimeoutSec 10 -ErrorAction Stop
-            if ([int] $owner.ReturnValue -ne 0 -or [string]::IsNullOrWhiteSpace([string] $owner.User)) {
+            $ownerSid = Invoke-CimMethod -InputObject $sessions[0].Group[0] -MethodName GetOwnerSid -OperationTimeoutSec 10 -ErrorAction Stop
+            if ([int] $owner.ReturnValue -ne 0 -or [string]::IsNullOrWhiteSpace([string] $owner.User) -or
+                [int] $ownerSid.ReturnValue -ne 0 -or [string]::IsNullOrWhiteSpace([string] $ownerSid.Sid)) {
                 throw "无法读取交互会话 $($sessions[0].Name) 的登录用户。"
             }
             [pscustomobject]@{
                 SessionId = [int] $sessions[0].Name
                 User = if ([string]::IsNullOrWhiteSpace([string] $owner.Domain)) { [string] $owner.User } else { "$($owner.Domain)\$($owner.User)" }
+                Sid = [string] $ownerSid.Sid
             }
         }
         GetProcesses = {
@@ -579,25 +783,40 @@ function New-CountdownInstallerWindowsPorts {
             param([int] $ProcessId)
             Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
         }
-        # 与状态命令（#276）读出的任务同形。
+        # 状态命令（#276）读出的各项之外，再读登记登录任务要逐项比较的工作目录、电池、按需启动、强制结束与用户（#281）。
+        # 任务计划给主体写的是账号名、给登录触发器写的是“域\账号”，都换成 SID；换不出时原样返回，比较时算作别的用户。
+        # port 在别的作用域里被调用，用到的辅助块都定义在块内。
         GetTask = {
             param([string] $Name)
+            $field = { param($Object, [string] $Property) $value = $Object.PSObject.Properties[$Property]; if ($value) { $value.Value } }
             try { $task = Get-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop }
             catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return $null }; throw }
             $kind = { param($o) $o.CimClass.CimClassName -replace '^MSFT_Task|(Action|Trigger)$' }
+            $sid = {
+                param([string] $Account)
+                if ([string]::IsNullOrWhiteSpace($Account)) { return $null }
+                try { ([System.Security.Principal.NTAccount] $Account).Translate([System.Security.Principal.SecurityIdentifier]).Value }
+                catch { $Account }
+            }
             [pscustomobject]@{
                 State = [string] $task.State
                 Enabled = [bool] $task.Settings.Enabled
-                Actions = @($task.Actions | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Type = & $kind $_; Execute = & $field $_ 'Execute'; Arguments = & $field $_ 'Arguments' } })
-                Triggers = @($task.Triggers | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Type = & $kind $_; Enabled = [bool] $_.Enabled } })
+                Actions = @($task.Actions | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Type = & $kind $_; Execute = & $field $_ 'Execute'; Arguments = & $field $_ 'Arguments'; WorkingDirectory = & $field $_ 'WorkingDirectory' } })
+                Triggers = @($task.Triggers | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Type = & $kind $_; Enabled = [bool] $_.Enabled; UserSid = & $sid ([string] (& $field $_ 'UserId')) } })
+                UserSid = & $sid ([string] $task.Principal.UserId)
                 LogonType = [string] $task.Principal.LogonType
                 RunLevel = [string] $task.Principal.RunLevel
                 Priority = [int] $task.Settings.Priority
                 ExecutionTimeLimit = [string] $task.Settings.ExecutionTimeLimit
                 MultipleInstances = [string] $task.Settings.MultipleInstances
+                DisallowStartIfOnBatteries = [bool] $task.Settings.DisallowStartIfOnBatteries
+                StopIfGoingOnBatteries = [bool] $task.Settings.StopIfGoingOnBatteries
+                AllowDemandStart = [bool] $task.Settings.AllowDemandStart
+                AllowHardTerminate = [bool] $task.Settings.AllowHardTerminate
             }
         }
-        # 按 #279「登录任务的最终定义」注册。非提升时能否注册登录触发器未实测（#279 第 7 项），留给 #288 在真实任务上确认。
+        # 按 #279「登录任务的最终定义」注册；同名任务已存在时整份替换（与期望定义不一致时的更新）。
+        # 非提升时能否注册登录触发器、能否替换提升时注册的任务都未实测（#279 第 7 项），留给 #288 在真实任务上确认。
         RegisterTask = {
             param([string] $Name, [object] $Definition, [object] $Session)
             $action = New-ScheduledTaskAction -Execute ([string] $Definition.Actions[0].Execute)
@@ -607,13 +826,96 @@ function New-CountdownInstallerWindowsPorts {
                 -ExecutionTimeLimit ([System.Xml.XmlConvert]::ToTimeSpan([string] $Definition.ExecutionTimeLimit)) `
                 -MultipleInstances ([string] $Definition.MultipleInstances) `
                 -AllowStartIfOnBatteries:(-not [bool] $Definition.DisallowStartIfOnBatteries) `
-                -DontStopIfGoingOnBatteries:(-not [bool] $Definition.StopIfGoingOnBatteries)
+                -DontStopIfGoingOnBatteries:(-not [bool] $Definition.StopIfGoingOnBatteries) `
+                -DisallowDemandStart:(-not [bool] $Definition.AllowDemandStart) `
+                -DisallowHardTerminate:(-not [bool] $Definition.AllowHardTerminate) `
+                -Disable:(-not [bool] $Definition.Enabled)
             Register-ScheduledTask -TaskPath '\' -TaskName $Name -Action $action -Trigger $trigger -Principal $principal -Settings $settings `
-                -Description '登录后直接启动敏敏子倒计时。' -ErrorAction Stop | Out-Null
+                -Description '登录后直接启动敏敏子倒计时。' -Force -ErrorAction Stop | Out-Null
         }
         StartTask = {
             param([string] $Name)
             Start-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop
+        }
+        # 交互用户的桌面目录（#281）：取该用户注册表 User Shell Folders 里 Desktop 的原值，只按该用户的注册表环境展开
+        # （机器环境、该用户的 Environment 与 Volatile Environment，USERPROFILE 取 ProfileList 里的配置文件目录），不用当前进程的
+        # 环境：经 SSH 运行时那不是桌面会话的环境（docs/办公室部署.md）。只读注册表，不访问桌面目录本身。
+        GetDesktopDirectory = {
+            param([object] $Session)
+            $sid = [string] $Session.Sid
+            if ([string]::IsNullOrWhiteSpace($sid)) { throw '不知道交互会话登录用户的 SID。' }
+            $readValues = {
+                param([Microsoft.Win32.RegistryKey] $Hive, [string] $Path)
+                $values = @{}
+                $key = $Hive.OpenSubKey($Path)
+                if ($null -ne $key) {
+                    try { foreach ($name in $key.GetValueNames()) { $values[$name] = [string] $key.GetValue($name, $null, 'DoNotExpandEnvironmentNames') } }
+                    finally { $key.Dispose() }
+                }
+                $values
+            }
+            $users = [Microsoft.Win32.Registry]::Users
+            $machine = [Microsoft.Win32.Registry]::LocalMachine
+            $template = (& $readValues $users "$sid\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders")['Desktop']
+            $profileImagePath = (& $readValues $machine "SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$sid")['ProfileImagePath']
+            if ([string]::IsNullOrWhiteSpace($template) -or [string]::IsNullOrWhiteSpace($profileImagePath)) { throw '注册表里没有交互用户的桌面位置或配置文件目录。' }
+            $variables = @{}
+            $systemRoot = (& $readValues $machine 'SOFTWARE\Microsoft\Windows NT\CurrentVersion')['SystemRoot']
+            if ([System.IO.Path]::IsPathFullyQualified([string] $systemRoot)) {
+                $variables['SystemRoot'] = $systemRoot
+                $variables['SystemDrive'] = [System.IO.Path]::GetPathRoot($systemRoot).TrimEnd('\')
+            }
+            foreach ($source in @(
+                    (& $readValues $machine 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'),
+                    (& $readValues $users "$sid\Environment"),
+                    (& $readValues $users "$sid\Volatile Environment"))) {
+                foreach ($name in $source.Keys) { $variables[$name] = $source[$name] }
+            }
+            $expand = {
+                param([string] $Text)
+                for ($round = 0; $round -lt 8 -and $Text -match '%[^%]+%'; $round++) {
+                    $Text = [regex]::Replace($Text, '%([^%]+)%', [System.Text.RegularExpressions.MatchEvaluator] {
+                            param($Match)
+                            if ($variables.ContainsKey($Match.Groups[1].Value)) { $variables[$Match.Groups[1].Value] } else { $Match.Value }
+                        })
+                }
+                if ($Text -match '%([^%]+)%') { throw "桌面位置里的 %$($Matches[1])% 按交互用户的环境展开不了。" }
+                $Text
+            }
+            $variables['USERPROFILE'] = & $expand $profileImagePath
+            & $expand $template
+        }
+        # 桌面上同名的项（#281）：不存在时返回空。文件头是 Shell Link 的头长 0x4C 与 CLSID 00021401-0000-0000-C000-000000000046 时
+        # 经 WScript.Shell 读出目标、参数、工作目录与图标；同名的目录或别的文件只报告不是 Shell Link，不解析它的内容。
+        ReadShortcut = {
+            param([string] $Path)
+            if (-not (Test-Path -LiteralPath $Path)) { return $null }
+            $isShellLink = $false
+            if (Test-Path -LiteralPath $Path -PathType Leaf) {
+                $stream = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite, Delete')
+                try { $header = [System.IO.BinaryReader]::new($stream).ReadBytes(20) }
+                finally { $stream.Dispose() }
+                $isShellLink = [Convert]::ToHexString($header) -eq '4C0000000114020000000000C000000000000046'
+            }
+            if (-not $isShellLink) { return [pscustomobject]@{ IsShellLink = $false } }
+            $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+            [pscustomobject]@{
+                IsShellLink = $true
+                TargetPath = [string] $link.TargetPath
+                Arguments = [string] $link.Arguments
+                WorkingDirectory = [string] $link.WorkingDirectory
+                IconLocation = [string] $link.IconLocation
+            }
+        }
+        # 按期望定义写快捷方式：不存在时新建；已有的（属于安装器的）只改这四项，其余属性（如快捷键）照旧。
+        WriteShortcut = {
+            param([string] $Path, [object] $Definition)
+            $link = (New-Object -ComObject WScript.Shell).CreateShortcut($Path)
+            $link.TargetPath = [string] $Definition.TargetPath
+            $link.Arguments = [string] $Definition.Arguments
+            $link.WorkingDirectory = [string] $Definition.WorkingDirectory
+            $link.IconLocation = [string] $Definition.IconLocation
+            $link.Save()
         }
         MoveDirectory = {
             param([string] $Source, [string] $Destination)

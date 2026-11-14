@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 # 安装根之外只登记登录任务与交互用户桌面上的快捷方式。计划任务、进程、交互会话、桌面目录、快捷方式、目录改名与
 # 候选 EXE 的无界面命令经 port 调用：生产用 New-CountdownInstallerWindowsPorts，
 # 测试注入假 port。本机与远端是同一个安装器；它不运行测试套件，不检查构建工具链，不触碰 Windows 时间服务。
-# 已有成功路径（#280）、换程序前的设置保护（#282）与登录任务、桌面快捷方式的登记（#281）；失败回滚（#283）与中断恢复（#284）在后续票。
+# 已有成功路径（#280）、换程序前的设置保护（#282）、登录任务与桌面快捷方式的登记（#281）和失败回滚（#283）；中断恢复（#284）在后续票。
 
 # 与旧安装器（Countdown.InstallTransaction.psm1）同名：新旧安装器在同一台机器上互斥。
 $script:InstallLockName = 'Global\MinminCountdownInstallTransaction-v1'
@@ -113,6 +113,64 @@ function Exit-CountdownInstallLock {
     if ($null -eq $Mutex) { return }
     try { $Mutex.ReleaseMutex() } catch [System.ApplicationException] { }
     finally { $Mutex.Dispose() }
+}
+
+# 短暂占用：目录树里只要有一个文件开着（杀毒软件扫描刚复制或刚运行过的文件、映像还没释放），目录改名就报拒绝访问，即使那个
+# 句柄允许删除也一样（.NET 对目录给的是 HResult 为 E_ACCESSDENIED 的 IOException）；文件删除与替换报拒绝访问、共享冲突或锁冲突。
+# 只认这几种；路径不存在、目标已存在等确定性失败不重试。
+function Test-CountdownTransientFileLock {
+    param([Parameter(Mandatory)] [System.Exception] $Exception)
+
+    for ($current = $Exception; $null -ne $current; $current = $current.InnerException) {
+        if ($current -is [System.UnauthorizedAccessException]) { return $true }
+        if ($current -is [System.IO.IOException] -and ($current.HResult -band 0xFFFF) -in @(5, 32, 33)) { return $true }
+    }
+    $false
+}
+
+# 遇到短暂占用时有界重试一个文件系统动作：间隔从 100 毫秒起翻倍、最长 1 秒，过了时限仍被占用就抛出最后一次的错误。
+# 动作按动态作用域读调用方的变量，所以这里的局部变量都带 retry 前缀。
+function Invoke-CountdownWithFileLockRetry {
+    param(
+        [Parameter(Mandatory)] [scriptblock] $Action,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    $retryDeadline = [DateTime]::UtcNow.AddSeconds($RetrySeconds)
+    $retryDelay = 100
+    while ($true) {
+        try { return (& $Action) }
+        catch {
+            if ([DateTime]::UtcNow -ge $retryDeadline -or -not (Test-CountdownTransientFileLock -Exception $_.Exception)) { throw }
+        }
+        Start-Sleep -Milliseconds $retryDelay
+        $retryDelay = [Math]::Min($retryDelay * 2, 1000)
+    }
+}
+
+# 删除安装器自己的一个文件或目录树（不在时什么都不做），被短暂占用时有界重试。
+function Remove-CountdownInstallEntry {
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action {
+        if (Test-Path -LiteralPath $Path -PathType Container) { [System.IO.Directory]::Delete($Path, $true) }
+        elseif (Test-Path -LiteralPath $Path) { [System.IO.File]::Delete($Path) }
+    }
+}
+
+# 经 port 改名安装根里的一个目录（同卷改名，要么完成要么没发生），被短暂占用时有界重试。
+function Move-CountdownInstallDirectory {
+    param(
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [string] $Source,
+        [Parameter(Mandatory)] [string] $Destination,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action { [void] (& $Ports.MoveDirectory $Source $Destination) }
 }
 
 # 设置指纹与状态命令（#276）同形：长度、修改时间与 SHA-256 取自同一个共享读写删除打开的文件，不含内容。
@@ -362,6 +420,112 @@ function Save-CountdownSettingsSnapshot {
     $snapshotDirectory
 }
 
+# 一次安装从写下事务标记起要回滚时用到的事实（#283），只在这一次安装运行的内存里：快照在哪、程序目录是否已换成新版本、
+# 登录任务改之前的样子（只在本次安装要改它时记下）、桌面快捷方式是不是本次创建的、新版本是否已达到启动就绪。
+function New-CountdownInstallTransactionState {
+    param([Parameter(Mandatory)] [bool] $FirstInstall)
+
+    [pscustomobject]@{
+        FirstInstall = $FirstInstall
+        SnapshotDirectory = $null
+        ProgramReplaced = $false
+        LoginTaskChangeStarted = $false
+        LoginTaskBefore = $null
+        LoginTaskBeforeDefinition = $null
+        ShortcutCreated = $false
+        NewVersionReady = $false
+    }
+}
+
+# 替换程序目录：现役 app 改名为 app.previous（首次安装没有这一步），候选 app.candidate 改名为 app。被短暂占用时各自有界重试
+# （#281 曾见迁移演练刚运行过候选 EXE 时第二次改名报拒绝访问）；占用超过时限时原因为 program-directory-in-use。第二次改名
+# 失败时留下“现役目录不存在、旧版本目录存在”，由回滚改名换回。
+function Switch-CountdownProgramDirectory {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    try {
+        if (Test-Path -LiteralPath $Layout.ProgramDirectory) {
+            Move-CountdownInstallDirectory -Ports $Ports -Source $Layout.ProgramDirectory -Destination $Layout.PreviousDirectory -RetrySeconds $RetrySeconds
+        }
+        Move-CountdownInstallDirectory -Ports $Ports -Source $Layout.CandidateDirectory -Destination $Layout.ProgramDirectory -RetrySeconds $RetrySeconds
+    }
+    catch {
+        if (-not (Test-CountdownTransientFileLock -Exception $_.Exception)) { throw }
+        throw (New-CountdownInstallRejection -Reason 'program-directory-in-use' -Message "程序目录被占用，$RetrySeconds 秒内没能改名：$($_.Exception.GetBaseException().Message)")
+    }
+}
+
+# 回滚时把程序目录放回安装前的样子。按目录现状判断替换走到了哪一步，与中断恢复（#284）的恢复表同一套判断：
+# app.previous 在时，app（新版本）也在就先改回 app.candidate，再把 app.previous 改回 app；两次改名之间失败时 app 不在，直接改回。
+# 首次安装已换上新版本时（只有 app），把它改回 app.candidate，安装根回到没有程序目录的样子。app.candidate 还在时还没换程序
+# （或第一次改名就失败了），不用改名。改名被短暂占用时有界重试。
+function Restore-CountdownProgramDirectory {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [bool] $FirstInstall,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    $program = Test-Path -LiteralPath $Layout.ProgramDirectory
+    $candidate = Test-Path -LiteralPath $Layout.CandidateDirectory
+    if (Test-Path -LiteralPath $Layout.PreviousDirectory) {
+        if ($program -and $candidate) { throw '安装根同时有 app、app.candidate 与 app.previous，分不清哪个是旧版本。' }
+        if ($program) { Move-CountdownInstallDirectory -Ports $Ports -Source $Layout.ProgramDirectory -Destination $Layout.CandidateDirectory -RetrySeconds $RetrySeconds }
+        Move-CountdownInstallDirectory -Ports $Ports -Source $Layout.PreviousDirectory -Destination $Layout.ProgramDirectory -RetrySeconds $RetrySeconds
+    }
+    elseif ($program -and -not $candidate) {
+        if (-not $FirstInstall) { throw '升级时安装根只有 app、没有 app.previous，旧版本不在了。' }
+        Move-CountdownInstallDirectory -Ports $Ports -Source $Layout.ProgramDirectory -Destination $Layout.CandidateDirectory -RetrySeconds $RetrySeconds
+    }
+}
+
+function Test-CountdownSameFileBytes {
+    param(
+        [Parameter(Mandatory)] [string] $Left,
+        [Parameter(Mandatory)] [string] $Right
+    )
+
+    (Get-FileHash -LiteralPath $Left -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $Right -Algorithm SHA256).Hash
+}
+
+# 用本次安装拍下的快照恢复设置及其两代备份（#283）。只在同一次安装运行里、新版本达到启动就绪之前调用：那时悬浮窗还没渲染，
+# 用户无法编辑，恢复不会丢用户的修改。逐个比较，与快照逐字节相同的不动；不同的先复制到事务目录里的临时文件，再整份替换现役
+# 文件（同卷改名，替换要么完成要么没发生）；快照里没有的（安装前就不存在，例如新版本迁移时轮转出的 backup 2）删除。主文件最先
+# 恢复：中途失败时旧版本至少读到安装前的主文件。返回 restored（写回或删除过）或 unchanged。
+function Restore-CountdownSettingsSnapshot {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $SnapshotDirectory,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    $stagingDirectory = Join-Path $Layout.TransactionDirectory 'settings-restore'
+    $outcome = 'unchanged'
+    foreach ($name in $script:SettingsFamilyNames) {
+        $live = Join-Path $Layout.Root $name
+        $saved = Join-Path $SnapshotDirectory $name
+        $liveExists = Test-Path -LiteralPath $live -PathType Leaf
+        if (Test-Path -LiteralPath $saved -PathType Leaf) {
+            if ($liveExists -and (Test-CountdownSameFileBytes -Left $live -Right $saved)) { continue }
+            $staged = Join-Path $stagingDirectory $name
+            [void] [System.IO.Directory]::CreateDirectory($stagingDirectory)
+            [System.IO.File]::Copy($saved, $staged, $true)
+            Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action { [System.IO.File]::Move($staged, $live, $true) }
+        }
+        elseif ($liveExists) {
+            Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action { [System.IO.File]::Delete($live) }
+        }
+        else { continue }
+        $outcome = 'restored'
+    }
+    $outcome
+}
+
 # 经 port 运行候选 EXE 的一个无界面命令；stdout 应是一份 JSON 报告，读不出时 Report 为 $null。
 function Invoke-CountdownCandidateCommand {
     param(
@@ -432,11 +596,55 @@ function Invoke-CountdownSettingsRehearsal {
     & $failed "等价判定退出码 $($equivalence.ExitCode)，$($report.equivalence)"
 }
 
-# 换程序之前撤回本次安装（设置快照或迁移演练失败、迁移不等价）：先清除事务标记，再删除候选和事务目录，然后经登录任务重新
-# 启动旧版本，等它达到启动就绪。此时程序目录与现役设置都没被动过；清除标记之前中断时，标记、候选和现役的旧版本都还在，
-# 按恢复表删除候选即可（#284）。各项清理互不依赖，哪一项失败都照样重新启动旧版本。首次安装没有旧版本或登录任务，不启动。
-# 程序目录没被动过，所以就绪核对的 EXE 哈希取现役 EXE 本身。返回重新启动的进程（没有启动时为 $null）与遇到的问题。
-function Undo-CountdownInstallBeforeReplace {
+# 回滚时登录任务回到安装前（#283）。本次安装没动过它时什么都不做（返回空）。安装前的任务被本次更新过时，按改之前导出的
+# 整份定义恢复（restored）；任务是本次创建的：首次安装删除它（removed），没有程序可启动；升级时保留（kept），它与期望定义
+# 一致、指向同一个 EXE 路径，旧版本要经它重新启动。注册其实没生效（任务与改之前逐项相同、或创建没发生）时也什么都不做。
+function Restore-CountdownLoginTask {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Transaction,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    if (-not $Transaction.LoginTaskChangeStarted) { return $null }
+    $current = & $Ports.GetTask $TaskName
+    if ($null -eq $Transaction.LoginTaskBefore) {
+        if ($null -eq $current) { return $null }
+        if (-not $Transaction.FirstInstall) { return 'kept' }
+        [void] (& $Ports.RestoreTask $TaskName $null)
+        return 'removed'
+    }
+    if ($null -ne $current) {
+        $before = Get-CountdownLoginTaskItems -Task $Transaction.LoginTaskBefore -Session $Session
+        $now = Get-CountdownLoginTaskItems -Task $current -Session $Session
+        if (@($before.Keys | Where-Object { $before[$_] -ne $now[$_] }).Count -eq 0) { return $null }
+    }
+    [void] (& $Ports.RestoreTask $TaskName $Transaction.LoginTaskBeforeDefinition)
+    'restored'
+}
+
+# 首次安装回滚时删除本次创建的桌面快捷方式：程序目录已移走，它会指向一个不存在的 EXE。删之前重读一次，仍是指向本安装根
+# 已安装 EXE 的 Shell Link 才删。升级回滚不动快捷方式：新旧版本是同一个 EXE 路径，快捷方式的定义与版本无关。
+function Remove-CountdownCreatedDesktopShortcut {
+    param(
+        [Parameter(Mandatory)] [string] $DesktopDirectory,
+        [Parameter(Mandatory)] [string] $ExecutablePath,
+        [Parameter(Mandatory)] [object] $Ports
+    )
+
+    $path = Join-Path $DesktopDirectory $script:DesktopShortcutName
+    $existing = & $Ports.ReadShortcut $path
+    if ($null -eq $existing -or -not [bool] (Get-CountdownInstallerProperty -Object $existing -Name 'IsShellLink')) { return $null }
+    $target = ([string] (Get-CountdownInstallerProperty -Object $existing -Name 'TargetPath')).Trim('"')
+    if (-not [string]::Equals($target, $ExecutablePath, [System.StringComparison]::OrdinalIgnoreCase)) { return $null }
+    [void] (& $Ports.RemoveShortcut $path)
+    'removed'
+}
+
+# 经登录任务重新启动旧版本并等到启动就绪。程序目录此时是旧版本，就绪核对的 EXE 哈希在启动之前取它本身。没有登录任务、
+# 任务仍有运行中的实例（经它启动会被 IgnoreNew 悄悄拒绝）、启动不了或等不到启动就绪时抛出。
+function Start-CountdownPreviousVersion {
     param(
         [Parameter(Mandatory)] [object] $Layout,
         [Parameter(Mandatory)] [string] $TaskName,
@@ -445,28 +653,88 @@ function Undo-CountdownInstallBeforeReplace {
         [Parameter(Mandatory)] [int] $ReadyTimeoutSeconds
     )
 
-    $problems = [System.Collections.Generic.List[string]]::new()
-    foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
-        try {
-            if (Test-Path -LiteralPath $path -PathType Container) { [System.IO.Directory]::Delete($path, $true) }
-            elseif (Test-Path -LiteralPath $path) { [System.IO.File]::Delete($path) }
-        }
-        catch { $problems.Add("删除 $([System.IO.Path]::GetFileName($path)) 失败：$($_.Exception.Message)") }
-    }
+    $task = & $Ports.GetTask $TaskName
+    if ($null -eq $task) { throw "没有登录任务 $TaskName，无法经它重新启动旧版本。" }
+    if (Test-CountdownTaskRunning -Task $task) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+    $installedSha256 = (Get-FileHash -LiteralPath $Layout.ExecutablePath -Algorithm SHA256).Hash
+    if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
+    [void] (& $Ports.StartTask $TaskName)
+    $process = Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $installedSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+    [ordered]@{ processId = [int] $process.ProcessId; sessionId = [int] $process.SessionId }
+}
 
+# 失败回滚（#283）：写下事务标记之后、新版本达到启动就绪之前任何一步失败都走这里，换程序之前的撤回（#282）是它的特例。
+# 按顺序：停止已安装 EXE 的进程（换程序之后就是新版本，它占着程序目录里的文件）；按目录现状把程序目录放回；程序换过时用本次
+# 安装的快照恢复设置及两代备份；恢复本次改过的登录任务；首次安装删除本次创建的桌面快捷方式；有旧版本时经登录任务重新启动它并
+# 等到启动就绪。这些都做到了才清除事务标记（回滚完成的分界），再删除候选与事务目录，结论为 rolled-back；后两者删不掉只记下
+# 问题，残留由下一次安装清理。任何一步没做到，结论为 rollback-failed：事务标记、事务目录（含快照）与候选原样留下，由中断恢复
+# （#284）接手；停不掉新版本或换不回程序目录时不再往下做，其余各步失败照样继续。问题逐条截短，不含设置内容。
+function Undo-CountdownInstall {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [object] $Session,
+        [AllowEmptyString()] [string] $DesktopDirectory,
+        [Parameter(Mandatory)] [object] $Transaction,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $ReadyTimeoutSeconds,
+        [Parameter(Mandatory)] [int] $StopTimeoutSeconds,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    $report = [ordered]@{ outcome = 'rollback-failed'; settings = $null; loginTask = $null; desktopShortcut = $null; problems = @() }
+    $problems = [System.Collections.Generic.List[string]]::new()
+    $note = { param([string] $What, [object] $ErrorRecord) $problems.Add((ConvertTo-CountdownBoundedError -Message "$What：$($ErrorRecord.Exception.Message)")) }
     $restarted = $null
-    try {
-        if ((Test-Path -LiteralPath $Layout.ExecutablePath -PathType Leaf) -and $null -ne (& $Ports.GetTask $TaskName)) {
-            if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
-            if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
-            [void] (& $Ports.StartTask $TaskName)
-            $installedSha256 = (Get-FileHash -LiteralPath $Layout.ExecutablePath -Algorithm SHA256).Hash
-            $process = Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $installedSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
-            $restarted = [ordered]@{ processId = [int] $process.ProcessId; sessionId = [int] $process.SessionId }
+
+    $stopped = $true
+    try { [void] (Stop-CountdownInstalledApplication -Layout $Layout -TaskName $TaskName -Ports $Ports -TimeoutSeconds $StopTimeoutSeconds) }
+    catch {
+        # 进程都已退出、只剩任务实例时照样可以换回程序目录；重新启动旧版本之前会再核对任务。
+        if (@(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports).Count -gt 0) {
+            $stopped = $false
+            & $note '停止新版本失败' $_
         }
     }
-    catch { $problems.Add("重新启动旧版本失败：$($_.Exception.Message)") }
-    [pscustomobject]@{ RestartedProcess = $restarted; Problems = $problems.ToArray() }
+    $programBack = $false
+    if ($stopped) {
+        try {
+            Restore-CountdownProgramDirectory -Layout $Layout -Ports $Ports -FirstInstall $Transaction.FirstInstall -RetrySeconds $RetrySeconds
+            $programBack = $true
+        }
+        catch { & $note '换回程序目录失败' $_ }
+    }
+    if ($programBack) {
+        if ($Transaction.ProgramReplaced) {
+            try { $report.settings = Restore-CountdownSettingsSnapshot -Layout $Layout -SnapshotDirectory $Transaction.SnapshotDirectory -RetrySeconds $RetrySeconds }
+            catch { & $note '恢复设置失败' $_ }
+        }
+        try { $report.loginTask = Restore-CountdownLoginTask -TaskName $TaskName -Session $Session -Transaction $Transaction -Ports $Ports }
+        catch { & $note '恢复登录任务失败' $_ }
+        if ($Transaction.FirstInstall -and $Transaction.ShortcutCreated) {
+            try { $report.desktopShortcut = Remove-CountdownCreatedDesktopShortcut -DesktopDirectory $DesktopDirectory -ExecutablePath $Layout.ExecutablePath -Ports $Ports }
+            catch { & $note '删除本次创建的桌面快捷方式失败' $_ }
+        }
+        if (Test-Path -LiteralPath $Layout.ExecutablePath -PathType Leaf) {
+            try { $restarted = Start-CountdownPreviousVersion -Layout $Layout -TaskName $TaskName -Session $Session -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds }
+            catch { & $note '重新启动旧版本失败' $_ }
+        }
+    }
+    if ($problems.Count -eq 0) {
+        try {
+            Remove-CountdownInstallEntry -Path $Layout.MarkerPath -RetrySeconds $RetrySeconds
+            $report.outcome = 'rolled-back'
+        }
+        catch { & $note '清除事务标记失败' $_ }
+    }
+    if ($report.outcome -eq 'rolled-back') {
+        foreach ($path in @($Layout.CandidateDirectory, $Layout.TransactionDirectory)) {
+            try { Remove-CountdownInstallEntry -Path $path -RetrySeconds $RetrySeconds }
+            catch { & $note "删除 $([System.IO.Path]::GetFileName($path)) 失败（下一次安装清理）" $_ }
+        }
+    }
+    $report.problems = $problems.ToArray()
+    [pscustomobject]@{ Report = $report; RestartedProcess = $restarted }
 }
 
 # 登录任务的定义（#279「登录任务的最终定义」），其中状态命令（#276）核对的各项与它的期望一致：登录时触发，交互式、
@@ -602,23 +870,31 @@ function Get-CountdownLoginTaskPlanStep {
 }
 
 # 登录任务的登记（#281）：不存在时按期望定义创建；存在时逐项比较，一致时不动，不一致时按期望定义整份重新注册，
-# 结果写明改了哪些项。常规升级里任务定义与期望一致，所以不改动计划任务。
+# 结果写明改了哪些项。常规升级里任务定义与期望一致，所以不改动计划任务。动任务之前把它原来的样子记进事务状态，供回滚
+# 恢复（#283）：要更新时先经 port 导出整份定义（逐项比较的读法不含任务的全部设置），导不出就不改。
 function Register-CountdownLoginTask {
     param(
         [Parameter(Mandatory)] [string] $TaskName,
         [Parameter(Mandatory)] [string] $ExecutablePath,
         [Parameter(Mandatory)] [object] $Session,
-        [Parameter(Mandatory)] [object] $Ports
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [object] $Transaction
     )
 
     $definition = Get-CountdownLoginTaskDefinition -ExecutablePath $ExecutablePath
     $task = & $Ports.GetTask $TaskName
     if ($null -eq $task) {
+        $Transaction.LoginTaskChangeStarted = $true
         [void] (& $Ports.RegisterTask $TaskName $definition $Session)
         return [ordered]@{ action = 'created'; changes = @() }
     }
     $changes = @(Compare-CountdownLoginTask -Task $task -ExecutablePath $ExecutablePath -Session $Session)
     if ($changes.Count -eq 0) { return [ordered]@{ action = 'unchanged'; changes = @() } }
+    $exported = & $Ports.ExportTask $TaskName
+    if ($null -eq $exported) { throw "导出不了登录任务 $TaskName 改之前的定义，不改动它。" }
+    $Transaction.LoginTaskBefore = $task
+    $Transaction.LoginTaskBeforeDefinition = $exported
+    $Transaction.LoginTaskChangeStarted = $true
     [void] (& $Ports.RegisterTask $TaskName $definition $Session)
     [ordered]@{ action = 'updated'; changes = $changes }
 }
@@ -752,9 +1028,12 @@ function Install-CountdownProgram {
     旧版本目录、候选改名为现役；登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时
     改回期望定义，不属于时保留）；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪；
     先清除事务标记，再删除旧版本目录与事务目录。前置检查任何一项失败时只删除候选（及为它新建的安装根），
-    其余什么都不改。快照或演练失败、迁移不等价时清除事务标记，删除候选与事务目录，经登录任务重新启动旧版本：
-    程序目录与现役设置都没被动过。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选、不读桌面上的快捷方式，
-    报告将要执行的步骤。换程序之后的失败只报告、不回滚，事务标记与事务目录留在原处（回滚在 #283）。
+    其余什么都不改。写下事务标记之后、新版本达到启动就绪之前任何一步失败都回滚（#283，见 Undo-CountdownInstall）：
+    停止新版本，把程序目录换回，用本次安装的快照恢复设置及两代备份，恢复本次改过的登录任务，经登录任务重新启动旧版本；
+    快照或演练失败、迁移不等价时程序目录与现役设置都没被动过，只需重新启动旧版本。新版本达到启动就绪之后不再回滚，也不再
+    用快照覆盖设置：提交没走完时事务标记留给下一次安装的中断恢复。目录改名与安装器自己的删除被短暂占用时有界重试
+    （-FileLockRetrySeconds）。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选、不读桌面上的快捷方式，
+    报告将要执行的步骤。
     #>
     [CmdletBinding()]
     param(
@@ -765,7 +1044,8 @@ function Install-CountdownProgram {
         [object] $Ports,
         [ValidateNotNullOrEmpty()] [string] $LockName = $script:InstallLockName,
         [ValidateRange(1, 300)] [int] $ReadyTimeoutSeconds = 30,
-        [ValidateRange(1, 300)] [int] $StopTimeoutSeconds = 10
+        [ValidateRange(1, 300)] [int] $StopTimeoutSeconds = 10,
+        [ValidateRange(0, 300)] [int] $FileLockRetrySeconds = 15
     )
 
     if ($null -eq $Ports) { $Ports = New-CountdownInstallerWindowsPorts }
@@ -788,17 +1068,23 @@ function Install-CountdownProgram {
         settings = [ordered]@{ before = $null; after = $null }
         settingsRehearsal = $null
         restartedProcess = $null
+        # 回滚（#283）：outcome 为 not-needed（没有要撤回的改动，或新版本已达到启动就绪）、rolled-back 或 rollback-failed。
+        rollback = [ordered]@{ outcome = 'not-needed'; settings = $null; loginTask = $null; desktopShortcut = $null; problems = @() }
+        transactionMarkerPresent = $false
+        diagnosticLogPath = $null
     }
     $stage = 'preflight'
     $lock = $null
     $layout = $null
     $rootCreated = $false
     $candidateOwned = $false
-    $transactionUndoable = $false
+    $transaction = $null
     try {
         # 安装路径检查与设置指纹只读、不需要锁：被安装锁拒绝的结果里也有设置指纹。
         $layout = Resolve-CountdownInstallerLayout -InstallRoot $InstallRoot
         $result.installRoot = $layout.Root
+        # 应用的诊断日志（新版本起不来的原因在这里），在安装根里，安装与回滚都不动它。
+        $result.diagnosticLogPath = Join-Path $layout.Root 'logs\application.jsonl'
         $result.settings.before = Get-CountdownSettingsFingerprint -Path $layout.SettingsPath
 
         $stage = 'lock'
@@ -840,43 +1126,44 @@ function Install-CountdownProgram {
             $stage = 'stop-application'
             $result.stoppedProcessCount = Stop-CountdownInstalledApplication -Layout $layout -TaskName $TaskName -Ports $Ports -TimeoutSeconds $StopTimeoutSeconds
 
+            # 从这里起失败都由回滚接手（#283），候选随回滚处理。
             $stage = 'write-transaction-marker'
-            Write-CountdownInstallMarker -Path $layout.MarkerPath -Manifest $manifest
+            $transaction = New-CountdownInstallTransactionState -FirstInstall $result.firstInstall
             $candidateOwned = $false
+            Write-CountdownInstallMarker -Path $layout.MarkerPath -Manifest $manifest
 
-            # 换程序之前的设置保护（#282）：这一段失败时撤回本次安装并重新启动旧版本，程序目录与现役设置都没被动过。
-            $transactionUndoable = $true
+            # 换程序之前的设置保护（#282）：这一段失败时程序目录与现役设置都没被动过，回滚只需重新启动旧版本。
             $stage = 'snapshot-settings'
-            $snapshotDirectory = Save-CountdownSettingsSnapshot -Layout $layout
+            $transaction.SnapshotDirectory = Save-CountdownSettingsSnapshot -Layout $layout
             $stage = 'settings-rehearsal'
-            $rehearsal = Invoke-CountdownSettingsRehearsal -Layout $layout -SnapshotDirectory $snapshotDirectory -Ports $Ports
+            $rehearsal = Invoke-CountdownSettingsRehearsal -Layout $layout -SnapshotDirectory $transaction.SnapshotDirectory -Ports $Ports
             $result.settingsRehearsal = $rehearsal.Report
             if ($null -ne $rehearsal.Rejection) { throw $rehearsal.Rejection }
-            $transactionUndoable = $false
 
             $stage = 'replace-program-directory'
-            if (Test-Path -LiteralPath $layout.ProgramDirectory) {
-                [void] (& $Ports.MoveDirectory $layout.ProgramDirectory $layout.PreviousDirectory)
-            }
-            [void] (& $Ports.MoveDirectory $layout.CandidateDirectory $layout.ProgramDirectory)
+            Switch-CountdownProgramDirectory -Layout $layout -Ports $Ports -RetrySeconds $FileLockRetrySeconds
+            $transaction.ProgramReplaced = $true
 
             $stage = 'register-login-task'
-            $result.loginTask = Register-CountdownLoginTask -TaskName $TaskName -ExecutablePath $layout.ExecutablePath -Session $session -Ports $Ports
+            $result.loginTask = Register-CountdownLoginTask -TaskName $TaskName -ExecutablePath $layout.ExecutablePath -Session $session -Ports $Ports -Transaction $transaction
 
             $stage = 'register-desktop-shortcut'
             $result.desktopShortcut = Register-CountdownDesktopShortcut -DesktopDirectory $desktopDirectory -ExecutablePath $layout.ExecutablePath -Ports $Ports
+            $transaction.ShortcutCreated = $result.desktopShortcut.action -eq 'created'
 
             $stage = 'start-and-wait-ready'
             if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
             if (Test-Path -LiteralPath $layout.RuntimeStatusPath) { [System.IO.File]::Delete($layout.RuntimeStatusPath) }
             [void] (& $Ports.StartTask $TaskName)
             $ready = Wait-CountdownStartupReady -Layout $layout -SessionId ([int] $session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+            # 新版本达到启动就绪：从此不再回滚，也不再用快照覆盖设置（用户可能已经在编辑）。
+            $transaction.NewVersionReady = $true
             $result.readyProcess = [ordered]@{ processId = [int] $ready.ProcessId; sessionId = [int] $ready.SessionId }
 
             $stage = 'commit'
-            [System.IO.File]::Delete($layout.MarkerPath)
-            if (Test-Path -LiteralPath $layout.PreviousDirectory) { [System.IO.Directory]::Delete($layout.PreviousDirectory, $true) }
-            if (Test-Path -LiteralPath $layout.TransactionDirectory) { [System.IO.Directory]::Delete($layout.TransactionDirectory, $true) }
+            Remove-CountdownInstallEntry -Path $layout.MarkerPath -RetrySeconds $FileLockRetrySeconds
+            Remove-CountdownInstallEntry -Path $layout.PreviousDirectory -RetrySeconds $FileLockRetrySeconds
+            Remove-CountdownInstallEntry -Path $layout.TransactionDirectory -RetrySeconds $FileLockRetrySeconds
             $result.succeeded = $true
         }
     }
@@ -893,10 +1180,11 @@ function Install-CountdownProgram {
             }
             catch { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；删除候选失败：$($_.Exception.Message)" }
         }
-        if ($transactionUndoable) {
-            $undo = Undo-CountdownInstallBeforeReplace -Layout $layout -TaskName $TaskName -Session $session -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds
+        if ($null -ne $transaction -and -not $transaction.NewVersionReady) {
+            $undo = Undo-CountdownInstall -Layout $layout -TaskName $TaskName -Session $session -DesktopDirectory $desktopDirectory -Transaction $transaction -Ports $Ports `
+                -ReadyTimeoutSeconds $ReadyTimeoutSeconds -StopTimeoutSeconds $StopTimeoutSeconds -RetrySeconds $FileLockRetrySeconds
+            $result.rollback = $undo.Report
             $result.restartedProcess = $undo.RestartedProcess
-            if ($undo.Problems.Count -gt 0) { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；$($undo.Problems -join '；')" }
         }
     }
     finally {
@@ -904,6 +1192,7 @@ function Install-CountdownProgram {
         if ($null -ne $layout) {
             try { $result.settings.after = Get-CountdownSettingsFingerprint -Path $layout.SettingsPath }
             catch { $result.settings.after = $null }
+            $result.transactionMarkerPresent = Test-Path -LiteralPath $layout.MarkerPath
         }
     }
     $result
@@ -994,6 +1283,23 @@ function New-CountdownInstallerWindowsPorts {
             param([string] $Name)
             Start-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop
         }
+        # 登录任务的整份定义（#283）：任务计划导出的 XML，含逐项比较不读的设置；任务不存在时返回空。只在要更新任务之前调用。
+        ExportTask = {
+            param([string] $Name)
+            try { [void] (Get-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop) }
+            catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return $null }; throw }
+            [string] (Export-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop)
+        }
+        # 回滚时把登录任务恢复成导出的定义：按 XML 整份重新注册（同名任务整份替换）；定义为空表示安装前没有这个任务，删除它。
+        # 与 RegisterTask 一样，非提升时能否替换、删除提升时注册的任务未实测，留给 #288 在真实任务上确认。
+        RestoreTask = {
+            param([string] $Name, [object] $Definition)
+            if ($null -eq $Definition) {
+                Unregister-ScheduledTask -TaskPath '\' -TaskName $Name -Confirm:$false -ErrorAction Stop
+                return
+            }
+            Register-ScheduledTask -TaskPath '\' -TaskName $Name -Xml ([string] $Definition) -Force -ErrorAction Stop | Out-Null
+        }
         # 交互用户的桌面目录（#281）：取该用户注册表 User Shell Folders 里 Desktop 的原值，只按该用户的注册表环境展开
         # （机器环境、该用户的 Environment 与 Volatile Environment，USERPROFILE 取 ProfileList 里的配置文件目录），不用当前进程的
         # 环境：经 SSH 运行时那不是桌面会话的环境（docs/办公室部署.md）。只读注册表，不访问桌面目录本身。
@@ -1073,6 +1379,11 @@ function New-CountdownInstallerWindowsPorts {
             $link.WorkingDirectory = [string] $Definition.WorkingDirectory
             $link.IconLocation = [string] $Definition.IconLocation
             $link.Save()
+        }
+        # 删除安装器自己的快捷方式（#283：首次安装回滚时删掉本次创建的那个；调用方删之前已重读确认它属于安装器）。
+        RemoveShortcut = {
+            param([string] $Path)
+            [System.IO.File]::Delete($Path)
         }
         MoveDirectory = {
             param([string] $Source, [string] $Destination)

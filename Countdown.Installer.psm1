@@ -705,7 +705,6 @@ function Install-CountdownProgram {
 }
 
 function New-CountdownInstallerWindowsPorts {
-    $field = { param($Object, [string] $Name) $property = $Object.PSObject.Properties[$Name]; if ($property) { $property.Value } }
     [pscustomobject]@{
         # 交互会话按 explorer.exe 所在的会话认：同一会话里的多个 explorer 进程算一个会话。只有一个会话时才读它的登录用户
         # （登记登录任务要用）；多个会话反正会被拒绝，读别的用户的进程属主可能没有权限，不去读。
@@ -733,9 +732,10 @@ function New-CountdownInstallerWindowsPorts {
             param([int] $ProcessId)
             Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
         }
-        # 与状态命令（#276）读出的任务同形。
+        # 与状态命令（#276）读出的任务同形。port 在别的作用域里被调用，用到的辅助块都定义在块内。
         GetTask = {
             param([string] $Name)
+            $field = { param($Object, [string] $Property) $value = $Object.PSObject.Properties[$Property]; if ($value) { $value.Value } }
             try { $task = Get-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop }
             catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return $null }; throw }
             $kind = { param($o) $o.CimClass.CimClassName -replace '^MSFT_Task|(Action|Trigger)$' }

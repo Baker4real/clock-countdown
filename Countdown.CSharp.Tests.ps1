@@ -4003,6 +4003,139 @@ exit 23
         '直接启动不把工作目录里的 adapter 当安装根，也不往那里写任何文件'
     Write-TestSegmentTiming -Name 'DirectProgramLaunch'
 
+    # #281 桌面快捷方式：安装器的登记函数用生产 port（WScript.Shell）在本次测试根下的临时桌面目录里创建 敏敏子倒计时.lnk，
+    # 指向上面的已安装 EXE；不碰真实桌面。打开快捷方式走 ShellExecute（与双击同一条路径：解析 .lnk 后启动目标）。
+    # 没有实例在运行时打开：启动的是已安装 EXE、不带参数，这个进程在安装根写出 window-ready 回执（悬浮窗首帧已渲染）。
+    # 隔离桌面没有 Shell 托盘，不带测试开关的实例在首帧之后按普通启动的规则因原生托盘失败退出（见 ordinary-no-shell 段），
+    # 所以“启动后常驻、托盘图标可用”留给真实桌面上的人工核对。已安装 EXE 作为主实例运行、悬浮窗收在托盘时再打开快捷方式：
+    # 第二个实例经单实例激活把已有的悬浮窗恢复为可见正常状态，收到确认后正常退出，悬浮窗仍只有一个。
+    function Start-DesktopShortcutForTest {
+        param([Parameter(Mandatory)] [string] $Path)
+
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new($Path)
+        $startInfo.UseShellExecute = $true
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if ($null -eq $process) {
+            throw "打开快捷方式没有得到它启动的进程：$Path"
+        }
+        $process
+    }
+
+    function Wait-DirectWindowReadyReceipt {
+        param(
+            [Parameter(Mandatory)] [string] $Path,
+            [Parameter(Mandatory)] [System.Diagnostics.Process] $Process
+        )
+
+        # 有界等待覆盖隔离桌面上的冷启动；进程先退出时再读一次回执就停。应用原子替换回执的瞬间读不到时下一轮再读。
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds(90)
+        while ($true) {
+            $exited = $Process.HasExited
+            $receiptText = try { Read-SharedTestEvidenceText -Path $Path } catch [System.IO.IOException], [System.UnauthorizedAccessException] { '' }
+            if (-not [string]::IsNullOrWhiteSpace($receiptText)) {
+                $receipt = try { $receiptText | ConvertFrom-Json } catch { $null }
+                if ($null -ne $receipt -and [string] $receipt.stage -eq 'window-ready' -and [int] $receipt.processId -eq $Process.Id) {
+                    return $receipt
+                }
+            }
+            if ($exited -or [DateTimeOffset]::UtcNow -ge $deadline) {
+                return $null
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
+    $shortcutDesktop = Join-Path $directLaunchRoot 'desktop'
+    New-Item -ItemType Directory -Path $shortcutDesktop | Out-Null
+    $shortcutInstallerModule = Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force -PassThru
+    $shortcutRegistration = & $shortcutInstallerModule {
+        param([string] $DesktopDirectory, [string] $ExecutablePath)
+        Register-CountdownDesktopShortcut -DesktopDirectory $DesktopDirectory -ExecutablePath $ExecutablePath -Ports (New-CountdownInstallerWindowsPorts)
+    } $shortcutDesktop $directProgramApplication
+    Assert-Equal 'created' ([string] $shortcutRegistration.action) '安装器在临时桌面上创建快捷方式'
+    $shortcutPath = Join-Path $shortcutDesktop ([string] $shortcutRegistration.name)
+    $directRuntimeStatusPath = Join-Path $directInstallRoot 'runtime-status.json'
+    $directDiagnosticPath = Join-Path $directInstallRoot 'logs\application.jsonl'
+    $shortcutFirstProcess = $null
+    $shortcutPrimaryProcess = $null
+    $shortcutSecondProcess = $null
+    $shortcutRefusingProxy = [System.Net.Sockets.Socket]::new(
+        [System.Net.Sockets.AddressFamily]::InterNetwork,
+        [System.Net.Sockets.SocketType]::Stream,
+        [System.Net.Sockets.ProtocolType]::Tcp)
+    try {
+        [System.IO.File]::Delete($directRuntimeStatusPath)
+        $shortcutFirstProcess = Start-DesktopShortcutForTest -Path $shortcutPath
+        $shortcutFirstImage = Get-CimInstance Win32_Process -Filter "ProcessId=$($shortcutFirstProcess.Id)" -OperationTimeoutSec 10 -ErrorAction Stop
+        Assert-Equal $true ([string]::Equals([string] $shortcutFirstImage.ExecutablePath, $directProgramApplication, [System.StringComparison]::OrdinalIgnoreCase)) `
+            "双击快捷方式启动的是已安装 EXE：$($shortcutFirstImage.ExecutablePath)"
+        Assert-Equal $true ([string]::Equals(([string] $shortcutFirstImage.CommandLine).Trim().Trim('"'), $directProgramApplication, [System.StringComparison]::OrdinalIgnoreCase)) `
+            "双击快捷方式不带参数启动：$($shortcutFirstImage.CommandLine)"
+        $shortcutFirstReceipt = Wait-DirectWindowReadyReceipt -Path $directRuntimeStatusPath -Process $shortcutFirstProcess
+        Assert-Equal $true ($null -ne $shortcutFirstReceipt) `
+            "双击快捷方式启动的进程渲染悬浮窗首帧并在安装根写出 window-ready 回执；回执=$((Read-SharedTestEvidenceText -Path $directRuntimeStatusPath) -replace '\s+', ' ')"
+        # 隔离桌面上它在首帧之后自行退出；有 Shell 托盘时它会常驻，这时才结束它（不在写日志途中强杀）。
+        if (-not $shortcutFirstProcess.WaitForExit(15000)) {
+            $shortcutFirstProcess.Kill()
+            [void] $shortcutFirstProcess.WaitForExit(5000)
+        }
+        Assert-Equal $true $shortcutFirstProcess.HasExited '主实例启动前，快捷方式打开的普通实例已结束'
+
+        [System.IO.File]::Delete($directRuntimeStatusPath)
+        $shortcutRefusingProxy.Bind([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Loopback, 0))
+        $shortcutPrimaryStart = [System.Diagnostics.ProcessStartInfo]::new($directProgramApplication)
+        $shortcutPrimaryStart.WorkingDirectory = $directProgramDirectory
+        $shortcutPrimaryStart.UseShellExecute = $false
+        $shortcutPrimaryStart.CreateNoWindow = $true
+        foreach ($argument in @('--exit-after-ready-for-test', '--instance-activation-test-state', 'Tray')) {
+            $shortcutPrimaryStart.ArgumentList.Add($argument)
+        }
+        foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
+            $shortcutPrimaryStart.Environment[$proxyVariable] = "http://127.0.0.1:$($shortcutRefusingProxy.LocalEndPoint.Port)"
+        }
+        [void] $shortcutPrimaryStart.Environment.Remove('NO_PROXY')
+        $shortcutPrimaryProcess = [System.Diagnostics.Process]::Start($shortcutPrimaryStart)
+        $shortcutPrimaryReceipt = Wait-DirectWindowReadyReceipt -Path $directRuntimeStatusPath -Process $shortcutPrimaryProcess
+        Assert-Equal $true ($null -ne $shortcutPrimaryReceipt -and -not $shortcutPrimaryProcess.HasExited) '已安装 EXE 作为主实例运行，悬浮窗收在托盘'
+
+        $shortcutSecondProcess = Start-DesktopShortcutForTest -Path $shortcutPath
+        Assert-Equal $true $shortcutSecondProcess.WaitForExit(30000) '应用已在运行时，双击快捷方式启动的第二个实例在有界期限内退出'
+        $shortcutSecondProcess.WaitForExit()
+        Assert-Equal 0 $shortcutSecondProcess.ExitCode '第二个实例收到单实例激活的确认后正常退出'
+        $shortcutPrimaryProcess.Refresh()
+        Assert-Equal $false $shortcutPrimaryProcess.HasExited '单实例激活之后主实例仍在运行'
+        $shortcutEntries = @(
+            Get-Content -LiteralPath $directDiagnosticPath -Encoding UTF8 |
+                ForEach-Object { $_ | ConvertFrom-Json })
+        $shortcutClientResult = @($shortcutEntries | Where-Object { $_.event -eq 'InstanceActivationSucceeded' -and $_.processId -eq $shortcutSecondProcess.Id })
+        $shortcutHandled = @($shortcutEntries | Where-Object { $_.event -eq 'InstanceActivationHandled' -and $_.processId -eq $shortcutPrimaryProcess.Id })
+        Assert-Equal 1 $shortcutClientResult.Count '快捷方式启动的第二个实例记录一次激活成功'
+        Assert-Equal $shortcutPrimaryProcess.Id ([int] $shortcutClientResult[0].activationServerProcessId) '激活确认来自运行中的主实例'
+        Assert-Equal 1 $shortcutHandled.Count '主实例处理一次激活请求'
+        Assert-Equal ([string] $shortcutClientResult[0].activationRequestId) ([string] $shortcutHandled[0].activationRequestId) '激活确认与主实例处理的是同一个请求'
+        Assert-Equal 'Tray|VisibleNormal|1' `
+            "$($shortcutHandled[0].activationStateBefore)|$($shortcutHandled[0].activationStateAfter)|$($shortcutHandled[0].interactiveFloatingWindowCount)" `
+            '单实例激活把收在托盘的悬浮窗恢复为可见正常状态，悬浮窗仍只有一个'
+    }
+    finally {
+        foreach ($shortcutProcess in @($shortcutFirstProcess, $shortcutSecondProcess, $shortcutPrimaryProcess)) {
+            if ($null -eq $shortcutProcess) {
+                continue
+            }
+            try {
+                if (-not $shortcutProcess.HasExited) {
+                    $shortcutProcess.Kill()
+                    [void] $shortcutProcess.WaitForExit(5000)
+                }
+            }
+            finally {
+                $shortcutProcess.Dispose()
+            }
+        }
+        $shortcutRefusingProxy.Dispose()
+    }
+    Write-TestSegmentTiming -Name 'DesktopShortcutLaunch'
+
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash
     Import-Module -Name $settingsModule -Force

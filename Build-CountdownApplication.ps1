@@ -449,11 +449,13 @@ Write-BuildSegmentTiming -Name 'WindowVerificationPublish'
 Get-Item -LiteralPath $application, $verification, $windowVerification | Select-Object FullName, Length, LastWriteTime
 $assetResults
 # 仅所有构建与资产校验成功后写出，套件据此区分实际全量收尾和增量开发。
+# 部署入口（#285）只送套件测过的那份构建输出：部署时程序目录的聚合哈希要等于这里记下的值。
 $buildReceipt = [ordered]@{
     SchemaVersion = 1
     Mode = if ($Clean) { 'CleanR2R' } elseif ($Incremental) { 'Incremental' } else { 'R2RWithoutClean' }
     Clean = [bool]$Clean
     ReadyToRun = $true
     ApplicationDllSha256 = (Get-FileHash -LiteralPath (Join-Path $applicationOutput 'MinminCountdown.dll') -Algorithm SHA256).Hash
+    PayloadAggregateSha256 = $payloadAggregate
 }
 Write-Output ('COUNTDOWN_BUILD_RECEIPT=' + ($buildReceipt | ConvertTo-Json -Compress))

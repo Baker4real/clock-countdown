@@ -1,6 +1,7 @@
 # Countdown.Core.Tests.ps1 的 DeployEntry 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
-# #285 新部署入口的成功路径：主机的远端执行入口与传输入口换成假 port，办公室是一个临时文件夹，不连接任何设备。
+# 新部署入口的成功路径（#285）与拒绝、异常路径（#286）：主机的远端执行入口与传输入口换成假 port，办公室是一个临时文件夹，
+# 不连接任何设备。
 # 夹具是一个临时 Git 仓库：main 已推送到本地裸仓库，app\ 与 logs\ 被忽略；app\ 里是一份假的构建输出与载荷清单，
 # logs\suite-runs\ 里有同一提交全部必过阶段通过、干净构建回执带聚合哈希的套件记录。假远端执行在本进程里运行部署端送来的
 # 脚本，把假办公室的 Windows port（与安装器测试同形：交互会话带 SID，任务按 SID 记用户，任务启动时起一个假进程并写出
@@ -75,33 +76,78 @@ function New-CountdownDeployTestRepository {
     }
     [System.IO.File]::WriteAllText((Join-Path $root 'app\published-payload.json'), ($manifest | ConvertTo-Json -Depth 4), $deployUtf8)
 
-    $suiteRunId = '20261114T090000000-0a1b2c3d'
-    $logDirectory = Join-Path $root 'logs\suite-runs'
+    $repository = [pscustomobject]@{ Root = $root; Head = $head; SuiteRunId = '20261114T090000000-0a1b2c3d'; SuiteRunPath = $null }
+    $repository.SuiteRunPath = Write-CountdownDeployTestSuiteRun -Repository $repository -RunId $repository.SuiteRunId
+    $repository
+}
+
+# 一份套件记录，与低影响启动器写的 run.json 同形。默认合格：同一提交、本 checkout、开跑与收尾都干净、必过阶段全部通过、
+# Build 阶段的回执是带聚合哈希的干净构建（CleanR2R）。参数各改一处：记录的提交、跑了哪些阶段、某阶段的退出码。
+# IncrementalBuild 阶段按启动器的做法写增量构建回执（Mode Incremental、Clean false）。
+function Write-CountdownDeployTestSuiteRun {
+    param(
+        [Parameter(Mandatory)] [object] $Repository,
+        [Parameter(Mandatory)] [string] $RunId,
+        [string] $Commit = $Repository.Head,
+        [string[]] $Stages = @(Get-CountdownRequiredSuiteStage),
+        [hashtable] $StageExitCodes = @{},
+        [string] $ReceiptAggregate = $deployAggregate
+    )
+
+    $logDirectory = Join-Path $Repository.Root 'logs\suite-runs'
     New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+    $stageRecords = @(foreach ($stage in $Stages) {
+            $exitCode = if ($StageExitCodes.ContainsKey($stage)) { [int] $StageExitCodes[$stage] } else { 0 }
+            [ordered]@{
+                Stage = $stage
+                ExitCode = $exitCode
+                Status = if ($exitCode -eq 0) { 'Completed' } else { 'Failed' }
+                ElapsedSeconds = 60
+                BuildReceipt = switch ($stage) {
+                    'Build' { [ordered]@{ SchemaVersion = 1; Mode = 'CleanR2R'; Clean = $true; ReadyToRun = $true; ApplicationDllSha256 = $deployBuildFiles[1].Sha256; PayloadAggregateSha256 = $ReceiptAggregate } }
+                    'IncrementalBuild' { [ordered]@{ SchemaVersion = 1; Mode = 'Incremental'; Clean = $false; ReadyToRun = $true; ApplicationDllSha256 = $deployBuildFiles[1].Sha256; PayloadAggregateSha256 = $ReceiptAggregate } }
+                    default { $null }
+                }
+            }
+        })
+    $passed = @($stageRecords | Where-Object { $_.ExitCode -ne 0 }).Count -eq 0
     $run = [ordered]@{
         SchemaVersion = 1
-        RunId = $suiteRunId
-        RepositoryRoot = $root
+        RunId = $RunId
+        RepositoryRoot = $Repository.Root
         LogDirectory = $logDirectory
-        Status = 'Completed'
-        ExitCode = 0
+        Status = if ($passed) { 'Completed' } else { 'Failed' }
+        ExitCode = if ($passed) { 0 } else { 1 }
         StartedAtUtc = '2026-11-14T09:00:00.0000000Z'
         FinishedAtUtc = '2026-11-14T09:25:00.0000000Z'
-        Stages = @(foreach ($stage in @(Get-CountdownRequiredSuiteStage)) {
-                [ordered]@{
-                    Stage = $stage
-                    ExitCode = 0
-                    Status = 'Completed'
-                    ElapsedSeconds = 60
-                    BuildReceipt = if ($stage -eq 'Build') {
-                        [ordered]@{ SchemaVersion = 1; Mode = 'CleanR2R'; Clean = $true; ReadyToRun = $true; ApplicationDllSha256 = $deployBuildFiles[1].Sha256; PayloadAggregateSha256 = $deployAggregate }
-                    } else { $null }
-                }
-            })
-        Source = [ordered]@{ Commit = $head; CleanAtStart = $true; CommitAtEnd = $head; CleanAtEnd = $true }
+        Stages = $stageRecords
+        Source = [ordered]@{ Commit = $Commit; CleanAtStart = $true; CommitAtEnd = $Commit; CleanAtEnd = $true }
     }
-    [System.IO.File]::WriteAllText((Join-Path $logDirectory "$suiteRunId-run.json"), ($run | ConvertTo-Json -Depth 6), $deployUtf8)
-    [pscustomobject]@{ Root = $root; Head = $head; SuiteRunId = $suiteRunId }
+    $path = Join-Path $logDirectory "$RunId-run.json"
+    [System.IO.File]::WriteAllText($path, ($run | ConvertTo-Json -Depth 6), $deployUtf8)
+    $path
+}
+
+# 换上一组套件记录跑一次部署：合格记录先挪出 logs\，跑完把这组记录也挪出去，合格记录放回原处。
+function Invoke-CountdownDeployTestWithSuiteRuns {
+    param(
+        [Parameter(Mandatory)] [string] $Label,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [hashtable[]] $Runs
+    )
+
+    $setAside = Join-Path $deployTestRoot ('suite-runs-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $setAside -Force | Out-Null
+    $keptPath = Join-Path $setAside 'kept-run.json'
+    [System.IO.File]::Move($deployRepo.SuiteRunPath, $keptPath)
+    $written = [System.Collections.Generic.List[string]]::new()
+    try {
+        foreach ($run in $Runs) { $written.Add((Write-CountdownDeployTestSuiteRun -Repository $deployRepo @run)) }
+        Invoke-CountdownDeployTest -Label $Label
+    }
+    finally {
+        foreach ($path in $written) { [System.IO.File]::Move($path, (Join-Path $setAside ([System.IO.Path]::GetFileName($path)))) }
+        [System.IO.File]::Move($keptPath, $deployRepo.SuiteRunPath)
+    }
 }
 
 # 一台假办公室（暂存目录与安装根）和这次部署的本地记录根。
@@ -128,7 +174,8 @@ function New-CountdownDeployTestCase {
         Calls = [System.Collections.Generic.List[string]]::new()
         ReadOnlyChanges = [System.Collections.Generic.List[string]]::new()
         MaxEncodedLength = 0
-        BeforeRead = $null
+        # 假远端的应答钩子，按“读/写/传输 + 第几次”登记（read1 是第一次只读调用，write1 是第一次写操作，transfer1 是第一次传输）。
+        Responses = @{}
     }
 }
 
@@ -221,36 +268,45 @@ function Get-CountdownDeployTestOfficeState {
 # 远端前缀注入执行目标标记；办公室上没有脚本文件，脚本包进脚本块运行，远端的其余输出流不进部署端；返回值另带主机名与账号，
 # 部署端只能取 ExitCode 与 Output。传输：建出远端目录，送到办公室上按运行编号命名的暂存目录，核对远端 SHA-256，
 # 在主机的账本目录记账；摘要另带远端主机名，与主机的传输入口一样。
+# 用例登记了应答钩子时，钩子拿到“在假办公室上照常运行”的脚本块，自己决定运不运行、回什么：不运行而直接回一份应答，
+# 是罐装的远端结果（办公室上什么都没发生）；运行之后丢掉应答、回连接断开，是连接在途中断开。
 $deployHostPorts = [pscustomobject]@{
     InvokeRemoteScript = {
         param([string] $ScriptPath, [bool] $WriteOperation)
         $deployCase.Calls.Add($(if ($WriteOperation) { 'remote-write' } else { 'remote-read' }))
-        $source = [System.IO.File]::ReadAllText($ScriptPath)
-        # 远端执行入口把整条命令限制在 30000 字符内（UTF-16 的 Base64 加上约 1000 字符的前缀）。
-        $encodedLength = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes('& {' + $source.TrimEnd() + "`n}")).Length
-        $deployCase.MaxEncodedLength = [Math]::Max($deployCase.MaxEncodedLength, $encodedLength)
-        $tokens = $null
-        $errors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref] $tokens, [ref] $errors)
-        $first = @($ast.EndBlock.Statements | Select-Object -First 1)
-        if ($errors.Count -gt 0 -or ($WriteOperation -and ($first.Count -ne 1 -or $first[0] -isnot [System.Management.Automation.Language.IfStatementAst] -or
-                        -not $first[0].Extent.Text.StartsWith("if (`$env:CODEX_REMOTE_EXECUTION_TARGET -ne 'office')")))) {
-            return [pscustomobject]@{ ExitCode = 2; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel }
+        $runOnOffice = {
+            $source = [System.IO.File]::ReadAllText($ScriptPath)
+            # 远端执行入口把整条命令限制在 30000 字符内（UTF-16 的 Base64 加上约 1000 字符的前缀）。
+            $encodedLength = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes('& {' + $source.TrimEnd() + "`n}")).Length
+            $deployCase.MaxEncodedLength = [Math]::Max($deployCase.MaxEncodedLength, $encodedLength)
+            $tokens = $null
+            $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref] $tokens, [ref] $errors)
+            $first = @($ast.EndBlock.Statements | Select-Object -First 1)
+            if ($errors.Count -gt 0 -or ($WriteOperation -and ($first.Count -ne 1 -or $first[0] -isnot [System.Management.Automation.Language.IfStatementAst] -or
+                            -not $first[0].Extent.Text.StartsWith("if (`$env:CODEX_REMOTE_EXECUTION_TARGET -ne 'office')")))) {
+                return [pscustomobject]@{ ExitCode = 2; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel }
+            }
+            $before = Get-CountdownDeployTestOfficeState
+            $exitCode = 0
+            $previousTarget = $env:CODEX_REMOTE_EXECUTION_TARGET
+            $env:CODEX_REMOTE_EXECUTION_TARGET = 'office'
+            try { $output = @(& ([scriptblock]::Create($source)) -Port $deployWindowsPorts -LockName $deployLockName 2>$null 3>$null 4>$null 5>$null 6>$null) }
+            catch { $output = @(); $exitCode = 1 }
+            finally { $env:CODEX_REMOTE_EXECUTION_TARGET = $previousTarget }
+            if (-not $WriteOperation -and $before -ne (Get-CountdownDeployTestOfficeState)) { $deployCase.ReadOnlyChanges.Add($ScriptPath) }
+            [pscustomobject]@{ ExitCode = $exitCode; Output = (@($output | ForEach-Object { [string] $_ }) -join "`n"); Host = $deployHostSentinel; User = $deployAccountSentinel }
         }
-        if (-not $WriteOperation -and $null -ne $deployCase.BeforeRead) { & $deployCase.BeforeRead }
-        $before = Get-CountdownDeployTestOfficeState
-        $exitCode = 0
-        $previousTarget = $env:CODEX_REMOTE_EXECUTION_TARGET
-        $env:CODEX_REMOTE_EXECUTION_TARGET = 'office'
-        try { $output = @(& ([scriptblock]::Create($source)) -Port $deployWindowsPorts -LockName $deployLockName 2>$null 3>$null 4>$null 5>$null 6>$null) }
-        catch { $output = @(); $exitCode = 1 }
-        finally { $env:CODEX_REMOTE_EXECUTION_TARGET = $previousTarget }
-        if (-not $WriteOperation -and $before -ne (Get-CountdownDeployTestOfficeState)) { $deployCase.ReadOnlyChanges.Add($ScriptPath) }
-        [pscustomobject]@{ ExitCode = $exitCode; Output = (@($output | ForEach-Object { [string] $_ }) -join "`n"); Host = $deployHostSentinel; User = $deployAccountSentinel }
+        $kind = if ($WriteOperation) { 'write' } else { 'read' }
+        $hook = $deployCase.Responses["$kind$(@($deployCase.Calls | Where-Object { $_ -eq "remote-$kind" }).Count)"]
+        if ($null -ne $hook) { return & $hook $runOnOffice }
+        & $runOnOffice
     }
     SendFile = {
         param([string] $SourcePath, [string] $RemotePath, [string] $ExpectedSha256, [string] $AttemptId)
         $deployCase.Calls.Add('transfer')
+        $hook = $deployCase.Responses["transfer$(@($deployCase.Calls | Where-Object { $_ -eq 'transfer' }).Count)"]
+        if ($null -ne $hook) { return & $hook }
         New-Item -ItemType Directory -Path (Split-Path -Parent $RemotePath) -Force | Out-Null
         [System.IO.File]::Copy($SourcePath, $RemotePath)
         $remoteSha256 = (Get-FileHash -LiteralPath $RemotePath -Algorithm SHA256).Hash
@@ -282,11 +338,44 @@ function Invoke-CountdownDeployTest {
     $text = @($output | ForEach-Object { [string] $_ })
     Assert-Equal 1 $text.Count "Deploy writes exactly one item to standard output: $Label"
     $json = $text -join "`n"
-    [pscustomobject]@{
+    $run = [pscustomobject]@{
         Text = $json
         Stderr = $errorWriter.ToString()
         Result = try { $json | ConvertFrom-Json -DateKind String } catch { $null }
     }
+    # 标准错误的最后一行是结论：与结果 JSON 同一个结论，有下一步提示时一并写出，人看到的和程序读到的是同一件事。
+    if (-not $StatusOnly) {
+        $conclusion = [regex]::Match($run.Stderr, '(?m)^\[deploy\] \d\d:\d\d:\d\d 结果 (?<outcome>[a-z-]+)(?<rest>.*)$')
+        Assert-Equal ([string] $run.Result.outcome) $conclusion.Groups['outcome'].Value "The conclusion on standard error states the result's outcome: $Label"
+        if ($run.Result.nextStep) {
+            Assert-Equal $true $conclusion.Groups['rest'].Value.Contains([string] $run.Result.nextStep) "The conclusion on standard error repeats the next step: $Label"
+        }
+    }
+    $run
+}
+
+# 远端安装脚本的罐装应答：包内安装器报告启动就绪超时，带 #283 的回滚结果 rollback.outcome（不给就是还没有这个字段的安装器）。
+# 假远端直接回它，不在假办公室上运行安装器。
+function New-CountdownDeployTestInstallFailure {
+    param([AllowNull()] [string] $RollbackOutcome)
+
+    $installer = [ordered]@{
+        schemaVersion = 1
+        succeeded = $false
+        checkOnly = $false
+        failedStage = 'start-and-wait-ready'
+        reason = 'startup-not-ready'
+        error = '30 秒内没有达到启动就绪：运行状态回执尚未出现。'
+    }
+    if ($RollbackOutcome) { $installer.rollback = [ordered]@{ outcome = $RollbackOutcome } }
+    $envelope = [ordered]@{
+        packageVerified = $true
+        installerStarted = $true
+        installer = $installer | ConvertTo-Json -Depth 4 -EscapeHandling EscapeNonAscii
+        stagingRemoved = $true
+        error = $null
+    }
+    [pscustomobject]@{ ExitCode = 0; Output = ($envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii); Host = $deployHostSentinel; User = $deployAccountSentinel }
 }
 
 function Get-CountdownDeployTestTree {
@@ -315,6 +404,29 @@ function Assert-CountdownDeployNoLeak {
     Assert-Equal 0 $leaks.Count "$Name carries no host name, account or SID"
 }
 
+# 连接远端之前的拒绝（#286）：结果是 rejected、不是成功，原因类别与期望一致，错误写明缺的每一项；办公室没有收到任何调用。
+# 本机预检拒绝时不写本地记录（打包时的拒绝在预检通过之后，照常写记录）。
+function Assert-CountdownDeployRejected {
+    param(
+        [Parameter(Mandatory)] [object] $Deploy,
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string[]] $Names,
+        [Parameter(Mandatory)] [string] $Label,
+        [string] $FailedStep = 'preflight'
+    )
+
+    $result = $Deploy.Result
+    Assert-Equal "rejected|False|$FailedStep|$Reason" "$($result.outcome)|$($result.succeeded)|$($result.failedStep)|$($result.reason)" "$Label is rejected with its reason: $($result.error)"
+    foreach ($name in $Names) {
+        Assert-Equal $true ([string] $result.error).Contains($name) "$Label names what is missing: $name"
+    }
+    Assert-Equal '' ($deployCase.Calls -join ',') "$Label is rejected before any remote call or transfer"
+    if ($FailedStep -eq 'preflight') {
+        Assert-Equal $false (Test-Path -LiteralPath $deployCase.RecordRoot) "$Label writes no local record"
+    }
+    Assert-CountdownDeployNoLeak -Text $Deploy.Text -Name "$Label standard output"
+}
+
 try {
     New-Item -ItemType Directory -Path $deployTestRoot -Force | Out-Null
     $deployRepo = New-CountdownDeployTestRepository
@@ -326,7 +438,8 @@ try {
     $deployResult = $deployed.Result
     Assert-Equal 'deploy' ([string] $deployResult.mode) 'Deploy reports the deploy mode'
     Assert-Equal $true ([bool] $deployResult.succeeded) "Deploy succeeds: $($deployResult.failedStep) $($deployResult.error)"
-    Assert-Equal $true ($null -eq $deployResult.failedStep) 'A successful deploy names no failed step'
+    Assert-Equal 'deployed' ([string] $deployResult.outcome) 'A successful deploy reports the deployed outcome'
+    Assert-Equal $true ($null -eq $deployResult.failedStep -and $null -eq $deployResult.reason) 'A successful deploy names no failed step and no reason'
     Assert-Equal $deployRepo.Head ([string] $deployResult.commit) 'Deploy reports the pushed main commit it deployed'
     Assert-Equal $deployRepo.SuiteRunId ([string] $deployResult.suiteRun.runId) 'Deploy names the suite run that tested the shipped build output'
     Assert-Equal $deployAggregate ([string] $deployResult.buildOutput.payloadAggregateSha256) 'Deploy reports the aggregate hash of the build output it shipped'
@@ -334,6 +447,7 @@ try {
     # 各步骤按顺序发生：办公室依次看到只读探测、传输、写操作安装、只读状态读取；进度在标准错误上逐步报告。
     Assert-Equal 'remote-read,transfer,remote-write,remote-read' ($deployCase.Calls -join ',') 'The office sees the read-only probe, the transfer, the install as a write and then a read-only status read'
     Assert-Equal 0 $deployCase.ReadOnlyChanges.Count 'Read-only remote calls change nothing on the office'
+    Assert-Equal 'missing|False' "$($deployResult.statusBefore.manifest)|$($deployResult.statusBefore.running)" 'The probe reads the office status before installing: nothing installed yet'
     Assert-Equal $true ($deployCase.MaxEncodedLength -gt 0 -and $deployCase.MaxEncodedLength -le 29000) "Every remote script fits the remote entry's encoded command limit: $($deployCase.MaxEncodedLength)"
     $deployProgressSteps = @([regex]::Matches($deployed.Stderr, '(?m)^\[deploy\] \d\d:\d\d:\d\d \d+/\d+ (?<step>[a-z]+) ') | ForEach-Object { $_.Groups['step'].Value })
     Assert-Equal 'preflight,package,probe,transfer,install,status,record' ($deployProgressSteps -join ',') 'Deploy reports each step on standard error in order'
@@ -400,14 +514,225 @@ try {
     Assert-CountdownDeployNoLeak -Text $deployStatusOnly.Text -Name 'Status-only standard output'
     Assert-CountdownDeployNoLeak -Text $deployStatusOnly.Stderr -Name 'Status-only progress'
 
+    # 当前提交已在运行（#286）：再部署一次，探测时读到的状态显示 HEAD 已在运行，直接报告并退出：不传输、不重复安装。
+    $deployOfficeBefore = Get-CountdownDeployTestOfficeState
+    $deployCase.Calls.Clear()
+    $deployAgain = Invoke-CountdownDeployTest -Label 'commit already running'
+    Assert-Equal 'already-running|True' "$($deployAgain.Result.outcome)|$($deployAgain.Result.succeeded)" "Deploying the commit already running reports it as such: $($deployAgain.Result.failedStep) $($deployAgain.Result.error)"
+    Assert-Equal $true ($null -eq $deployAgain.Result.failedStep -and $null -eq $deployAgain.Result.transfer -and $null -eq $deployAgain.Result.install) 'Deploying the commit already running neither transfers nor installs'
+    Assert-Equal 'remote-read' ($deployCase.Calls -join ',') 'Deploying the commit already running makes one read-only remote call'
+    Assert-Equal $deployOfficeBefore (Get-CountdownDeployTestOfficeState) 'Deploying the commit already running changes nothing on the office'
+    Assert-Equal "$($deployRepo.Head)|True|7001" "$($deployAgain.Result.statusBefore.commit)|$($deployAgain.Result.statusBefore.running)|$(@($deployAgain.Result.statusBefore.processes | ForEach-Object { [int] $_.processId }) -join ',')" 'The report carries the status read that shows the commit running'
+    Assert-Equal 'already-running' ([string] ([System.IO.File]::ReadAllText([string] $deployAgain.Result.recordPath) | ConvertFrom-Json).outcome) 'The deployment record says the commit was already running'
+
     # 成功只看安装后的状态读取：安装器报告成功，但读状态时应用已经退出，部署不报告成功。
     $deployCase = New-CountdownDeployTestCase -Name 'exited'
-    $deployCase.BeforeRead = { if ($deployCase.Calls.Contains('remote-write')) { $deployCase.Processes = @() } }
+    $deployCase.Responses['read2'] = { param($Run) $deployCase.Processes = @(); & $Run }
     $deployExited = Invoke-CountdownDeployTest -Label 'application exited before the status read'
     Assert-Equal $true ([bool] $deployExited.Result.install.succeeded) 'The installer reports success before the application exits'
     Assert-Equal $false ([bool] $deployExited.Result.succeeded) 'Deploy does not report success when the status read finds the application not running'
     Assert-Equal 'status' ([string] $deployExited.Result.failedStep) 'Deploy names the status read as the failed step'
     Assert-Equal 'process' (@($deployExited.Result.statusMismatches) -join ',') 'Deploy names the missing process as the status mismatch'
+    Assert-Equal 'failed|status-mismatch' "$($deployExited.Result.outcome)|$($deployExited.Result.reason)" 'A status mismatch is a failure'
+
+    # 安装器报告成功，但状态读取时办公室上的提交不是 HEAD，或已安装 EXE 的哈希不对：部署都不报告成功，并写明哪一项不一致。
+    $deployStatusMismatches = [ordered]@{
+        commit = {
+            $manifestPath = Join-Path $deployCase.InstallRoot 'app\published-payload.json'
+            $manifest = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+            $manifest.commit = '0123456789abcdef0123456789abcdef01234567'
+            [System.IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 4), $deployUtf8)
+        }
+        exe = { [System.IO.File]::WriteAllText((Join-Path $deployCase.InstallRoot 'app\MinminCountdown.exe'), 'deploy exe replaced', $deployUtf8) }
+    }
+    foreach ($deployMismatch in $deployStatusMismatches.Keys) {
+        $deployCase = New-CountdownDeployTestCase -Name "mismatch-$deployMismatch"
+        $deployCase.Responses['read2'] = { param($Run) & $deployStatusMismatches[$deployMismatch]; & $Run }
+        $deployMismatched = Invoke-CountdownDeployTest -Label "status $deployMismatch mismatch"
+        Assert-Equal $true ([bool] $deployMismatched.Result.install.succeeded) "The installer reports success before the $deployMismatch changes"
+        Assert-Equal "failed|False|status|status-mismatch|$deployMismatch" "$($deployMismatched.Result.outcome)|$($deployMismatched.Result.succeeded)|$($deployMismatched.Result.failedStep)|$($deployMismatched.Result.reason)|$(@($deployMismatched.Result.statusMismatches) -join ',')" "Deploy does not report success when the status read disagrees on the $deployMismatch"
+    }
+
+    # 安装器报告成功，但安装后的状态读取没有读到（连接断开）：确认不了办公室在运行什么，结果是未知，提示先查状态。
+    $deployCase = New-CountdownDeployTestCase -Name 'status-unreadable'
+    $deployCase.Responses['read2'] = { param($Run) [pscustomobject]@{ ExitCode = 255; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel } }
+    $deployStatusLost = Invoke-CountdownDeployTest -Label 'status read lost after the install'
+    Assert-Equal 'unknown|status|status-unreadable|True' "$($deployStatusLost.Result.outcome)|$($deployStatusLost.Result.failedStep)|$($deployStatusLost.Result.reason)|$($null -eq $deployStatusLost.Result.succeeded)" "A status read lost after a reported install leaves the result unknown: $($deployStatusLost.Result.error)"
+    Assert-Equal $true ([string] $deployStatusLost.Result.nextStep).Contains('-StatusOnly') 'An unreadable status after the install tells to read the status first'
+
+    # 本机预检的拒绝（#286）：每种情况都在连接远端之前拒绝并写明缺什么。夹具每次只改一处，用完放回原样。
+    # 工作树不干净：有一个未跟踪的文件。
+    $deployCase = New-CountdownDeployTestCase -Name 'dirty'
+    $deployDirtyPath = Join-Path $deployRepo.Root 'deploy-dirty-note.txt'
+    [System.IO.File]::WriteAllText($deployDirtyPath, 'uncommitted', $deployUtf8)
+    try { $deployDirty = Invoke-CountdownDeployTest -Label 'dirty work tree' }
+    finally { [System.IO.File]::Move($deployDirtyPath, (Join-Path $deployTestRoot 'deploy-dirty-note.txt')) }
+    Assert-CountdownDeployRejected -Deploy $deployDirty -Reason 'dirty-work-tree' -Names @('deploy-dirty-note.txt') -Label 'A dirty work tree'
+
+    # 提交未推送：main 上多了一个只在本地的提交。
+    $deployCase = New-CountdownDeployTestCase -Name 'unpushed'
+    [void] (Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('commit', '--quiet', '--allow-empty', '-m', 'local only'))
+    try {
+        $deployLocalHead = (@(Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('rev-parse', '--verify', 'HEAD')) -join '').Trim()
+        $deployUnpushed = Invoke-CountdownDeployTest -Label 'unpushed commit'
+    }
+    finally { [void] (Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('reset', '--quiet', '--soft', 'HEAD~1')) }
+    Assert-CountdownDeployRejected -Deploy $deployUnpushed -Reason 'not-pushed' -Names @($deployLocalHead.Substring(0, 7), $deployRepo.Head.Substring(0, 7)) -Label 'An unpushed commit'
+
+    # 缺少套件证据：只有别的提交的套件记录，HEAD 没有。
+    $deployCase = New-CountdownDeployTestCase -Name 'no-suite-run'
+    $deployNoSuiteRun = Invoke-CountdownDeployTestWithSuiteRuns -Label 'missing suite evidence' -Runs @(
+        @{ RunId = '20261114T080000000-00000000'; Commit = '0123456789abcdef0123456789abcdef01234567' })
+    Assert-CountdownDeployRejected -Deploy $deployNoSuiteRun -Reason 'suite-evidence-missing' -Names @($deployRepo.Head.Substring(0, 7), 'Invoke-CountdownSuiteLowImpact.ps1') -Label 'Missing suite evidence'
+
+    # 必过阶段不全：这一轮没跑 SourceValidation，CSharp 以 75（参考基线待重拍）退出；拒绝时两项都写明，不只报第一项。
+    $deployCase = New-CountdownDeployTestCase -Name 'stages'
+    $deployStagesRunId = '20261114T100000000-11111111'
+    $deployStages = Invoke-CountdownDeployTestWithSuiteRuns -Label 'incomplete required stages' -Runs @(
+        @{ RunId = $deployStagesRunId; Stages = @('Build', 'Core', 'CSharp', 'InstallValidate'); StageExitCodes = @{ CSharp = 75 } })
+    Assert-CountdownDeployRejected -Deploy $deployStages -Reason 'required-stages-incomplete' -Names @($deployStagesRunId, 'SourceValidation', 'CSharp', '75') -Label 'Incomplete required stages'
+
+    # 构建回执不是干净构建：这一轮用增量构建（IncrementalBuild，回执 Mode Incremental）代替了干净构建 Build，其余必过阶段都通过。
+    $deployCase = New-CountdownDeployTestCase -Name 'incremental'
+    $deployIncremental = Invoke-CountdownDeployTestWithSuiteRuns -Label 'incremental build receipt' -Runs @(
+        @{ RunId = '20261114T110000000-22222222'; Stages = @('IncrementalBuild', 'Core', 'CSharp', 'SourceValidation', 'InstallValidate') })
+    Assert-CountdownDeployRejected -Deploy $deployIncremental -Reason 'build-receipt-not-clean' -Names @('IncrementalBuild', 'Incremental', 'CleanR2R') -Label 'A build receipt that is not a clean build'
+
+    # 聚合哈希与回执不一致：套件测过的是另一份构建输出（回执记的聚合哈希不同），程序目录不是那一份。
+    $deployCase = New-CountdownDeployTestCase -Name 'aggregate'
+    $deployOtherAggregate = 'AB' * 32
+    $deployAggregateRunId = '20261114T120000000-33333333'
+    $deployAggregateMismatch = Invoke-CountdownDeployTestWithSuiteRuns -Label 'aggregate mismatch' -Runs @(
+        @{ RunId = $deployAggregateRunId; ReceiptAggregate = $deployOtherAggregate })
+    Assert-CountdownDeployRejected -Deploy $deployAggregateMismatch -Reason 'aggregate-mismatch' -Names @($deployAggregateRunId, $deployAggregate.Substring(0, 12), $deployOtherAggregate.Substring(0, 12)) -Label 'An aggregate hash that differs from the receipt'
+
+    # 构建输出被改动：载荷清单和聚合哈希都还对，但程序目录里的一个文件在套件之后变了；打包时边写边核对，仍在连接远端之前拒绝。
+    $deployCase = New-CountdownDeployTestCase -Name 'modified'
+    $deployModifiedPath = Join-Path $deployRepo.Root $deployBuildFiles[1].Path
+    [System.IO.File]::WriteAllText($deployModifiedPath, 'deploy dll tampered', $deployUtf8)
+    try { $deployModified = Invoke-CountdownDeployTest -Label 'modified build output' }
+    finally { [System.IO.File]::WriteAllText($deployModifiedPath, $deployBuildFiles[1].Text, $deployUtf8) }
+    Assert-CountdownDeployRejected -Deploy $deployModified -Reason 'build-output-modified' -Names @($deployBuildFiles[1].Path) -Label 'A build output file changed after the suite' -FailedStep 'package'
+
+    # 其余预检条件同样在连接远端之前拒绝并写明缺什么：不在 main 上；本机没有构建输出；构建输出不是 HEAD 构建的。
+    $deployCase = New-CountdownDeployTestCase -Name 'side-branch'
+    [void] (Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('switch', '--quiet', '-c', 'deploy-side'))
+    try { $deploySideBranch = Invoke-CountdownDeployTest -Label 'not on main' }
+    finally { [void] (Invoke-CountdownDeployTestGit -Root $deployRepo.Root -Arguments @('switch', '--quiet', 'main')) }
+    Assert-CountdownDeployRejected -Deploy $deploySideBranch -Reason 'not-main' -Names @('deploy-side') -Label 'A branch other than main'
+
+    $deployManifestPath = Join-Path $deployRepo.Root 'app\published-payload.json'
+    $deployManifestBytes = [System.IO.File]::ReadAllBytes($deployManifestPath)
+    $deployCase = New-CountdownDeployTestCase -Name 'no-build-output'
+    [System.IO.File]::Move($deployManifestPath, (Join-Path $deployTestRoot 'published-payload.json.kept'))
+    try { $deployNoBuildOutput = Invoke-CountdownDeployTest -Label 'no build output' }
+    finally { [System.IO.File]::Move((Join-Path $deployTestRoot 'published-payload.json.kept'), $deployManifestPath) }
+    Assert-CountdownDeployRejected -Deploy $deployNoBuildOutput -Reason 'build-output-missing' -Names @('published-payload.json') -Label 'Missing local build output'
+
+    $deployCase = New-CountdownDeployTestCase -Name 'other-build'
+    $deployOtherBuild = [System.IO.File]::ReadAllText($deployManifestPath) | ConvertFrom-Json
+    $deployOtherBuild.commit = "$($deployRepo.Head)-dirty"
+    [System.IO.File]::WriteAllText($deployManifestPath, ($deployOtherBuild | ConvertTo-Json -Depth 4), $deployUtf8)
+    try { $deployOtherBuildRun = Invoke-CountdownDeployTest -Label 'build output from a dirty tree' }
+    finally { [System.IO.File]::WriteAllBytes($deployManifestPath, $deployManifestBytes) }
+    Assert-CountdownDeployRejected -Deploy $deployOtherBuildRun -Reason 'build-output-invalid' -Names @("$($deployRepo.Head)-dirty") -Label 'Build output built from another state than HEAD'
+
+    # 连通性探测失败：远端执行入口连不上办公室（退出码 255、没有输出），部署在传输之前停下，办公室没有收到包。
+    $deployCase = New-CountdownDeployTestCase -Name 'probe'
+    $deployCase.Responses['read1'] = { param($Run) [pscustomobject]@{ ExitCode = 255; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel } }
+    $deployProbe = Invoke-CountdownDeployTest -Label 'probe failure'
+    Assert-Equal 'failed|False|probe|probe-failed' "$($deployProbe.Result.outcome)|$($deployProbe.Result.succeeded)|$($deployProbe.Result.failedStep)|$($deployProbe.Result.reason)" "A failed probe fails the deploy at the probe: $($deployProbe.Result.error)"
+    Assert-Equal 'remote-read' ($deployCase.Calls -join ',') 'A failed probe stops the deploy before any transfer'
+    Assert-Equal $false (Test-Path -LiteralPath $deployCase.StagingRoot) 'A failed probe leaves no staging directory on the office'
+    Assert-Equal 'probe' ([string] ([System.IO.File]::ReadAllText([string] $deployProbe.Result.recordPath) | ConvertFrom-Json).failedStep) 'The deployment record names the failed probe'
+    Assert-CountdownDeployNoLeak -Text $deployProbe.Text -Name 'Probe failure standard output'
+
+    # 传输失败：传输入口报告失败，部署停在传输，不运行安装。
+    $deployCase = New-CountdownDeployTestCase -Name 'transfer'
+    $deployCase.Responses['transfer1'] = { [pscustomobject]@{ Status = 'failed'; AttemptId = 'attempt'; Sha256 = ''; Bytes = 0; LedgerPath = ''; Hostname = $deployHostSentinel } }
+    $deployTransfer = Invoke-CountdownDeployTest -Label 'transfer failure'
+    Assert-Equal 'failed|False|transfer|transfer-failed' "$($deployTransfer.Result.outcome)|$($deployTransfer.Result.succeeded)|$($deployTransfer.Result.failedStep)|$($deployTransfer.Result.reason)" "A failed transfer fails the deploy at the transfer: $($deployTransfer.Result.error)"
+    Assert-Equal 'remote-read,transfer' ($deployCase.Calls -join ',') 'A failed transfer stops the deploy before the install'
+    Assert-CountdownDeployNoLeak -Text $deployTransfer.Text -Name 'Transfer failure standard output'
+
+    # 远端安装失败：结果写明安装器的失败阶段与回滚结果。回滚成功、回滚失败、安装器没报回滚结果是三种各自明确的结果，
+    # 都不报告成功；办公室现状不确定时（回滚失败或没报）提示先查状态。安装失败后不再做状态读取。
+    foreach ($deployRollback in @('rolled-back', 'rollback-failed', '')) {
+        $deployCase = New-CountdownDeployTestCase -Name "install-$(if ($deployRollback) { $deployRollback } else { 'no-rollback' })"
+        $deployCase.Responses['write1'] = { param($Run) New-CountdownDeployTestInstallFailure -RollbackOutcome $deployRollback }
+        $deployInstallFailed = Invoke-CountdownDeployTest -Label "install failed, rollback '$deployRollback'"
+        $deployInstallResult = $deployInstallFailed.Result
+        $deployLabel = "An install that failed with rollback '$deployRollback'"
+        Assert-Equal "failed|False|install|install-failed|$deployRollback" "$($deployInstallResult.outcome)|$($deployInstallResult.succeeded)|$($deployInstallResult.failedStep)|$($deployInstallResult.reason)|$($deployInstallResult.rollback)" "$deployLabel is a failure that reports its rollback result: $($deployInstallResult.error)"
+        Assert-Equal 'start-and-wait-ready' ([string] $deployInstallResult.install.failedStage) "$deployLabel reports the installer's failed stage"
+        Assert-Equal $true ([string] $deployInstallResult.error).Contains('start-and-wait-ready') "$deployLabel names the failed stage in the error"
+        Assert-Equal ($deployRollback -cne 'rolled-back') ([string] $deployInstallResult.nextStep).Contains('-StatusOnly') "$deployLabel tells to read the status first only when the office state is uncertain"
+        Assert-Equal 'remote-read,transfer,remote-write' ($deployCase.Calls -join ',') "$deployLabel makes no status read after the install"
+        Assert-Equal "$deployRollback" ([string] ([System.IO.File]::ReadAllText([string] $deployInstallResult.recordPath) | ConvertFrom-Json).rollback) "$deployLabel keeps the rollback result in the deployment record"
+        Assert-CountdownDeployNoLeak -Text $deployInstallFailed.Text -Name "$deployLabel standard output"
+    }
+
+    # 包没能交给安装器（办公室上核对包哈希失败）：安装器没有运行，办公室的安装没有改动；这是明确的失败，没有需要回滚的改动。
+    $deployCase = New-CountdownDeployTestCase -Name 'install-not-started'
+    $deployCase.Responses['write1'] = {
+        param($Run)
+        $envelope = [ordered]@{ packageVerified = $false; installerStarted = $false; installer = $null; stagingRemoved = $true; error = 'package hash mismatch on the office' }
+        [pscustomobject]@{ ExitCode = 0; Output = ($envelope | ConvertTo-Json -Compress); Host = $deployHostSentinel; User = $deployAccountSentinel }
+    }
+    $deployNotStarted = Invoke-CountdownDeployTest -Label 'installer never started'
+    Assert-Equal 'failed|False|install|install-failed|not-needed' "$($deployNotStarted.Result.outcome)|$($deployNotStarted.Result.succeeded)|$($deployNotStarted.Result.failedStep)|$($deployNotStarted.Result.reason)|$($deployNotStarted.Result.rollback)" "A package the installer never received is a failure with nothing to roll back: $($deployNotStarted.Result.error)"
+    Assert-Equal $true ([string] $deployNotStarted.Result.error).Contains('package hash mismatch on the office') 'The failure carries the remote error'
+
+    # 连接在安装中途断开：安装在办公室上照常跑完，应答却丢了（远端执行入口退出码 255、没有输出）。结果是“未知”：既不报告成功
+    # 也不报告失败，提示先查状态。随后只查状态读到这次提交在运行、没有事务标记，重新部署就直接报告已在运行，不再安装。
+    $deployCase = New-CountdownDeployTestCase -Name 'dropped'
+    $deployCase.Responses['write1'] = { param($Run) $null = & $Run; [pscustomobject]@{ ExitCode = 255; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel } }
+    $deployDropped = Invoke-CountdownDeployTest -Label 'connection dropped during the install'
+    $deployDroppedResult = $deployDropped.Result
+    Assert-Equal 'unknown|install|install-result-unknown' "$($deployDroppedResult.outcome)|$($deployDroppedResult.failedStep)|$($deployDroppedResult.reason)" "A connection drop during the install leaves the result unknown: $($deployDroppedResult.error)"
+    Assert-Equal $true ($null -eq $deployDroppedResult.succeeded) 'An unknown result reports neither success nor failure'
+    Assert-Equal $true (([string] $deployDroppedResult.nextStep).Contains('-StatusOnly') -and ([string] $deployDroppedResult.nextStep).Contains('transactionMarkerPresent')) 'An unknown result tells to read the status first and to deploy again when it shows a transaction marker'
+    Assert-Equal 'remote-read,transfer,remote-write' ($deployCase.Calls -join ',') 'After the connection drop the deploy makes no further remote call'
+    Assert-Equal 'unknown' ([string] ([System.IO.File]::ReadAllText([string] $deployDroppedResult.recordPath) | ConvertFrom-Json).outcome) 'The deployment record keeps the unknown result'
+    Assert-CountdownDeployNoLeak -Text $deployDropped.Text -Name 'Unknown result standard output'
+    $deployCase.Calls.Clear()
+    $deployDroppedStatus = Invoke-CountdownDeployTest -Label 'status read after the drop' -StatusOnly
+    Assert-Equal "$($deployRepo.Head)|True|False" "$($deployDroppedStatus.Result.status.commit)|$($deployDroppedStatus.Result.status.running)|$($deployDroppedStatus.Result.status.transactionMarkerPresent)" 'The status read after the drop shows the commit running and no unfinished install'
+    $deployDroppedAgain = Invoke-CountdownDeployTest -Label 'deploy again after the drop'
+    Assert-Equal 'already-running' ([string] $deployDroppedAgain.Result.outcome) "Deploying again after the drop reports the commit already running: $($deployDroppedAgain.Result.error)"
+    Assert-Equal 'remote-read,remote-read' ($deployCase.Calls -join ',') 'Neither the status read nor the second deploy transfers or installs'
+    # 状态显示有未完成的安装（事务标记）时，这次提交在运行也不算已在运行：重新部署照常传输并交给安装器，由安装器先恢复（#284）。
+    [System.IO.File]::WriteAllText((Join-Path $deployCase.InstallRoot 'install-transaction.json'), '{}', $deployUtf8)
+    $deployCase.Calls.Clear()
+    $deployCase.Responses.Clear()
+    $deployMarker = Invoke-CountdownDeployTest -Label 'deploy again over an unfinished install'
+    Assert-Equal $true ([bool] $deployMarker.Result.statusBefore.transactionMarkerPresent) 'The probe reads the unfinished install marker'
+    Assert-Equal $true ($deployMarker.Result.outcome -cne 'already-running' -and ($deployCase.Calls -join ',').StartsWith('remote-read,transfer,remote-write')) "A deploy over an unfinished install hands the package to the installer instead of reporting already running: $($deployMarker.Result.outcome) $($deployMarker.Result.error)"
+
+    # 同样是结果未知：远端执行入口在安装这一步自己失败（port 抛错）；安装器开始运行了却没给出结果。
+    $deployUnknownResponses = [ordered]@{
+        'entry-failed' = { param($Run) throw 'remote entry failed: IOException' }
+        'no-installer-result' = {
+            param($Run)
+            $envelope = [ordered]@{ packageVerified = $true; installerStarted = $true; installer = $null; stagingRemoved = $false; error = 'installer terminated' }
+            [pscustomobject]@{ ExitCode = 0; Output = ($envelope | ConvertTo-Json -Compress); Host = $deployHostSentinel; User = $deployAccountSentinel }
+        }
+    }
+    foreach ($deployUnknownName in $deployUnknownResponses.Keys) {
+        $deployCase = New-CountdownDeployTestCase -Name $deployUnknownName
+        $deployCase.Responses['write1'] = $deployUnknownResponses[$deployUnknownName]
+        $deployUnknown = Invoke-CountdownDeployTest -Label $deployUnknownName
+        Assert-Equal 'unknown|install|install-result-unknown|True' "$($deployUnknown.Result.outcome)|$($deployUnknown.Result.failedStep)|$($deployUnknown.Result.reason)|$($null -eq $deployUnknown.Result.succeeded)" "An install step without an installer result is unknown ($deployUnknownName): $($deployUnknown.Result.error)"
+        Assert-Equal $true ([string] $deployUnknown.Result.nextStep).Contains('-StatusOnly') "An unknown result tells to read the status first ($deployUnknownName)"
+    }
+
+    # 本地记录写不进去（记录根被一个文件占着）时，未知的结果仍是未知，错误里补上记录没写成。
+    $deployCase = New-CountdownDeployTestCase -Name 'record-blocked'
+    $deployCase.Responses['write1'] = $deployUnknownResponses['entry-failed']
+    [System.IO.File]::WriteAllText($deployCase.RecordRoot, 'not a directory', $deployUtf8)
+    $deployRecordBlocked = Invoke-CountdownDeployTest -Label 'unknown result with an unwritable record root'
+    Assert-Equal 'unknown|install|True' "$($deployRecordBlocked.Result.outcome)|$($deployRecordBlocked.Result.failedStep)|$($null -eq $deployRecordBlocked.Result.recordPath)" "A record that cannot be written keeps the unknown result: $($deployRecordBlocked.Result.error)"
+    Assert-Equal $true ([string] $deployRecordBlocked.Result.error).Contains('deployment-record.json') 'The error says the deployment record was not written'
 
     # 生产 port 接主机入口：入口换成临时目录里的假脚本（形参、写操作断言与摘要格式同主机入口），不碰真实入口、不连任何设备。
     # 入口的杂项输出与摘要里的主机名不外漏，port 只回已知字段。

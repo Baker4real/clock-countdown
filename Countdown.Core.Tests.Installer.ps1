@@ -159,9 +159,11 @@ $installerPorts = [pscustomobject]@{
         $restored | Add-Member -NotePropertyName State -NotePropertyValue 'Ready'
         $installerCase.Tasks[$Name] = $restored
     }
-    # 交互用户的桌面目录是用例自己的临时目录；用例把它置空时模拟读不到桌面位置。
+    # 交互用户的桌面目录是用例自己的临时目录；用例把它置空时模拟读不到桌面位置。安装在前置检查里读它，中断恢复（#284）的用例
+    # 经 OnGetDesktopDirectory 在这一刻记下恢复之后、这次安装动手之前的安装根。
     GetDesktopDirectory = {
         param([object] $Session)
+        if ($null -ne $installerCase.OnGetDesktopDirectory) { & $installerCase.OnGetDesktopDirectory }
         if ($null -eq $installerCase.Desktop) { throw '读不到交互用户的桌面位置。' }
         $installerCase.Desktop
     }
@@ -307,6 +309,7 @@ function New-CountdownInstallerTestCase {
         OnStopProcess = $null
         OnMoveDirectory = $null
         OnStartTask = $null
+        OnGetDesktopDirectory = $null
         Rehearsal = [pscustomobject]@{ Migration = 'current-schema'; Equivalence = 'migrated' }
         Commands = [System.Collections.Generic.List[object]]::new()
         Observed = @{}
@@ -677,7 +680,7 @@ try {
 
     # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。
-    # “只检查、不改动”同样核对包。上次安装没走完（留有事务标记与旧版本目录）时，中断恢复由 #284 实现，在那之前拒绝。
+    # “只检查、不改动”同样核对包。上次安装没走完时的中断恢复（#284）见后面的 recover-* 各例。
     $installerRejections = @(
         [pscustomobject]@{ Name = 'reject-tampered-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-missing-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::Delete((Join-Path $installerCase.PackageRoot 'app\holiday-data\2027.json')) } }
@@ -686,16 +689,6 @@ try {
         [pscustomobject]@{ Name = 'reject-no-desktop'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'desktop-unavailable'; Arrange = { $installerCase.Desktop = $null } }
         [pscustomobject]@{ Name = 'reject-first-install-tampered'; Installed = $false; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.dll'), 'installer dll v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-check-only-tampered'; Installed = $true; CheckOnly = $true; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
-        [pscustomobject]@{ Name = 'reject-unfinished-install'; Installed = $true; CheckOnly = $false; Stage = 'recovery'; Reason = 'unfinished-install'; Arrange = {
-                [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'install-transaction.json'), '{"schemaVersion":1}', $installerUtf8)
-                Write-CountdownInstallerTestProgram -Root (Join-Path $installerCase.Root 'previous-layout') -Files $installerProgramFilesV1 -Commit $installerCommitV1 -AggregateSha256 $installerAggregateV1
-                [System.IO.Directory]::Move((Join-Path $installerCase.Root 'previous-layout\app'), (Join-Path $installerCase.Root 'app.previous'))
-                [System.IO.Directory]::Delete((Join-Path $installerCase.Root 'previous-layout'))
-            } }
-        # 提交或撤回时删除事务目录之前中断，只留下事务目录（#282）。
-        [pscustomobject]@{ Name = 'reject-leftover-transaction-directory'; Installed = $true; CheckOnly = $false; Stage = 'recovery'; Reason = 'unfinished-install'; Arrange = {
-                New-Item -ItemType Directory -Path (Join-Path $installerCase.Root 'install-transaction\settings-snapshot') -Force | Out-Null
-            } }
     )
     foreach ($rejection in $installerRejections) {
         $installerCase = New-CountdownInstallerTestCase -Name $rejection.Name
@@ -976,6 +969,281 @@ try {
     Assert-Equal 'True|not-needed' "$($transientLock.succeeded)|$($transientLock.rollback.outcome)" "A short-lived lock on the candidate does not fail the install: $($transientLock.failedStage) $($transientLock.error)"
     Assert-Equal $installerPackageFilesV2[2].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) 'The new version replaces the previous one once the lock is released'
     Assert-Equal 'app,runtime-status.json' ((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',') 'The install commits after the lock is released'
+
+    # #284 中断恢复：安装取得安装锁之后，先按恢复表把上一次没走完的安装收拾好，同一次调用再照常安装（包是 v2）。下面各例在已装好
+    # 的 v1 上摆出一次换成 v2 的安装被打断（断电、进程被杀）时留下的样子：应用已停（开发目录里的同名 EXE 照旧运行，登录任务没有
+    # 运行中的实例），事务标记记着候选 v2 的提交与聚合哈希，设置及两代备份已快照到事务目录，候选 v2 已放好。Phase 是换程序走到了
+    # 哪一步：before-replace 还没改名；mid-replace 现役 app 已改成 app.previous，候选还没改成 app；after-replace 两次改名都已完成。
+    function Set-CountdownInstallerTestInterruptedInstall {
+        param([Parameter(Mandatory)] [ValidateSet('before-replace', 'mid-replace', 'after-replace')] [string] $Phase)
+
+        $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ExecutablePath -ne $installerCase.ExePath })
+        $installerCase.Tasks[$installerCase.TaskName].State = 'Ready'
+        $marker = [ordered]@{ schemaVersion = 1; startedAtUtc = '2026-11-14T09:19:00.0000000+00:00'; candidateCommit = $installerCommitV2; candidateAggregateSha256 = $installerAggregateV2 }
+        [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'install-transaction.json'), ($marker | ConvertTo-Json), $installerUtf8)
+        $snapshot = Join-Path $installerCase.Root 'install-transaction\settings-snapshot'
+        New-Item -ItemType Directory -Path $snapshot -Force | Out-Null
+        foreach ($name in $installerSettingsFamilyNames) { [System.IO.File]::Copy((Join-Path $installerCase.Root $name), (Join-Path $snapshot $name)) }
+        $staging = Join-Path (Split-Path -Parent $installerCase.Root) 'interrupted-candidate'
+        Write-CountdownInstallerTestProgram -Root $staging -Files $installerPackageFilesV2 -Commit $installerCommitV2 -AggregateSha256 $installerAggregateV2
+        [System.IO.Directory]::Move((Join-Path $staging 'app'), (Join-Path $installerCase.Root 'app.candidate'))
+        [System.IO.Directory]::Delete($staging)
+        if ($Phase -ne 'before-replace') { [System.IO.Directory]::Move((Join-Path $installerCase.Root 'app'), (Join-Path $installerCase.Root 'app.previous')) }
+        if ($Phase -eq 'after-replace') { [System.IO.Directory]::Move((Join-Path $installerCase.Root 'app.candidate'), (Join-Path $installerCase.Root 'app')) }
+    }
+    # 前置检查读桌面目录的那一刻（恢复之后、这次安装动手之前）记下安装器自己的条目各在不在、程序目录、用户数据与在运行的进程。
+    $installerObserveRecovery = {
+        $installerCase.Observed.OwnEntries = (@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ','
+        $installerCase.Observed.Program = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $installerCase.Observed.UserData = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        $installerCase.Observed.Running = Get-CountdownInstallerTestRunning
+    }
+    function Get-CountdownInstallerTestRecovery {
+        param([Parameter(Mandatory)] [object] $Result)
+        "$($Result.recovery.state)|$($Result.recovery.action)|$($Result.recovery.outcome)|$($Result.recovery.reason)"
+    }
+
+    # 换程序之前被打断（候选还在、现役是旧版本）：旧版本和设置都没被动过，删除候选与事务目录、清除事务标记。两次改名之间被打断
+    # （现役不在、旧版本在）：把旧版本改名换回，同样清除标记、删除候选与事务目录。两种都不启动任何东西，恢复后现役程序目录与
+    # 安装前的 v1 逐字节相同，设置没被动过；随后同一次调用照常装上 v2。
+    foreach ($interrupted in @(
+            [pscustomobject]@{ Name = 'recover-before-replace'; Phase = 'before-replace'; Action = 'discarded-candidate' }
+            [pscustomobject]@{ Name = 'recover-mid-replace'; Phase = 'mid-replace'; Action = 'renamed-back' }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $interrupted.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        Set-CountdownInstallerTestInterruptedInstall -Phase $interrupted.Phase
+        $installerCase.OnGetDesktopDirectory = $installerObserveRecovery
+        $recovered = Invoke-CountdownInstallerTest
+        Assert-Equal "$($interrupted.Phase)|$($interrupted.Action)|recovered|" (Get-CountdownInstallerTestRecovery -Result $recovered) "Result JSON reports what the recovery found and did: $($interrupted.Name)"
+        Assert-Equal $programBefore ([string] $installerCase.Observed.Program) "Recovery leaves the previous version in the program directory byte for byte: $($interrupted.Name)"
+        Assert-Equal 'app,runtime-status.json' ([string] $installerCase.Observed.OwnEntries) "Recovery leaves no candidate, previous-version directory, marker or transaction directory: $($interrupted.Name)"
+        Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) "Recovery leaves the settings and the other user data as they were: $($interrupted.Name)"
+        Assert-Equal '4103' ([string] $installerCase.Observed.Running) "Recovery starts nothing: $($interrupted.Name)"
+        Assert-Equal $true ([bool] $recovered.succeeded) "The same call goes on to install the package: $($interrupted.Name) $($recovered.failedStage) $($recovered.error)"
+        Assert-Equal "$($installerPackageFilesV2[2].Sha256)|4103,6001" "$(Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath)|$(Get-CountdownInstallerTestRunning)" "The package is installed and runs after the recovery: $($interrupted.Name)"
+    }
+
+    # 两次改名都已完成、新版本还没确认启动就绪（after-replace）：补做启动验收，新版本达到启动就绪就提交。第一例新版本没在运行，
+    # 经登录任务启动它；第二例它在打断之前已经起来、回执是它写的，不再经任务启动（任务已在运行时会悄悄忽略新实例，#279），直接按
+    # 回执核对。提交清除事务标记、删除旧版本目录与事务目录，新版本逐字节留在程序目录照常运行，设置不动；随后同一次调用照常安装
+    # （停下它，再装一遍 v2）。
+    foreach ($accepted in @(
+            [pscustomobject]@{ Name = 'recover-after-replace-starts'; Running = '4103,6001'; Final = '4103,6002'; Arrange = $null }
+            [pscustomobject]@{ Name = 'recover-after-replace-running'; Running = '4103,5001'; Final = '4103,6001'; Arrange = {
+                    $installerCase.Processes = @($installerCase.Processes) + @(New-CountdownInstallerTestProcess -ProcessId 5001 -ExecutablePath $installerCase.ExePath -StartedByTask $installerCase.TaskName)
+                    $installerCase.Tasks[$installerCase.TaskName].State = 'Running'
+                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":5001,"sessionId":3}', $installerUtf8)
+                } }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $accepted.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        Set-CountdownInstallerTestInterruptedInstall -Phase 'after-replace'
+        if ($null -ne $accepted.Arrange) { & $accepted.Arrange }
+        $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $installerCase.OnGetDesktopDirectory = $installerObserveRecovery
+        $committed = Invoke-CountdownInstallerTest
+        Assert-Equal 'after-replace|committed|recovered|' (Get-CountdownInstallerTestRecovery -Result $committed) "Result JSON reports that the recovery committed the new version: $($accepted.Name)"
+        Assert-Equal $programBefore ([string] $installerCase.Observed.Program) "The new version stays in the program directory byte for byte: $($accepted.Name)"
+        Assert-Equal 'app,runtime-status.json' ([string] $installerCase.Observed.OwnEntries) "The commit leaves no previous-version directory, marker or transaction directory: $($accepted.Name)"
+        Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) "The commit leaves the settings and the other user data as they were: $($accepted.Name)"
+        Assert-Equal $accepted.Running ([string] $installerCase.Observed.Running) "The new version runs when the recovery has committed it, started only when it was not running: $($accepted.Name)"
+        Assert-Equal "True|$($accepted.Final)" "$($committed.succeeded)|$(Get-CountdownInstallerTestRunning)" "The same call goes on to install the package: $($accepted.Name) $($committed.failedStage) $($committed.error)"
+    }
+
+    # 新版本达不到启动就绪（恢复补做验收时它卡在首帧之前；随后继续的安装里再启动就正常），设置及两代备份与快照逐字节相同：
+    # 停下新版本，换回旧版本（新版本改回候选后删除），清除标记，删除事务目录，旧版本不重新启动。恢复后现役程序目录与安装前的 v1
+    # 逐字节相同，设置没被动过；随后同一次调用照常装上 v2。时限经导出的 module 函数缩短到 1 秒。
+    $installerCase = New-CountdownInstallerTestCase -Name 'recover-after-replace-swap-back'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+    $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+    Set-CountdownInstallerTestInterruptedInstall -Phase 'after-replace'
+    $installerCase.Observed.NewVersionStarts = 0
+    $installerCase.OnStartTask = {
+        param([string] $ExePath)
+        if (Test-CountdownInstallerTestNewVersion -ExecutablePath $ExePath) {
+            $installerCase.Launch.WritesReceipt = $installerCase.Observed.NewVersionStarts -gt 0
+            $installerCase.Observed.NewVersionStarts++
+        }
+    }
+    $installerCase.OnGetDesktopDirectory = $installerObserveRecovery
+    $swappedBack = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'after-replace|swapped-back|recovered|' (Get-CountdownInstallerTestRecovery -Result $swappedBack) 'Result JSON reports that the recovery swapped the previous version back'
+    Assert-Equal $programBefore ([string] $installerCase.Observed.Program) 'The previous version is back in the program directory byte for byte'
+    Assert-Equal 'app' ([string] $installerCase.Observed.OwnEntries) 'Swapping back leaves no candidate, previous-version directory, marker or transaction directory'
+    Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) 'Swapping back leaves the settings and the other user data as they were'
+    Assert-Equal '4103' ([string] $installerCase.Observed.Running) 'Swapping back stops the new version and does not start the previous one'
+    Assert-Equal "True|4103,6002" "$($swappedBack.succeeded)|$(Get-CountdownInstallerTestRunning)" "The same call goes on to install the package after swapping back: $($swappedBack.failedStage) $($swappedBack.error)"
+
+    # 新版本达不到启动就绪，而设置已经变化。第一例新版本在打断之前起来过，按正常流程迁移并保存了设置，这次一启动就崩溃；第二例
+    # 它卡在首帧之前，正要被停下时刚好保存了迁移后的设置。恢复不换回旧版本，也不用快照覆盖设置，结果写明交给维护者决定
+    # （needs-maintainer），安装停在恢复阶段、不继续：两个程序目录、事务标记与设置快照原样留下，设置是新版本保存的样子。
+    foreach ($changedSettings in @(
+            [pscustomobject]@{ Name = 'recover-settings-changed-before'; Arrange = {
+                    Invoke-CountdownInstallerTestStartupMigration
+                    $installerCase.Launch.StaysAlive = $false
+                    $installerCase.Launch.WritesReceipt = $false
+                } }
+            [pscustomobject]@{ Name = 'recover-settings-changed-while-stopping'; Arrange = {
+                    $installerCase.Launch.WritesReceipt = $false
+                    $installerCase.OnStopProcess = { param([int] $ProcessId) Invoke-CountdownInstallerTestStartupMigration }
+                } }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $changedSettings.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        $familyBefore = Get-CountdownInstallerTestSettingsFamily -Directory $installerCase.Root
+        Set-CountdownInstallerTestInterruptedInstall -Phase 'after-replace'
+        & $changedSettings.Arrange
+        $programsBefore = "$(Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed)#$(Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app.previous') -Detailed)"
+        $leftAlone = Invoke-CountdownInstallerModuleTest
+        Assert-Equal 'False|recovery|settings-changed' "$($leftAlone.succeeded)|$($leftAlone.failedStage)|$($leftAlone.reason)" "The install stops at the recovery when the settings changed: $($changedSettings.Name) $($leftAlone.error)"
+        Assert-Equal 'after-replace||needs-maintainer|settings-changed' (Get-CountdownInstallerTestRecovery -Result $leftAlone) "Result JSON says a maintainer has to decide: $($changedSettings.Name)"
+        Assert-Equal $programsBefore "$(Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed)#$(Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app.previous') -Detailed)" "The new and the previous version stay where they were: $($changedSettings.Name)"
+        Assert-Equal "True|True|$familyBefore" "$(Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json'))|$($leftAlone.transactionMarkerPresent)|$(Get-CountdownInstallerTestSettingsFamily -Directory (Join-Path $installerCase.Root 'install-transaction\settings-snapshot'))" "The marker and the settings snapshot stay: $($changedSettings.Name)"
+        Assert-Equal '{"schemaVersion":11,"note":"migrated by the new version at startup"}' ([System.IO.File]::ReadAllText((Join-Path $installerCase.Root 'settings.json'))) "The recovery does not overwrite the settings the new version saved: $($changedSettings.Name)"
+        Assert-Equal '4103' (Get-CountdownInstallerTestRunning) "Nothing from the install root runs: $($changedSettings.Name)"
+        foreach ($secret in @('settings-content-sentinel-280', 'migrated by the new version')) {
+            Assert-Equal $false ($installerCase.Json.Contains($secret, [System.StringComparison]::Ordinal)) "Result JSON of a recovery left to the maintainer has no settings content: $($changedSettings.Name) $secret"
+        }
+    }
+
+    # 没有事务标记却有残留：视为已提交，删掉残留，现役程序目录与在运行的应用都不受影响，随后同一次调用照常安装。第一例是提交清除
+    # 事务标记之后被打断，留下旧版本目录与事务目录，新版本在运行；第二例是回滚清除事务标记之后没删掉候选与事务目录，另有一个写
+    # 事务标记时没来得及改名的临时文件。
+    foreach ($leftover in @(
+            [pscustomobject]@{ Name = 'recover-leftovers-after-commit'; Running = '4103,5001'; Final = '4103,6001'; Arrange = {
+                    Set-CountdownInstallerTestInterruptedInstall -Phase 'after-replace'
+                    [System.IO.File]::Delete((Join-Path $installerCase.Root 'install-transaction.json'))
+                    $installerCase.Processes = @($installerCase.Processes) + @(New-CountdownInstallerTestProcess -ProcessId 5001 -ExecutablePath $installerCase.ExePath -StartedByTask $installerCase.TaskName)
+                    $installerCase.Tasks[$installerCase.TaskName].State = 'Running'
+                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":5001,"sessionId":3}', $installerUtf8)
+                } }
+            [pscustomobject]@{ Name = 'recover-leftovers-without-marker'; Running = '4103'; Final = '4103,6001'; Arrange = {
+                    Set-CountdownInstallerTestInterruptedInstall -Phase 'before-replace'
+                    [System.IO.File]::Move((Join-Path $installerCase.Root 'install-transaction.json'), (Join-Path $installerCase.Root 'install-transaction.json.tmp'))
+                } }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $leftover.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        $userDataBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed
+        & $leftover.Arrange
+        $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+        $installerCase.OnGetDesktopDirectory = $installerObserveRecovery
+        $cleaned = Invoke-CountdownInstallerTest
+        Assert-Equal 'leftovers|removed-leftovers|recovered|' (Get-CountdownInstallerTestRecovery -Result $cleaned) "Result JSON reports that the recovery removed the leftovers: $($leftover.Name)"
+        Assert-Equal $programBefore ([string] $installerCase.Observed.Program) "The live program directory is untouched: $($leftover.Name)"
+        Assert-Equal 'app,runtime-status.json' ([string] $installerCase.Observed.OwnEntries) "No candidate, previous-version directory or transaction directory is left: $($leftover.Name)"
+        Assert-Equal $false (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json.tmp')) "The marker's temporary file is gone: $($leftover.Name)"
+        Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) "The settings and the other user data are untouched: $($leftover.Name)"
+        Assert-Equal $leftover.Running ([string] $installerCase.Observed.Running) "Removing leftovers neither stops nor starts the application: $($leftover.Name)"
+        Assert-Equal "True|$($leftover.Final)" "$($cleaned.succeeded)|$(Get-CountdownInstallerTestRunning)" "The same call goes on to install the package: $($leftover.Name) $($cleaned.failedStage) $($cleaned.error)"
+    }
+
+    # 恢复什么都不改、安装停在恢复阶段的情况：现役是新版本、要补做启动验收，却没有交互会话或有两个交互会话（保持现状并报告，
+    # 等恰好一个用户登录后再装）；三个程序目录都在，分不清哪个是旧版本（交给维护者决定）。安装根、桌面、登录任务与进程都不变。
+    foreach ($untouched in @(
+            [pscustomobject]@{ Name = 'recover-no-session'; Recovery = 'after-replace||left-as-is|no-interactive-session'; Arrange = { $installerCase.Sessions = @() } }
+            [pscustomobject]@{ Name = 'recover-two-sessions'; Recovery = 'after-replace||left-as-is|multiple-interactive-sessions'; Arrange = {
+                    $installerCase.Sessions = @($installerCase.Sessions) + @([pscustomobject]@{ SessionId = 5; User = 'MINMIN-OFFICE\second-account'; Sid = $installerOtherSid })
+                } }
+            [pscustomobject]@{ Name = 'recover-unrecognized'; Recovery = 'unrecognized||needs-maintainer|unrecognized-state'; Arrange = {
+                    Write-CountdownInstallerTestProgram -Root (Join-Path $installerCase.Root 'stray-layout') -Files $installerPackageFilesV2 -Commit $installerCommitV2 -AggregateSha256 $installerAggregateV2
+                    [System.IO.Directory]::Move((Join-Path $installerCase.Root 'stray-layout\app'), (Join-Path $installerCase.Root 'app.candidate'))
+                    [System.IO.Directory]::Delete((Join-Path $installerCase.Root 'stray-layout'))
+                } }
+        )) {
+        $installerCase = New-CountdownInstallerTestCase -Name $untouched.Name
+        Initialize-CountdownInstallerTestInstalledVersion
+        Set-CountdownInstallerTestInterruptedInstall -Phase 'after-replace'
+        & $untouched.Arrange
+        $treeBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed
+        $desktopBefore = Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Detailed
+        $tasksBefore = Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]
+        $untouchedResult = Invoke-CountdownInstallerModuleTest
+        $expectedReason = ($untouched.Recovery -split '\|')[-1]
+        Assert-Equal "False|recovery|$expectedReason" "$($untouchedResult.succeeded)|$($untouchedResult.failedStage)|$($untouchedResult.reason)" "The install stops at the recovery: $($untouched.Name) $($untouchedResult.error)"
+        Assert-Equal $untouched.Recovery (Get-CountdownInstallerTestRecovery -Result $untouchedResult) "Result JSON reports why the recovery left the install root alone: $($untouched.Name)"
+        Assert-Equal $treeBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed) "The recovery changes nothing in the install root: $($untouched.Name)"
+        Assert-Equal $desktopBefore (Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Detailed) "The recovery changes nothing on the desktop: $($untouched.Name)"
+        Assert-Equal "4103|$tasksBefore|Ready" "$(Get-CountdownInstallerTestRunning)|$(Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName])|$($installerCase.Tasks[$installerCase.TaskName].State)" "The recovery starts nothing and leaves the login task alone: $($untouched.Name)"
+        Assert-Equal $true ([bool] $untouchedResult.transactionMarkerPresent) "Result JSON reports the marker still there: $($untouched.Name)"
+    }
+
+    # 恢复自己没做成：两次改名之间被打断，旧版本目录却一直被占用、改不回 app。结果写明恢复失败，安装停在恢复阶段；安装根仍是
+    # 恢复之前的样子（下一次安装再从这个状态恢复），设置不动。占用放开之后的下一次安装照常恢复并装上 v2。
+    $installerCase = New-CountdownInstallerTestCase -Name 'recover-rename-back-locked'
+    Initialize-CountdownInstallerTestInstalledVersion
+    Set-CountdownInstallerTestInterruptedInstall -Phase 'mid-replace'
+    $installerCase.MoveLocks = @([pscustomobject]@{ From = 'app.previous'; To = 'app'; Remaining = -1 })
+    $treeBefore = Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed
+    $lockedRecovery = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'False|recovery|recovery-failed' "$($lockedRecovery.succeeded)|$($lockedRecovery.failedStage)|$($lockedRecovery.reason)" "The install stops when the recovery cannot finish: $($lockedRecovery.error)"
+    Assert-Equal 'mid-replace||failed|recovery-failed' (Get-CountdownInstallerTestRecovery -Result $lockedRecovery) 'Result JSON reports that the recovery failed'
+    Assert-Equal $treeBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Detailed) 'A failed recovery leaves the install root as it found it'
+    $installerCase.MoveLocks = @()
+    $unlockedRecovery = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'mid-replace|renamed-back|recovered||True' "$(Get-CountdownInstallerTestRecovery -Result $unlockedRecovery)|$($unlockedRecovery.succeeded)" "The next install recovers once the lock is gone: $($unlockedRecovery.failedStage) $($unlockedRecovery.error)"
+
+    # #283 回滚自身失败后留下的安装根由下一次安装的恢复接手：新版本没达到启动就绪，回滚时现役目录又一直被占用、改不回候选，
+    # 程序目录仍是新版本、旧版本在 app.previous，事务标记与快照留下。占用放开、新版本也能正常启动之后，下一次安装补做启动验收
+    # 并提交，再照常装上 v2。
+    $installerCase = New-CountdownInstallerTestCase -Name 'recover-after-failed-rollback'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.Launch.WritesReceipt = $false
+    $installerCase.MoveLocks = @([pscustomobject]@{ From = 'app'; To = 'app.candidate'; Remaining = -1 })
+    $failedRollbackFirst = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'rollback-failed|True' "$($failedRollbackFirst.rollback.outcome)|$($failedRollbackFirst.transactionMarkerPresent)" "The first install leaves a failed rollback behind: $(@($failedRollbackFirst.rollback.problems) -join '；')"
+    $installerCase.MoveLocks = @()
+    $installerCase.Launch.WritesReceipt = $true
+    $afterFailedRollback = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'after-replace|committed|recovered|' (Get-CountdownInstallerTestRecovery -Result $afterFailedRollback) 'The next install commits the new version the failed rollback left behind once it gets ready'
+    Assert-Equal "True|$($installerPackageFilesV2[2].Sha256)|app,runtime-status.json" "$($afterFailedRollback.succeeded)|$(Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath)|$((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',')" "The same call goes on to install the package: $($afterFailedRollback.failedStage) $($afterFailedRollback.error)"
+
+    # 只检查时不恢复：上一次安装没走完（这里停在两次改名之间）时只报告看到的状态，恢复排在将要执行的步骤最前面；包、安装根、
+    # 应用与登录任务都不变。恢复会把旧版本换回 app，结果因此报告这是一次升级，不是首次安装。
+    $installerCase = New-CountdownInstallerTestCase -Name 'check-only-unfinished-install'
+    Initialize-CountdownInstallerTestInstalledVersion
+    Set-CountdownInstallerTestInterruptedInstall -Phase 'mid-replace'
+    $caseRoot = Split-Path -Parent $installerCase.Root
+    $caseTreeBefore = Get-CountdownInstallerTestTree -Root $caseRoot -Detailed
+    $taskDefinitionBefore = Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]
+    $checkedRecovery = Invoke-CountdownInstallerTest -CheckOnly
+    Assert-Equal 'True|True|False' "$($checkedRecovery.succeeded)|$($checkedRecovery.checkOnly)|$($checkedRecovery.firstInstall)" "Check-only passes over an unfinished upgrade: $($checkedRecovery.failedStage) $($checkedRecovery.error)"
+    Assert-Equal 'mid-replace||planned|' (Get-CountdownInstallerTestRecovery -Result $checkedRecovery) 'Check-only reports the unfinished install it would recover'
+    Assert-Equal 'recover-unfinished-install,place-candidate,stop-application,write-transaction-marker,snapshot-settings,settings-rehearsal,replace-program-directory,register-desktop-shortcut,start-and-wait-ready,commit' (@($checkedRecovery.plannedSteps) -join ',') 'Check-only plans the recovery before the install'
+    Assert-Equal $caseTreeBefore (Get-CountdownInstallerTestTree -Root $caseRoot -Detailed) 'Check-only recovers nothing'
+    Assert-Equal "4103|$taskDefinitionBefore|Ready" "$(Get-CountdownInstallerTestRunning)|$(Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName])|$($installerCase.Tasks[$installerCase.TaskName].State)" 'Check-only starts nothing and leaves the login task alone'
+    Assert-Equal $true ([bool] $checkedRecovery.transactionMarkerPresent) 'Check-only reports the marker still there'
+
+    # 首次安装在换上新版本之后、登记登录任务之前被打断：没有旧版本，也还没有登录任务。补做启动验收无从启动新版本；设置快照是
+    # 空的、安装根也没有设置文件，于是把新版本改回候选后删除，安装根回到没有程序目录的样子，随后同一次调用照常做首次安装。
+    $installerCase = New-CountdownInstallerTestCase -Name 'recover-first-install-after-replace'
+    Write-CountdownInstallerTestProgram -Root $installerCase.Root -Files $installerPackageFilesV2 -Commit $installerCommitV2 -AggregateSha256 $installerAggregateV2
+    $firstInstallMarker = [ordered]@{ schemaVersion = 1; startedAtUtc = '2026-11-14T09:19:00.0000000+00:00'; candidateCommit = $installerCommitV2; candidateAggregateSha256 = $installerAggregateV2 }
+    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'install-transaction.json'), ($firstInstallMarker | ConvertTo-Json), $installerUtf8)
+    New-Item -ItemType Directory -Path (Join-Path $installerCase.Root 'install-transaction\settings-snapshot') -Force | Out-Null
+    $installerCase.OnGetDesktopDirectory = $installerObserveRecovery
+    $firstRecovered = Invoke-CountdownInstallerTest
+    Assert-Equal 'after-replace|swapped-back|recovered|' (Get-CountdownInstallerTestRecovery -Result $firstRecovered) 'Result JSON reports that the recovery undid the interrupted first install'
+    Assert-Equal '|' "$($installerCase.Observed.OwnEntries)|$($installerCase.Observed.Running)" 'The recovery leaves no program directory or transaction trace from the interrupted first install, and nothing runs'
+    Assert-Equal 'True|True|created|6001' "$($firstRecovered.succeeded)|$($firstRecovered.firstInstall)|$($firstRecovered.loginTask.action)|$(Get-CountdownInstallerTestRunning)" "The same call goes on with a first install: $($firstRecovered.failedStage) $($firstRecovered.error)"
+
+    # 没有交互会话时保持现状只针对 after-replace（补做启动验收要一个会话）。两次改名之间被打断时恢复不启动任何东西，没人登录也
+    # 照样把旧版本改名换回：不然现役 app 不在，下次登录时旧版本起不来。随后的安装在前置检查处因没有交互会话停下。
+    $installerCase = New-CountdownInstallerTestCase -Name 'recover-mid-replace-no-session'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $programBefore = Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed
+    Set-CountdownInstallerTestInterruptedInstall -Phase 'mid-replace'
+    $installerCase.Sessions = @()
+    $noSessionRecovery = Invoke-CountdownInstallerTest
+    Assert-Equal 'mid-replace|renamed-back|recovered|' (Get-CountdownInstallerTestRecovery -Result $noSessionRecovery) 'Recovery renames the previous version back without an interactive session'
+    Assert-Equal 'False|preflight|no-interactive-session' "$($noSessionRecovery.succeeded)|$($noSessionRecovery.failedStage)|$($noSessionRecovery.reason)" 'The install then stops at the preflight'
+    Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) 'The previous version is back in the program directory for the next login'
+    Assert-Equal 'app,runtime-status.json|4103' "$((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',')|$(Get-CountdownInstallerTestRunning)" 'No unfinished-install trace is left and nothing is started'
 
     # 用真实的候选 EXE 走通演练与判定（#282）。包是本次构建输出 app\（与下面只读一侧的实测同一份），候选 EXE 的无界面命令经
     # 生产 port 真的运行，在创建窗口之前返回、不开窗口；交互会话、进程、计划任务与目录改名仍是测试 port，新版本不会真的启动。

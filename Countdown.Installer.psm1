@@ -4,12 +4,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # 新安装器（#259）：只替换程序目录。安装根下只动现役程序目录 app、候选 app.candidate、旧版本 app.previous、
-# 事务标记 install-transaction.json、事务目录 install-transaction\ 与运行状态回执 runtime-status.json；设置、设置备份、
-# 恢复证据、诊断日志和节假日缓存不被移动或改写，设置及其两代备份只被复制进事务目录（快照与迁移演练的副本）。
+# 事务标记 install-transaction.json（及其临时文件 install-transaction.json.tmp）、事务目录 install-transaction\ 与运行状态回执
+# runtime-status.json；设置、设置备份、恢复证据、诊断日志和节假日缓存不被移动或改写，设置及其两代备份只被复制进事务目录
+# （快照与迁移演练的副本）。
 # 安装根之外只登记登录任务与交互用户桌面上的快捷方式。计划任务、进程、交互会话、桌面目录、快捷方式、目录改名与
 # 候选 EXE 的无界面命令经 port 调用：生产用 New-CountdownInstallerWindowsPorts，
 # 测试注入假 port。本机与远端是同一个安装器；它不运行测试套件，不检查构建工具链，不触碰 Windows 时间服务。
-# 已有成功路径（#280）、换程序前的设置保护（#282）、登录任务与桌面快捷方式的登记（#281）和失败回滚（#283）；中断恢复（#284）在后续票。
+# 已有成功路径（#280）、换程序前的设置保护（#282）、登录任务与桌面快捷方式的登记（#281）、失败回滚（#283）和
+# 安装开始时的中断恢复（#284，Invoke-CountdownInstallRecovery）。
 
 # 与旧安装器（Countdown.InstallTransaction.psm1）同名：新旧安装器在同一台机器上互斥。
 $script:InstallLockName = 'Global\MinminCountdownInstallTransaction-v1'
@@ -79,6 +81,8 @@ function Resolve-CountdownInstallerLayout {
         CandidateDirectory = Join-Path $root 'app.candidate'
         PreviousDirectory = Join-Path $root 'app.previous'
         MarkerPath = Join-Path $root 'install-transaction.json'
+        # 事务标记先写进这个临时文件再改名；改名之前被打断时只留下它，标记并没有写下。
+        MarkerTemporaryPath = Join-Path $root 'install-transaction.json.tmp'
         TransactionDirectory = Join-Path $root 'install-transaction'
         RuntimeStatusPath = Join-Path $root 'runtime-status.json'
         SettingsPath = Join-Path $root 'settings.json'
@@ -190,20 +194,6 @@ function Get-CountdownSettingsFingerprint {
         }
     }
     finally { $stream.Dispose() }
-}
-
-# 上一次安装没走完时留下的东西。恢复表在 #284 实现；之前一律拒绝，不在半成品状态上继续改。
-function Assert-CountdownNoUnfinishedInstall {
-    param([Parameter(Mandatory)] [object] $Layout)
-
-    $leftovers = @(
-        foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.PreviousDirectory, $Layout.TransactionDirectory)) {
-            if (Test-Path -LiteralPath $path) { [System.IO.Path]::GetFileName($path) }
-        }
-    )
-    if ($leftovers.Count -gt 0) {
-        throw (New-CountdownInstallRejection -Reason 'unfinished-install' -Message "安装根留有上次未完成安装的痕迹（$($leftovers -join '、')），中断恢复尚未实现，拒绝安装。")
-    }
 }
 
 function Get-CountdownSingleInteractiveSession {
@@ -380,9 +370,10 @@ function Stop-CountdownInstalledApplication {
     }
 }
 
+# 事务标记记下候选那一版（提交与载荷清单的聚合哈希）：中断恢复（#284）凭它认出现役 app 是不是这次要装的新版本。
 function Write-CountdownInstallMarker {
     param(
-        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [object] $Layout,
         [Parameter(Mandatory)] [object] $Manifest
     )
 
@@ -392,9 +383,8 @@ function Write-CountdownInstallMarker {
         candidateCommit = $Manifest.Commit
         candidateAggregateSha256 = $Manifest.AggregateSha256
     }
-    $temporaryPath = "$Path.tmp"
-    [System.IO.File]::WriteAllText($temporaryPath, ($marker | ConvertTo-Json), $script:Utf8NoBom)
-    [System.IO.File]::Move($temporaryPath, $Path)
+    [System.IO.File]::WriteAllText($Layout.MarkerTemporaryPath, ($marker | ConvertTo-Json), $script:Utf8NoBom)
+    [System.IO.File]::Move($Layout.MarkerTemporaryPath, $Layout.MarkerPath)
 }
 
 function Copy-CountdownSettingsFamily {
@@ -738,6 +728,206 @@ function Undo-CountdownInstall {
     [pscustomobject]@{ Report = $report; RestartedProcess = $restarted }
 }
 
+# 事务标记记下的候选聚合哈希；标记读不出（例如断电后内容没落盘）或没有这一项时为空，即不知道候选是哪一版。
+function Get-CountdownMarkerCandidateAggregate {
+    param([Parameter(Mandatory)] [string] $Path)
+
+    try { $marker = [System.IO.File]::ReadAllText($Path) | ConvertFrom-Json }
+    catch { return $null }
+    $aggregate = [string] (Get-CountdownInstallerProperty -Object $marker -Name 'candidateAggregateSha256')
+    if ($aggregate -match '^[0-9A-Fa-f]{64}$') { $aggregate } else { $null }
+}
+
+# 现役 app 是不是事务标记记下的候选那一版：比较 app 的载荷清单与标记的聚合哈希。有一边不知道（标记读不出、app 的载荷清单
+# 缺失或无效）时为空。
+function Test-CountdownProgramIsCandidate {
+    param([Parameter(Mandatory)] [object] $Layout)
+
+    $candidateAggregate = Get-CountdownMarkerCandidateAggregate -Path $Layout.MarkerPath
+    if ($null -eq $candidateAggregate) { return $null }
+    try { $manifest = Read-CountdownPayloadManifest -ProgramDirectory $Layout.ProgramDirectory }
+    catch { return $null }
+    [string]::Equals($manifest.AggregateSha256, $candidateAggregate, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+# 中断恢复（#284）看到的目录状态，只读。有事务标记时按三个程序目录各在不在、现役 app 是不是候选那一版，判断换程序走到了哪一步：
+# before-replace（候选还在，或只剩事务标记：现役是旧版本，首次安装时还没有现役）、mid-replace（现役不在、旧版本在：两次改名之间）、
+# after-replace（现役是新版本：旧版本还在，首次安装时没有旧版本）。现役与旧版本都在时按目录就是换过了，只有清单证明现役不是
+# 候选那一版才算分不清。没有事务标记时只看有没有残留：leftovers 或 clean。三个程序目录都在，或没有标记、没有现役却有旧版本
+# （提交不会走到这一步）时为 unrecognized。
+function Get-CountdownInstallRecoveryState {
+    param([Parameter(Mandatory)] [object] $Layout)
+
+    $program = Test-Path -LiteralPath $Layout.ProgramDirectory
+    $candidate = Test-Path -LiteralPath $Layout.CandidateDirectory
+    $previous = Test-Path -LiteralPath $Layout.PreviousDirectory
+    if (-not (Test-Path -LiteralPath $Layout.MarkerPath)) {
+        if ($previous -and -not $program) { return 'unrecognized' }
+        foreach ($path in @($Layout.CandidateDirectory, $Layout.PreviousDirectory, $Layout.TransactionDirectory, $Layout.MarkerTemporaryPath)) {
+            if (Test-Path -LiteralPath $path) { return 'leftovers' }
+        }
+        return 'clean'
+    }
+    if ($program -and $candidate -and $previous) { return 'unrecognized' }
+    if ($previous -and -not $program) { return 'mid-replace' }
+    if ($candidate) { return 'before-replace' }
+    $isCandidate = if ($program) { Test-CountdownProgramIsCandidate -Layout $Layout } else { $false }
+    if ($previous) { return $(if ($isCandidate -eq $false) { 'unrecognized' } else { 'after-replace' }) }
+    if ($isCandidate -eq $true) { 'after-replace' } else { 'before-replace' }
+}
+
+# 中断恢复补做的启动验收（#284），现役 app 是新版本。已安装 EXE 已有进程在运行时不再经登录任务启动（任务已在运行时会悄悄忽略
+# 新实例，#279），直接按它写下的运行状态回执核对启动就绪；没有在运行时与安装一样：确认任务没有运行中的实例，删除旧回执，经登录
+# 任务启动，等到启动就绪。就绪核对的 EXE 哈希取 app 自己的载荷清单。达不到时抛出。
+function Confirm-CountdownInstalledVersionReady {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [object] $Session,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $ReadyTimeoutSeconds
+    )
+
+    $manifest = Read-CountdownPayloadManifest -ProgramDirectory $Layout.ProgramDirectory
+    if (@(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports).Count -eq 0) {
+        $task = & $Ports.GetTask $TaskName
+        if ($null -eq $task) { throw "没有登录任务 $TaskName，无法经它启动新版本。" }
+        if (Test-CountdownTaskRunning -Task $task) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+        if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
+        [void] (& $Ports.StartTask $TaskName)
+    }
+    Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+}
+
+# 现役设置及其两代备份与事务目录里的快照逐字节相同：快照里有的现役也有且字节相同，快照里没有的现役也没有。只读。
+function Test-CountdownSettingsMatchSnapshot {
+    param([Parameter(Mandatory)] [object] $Layout)
+
+    $snapshotDirectory = Join-Path $Layout.TransactionDirectory 'settings-snapshot'
+    foreach ($name in $script:SettingsFamilyNames) {
+        $live = Join-Path $Layout.Root $name
+        $saved = Join-Path $snapshotDirectory $name
+        $liveExists = Test-Path -LiteralPath $live -PathType Leaf
+        if ($liveExists -ne (Test-Path -LiteralPath $saved -PathType Leaf)) { return $false }
+        if ($liveExists -and -not (Test-CountdownSameFileBytes -Left $live -Right $saved)) { return $false }
+    }
+    $true
+}
+
+# 清除事务标记（恢复完成的分界），再删除其余残留：候选、旧版本目录、事务目录（含设置快照）与没改成名的标记临时文件。调用方已经
+# 把现役 app 放成要留下的那一版，之后再被打断，下一次恢复看到的只是没有标记的残留。被短暂占用时有界重试。
+function Remove-CountdownUnfinishedInstallTraces {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [int] $RetrySeconds
+    )
+
+    foreach ($path in @($Layout.MarkerPath, $Layout.CandidateDirectory, $Layout.PreviousDirectory, $Layout.TransactionDirectory, $Layout.MarkerTemporaryPath)) {
+        Remove-CountdownInstallEntry -Path $path -RetrySeconds $RetrySeconds
+    }
+}
+
+# 中断恢复（#284）：安装的第一步，在取得安装锁之后、前置检查之前，按事务标记与目录状态（Get-CountdownInstallRecoveryState）
+# 把上一次没走完的安装收拾好，不设多阶段的事务日志。恢复表：
+# - clean：没有痕迹，什么都不做。
+# - leftovers：没有事务标记，视为已提交（或回滚已完成），删掉残留，现役 app 与在运行的应用不动。
+# - before-replace：旧版本和设置都没被动过，清除事务标记，删除候选与事务目录。
+# - mid-replace：把旧版本改名换回 app，再清除标记、删除候选与事务目录。
+# - after-replace：补做启动验收（Confirm-CountdownInstalledVersionReady），新版本已在运行或达到启动就绪就提交：清除标记，删除旧版本
+#   目录与事务目录。达不到时，设置及两代备份与快照逐字节相同就停下新版本、换回旧版本（新版本改回候选后删除；首次安装没有旧版本，
+#   回到没有程序目录），清除标记，删除事务目录；旧版本不重新启动，随后继续的安装会启动它要装的版本。停下新版本之后再比一次设置：
+#   它可能正好在这时保存了。设置已经变化时什么都不改（needs-maintainer，settings-changed）。补做验收要恰好一个交互会话，没有或
+#   有多个时什么都不改（left-as-is，原因同前置检查）。
+# - unrecognized：程序目录的组合不是任何一步安装能留下的，什么都不改（needs-maintainer，unrecognized-state）。
+# 只有 after-replace 要交互会话：其余各状态不启动任何东西，没人登录时也照样收拾（两次改名之间停下时不收拾，下次登录旧版本起不来）。
+# 每个状态都先把现役 app 放成要留下的那一版，再清除事务标记，最后删除其余残留：做到一半被打断或失败（failed，recovery-failed），
+# 留下的仍是表里的某个状态，下一次安装从那里接着恢复。
+# 登录任务与桌面快捷方式不动：新旧版本的 EXE 在同一路径，两者都只指向它；被打断的安装改登录任务之前导出的定义（#283）只在那次
+# 安装的进程里、没有落盘，恢复无从还原。随后继续的安装按期望定义登记两者，结果照常写明改了什么。
+# Report 是结果 JSON 的 recovery：state 是看到的目录状态；action 是做了什么（removed-leftovers、discarded-candidate、renamed-back、
+# committed、swapped-back，没做时为空）；outcome 为 not-needed、recovered、planned（-CheckOnly 只报告看到的状态，什么都不改）、
+# left-as-is、needs-maintainer 或 failed，后三种另带 Rejection（原因同 reason），调用方据此停下、不继续安装。恢复从不用快照写
+# 设置：快照只供拍下它的那次安装在新版本达到启动就绪之前回滚（#283）。
+function Invoke-CountdownInstallRecovery {
+    param(
+        [Parameter(Mandatory)] [object] $Layout,
+        [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [object] $Ports,
+        [Parameter(Mandatory)] [int] $ReadyTimeoutSeconds,
+        [Parameter(Mandatory)] [int] $StopTimeoutSeconds,
+        [Parameter(Mandatory)] [int] $RetrySeconds,
+        [switch] $CheckOnly
+    )
+
+    $report = [ordered]@{ state = Get-CountdownInstallRecoveryState -Layout $Layout; action = $null; outcome = 'not-needed'; reason = $null }
+    # 收拾不了：什么都不再改，安装停在恢复阶段。
+    $stop = {
+        param([string] $Outcome, [string] $Reason, [string] $Message)
+        $report.outcome = $Outcome
+        $report.reason = $Reason
+        [pscustomobject]@{ Report = $report; Rejection = New-CountdownInstallRejection -Reason $Reason -Message $Message }
+    }
+    if ($report.state -eq 'clean') { return [pscustomobject]@{ Report = $report; Rejection = $null } }
+    if ($report.state -eq 'unrecognized') {
+        return (& $stop 'needs-maintainer' 'unrecognized-state' '安装根里程序目录的组合不是任何一步安装能留下的（三个程序目录都在，或现役不是事务标记记下的候选却有旧版本目录，或没有现役与事务标记却有旧版本目录）：分不清哪个是旧版本，什么都没改，需要维护者决定。')
+    }
+    if ($CheckOnly) {
+        $report.outcome = 'planned'
+        return [pscustomobject]@{ Report = $report; Rejection = $null }
+    }
+    try {
+        switch ($report.state) {
+            'leftovers' {
+                Remove-CountdownUnfinishedInstallTraces -Layout $Layout -RetrySeconds $RetrySeconds
+                $report.action = 'removed-leftovers'
+            }
+            'before-replace' {
+                Remove-CountdownUnfinishedInstallTraces -Layout $Layout -RetrySeconds $RetrySeconds
+                $report.action = 'discarded-candidate'
+            }
+            'mid-replace' {
+                Restore-CountdownProgramDirectory -Layout $Layout -Ports $Ports -FirstInstall $false -RetrySeconds $RetrySeconds
+                Remove-CountdownUnfinishedInstallTraces -Layout $Layout -RetrySeconds $RetrySeconds
+                $report.action = 'renamed-back'
+            }
+            'after-replace' {
+                try { $session = Get-CountdownSingleInteractiveSession -Ports $Ports }
+                catch {
+                    $reason = $_.Exception.Data['CountdownInstallReason']
+                    if ($null -eq $reason) { throw }
+                    return (& $stop 'left-as-is' $reason "上一次没走完的安装已经换上新版本、还没确认启动就绪，补做启动验收要恰好一个交互会话：$($_.Exception.Message)什么都没改，等恰好一个用户登录后再安装。")
+                }
+                $notReady = $null
+                try { [void] (Confirm-CountdownInstalledVersionReady -Layout $Layout -TaskName $TaskName -Session $session -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds) }
+                catch { $notReady = $_.Exception.Message }
+                if ($null -eq $notReady) {
+                    Remove-CountdownUnfinishedInstallTraces -Layout $Layout -RetrySeconds $RetrySeconds
+                    $report.action = 'committed'
+                }
+                else {
+                    $settingsUnchanged = Test-CountdownSettingsMatchSnapshot -Layout $Layout
+                    if ($settingsUnchanged) {
+                        [void] (Stop-CountdownInstalledApplication -Layout $Layout -TaskName $TaskName -Ports $Ports -TimeoutSeconds $StopTimeoutSeconds)
+                        $settingsUnchanged = Test-CountdownSettingsMatchSnapshot -Layout $Layout
+                    }
+                    if (-not $settingsUnchanged) {
+                        return (& $stop 'needs-maintainer' 'settings-changed' "上一次没走完的安装换上的新版本没有达到启动就绪（$notReady），设置却已经与安装前的快照不同：不换回旧版本，也不用快照覆盖设置，需要维护者决定。")
+                    }
+                    Restore-CountdownProgramDirectory -Layout $Layout -Ports $Ports -FirstInstall (-not (Test-Path -LiteralPath $Layout.PreviousDirectory)) -RetrySeconds $RetrySeconds
+                    Remove-CountdownUnfinishedInstallTraces -Layout $Layout -RetrySeconds $RetrySeconds
+                    $report.action = 'swapped-back'
+                }
+            }
+        }
+    }
+    catch {
+        # 每一步都先让安装根更接近收拾好的样子，做到一半停下时留下的仍是恢复表里的某个状态，下一次安装从那里接着恢复。
+        return (& $stop 'failed' 'recovery-failed' "中断恢复没能做完（$($report.state)）：$($_.Exception.Message) 安装停在恢复阶段，下一次安装从留下的状态接着恢复。")
+    }
+    $report.outcome = 'recovered'
+    [pscustomobject]@{ Report = $report; Rejection = $null }
+}
+
 # 登录任务的定义（#279「登录任务的最终定义」），其中状态命令（#276）核对的各项与它的期望一致：登录时触发，交互式、
 # 非提升、不限运行时长、已在运行时忽略新实例；动作是已安装 EXE 本身，不带参数，不设工作目录。优先级取 4：#279 实测 4 的
 # 优先级类、I/O 与内存优先级都与正常启动一致（5 的内存优先级低一级，默认 7 是 BelowNormal）。电池供电时也启动、拔电不停：
@@ -1022,8 +1212,9 @@ function Install-CountdownProgram {
     .SYNOPSIS
     把包里的程序目录装到安装根：首次安装与升级同一流程，等到启动就绪后提交，返回结果（由入口脚本输出为 JSON）。
     .DESCRIPTION
-    步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；安装根留有上次未完成安装的
-    痕迹时拒绝（恢复在 #284）；前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并按载荷清单逐项核对）；
+    步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；中断恢复（#284，见
+    Invoke-CountdownInstallRecovery）：安装根留有上次没走完的安装时先按恢复表收拾好，收拾不了时停在恢复阶段、不继续安装；
+    前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并按载荷清单逐项核对）；
     停止应用（结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；把设置及其两代备份快照到事务目录；
     有设置文件时用候选 EXE 在事务目录里的副本上演练迁移，并用产品的等价判定核对快照与迁移结果；现役程序目录改名为
     旧版本目录、候选改名为现役；登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时
@@ -1033,8 +1224,8 @@ function Install-CountdownProgram {
     停止新版本，把程序目录换回，用本次安装的快照恢复设置及两代备份，恢复本次改过的登录任务，经登录任务重新启动旧版本；
     快照或演练失败、迁移不等价时程序目录与现役设置都没被动过，只需重新启动旧版本。新版本达到启动就绪之后不再回滚，也不再
     用快照覆盖设置：提交没走完时事务标记留给下一次安装的中断恢复。目录改名与安装器自己的删除被短暂占用时有界重试
-    （-FileLockRetrySeconds）。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选、不读桌面上的快捷方式，
-    报告将要执行的步骤。
+    （-FileLockRetrySeconds）。-CheckOnly 执行到前置检查为止，只核对包本身、不放候选、不读桌面上的快捷方式，也不做中断
+    恢复（只报告看到的状态，恢复排在将要执行的步骤最前面），报告将要执行的步骤。
     #>
     [CmdletBinding()]
     param(
@@ -1059,6 +1250,8 @@ function Install-CountdownProgram {
         error = $null
         installRoot = $InstallRoot
         taskName = $TaskName
+        # 中断恢复（#284）：安装停在安装锁之前时为空。
+        recovery = $null
         package = $null
         firstInstall = $null
         plannedSteps = @()
@@ -1092,7 +1285,10 @@ function Install-CountdownProgram {
         $lock = Enter-CountdownInstallLock -Name $LockName
 
         $stage = 'recovery'
-        Assert-CountdownNoUnfinishedInstall -Layout $layout
+        $recovery = Invoke-CountdownInstallRecovery -Layout $layout -TaskName $TaskName -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds `
+            -StopTimeoutSeconds $StopTimeoutSeconds -RetrySeconds $FileLockRetrySeconds -CheckOnly:$CheckOnly
+        $result.recovery = $recovery.Report
+        if ($null -ne $recovery.Rejection) { throw $recovery.Rejection }
 
         $stage = 'preflight'
         $session = Get-CountdownSingleInteractiveSession -Ports $Ports
@@ -1100,8 +1296,10 @@ function Install-CountdownProgram {
         $sourceDirectory = Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
         $manifest = Read-CountdownPayloadManifest -ProgramDirectory $sourceDirectory
         $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
-        $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container)
+        # 只检查时没做的恢复会把旧版本目录换回 app，因此旧版本目录在也不算首次安装；恢复做完之后不会留下旧版本目录。
+        $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container) -and -not (Test-Path -LiteralPath $layout.PreviousDirectory)
         $plan = [System.Collections.Generic.List[string]]::new()
+        if ($result.recovery.outcome -eq 'planned') { $plan.Add('recover-unfinished-install') }
         $plan.AddRange([string[]] @('place-candidate', 'stop-application', 'write-transaction-marker', 'snapshot-settings'))
         if (Test-Path -LiteralPath $layout.SettingsPath -PathType Leaf) { $plan.Add('settings-rehearsal') }
         $plan.Add('replace-program-directory')
@@ -1131,7 +1329,7 @@ function Install-CountdownProgram {
             $stage = 'write-transaction-marker'
             $transaction = New-CountdownInstallTransactionState -FirstInstall $result.firstInstall
             $candidateOwned = $false
-            Write-CountdownInstallMarker -Path $layout.MarkerPath -Manifest $manifest
+            Write-CountdownInstallMarker -Layout $layout -Manifest $manifest
 
             # 换程序之前的设置保护（#282）：这一段失败时程序目录与现役设置都没被动过，回滚只需重新启动旧版本。
             $stage = 'snapshot-settings'

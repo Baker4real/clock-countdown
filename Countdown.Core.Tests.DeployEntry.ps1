@@ -53,7 +53,7 @@ function New-CountdownDeployTestRepository {
     foreach ($setting in @(@('user.name', 'Deploy fixture'), @('user.email', 'fixture@example.invalid'), @('core.autocrlf', 'false'))) {
         [void] (Invoke-CountdownDeployTestGit -Root $root -Arguments (@('config') + $setting))
     }
-    foreach ($name in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1', 'Get-CountdownInstallStatus.ps1')) {
+    foreach ($name in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1', 'Get-CountdownInstallStatus.ps1', 'Switch-CountdownInstallLayout.ps1')) {
         [System.IO.File]::Copy((Join-Path $PSScriptRoot $name), (Join-Path $root $name))
     }
     [System.IO.File]::WriteAllText((Join-Path $root '.gitignore'), "app/`nlogs/`n", $deployUtf8)
@@ -219,13 +219,20 @@ $deployWindowsPorts = [pscustomobject]@{
         }
     }
     # 任务按动作启动 EXE：起一个假进程，像应用渲染首帧后那样在应用根（app\ 的上一级）写出运行状态回执。
-    # 与任务计划一样，停用的任务和不允许按需启动的任务不能按需启动。
+    # 与任务计划一样，停用的任务和不允许按需启动的任务不能按需启动。现有布局的任务（#287）经 pwsh 运行 adapter：adapter 启动它
+    # 所在安装根里的 app\MinminCountdown.exe 后退出，任务实例随之结束；adapter 不在时什么都起不来。
     StartTask = {
         param([string] $Name)
         $task = $deployCase.Tasks[$Name]
         if (-not $task.Enabled -or -not $task.AllowDemandStart) { throw "任务 $Name 不能按需启动。" }
-        $task.State = 'Running'
         $exePath = ([string] $task.Actions[0].Execute).Trim('"')
+        $startedByTask = $Name
+        if ([System.IO.Path]::GetFileName($exePath) -eq 'pwsh.exe') {
+            if ([string] $task.Actions[0].Arguments -notmatch '-File "([^"]+)"' -or -not (Test-Path -LiteralPath $Matches[1] -PathType Leaf)) { return }
+            $exePath = Join-Path (Split-Path -Parent $Matches[1]) 'app\MinminCountdown.exe'
+            $startedByTask = $null
+        }
+        else { $task.State = 'Running' }
         $processId = $deployCase.NextProcessId
         $deployCase.NextProcessId = $processId + 1
         $deployCase.Processes = @($deployCase.Processes) + @([pscustomobject]@{
@@ -234,7 +241,7 @@ $deployWindowsPorts = [pscustomobject]@{
                 ExecutablePath = $exePath
                 SessionId = 3
                 CreationDate = [DateTimeOffset]::Parse('2026-11-14T09:40:00Z').LocalDateTime
-                StartedByTask = $Name
+                StartedByTask = $startedByTask
             })
         $receipt = [ordered]@{ schemaVersion = 4; stage = 'window-ready'; processId = $processId; sessionId = 3; readyAtUtc = '2026-11-14T09:40:02.0000000+00:00' }
         [System.IO.File]::WriteAllText((Join-Path (Split-Path -Parent (Split-Path -Parent $exePath)) 'runtime-status.json'), ($receipt | ConvertTo-Json), $deployUtf8)
@@ -250,6 +257,26 @@ $deployWindowsPorts = [pscustomobject]@{
     }
     ReadShortcut = $deployShortcutPorts.ReadShortcut
     WriteShortcut = $deployShortcutPorts.WriteShortcut
+    RemoveShortcut = $deployShortcutPorts.RemoveShortcut
+    # 任务定义的导出与恢复（切换的备份与回退、安装器更新任务前的导出）：导出是不含运行状态的整份定义，恢复按导出整份替换，
+    # 定义为空即删除。
+    ExportTask = {
+        param([string] $Name)
+        if ($deployCase.Tasks.ContainsKey($Name)) { $deployCase.Tasks[$Name] | Select-Object -Property * -ExcludeProperty State | ConvertTo-Json -Depth 4 -Compress }
+    }
+    RestoreTask = {
+        param([string] $Name, [object] $Definition)
+        if ($null -eq $Definition) {
+            [void] $deployCase.Tasks.Remove($Name)
+            return
+        }
+        $restored = [string] $Definition | ConvertFrom-Json
+        $restored | Add-Member -NotePropertyName State -NotePropertyValue 'Ready'
+        $deployCase.Tasks[$Name] = $restored
+    }
+    # 切换前置检查读的令牌与任务 DACL（#288）：远端步骤提权运行，任务都是提权注册的（只有 SYSTEM 与 Administrators 能改）。
+    GetProcessIdentity = { [pscustomobject]@{ Elevated = $true; Sids = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-11') } }
+    GetTaskSecurity = { param([string] $Name) 'D:AI(A;ID;0x1f019f;;;BA)(A;ID;0x1f019f;;;SY)(A;ID;FA;;;BA)' }
 }
 
 # 假办公室的现状：文件树（长度、修改时间与 SHA-256）、计划任务与进程。只读调用前后必须相同。
@@ -324,14 +351,16 @@ $deployHostPorts = [pscustomobject]@{
 function Invoke-CountdownDeployTest {
     param(
         [Parameter(Mandatory)] [string] $Label,
-        [switch] $StatusOnly
+        [switch] $StatusOnly,
+        [switch] $LayoutSwitch,
+        [switch] $LayoutRollback
     )
 
     $errorWriter = [System.IO.StringWriter]::new()
     $standardError = [Console]::Error
     [Console]::SetError($errorWriter)
     try {
-        $output = @(& $deployScript -StatusOnly:$StatusOnly -RepositoryRoot $deployRepo.Root -RecordRoot $deployCase.RecordRoot `
+        $output = @(& $deployScript -StatusOnly:$StatusOnly -LayoutSwitch:$LayoutSwitch -LayoutRollback:$LayoutRollback -RepositoryRoot $deployRepo.Root -RecordRoot $deployCase.RecordRoot `
                 -RemoteInstallRoot $deployCase.InstallRoot -TaskName $deployCase.TaskName -RemoteStagingRoot $deployCase.StagingRoot -Port $deployHostPorts *>&1)
     }
     finally { [Console]::SetError($standardError) }
@@ -755,6 +784,104 @@ try {
     $deployRecordBlocked = Invoke-CountdownDeployTest -Label 'unknown result with an unwritable record root'
     Assert-Equal 'unknown|install|True' "$($deployRecordBlocked.Result.outcome)|$($deployRecordBlocked.Result.failedStep)|$($null -eq $deployRecordBlocked.Result.recordPath)" "A record that cannot be written keeps the unknown result: $($deployRecordBlocked.Result.error)"
     Assert-Equal $true ([string] $deployRecordBlocked.Result.error).Contains('deployment-record.json') 'The error says the deployment record was not written'
+
+    # 布局切换经新部署入口（#287）：办公室还是现有布局，登录任务经 pwsh 运行 adapter，桌面上是启动器 EXE；程序目录里已经是 HEAD
+    # 这一版（经现有部署路径送达），切换模式不因此报告已在运行。包里带上切换脚本，远端写操作在办公室上运行它：备份、经新安装器
+    # 换布局、移除遗留；再读一次状态，登录任务已是新定义。
+    $deployCase = New-CountdownDeployTestCase -Name 'layout-switch'
+    $deployOldRoot = $deployCase.InstallRoot
+    foreach ($deployFile in $deployBuildFiles) {
+        $deployOldPath = Join-Path $deployOldRoot $deployFile.Path
+        New-Item -ItemType Directory -Path (Split-Path -Parent $deployOldPath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($deployOldPath, $deployFile.Text, $deployUtf8)
+    }
+    [System.IO.File]::Copy((Join-Path $deployRepo.Root 'app\published-payload.json'), (Join-Path $deployOldRoot 'app\published-payload.json'))
+    foreach ($deployOldName in @('敏敏子倒计时.ps1', 'CountdownLauncher.exe')) { [System.IO.File]::WriteAllText((Join-Path $deployOldRoot $deployOldName), "deploy old layout $deployOldName", $deployUtf8) }
+    [System.IO.File]::WriteAllText((Join-Path $deployOldRoot 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":4101,"sessionId":3}', $deployUtf8)
+    [System.IO.File]::Copy((Join-Path $deployOldRoot 'CountdownLauncher.exe'), (Join-Path $deployCase.Desktop '敏敏子倒计时.exe'))
+    $deployCase.Tasks[$deployCase.TaskName] = [pscustomobject]@{
+        State = 'Ready'
+        Enabled = $true
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = 'C:\Program Files\PowerShell\7\pwsh.exe'; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $deployOldRoot '敏敏子倒计时.ps1')`""; WorkingDirectory = $deployOldRoot })
+        Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $deploySessionSid })
+        UserSid = $deploySessionSid
+        LogonType = 'Interactive'
+        RunLevel = 'Limited'
+        Priority = 7
+        ExecutionTimeLimit = 'PT0S'
+        MultipleInstances = 'IgnoreNew'
+        DisallowStartIfOnBatteries = $false
+        StopIfGoingOnBatteries = $false
+        AllowDemandStart = $true
+        AllowHardTerminate = $true
+        UserId = 'old-installer-task-owner'
+    }
+    $deployCase.Processes = @([pscustomobject]@{ ProcessId = 4101; Name = 'MinminCountdown.exe'; ExecutablePath = (Join-Path $deployOldRoot 'app\MinminCountdown.exe'); SessionId = 3; CreationDate = [DateTimeOffset]::Parse('2026-11-14T09:00:00Z').LocalDateTime; StartedByTask = $null })
+    $deployLayoutState = {
+        $tree = @((Get-CountdownDeployTestTree -Root $deployOldRoot) -split "`n" | Where-Object { $_ -notlike 'file:runtime-status.json|*' }) -join "`n"
+        $task = $deployCase.Tasks[$deployCase.TaskName] | Select-Object -Property * -ExcludeProperty State | ConvertTo-Json -Depth 4 -Compress
+        "$tree`n$(Get-CountdownDeployTestTree -Root $deployCase.Desktop)`n$task"
+    }
+    $deployLayoutBefore = & $deployLayoutState
+    $deploySwitched = Invoke-CountdownDeployTest -Label 'layout switch' -LayoutSwitch
+    $deploySwitch = $deploySwitched.Result
+    Assert-Equal 'deployed|layout-switch|switch|created' "$($deploySwitch.outcome)|$($deploySwitch.mode)|$($deploySwitch.install.mode)|$($deploySwitch.install.backup.action)" "The layout switch runs through the deploy entry: $($deploySwitch.failedStep) $($deploySwitch.error)"
+    Assert-Equal "$($deployRepo.Head)|True" "$($deploySwitch.statusBefore.commit)|$($deploySwitch.statusBefore.running)" 'The probe reads the commit already running in the old layout, and the switch goes on'
+    Assert-Equal 'remote-read,transfer,remote-write,remote-read' ($deployCase.Calls -join ',') 'The switch travels in the package and runs as one remote write between the probe and the status read'
+    Assert-Equal "$($deployRepo.Head)|True|True|7001" "$($deploySwitch.status.commit)|$($deploySwitch.status.running)|$($deploySwitch.status.loginTask.matchesExpected)|$($deploySwitch.install.readyProcess.processId)" 'The status read after the switch shows the new layout running'
+    Assert-Equal 'False|False|敏敏子倒计时.lnk' "$(Test-Path -LiteralPath (Join-Path $deployOldRoot '敏敏子倒计时.ps1'))|$(Test-Path -LiteralPath (Join-Path $deployOldRoot 'CountdownLauncher.exe'))|$(@(Get-ChildItem -LiteralPath $deployCase.Desktop -Force | ForEach-Object { $_.Name }) -join ',')" 'The switch through the deploy entry removes the old files and leaves the shortcut on the desktop'
+    Assert-Equal $true ($deployCase.MaxEncodedLength -gt 0 -and $deployCase.MaxEncodedLength -le 29000) "The switch's remote scripts fit the remote entry's encoded command limit: $($deployCase.MaxEncodedLength)"
+    Assert-CountdownDeployNoLeak -Text $deploySwitched.Text -Name 'Layout switch standard output'
+
+    # 回退经新部署入口：一次写操作运行备份里的回退脚本；安装根、登录任务与桌面启动器回到切换前，旧版本经恢复的任务重新启动；
+    # 本地记录写下回退结果。
+    $deployCase.Calls.Clear()
+    $deployRolledBack = Invoke-CountdownDeployTest -Label 'layout rollback' -LayoutRollback
+    $deployRollback = $deployRolledBack.Result
+    Assert-Equal 'rolled-back|True|layout-rollback|remote-write' "$($deployRollback.outcome)|$($deployRollback.succeeded)|$($deployRollback.mode)|$($deployCase.Calls -join ',')" "The rollback runs through the deploy entry as one remote write: $($deployRollback.failedStep) $($deployRollback.error)"
+    Assert-Equal $deployLayoutBefore (& $deployLayoutState) 'After the rollback through the deploy entry the install root, the login task and the desktop launcher are as before the switch'
+    Assert-Equal '7002|7002' "$($deployRollback.rollback.restartedProcess.processId)|$(@($deployCase.Processes | ForEach-Object { $_.ProcessId }) -join ',')" 'After the rollback the old version runs again'
+    Assert-Equal 'layout-rollback|rolled-back' "$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).mode)|$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).outcome)" 'The local record keeps the rollback result'
+    Assert-CountdownDeployNoLeak -Text $deployRolledBack.Text -Name 'Layout rollback standard output'
+    Assert-CountdownDeployNoLeak -Text $deployRolledBack.Stderr -Name 'Layout rollback progress'
+
+    # 没有备份时回退什么都不做，明确报告失败；三种模式只能选一个，同时给出时在连接办公室之前拒绝。
+    $deployCase = New-CountdownDeployTestCase -Name 'rollback-without-backup'
+    $deployNoBackup = Invoke-CountdownDeployTest -Label 'rollback without a backup' -LayoutRollback
+    Assert-Equal 'failed|rollback|rollback-failed|remote-write' "$($deployNoBackup.Result.outcome)|$($deployNoBackup.Result.failedStep)|$($deployNoBackup.Result.reason)|$($deployCase.Calls -join ',')" "A rollback without a backup fails and says so: $($deployNoBackup.Result.error)"
+    $deployCase.Calls.Clear()
+    $deployBothModes = Invoke-CountdownDeployTest -Label 'switch and rollback together' -LayoutSwitch -LayoutRollback
+    Assert-Equal 'rejected|conflicting-modes|' "$($deployBothModes.Result.outcome)|$($deployBothModes.Result.reason)|$($deployCase.Calls -join ',')" 'Asking for two modes at once is rejected before contacting the office'
+
+    # 切换中途失败（罐装的切换结果：新安装器注册登录任务失败并已回滚，备份完整保留）：部署入口报告失败，下一步带上切换脚本
+    # 给的那句，再说明经部署入口怎么接着切换或回退。
+    $deployCase = New-CountdownDeployTestCase -Name 'layout-switch-failed'
+    $deployCase.Responses['write1'] = {
+        param([scriptblock] $RunOnOffice)
+        $switchFailure = [ordered]@{
+            schemaVersion = 1
+            mode = 'switch'
+            succeeded = $false
+            failedStage = 'install'
+            reason = 'register-login-task'
+            error = '注册登录任务被拒绝。'
+            backup = [ordered]@{ action = 'created'; complete = $true }
+            rollback = [ordered]@{ outcome = 'rolled-back' }
+            nextStep = '切换没有走完，切换前的备份完整保留：排除原因后再次运行切换。'
+        }
+        $envelope = [ordered]@{
+            packageVerified = $true
+            installerStarted = $true
+            installer = $switchFailure | ConvertTo-Json -Depth 4 -EscapeHandling EscapeNonAscii
+            stagingRemoved = $true
+            error = $null
+        }
+        [pscustomobject]@{ ExitCode = 0; Output = ($envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii); Host = $deployHostSentinel; User = $deployAccountSentinel }
+    }
+    $deploySwitchFailed = Invoke-CountdownDeployTest -Label 'layout switch fails mid-way' -LayoutSwitch
+    Assert-Equal 'failed|install|install-failed|rolled-back|remote-read,transfer,remote-write' "$($deploySwitchFailed.Result.outcome)|$($deploySwitchFailed.Result.failedStep)|$($deploySwitchFailed.Result.reason)|$($deploySwitchFailed.Result.rollback)|$($deployCase.Calls -join ',')" "A switch that fails mid-way is reported as failed: $($deploySwitchFailed.Result.error)"
+    Assert-Equal $true ([string] $deploySwitchFailed.Result.nextStep).Contains('切换没有走完，切换前的备份完整保留：排除原因后再次运行切换。') "The next step carries the switch's own next step: $($deploySwitchFailed.Result.nextStep)"
+    Assert-Equal $true (([string] $deploySwitchFailed.Result.nextStep).Contains('-LayoutSwitch') -and ([string] $deploySwitchFailed.Result.nextStep).Contains('-LayoutRollback')) "The next step says how to resume or roll back through the deploy entry: $($deploySwitchFailed.Result.nextStep)"
 
     # 生产 port 接主机入口：入口换成临时目录里的假脚本（形参、写操作断言与摘要格式同主机入口），不碰真实入口、不连任何设备。
     # 入口的杂项输出与摘要里的主机名不外漏，port 只回已知字段。

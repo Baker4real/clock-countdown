@@ -10,6 +10,10 @@
 只读状态读取，提交、EXE 哈希和运行中的进程都与预期一致才报告成功；写一份本地部署记录。送过去的就是本机套件测过的
 那份构建输出，不重新导出、不重新构建。包和暂存内容不保留。
 -StatusOnly 只做一次只读状态读取，不做任何改动，也不写记录。
+一次性布局切换（#287，步骤见 docs/办公室布局切换.md）：-LayoutSwitch 走与部署相同的预检、打包、探测、传输与状态读取，
+包里另带切换脚本，安装一步在办公室上运行它：先把安装根、两个登录任务定义和桌面启动器备份到 <安装根>.layout-switch-backup，
+再经包内新安装器换成新布局、移除遗留；当前提交已在运行也照常切换。-LayoutRollback 一次远端写操作运行备份里的回退脚本，
+把安装根、任务定义与桌面启动器恢复成切换前的样子，结论 rolled-back；不需要构建输出。三种模式一次只能选一种。
 进度写到标准错误，最后一行是结论；结果 JSON 写到标准输出，退出码总是 0。结论看 outcome：deployed、already-running
 （succeeded 为 true）；rejected（预检拒绝，没有连接办公室）、failed（succeeded 为 false）；unknown（succeeded 为 null，
 不知道办公室上的结果）。failedStep 是停下的步骤，reason 是原因类别，error 写明缺什么或哪里不对；安装失败时 rollback 是
@@ -19,6 +23,8 @@
 [CmdletBinding()]
 param(
     [switch] $StatusOnly,
+    [switch] $LayoutSwitch,
+    [switch] $LayoutRollback,
     [string] $RepositoryRoot = $PSScriptRoot,
     [string] $RecordRoot = 'D:\agents\run-evidence\clock-countdown-program-deploy',
     [string] $RemoteInstallRoot = 'D:\敏敏子倒计时',
@@ -34,6 +40,8 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.Deployer.psm1') -Force
 if ($null -eq $Port) { $Port = New-CountdownDeployerHostPorts }
 $arguments = @{
     StatusOnly = $StatusOnly
+    LayoutSwitch = $LayoutSwitch
+    LayoutRollback = $LayoutRollback
     RepositoryRoot = $RepositoryRoot
     RecordRoot = $RecordRoot
     RemoteInstallRoot = $RemoteInstallRoot

@@ -14,11 +14,11 @@ $switchUtf8 = [System.Text.UTF8Encoding]::new($false)
 $switchLockName = 'Local\MinminCountdownLayoutSwitchTest-' + [guid]::NewGuid().ToString('N')
 # 包里的新版本：文件、各自的 SHA-256 与聚合哈希是独立算好的字面量（与 Installer 分段的 v2 相同），提交是本分段自己的。
 $switchCommit = '3c91d5e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5c7e9'
-$switchAggregate = 'A3F2FE256C10123C8BBDA2890A10D6985A0134D1DA42C737B6B8A05DB8010E78'
+$switchAggregate = '2A451524B97FED26B6B7B535A88AAA1129446AE62535044D66DF007CF09D6105'
 $switchPackageFiles = @(
     [pscustomobject]@{ Path = 'app\holiday-data\2027.json'; Text = 'installer holiday v2'; Sha256 = '5987A3F052924557E59C0E387723DDEED9E53B74997FB8FF418552117EDC90DB' }
     [pscustomobject]@{ Path = 'app\MinminCountdown.dll'; Text = 'installer dll v2'; Sha256 = 'DB2617243BF6059E225265C27CFFFE1E01CF5B9B78BDBB67B6789CB8BA8B548D' }
-    [pscustomobject]@{ Path = 'app\MinminCountdown.exe'; Text = 'installer exe v2'; Sha256 = '6DEDBE93409F73643FAECDBD4B4FB980CB3B328B16555D66B548EF5C846CB989' }
+    [pscustomobject]@{ Path = 'app\MinminCountdown.exe'; Text = 'installer exe shared by every build'; Sha256 = 'C62B3E048197B6CDE441B0C583B62423D0B16175267038D991B6D1278CE28388' }
 )
 # 用户数据：设置、两代设置备份、恢复证据、诊断日志与节假日缓存（顶层条目），切换前后逐字节不变。
 $switchUserDataFiles = [ordered]@{
@@ -56,7 +56,7 @@ $switchOldLayoutFiles = [ordered]@{
     'startup-request.json' = '{"schemaVersion":1,"acceptanceState":"released"}'
     'acceptance-status.json' = '{"schemaVersion":1}'
     'runtime-status.json' = '{"schemaVersion":4,"stage":"window-ready","processId":4101,"sessionId":3}'
-    'app\MinminCountdown.exe' = 'installer exe v2'
+    'app\MinminCountdown.exe' = 'installer exe shared by every build'
     'app\MinminCountdown.dll' = 'layout switch old dll'
     'app\assets\sanrio-official-kuromi.png' = 'layout switch old app asset'
     'user-notes.txt' = 'a file the user put into the install root'

@@ -11,18 +11,21 @@ $installerUtf8 = [System.Text.UTF8Encoding]::new($false)
 # 每次运行用自己的锁名，不和本机真实安装或别处并行的测试争同一把全机锁。
 $installerLockName = 'Local\MinminCountdownInstallerTest-' + [guid]::NewGuid().ToString('N')
 # 期望值是独立算好的字面量：各文件为 SHA-256(正文)，聚合哈希按构建脚本的算法（清单顺序的 路径\0哈希\n）另行算出。
+# 两个版本共用同一个 EXE：真实构建的 MinminCountdown.exe 是 apphost，各版本逐字节相同，版本在 DLL 与载荷清单里（#288）。
+# 用例因此按 DLL 或清单认版本，从不按 EXE 的哈希。
+$installerSharedExe = [pscustomobject]@{ Path = 'app\MinminCountdown.exe'; Text = 'installer exe shared by every build'; Sha256 = 'C62B3E048197B6CDE441B0C583B62423D0B16175267038D991B6D1278CE28388' }
 $installerCommitV2 = '2b80c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a4b6'
-$installerAggregateV2 = 'A3F2FE256C10123C8BBDA2890A10D6985A0134D1DA42C737B6B8A05DB8010E78'
+$installerAggregateV2 = '2A451524B97FED26B6B7B535A88AAA1129446AE62535044D66DF007CF09D6105'
 $installerPackageFilesV2 = @(
     [pscustomobject]@{ Path = 'app\holiday-data\2027.json'; Text = 'installer holiday v2'; Sha256 = '5987A3F052924557E59C0E387723DDEED9E53B74997FB8FF418552117EDC90DB' }
     [pscustomobject]@{ Path = 'app\MinminCountdown.dll'; Text = 'installer dll v2'; Sha256 = 'DB2617243BF6059E225265C27CFFFE1E01CF5B9B78BDBB67B6789CB8BA8B548D' }
-    [pscustomobject]@{ Path = 'app\MinminCountdown.exe'; Text = 'installer exe v2'; Sha256 = '6DEDBE93409F73643FAECDBD4B4FB980CB3B328B16555D66B548EF5C846CB989' }
+    $installerSharedExe
 )
 $installerCommitV1 = '1a70b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f3a5'
-$installerAggregateV1 = 'E75412ECA2410C4B405F8541F7ED0841E4DF93AD3D16926A128177DFEE3DAC16'
+$installerAggregateV1 = '3F26C6760511CE0F37CBE56098B0E80661F31DC51CA331C72D8D109A38FEE8F7'
 $installerProgramFilesV1 = @(
     [pscustomobject]@{ Path = 'app\MinminCountdown.dll'; Text = 'installer dll v1'; Sha256 = '41F7D2E165D4F4569FB1B0B6F95BAA18EBABE0F85F5B9A62AD448D7B2D0FE903' }
-    [pscustomobject]@{ Path = 'app\MinminCountdown.exe'; Text = 'installer exe v1'; Sha256 = 'BDD2EABFD93033B9B617242BA6D4D62F1C1D7B006CDCC20941D6446D43CDBB14' }
+    $installerSharedExe
 )
 # 安装根里的用户数据：设置、两代设置备份、恢复证据、诊断日志与节假日缓存，时间戳固定在安装之前。
 $installerUserDataFiles = [ordered]@{
@@ -56,11 +59,12 @@ $installerPorts = [pscustomobject]@{
         param([string] $Name)
         @($installerCase.Processes | Where-Object { $_.Name -eq $Name })
     }
-    # 结束进程；由任务启动的进程一退出，任务实例随之结束（#279 实测 Stop-Process 后任务回到 Ready）。
+    # 结束进程；由任务启动的进程一退出，任务实例随之结束（#279 实测 Stop-Process 后任务回到 Ready），上次结果是被结束的
+    # 进程的退出码 0xFFFFFFFF（#288 实测）。
     StopProcess = {
         param([int] $ProcessId)
         foreach ($process in @($installerCase.Processes | Where-Object { $_.ProcessId -eq $ProcessId -and $_.StartedByTask })) {
-            $installerCase.Tasks[$process.StartedByTask].State = 'Ready'
+            Set-CountdownInstallerTestTaskRun -Task $installerCase.Tasks[$process.StartedByTask] -State 'Ready' -LastTaskResult 0xFFFFFFFFL
         }
         $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
         if ($null -ne $installerCase.OnStopProcess) { & $installerCase.OnStopProcess $ProcessId }
@@ -94,12 +98,12 @@ $installerPorts = [pscustomobject]@{
     StartTask = {
         param([string] $Name)
         # 任务按动作启动 EXE；EXE 存在时应用渲染首帧，在应用根（app\ 的上一级）写出运行状态回执，形同 C# 的 RuntimeReceipt。
-        # 用例可改写这次启动：进程落在哪个会话、写完回执后是否还在运行、是否写出回执。Launch 只管新版本（与包里的 EXE 相同），
-        # PreviousLaunch 管其余的启动，也就是回滚后重新启动的旧版本。OnStartTask 收到这次启动的 EXE 路径。
+        # 用例可改写这次启动：进程落在哪个会话、写完回执后是否还在运行、是否写出回执、不在运行时的退出码。Launch 只管新版本
+        # （DLL 与包里的相同），PreviousLaunch 管其余的启动，也就是回滚后重新启动的旧版本。OnStartTask 收到这次启动的 EXE 路径。
         # 与任务计划一样，停用的任务和不允许按需启动的任务不能按需启动。
         $task = $installerCase.Tasks[$Name]
         if (-not $task.Enabled -or -not $task.AllowDemandStart) { throw "任务 $Name 不能按需启动。" }
-        $task.State = 'Running'
+        Set-CountdownInstallerTestTaskRun -Task $task -State 'Running' -LastTaskResult 0x41301 -NewRun
         $exePath = ([string] $task.Actions[0].Execute).Trim('"')
         if ($null -ne $installerCase.OnStartTask) { & $installerCase.OnStartTask $exePath }
         if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { return }
@@ -108,9 +112,9 @@ $installerPorts = [pscustomobject]@{
         $installerCase.NextProcessId = $processId + 1
         $process = New-CountdownInstallerTestProcess -ProcessId $processId -ExecutablePath $exePath -StartedByTask $Name
         $process.SessionId = $launch.SessionId
-        # 进程自己退出时任务实例随之结束。
+        # 进程自己退出时任务实例随之结束，上次结果是它的退出码。
         if ($launch.StaysAlive) { $installerCase.Processes = @($installerCase.Processes) + @($process) }
-        else { $task.State = 'Ready' }
+        else { Set-CountdownInstallerTestTaskRun -Task $task -State 'Ready' -LastTaskResult $launch.ExitCode }
         if (-not $launch.WritesReceipt) { return }
         $applicationRoot = Split-Path -Parent (Split-Path -Parent $exePath)
         $receipt = [ordered]@{
@@ -234,6 +238,21 @@ function Read-CountdownInstallerTestShortcut {
     "$($link.TargetPath)|$($link.Arguments)|$($link.WorkingDirectory)|$($link.IconLocation)"
 }
 
+# 登录任务的运行状态，与任务计划一样（#279、#288 实测）：直接运行 EXE 的任务，实例与进程同生同灭；启动时更新上次运行时间，
+# 上次结果为 0x41301（运行中），进程退出后任务回到 Ready，上次结果就是进程的退出码。
+function Set-CountdownInstallerTestTaskRun {
+    param(
+        [Parameter(Mandatory)] [object] $Task,
+        [Parameter(Mandatory)] [string] $State,
+        [Parameter(Mandatory)] [long] $LastTaskResult,
+        [switch] $NewRun
+    )
+
+    $Task.State = $State
+    if ($NewRun) { $Task | Add-Member -NotePropertyName LastRunTime -NotePropertyValue ([DateTime]::Now) -Force }
+    $Task | Add-Member -NotePropertyName LastTaskResult -NotePropertyValue $LastTaskResult -Force
+}
+
 function New-CountdownInstallerTestProcess {
     param([int] $ProcessId, [string] $ExecutablePath, [string] $StartedByTask)
     [pscustomobject]@{
@@ -246,10 +265,16 @@ function New-CountdownInstallerTestProcess {
     }
 }
 
-# 这次启动的是不是新版本：EXE 与包里的 EXE 相同。
+# 这次启动的是不是新版本：EXE 旁边的 DLL 与包里的 DLL 相同（各版本的 EXE 逐字节相同，认不出版本）。
 function Test-CountdownInstallerTestNewVersion {
     param([Parameter(Mandatory)] [string] $ExecutablePath)
-    (Get-CountdownInstallerTestFileHash -Path $ExecutablePath) -eq (Get-CountdownInstallerTestFileHash -Path (Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'))
+    $dll = Join-Path (Split-Path -Parent $ExecutablePath) 'MinminCountdown.dll'
+    (Get-CountdownInstallerTestFileHash -Path $dll) -eq (Get-CountdownInstallerTestFileHash -Path (Join-Path $installerCase.PackageRoot 'app\MinminCountdown.dll'))
+}
+
+# 程序目录里现役的是哪一版：DLL 的 SHA-256。
+function Get-CountdownInstallerTestInstalledDll {
+    Get-CountdownInstallerTestFileHash -Path (Join-Path $installerCase.Root 'app\MinminCountdown.dll')
 }
 
 # 新版本启动时按正常流程迁移并保存现役设置（#259 第 8 步），像产品的两代备份轮转：合法的旧 backup 1 成为 backup 2，
@@ -303,8 +328,8 @@ function New-CountdownInstallerTestCase {
         Processes = @()
         Tasks = @{}
         NextProcessId = 6001
-        Launch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true }
-        PreviousLaunch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true }
+        Launch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true; ExitCode = 0 }
+        PreviousLaunch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true; ExitCode = 0 }
         MoveLocks = @()
         OnStopProcess = $null
         OnMoveDirectory = $null
@@ -340,11 +365,11 @@ function New-CountdownInstallerTestTask {
     }
 }
 
-# 任务定义的逐项快照（不含随运行变化的状态），用来比较安装前后有没有被动过。
+# 任务定义的逐项快照（不含随运行变化的状态、上次运行时间与上次结果），用来比较安装前后有没有被动过。
 function Get-CountdownInstallerTestTaskDefinition {
     param([AllowNull()] [object] $Task)
     if ($null -eq $Task) { return '<missing>' }
-    $Task | Select-Object -Property * -ExcludeProperty State | ConvertTo-Json -Depth 4 -Compress
+    $Task | Select-Object -Property * -ExcludeProperty State, LastRunTime, LastTaskResult | ConvertTo-Json -Depth 4 -Compress
 }
 
 function Write-CountdownInstallerTestUserData {
@@ -761,19 +786,24 @@ try {
     # 下面几例经导出的 module 函数把停止、启动就绪与文件占用重试的时限缩短到 1 秒，都在已装好的 v1 上升级。
     # 启动就绪只认：回执由一个存活进程写出，其映像路径是已安装 EXE，会话是交互会话，EXE 哈希与载荷清单一致。每例只违反一条，
     # 等待时限内达不到启动就绪就不提交：失败在启动阶段，回滚（#283）停止新版本、换回旧版本并重新启动它，不留事务痕迹。
+    # 新版本在启动就绪之前就退出时（登录任务的那次运行已经结束，已安装 EXE 也没有进程在运行）不再等，原因是 startup-exited，
+    # 结果带它的退出码（#288）；其余各例没有退出码。
     # 登录任务有运行中的实例时，经它启动会被 IgnoreNew 悄悄拒绝（#279）：应用进程都结束后实例仍在（例如任务的动作不是
     # 已安装 EXE），就在写事务标记之前停下，候选删除，程序目录不变，不需要回滚；替换程序目录期间任务又运行起来时，不再触发它，
     # 回滚把程序目录换回，却同样没法经仍在运行的任务重新启动旧版本：回滚如实报告失败，事务标记与候选留给中断恢复。
     Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
     $installerShortWaits = @(
-        [pscustomobject]@{ Name = 'not-ready-no-receipt'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = { $installerCase.Launch.WritesReceipt = $false } }
-        [pscustomobject]@{ Name = 'not-ready-process-exited'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = { $installerCase.Launch.StaysAlive = $false } }
-        [pscustomobject]@{ Name = 'not-ready-other-session'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = { $installerCase.Launch.SessionId = 4 } }
-        [pscustomobject]@{ Name = 'not-ready-exe-changed'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = {
+        [pscustomobject]@{ Name = 'not-ready-no-receipt'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; ExitCode = ''; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = { $installerCase.Launch.WritesReceipt = $false } }
+        [pscustomobject]@{ Name = 'exited-before-ready'; Stage = 'start-and-wait-ready'; Reason = 'startup-exited'; ExitCode = '1'; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = {
+                $installerCase.Launch.StaysAlive = $false
+                $installerCase.Launch.ExitCode = 1
+            } }
+        [pscustomobject]@{ Name = 'not-ready-other-session'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; ExitCode = ''; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = { $installerCase.Launch.SessionId = 4 } }
+        [pscustomobject]@{ Name = 'not-ready-exe-changed'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; ExitCode = ''; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = {
                 $installerCase.OnStartTask = { param([string] $ExePath) if (Test-CountdownInstallerTestNewVersion -ExecutablePath $ExePath) { [System.IO.File]::WriteAllText($ExePath, 'installer exe v2 changed after placement', $installerUtf8) } }
             } }
-        [pscustomobject]@{ Name = 'task-instance-outlives-app'; Stage = 'stop-application'; Reason = 'login-task-still-running'; Rollback = 'not-needed'; Running = '4103'; Arrange = { $installerCase.Processes[0].StartedByTask = $null } }
-        [pscustomobject]@{ Name = 'task-runs-during-replace'; Stage = 'start-and-wait-ready'; Reason = 'login-task-still-running'; Rollback = 'rollback-failed'; Running = '4103'; Arrange = { $installerCase.OnMoveDirectory = { $installerCase.Tasks[$installerCase.TaskName].State = 'Running' } } }
+        [pscustomobject]@{ Name = 'task-instance-outlives-app'; Stage = 'stop-application'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'not-needed'; Running = '4103'; Arrange = { $installerCase.Processes[0].StartedByTask = $null } }
+        [pscustomobject]@{ Name = 'task-runs-during-replace'; Stage = 'start-and-wait-ready'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'rollback-failed'; Running = '4103'; Arrange = { $installerCase.OnMoveDirectory = { $installerCase.Tasks[$installerCase.TaskName].State = 'Running' } } }
     )
     foreach ($shortWait in $installerShortWaits) {
         $installerCase = New-CountdownInstallerTestCase -Name $shortWait.Name
@@ -782,15 +812,34 @@ try {
         $shortWaitResult = Install-CountdownProgram -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -Ports $installerPorts -LockName $installerLockName -ReadyTimeoutSeconds 1 -StopTimeoutSeconds 1 -FileLockRetrySeconds 1 |
             ConvertTo-Json -Depth 6 | ConvertFrom-Json -DateKind String
         Assert-Equal "False|$($shortWait.Stage)|$($shortWait.Reason)" "$($shortWaitResult.succeeded)|$($shortWaitResult.failedStage)|$($shortWaitResult.reason)" "Install does not commit: $($shortWait.Name) $($shortWaitResult.error)"
+        Assert-Equal $shortWait.ExitCode ([string] $shortWaitResult.startupExitCode) "Result JSON carries an exit code only when the new version exited before startup readiness: $($shortWait.Name)"
         Assert-Equal $shortWait.Rollback ([string] $shortWaitResult.rollback.outcome) "Result JSON reports the rollback outcome: $($shortWait.Name) $(@($shortWaitResult.rollback.problems) -join '；')"
         Assert-Equal $shortWait.Running (Get-CountdownInstallerTestRunning) "Install starts the new version only through an idle login task, and the rollback the previous one: $($shortWait.Name)"
-        Assert-Equal $installerProgramFilesV1[1].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "Program directory is the installed version afterwards: $($shortWait.Name)"
+        Assert-Equal $installerProgramFilesV1[0].Sha256 (Get-CountdownInstallerTestInstalledDll) "Program directory is the installed version afterwards: $($shortWait.Name)"
         Assert-Equal $false (Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.previous')) "No previous-version directory is left behind: $($shortWait.Name)"
         $rollbackFailed = $shortWait.Rollback -eq 'rollback-failed'
         Assert-Equal $rollbackFailed (Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json')) "Transaction marker stays only when the rollback failed: $($shortWait.Name)"
         Assert-Equal $rollbackFailed ([bool] $shortWaitResult.transactionMarkerPresent) "Result JSON says whether the transaction marker stays: $($shortWait.Name)"
         Assert-Equal $rollbackFailed (Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.candidate')) "The new version is kept as the candidate only when the rollback failed: $($shortWait.Name)"
     }
+
+    # 新版本启动即退出（#288 实测：v3 在 0.4 秒内以退出码 1 退出，安装器却等满了 30 秒的就绪时限才回滚）。就绪时限放到 60 秒：
+    # 那次运行一结束就不再等，安装远在时限之前结束并回滚，旧版本重新运行；结果写明退出码，有界的错误摘要里也有它，
+    # 诊断日志的位置照旧。
+    $installerCase = New-CountdownInstallerTestCase -Name 'exited-at-once'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.Launch.StaysAlive = $false
+    $installerCase.Launch.WritesReceipt = $false
+    $installerCase.Launch.ExitCode = 1
+    $exitedClock = [System.Diagnostics.Stopwatch]::StartNew()
+    $exitedAtOnce = Install-CountdownProgram -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root -TaskName $installerCase.TaskName -Ports $installerPorts -LockName $installerLockName -ReadyTimeoutSeconds 60 -StopTimeoutSeconds 1 -FileLockRetrySeconds 1 |
+        ConvertTo-Json -Depth 6 | ConvertFrom-Json -DateKind String
+    $exitedClock.Stop()
+    Assert-Equal 'False|start-and-wait-ready|startup-exited|1' "$($exitedAtOnce.succeeded)|$($exitedAtOnce.failedStage)|$($exitedAtOnce.reason)|$($exitedAtOnce.startupExitCode)" "A new version that exits before startup readiness fails the install with its exit code: $($exitedAtOnce.error)"
+    Assert-Equal $true ($exitedClock.Elapsed.TotalSeconds -lt 20) "The install does not wait out the readiness timeout once the new version has exited: $([int] $exitedClock.Elapsed.TotalSeconds) s"
+    Assert-Equal 'rolled-back|6002|4103,6002' "$($exitedAtOnce.rollback.outcome)|$($exitedAtOnce.restartedProcess.processId)|$(Get-CountdownInstallerTestRunning)" "The install rolls back and the previous version runs again: $(@($exitedAtOnce.rollback.problems) -join '；')"
+    Assert-Equal $true (([string] $exitedAtOnce.error).Contains('0x00000001') -and ([string] $exitedAtOnce.error).Length -le 401) "Result JSON carries a bounded error summary that names the exit code: $($exitedAtOnce.error)"
+    Assert-Equal (Join-Path $installerCase.Root 'logs\application.jsonl') ([string] $exitedAtOnce.diagnosticLogPath) 'Result JSON of an early exit names where the diagnostic log is'
 
     # #283 失败回滚：换程序之后、新版本达到启动就绪之前任何一步失败，都停止新版本、把程序目录换回、用本次安装的快照恢复
     # 设置及其两代备份、恢复被改过的登录任务，再经登录任务启动旧版本并等到启动就绪；都做到才清除事务标记、删除候选与事务目录。
@@ -886,7 +935,7 @@ try {
             Assert-Equal $true ([bool] (Invoke-CountdownInstallerStatusRead).loginTask.matchesExpected) 'Rollback keeps the login task this upgrade created, with the expected definition'
         }
         Assert-Equal '4103,6002' (Get-CountdownInstallerTestRunning) "The previous version runs again through the login task: $($taskRollback.Name)"
-        Assert-Equal $installerProgramFilesV1[1].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "The previous version is back in the program directory: $($taskRollback.Name)"
+        Assert-Equal $installerProgramFilesV1[0].Sha256 (Get-CountdownInstallerTestInstalledDll) "The previous version is back in the program directory: $($taskRollback.Name)"
     }
 
     # 回滚自身失败（#283 验收 5）：结果如实写 rollback-failed 并列出没做到的那步，事务标记与事务目录（含设置快照）留下，交给
@@ -894,10 +943,10 @@ try {
     # 仍是新版本、旧版本仍在 app.previous，设置不恢复（新版本可能还在用这些文件）。第二例程序目录与设置都换回了，旧版本却一直
     # 没达到启动就绪：同样不算回滚完成，事务标记与候选留下。
     foreach ($failedRollback in @(
-            [pscustomobject]@{ Name = 'rollback-fails-renaming-back'; Problem = '换回程序目录失败'; ProgramSha256 = $installerPackageFilesV2[2].Sha256; Previous = $true; Candidate = $false; Running = '4103'; Settings = 'migrated'; Arrange = {
+            [pscustomobject]@{ Name = 'rollback-fails-renaming-back'; Problem = '换回程序目录失败'; ProgramDll = $installerPackageFilesV2[1].Sha256; Previous = $true; Candidate = $false; Running = '4103'; Settings = 'migrated'; Arrange = {
                     $installerCase.MoveLocks = @([pscustomobject]@{ From = 'app'; To = 'app.candidate'; Remaining = -1 })
                 } }
-            [pscustomobject]@{ Name = 'rollback-fails-restarting'; Problem = '重新启动旧版本失败'; ProgramSha256 = $installerProgramFilesV1[1].Sha256; Previous = $false; Candidate = $true; Running = '4103,6002'; Settings = 'restored'; Arrange = {
+            [pscustomobject]@{ Name = 'rollback-fails-restarting'; Problem = '重新启动旧版本失败'; ProgramDll = $installerProgramFilesV1[0].Sha256; Previous = $false; Candidate = $true; Running = '4103,6002'; Settings = 'restored'; Arrange = {
                     $installerCase.PreviousLaunch.WritesReceipt = $false
                 } }
         )) {
@@ -913,7 +962,7 @@ try {
         Assert-Equal $true ($problems.StartsWith($failedRollback.Problem, [System.StringComparison]::Ordinal)) "Result JSON names the rollback step that failed: $($failedRollback.Name) $problems"
         Assert-Equal $true (@($rollbackFailed.rollback.problems | Where-Object { ([string] $_).Length -gt 401 }).Count -eq 0) "Rollback problems are bounded: $($failedRollback.Name)"
         Assert-Equal "True|True|True" "$($rollbackFailed.transactionMarkerPresent)|$(Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction.json'))|$(Test-Path -LiteralPath (Join-Path $installerCase.Root 'install-transaction\settings-snapshot\settings.json'))" "The transaction marker and the settings snapshot stay for the interruption recovery: $($failedRollback.Name)"
-        Assert-Equal $failedRollback.ProgramSha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "Result matches the program directory left behind: $($failedRollback.Name)"
+        Assert-Equal $failedRollback.ProgramDll (Get-CountdownInstallerTestInstalledDll) "Result matches the program directory left behind: $($failedRollback.Name)"
         Assert-Equal "$($failedRollback.Previous)|$($failedRollback.Candidate)" "$(Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.previous'))|$(Test-Path -LiteralPath (Join-Path $installerCase.Root 'app.candidate'))" "The other program directory stays where recovery expects it: $($failedRollback.Name)"
         Assert-Equal $failedRollback.Running (Get-CountdownInstallerTestRunning) "The new version is stopped: $($failedRollback.Name)"
         if ($failedRollback.Settings -eq 'restored') {
@@ -946,7 +995,7 @@ try {
     Assert-Equal $familyBefore (Get-CountdownInstallerTestSettingsFamily -Directory (Join-Path $installerCase.Root 'install-transaction\settings-snapshot')) 'The snapshot of the settings before the install is still there'
     Assert-Equal '{"schemaVersion":11,"note":"migrated by the new version at startup"}' ([System.IO.File]::ReadAllText((Join-Path $installerCase.Root 'settings.json'))) 'The installer does not overwrite the settings the new version saved with the snapshot'
     Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) 'The new version keeps running'
-    Assert-Equal "$($installerPackageFilesV2[2].Sha256)|True" "$(Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath)|$($afterReady.transactionMarkerPresent)" 'The new version stays installed and the marker stays for the interruption recovery'
+    Assert-Equal "$($installerPackageFilesV2[1].Sha256)|True" "$(Get-CountdownInstallerTestInstalledDll)|$($afterReady.transactionMarkerPresent)" 'The new version stays installed and the marker stays for the interruption recovery'
 
     # 首次安装没有旧版本（#283 的决定）：回滚就是回到安装前，安装根里没有程序目录，本次创建的登录任务与桌面快捷方式删除，
     # 新版本启动时新建的设置文件也删除（安装前不存在）；没有旧版本可以重新启动。用户数据与日志不归安装器管，原样留下。
@@ -967,7 +1016,7 @@ try {
     $installerCase.MoveLocks = @([pscustomobject]@{ From = 'app.candidate'; To = 'app'; Remaining = 2 })
     $transientLock = Invoke-CountdownInstallerModuleTest
     Assert-Equal 'True|not-needed' "$($transientLock.succeeded)|$($transientLock.rollback.outcome)" "A short-lived lock on the candidate does not fail the install: $($transientLock.failedStage) $($transientLock.error)"
-    Assert-Equal $installerPackageFilesV2[2].Sha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) 'The new version replaces the previous one once the lock is released'
+    Assert-Equal $installerPackageFilesV2[1].Sha256 (Get-CountdownInstallerTestInstalledDll) 'The new version replaces the previous one once the lock is released'
     Assert-Equal 'app,runtime-status.json' ((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',') 'The install commits after the lock is released'
 
     # #284 中断恢复：安装取得安装锁之后，先按恢复表把上一次没走完的安装收拾好，同一次调用再照常安装（包是 v2）。下面各例在已装好
@@ -1023,7 +1072,7 @@ try {
         Assert-Equal $userDataBefore ([string] $installerCase.Observed.UserData) "Recovery leaves the settings and the other user data as they were: $($interrupted.Name)"
         Assert-Equal '4103' ([string] $installerCase.Observed.Running) "Recovery starts nothing: $($interrupted.Name)"
         Assert-Equal $true ([bool] $recovered.succeeded) "The same call goes on to install the package: $($interrupted.Name) $($recovered.failedStage) $($recovered.error)"
-        Assert-Equal "$($installerPackageFilesV2[2].Sha256)|4103,6001" "$(Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath)|$(Get-CountdownInstallerTestRunning)" "The package is installed and runs after the recovery: $($interrupted.Name)"
+        Assert-Equal "$($installerPackageFilesV2[1].Sha256)|4103,6001" "$(Get-CountdownInstallerTestInstalledDll)|$(Get-CountdownInstallerTestRunning)" "The package is installed and runs after the recovery: $($interrupted.Name)"
     }
 
     # 两次改名都已完成、新版本还没确认启动就绪（after-replace）：补做启动验收，新版本达到启动就绪就提交。第一例新版本没在运行，
@@ -1201,7 +1250,7 @@ try {
     $installerCase.Launch.WritesReceipt = $true
     $afterFailedRollback = Invoke-CountdownInstallerModuleTest
     Assert-Equal 'after-replace|committed|recovered|' (Get-CountdownInstallerTestRecovery -Result $afterFailedRollback) 'The next install commits the new version the failed rollback left behind once it gets ready'
-    Assert-Equal "True|$($installerPackageFilesV2[2].Sha256)|app,runtime-status.json" "$($afterFailedRollback.succeeded)|$(Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath)|$((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',')" "The same call goes on to install the package: $($afterFailedRollback.failedStage) $($afterFailedRollback.error)"
+    Assert-Equal "True|$($installerPackageFilesV2[1].Sha256)|app,runtime-status.json" "$($afterFailedRollback.succeeded)|$(Get-CountdownInstallerTestInstalledDll)|$((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',')" "The same call goes on to install the package: $($afterFailedRollback.failedStage) $($afterFailedRollback.error)"
 
     # 只检查时不恢复：上一次安装没走完（这里停在两次改名之间）时只报告看到的状态，恢复排在将要执行的步骤最前面；包、安装根、
     # 应用与登录任务都不变。恢复会把旧版本换回 app，结果因此报告这是一次升级，不是首次安装。
@@ -1253,7 +1302,7 @@ try {
     Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
     $installerCommandPorts = $installerPorts.PSObject.Copy()
     $installerCommandPorts.RunHeadlessCommand = (New-CountdownInstallerWindowsPorts).RunHeadlessCommand
-    $installerBuiltExeSha256 = Get-CountdownInstallerTestFileHash -Path (Join-Path $PSScriptRoot 'app\MinminCountdown.exe')
+    $installerBuiltDllSha256 = Get-CountdownInstallerTestFileHash -Path (Join-Path $PSScriptRoot 'app\MinminCountdown.dll')
     $installerFixtureV9 = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-pending","text":"待送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"pending"}},{"id":"note-v9-delivered","text":"已送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T02:30:00.0000000+00:00","delivery":"delivered"}},{"id":"note-v9-repeat","text":"已开始循环提醒 settings-sentinel-282","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2026-01-01T00:00:00.0000000+00:00","intervalMinutes":30}}]}'
     $installerFixtureV2 = '{"schemaVersion":2,"timeZoneId":"China Standard Time","countdowns":[{"id":"countdown-v2","name":"倒计时 settings-sentinel-282","targetUtc":"2030-02-03T04:05:06.0000000+00:00"}]}'
     $installerFixtureBackups = @(
@@ -1281,7 +1330,7 @@ try {
         Assert-Equal $realRehearsal.Report "$($realRun.settingsRehearsal.outcome)|$($realRun.settingsRehearsal.migration)|$($realRun.settingsRehearsal.equivalence)" "Result JSON names the real rehearsal conclusion: $($realRehearsal.Name)"
         Assert-Equal $userDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude $installerOwnEntries -Detailed) "Live settings and both backups are byte-for-byte as before: $($realRehearsal.Name)"
         if ([bool] $realRun.succeeded) {
-            Assert-Equal $installerBuiltExeSha256 (Get-CountdownInstallerTestFileHash -Path $installerCase.ExePath) "The built program replaces the previous version: $($realRehearsal.Name)"
+            Assert-Equal $installerBuiltDllSha256 (Get-CountdownInstallerTestInstalledDll) "The built program replaces the previous version: $($realRehearsal.Name)"
         }
         else {
             Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) "Program directory is byte-for-byte as before: $($realRehearsal.Name)"

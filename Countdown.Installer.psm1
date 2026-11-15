@@ -327,6 +327,50 @@ function New-CountdownTaskStillRunningRejection {
     New-CountdownInstallRejection -Reason 'login-task-still-running' -Message "登录任务 $TaskName 仍有运行中的实例：经它启动会被「已在运行时忽略新实例」悄悄拒绝，等不到新的运行状态回执。"
 }
 
+# 经登录任务启动之前记下任务的上次运行时间与上次结果（#288），等待启动就绪时凭它们认出这次启动的那次运行。只记值、
+# 不留任务对象：port 可能每次返回同一个会变的对象。
+function Get-CountdownTaskRunMark {
+    param(
+        [Parameter(Mandatory)] [string] $TaskName,
+        [AllowNull()] [object] $Task
+    )
+
+    [pscustomobject]@{
+        TaskName = $TaskName
+        LastRunTime = Get-CountdownInstallerProperty -Object $Task -Name 'LastRunTime'
+        LastTaskResult = Get-CountdownInstallerProperty -Object $Task -Name 'LastTaskResult'
+    }
+}
+
+# 这次启动的那次运行已经结束时返回它的上次结果，否则为空（#288）。直接运行 EXE 的登录任务，实例与进程同生同灭，上次结果
+# 就是进程的退出码（#279 实测）。启动后上次运行时间或上次结果与启动前不同，或这次等待里见过任务在运行，说明那次运行已经
+# 开始；任务不在运行，上次结果也不是 0x41301（运行中）、0x41303（尚未运行）或 0x41325（已排队）时，它已经结束。
+# 读不到上次结果（port 不提供）时从不算结束。
+function Get-CountdownStartedRunResult {
+    param(
+        [Parameter(Mandatory)] [object] $Mark,
+        [AllowNull()] [object] $Task,
+        [Parameter(Mandatory)] [bool] $SawRunning
+    )
+
+    $lastResult = Get-CountdownInstallerProperty -Object $Task -Name 'LastTaskResult'
+    if ($null -eq $lastResult -or [string] (Get-CountdownInstallerProperty -Object $Task -Name 'State') -in @('Running', 'Queued')) { return $null }
+    if ([long] $lastResult -in @(0x41301, 0x41303, 0x41325)) { return $null }
+    $started = $SawRunning -or
+        -not [object]::Equals($Mark.LastRunTime, (Get-CountdownInstallerProperty -Object $Task -Name 'LastRunTime')) -or
+        $null -eq $Mark.LastTaskResult -or [long] $Mark.LastTaskResult -ne [long] $lastResult
+    if ($started) { [long] $lastResult } else { $null }
+}
+
+# 启动的进程在启动就绪之前就退出了（#288）：不再等满就绪时限。退出码另记在异常上，安装结果写进 startupExitCode。
+function New-CountdownStartupExitedRejection {
+    param([Parameter(Mandatory)] [long] $ExitCode)
+
+    $rejection = New-CountdownInstallRejection -Reason 'startup-exited' -Message ('经登录任务启动的进程在启动就绪之前退出，退出码 {0}（0x{1:X8}），原因见应用的诊断日志。' -f $ExitCode, ($ExitCode -band 0xFFFFFFFFL))
+    $rejection.Data['CountdownStartupExitCode'] = $ExitCode
+    $rejection
+}
+
 # 结束前按 PID 重新读一次映像路径，仍是已安装 EXE 才结束：枚举之后进程可能已经退出，PID 也可能已被别的进程复用。
 function Stop-CountdownInstalledProcess {
     param(
@@ -648,10 +692,11 @@ function Start-CountdownPreviousVersion {
     $task = & $Ports.GetTask $TaskName
     if ($null -eq $task) { throw "没有登录任务 $TaskName，无法经它重新启动旧版本。" }
     if (Test-CountdownTaskRunning -Task $task) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+    $startedRun = Get-CountdownTaskRunMark -TaskName $TaskName -Task $task
     $installedSha256 = (Get-FileHash -LiteralPath $Layout.ExecutablePath -Algorithm SHA256).Hash
     if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
     [void] (& $Ports.StartTask $TaskName)
-    $process = Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $installedSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+    $process = Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $installedSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds -StartedRun $startedRun
     [ordered]@{ processId = [int] $process.ProcessId; sessionId = [int] $process.SessionId }
 }
 
@@ -790,14 +835,16 @@ function Confirm-CountdownInstalledVersionReady {
     )
 
     $manifest = Read-CountdownPayloadManifest -ProgramDirectory $Layout.ProgramDirectory
+    $startedRun = $null
     if (@(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports).Count -eq 0) {
         $task = & $Ports.GetTask $TaskName
         if ($null -eq $task) { throw "没有登录任务 $TaskName，无法经它启动新版本。" }
         if (Test-CountdownTaskRunning -Task $task) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+        $startedRun = Get-CountdownTaskRunMark -TaskName $TaskName -Task $task
         if (Test-Path -LiteralPath $Layout.RuntimeStatusPath) { [System.IO.File]::Delete($Layout.RuntimeStatusPath) }
         [void] (& $Ports.StartTask $TaskName)
     }
-    Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+    Wait-CountdownStartupReady -Layout $Layout -SessionId ([int] $Session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds -StartedRun $startedRun
 }
 
 # 现役设置及其两代备份与事务目录里的快照逐字节相同：快照里有的现役也有且字节相同，快照里没有的现役也没有。只读。
@@ -1168,18 +1215,21 @@ function Read-CountdownRuntimeReceipt {
 
 # 启动就绪：运行状态回执由一个存活进程写出，其映像路径是已安装 EXE，会话是交互会话，EXE 哈希与载荷清单一致。
 # 启动前已删除旧回执，回执里的进程身份证明它来自这一次启动；不使用启动令牌，不比较回执的 applicationPath（#279：
-# 它仍指向 adapter），也不看任务状态或上次结果。
+# 它仍指向 adapter）。就绪与否不看任务状态或上次结果；经登录任务启动时（-StartedRun 是启动之前记下的任务），还没就绪就
+# 再看那次运行结束了没有：结束了、已安装 EXE 也没有进程在运行，就不再等满时限，按 startup-exited 报告退出码（#288）。
 function Wait-CountdownStartupReady {
     param(
         [Parameter(Mandatory)] [object] $Layout,
         [Parameter(Mandatory)] [int] $SessionId,
         [Parameter(Mandatory)] [string] $ExpectedExecutableSha256,
         [Parameter(Mandatory)] [object] $Ports,
-        [Parameter(Mandatory)] [int] $TimeoutSeconds
+        [Parameter(Mandatory)] [int] $TimeoutSeconds,
+        [AllowNull()] [object] $StartedRun
     )
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $reason = '运行状态回执尚未出现。'
+    $sawRunning = $false
     while ($true) {
         $receipt = Read-CountdownRuntimeReceipt -Path $Layout.RuntimeStatusPath
         $processId = Get-CountdownInstallerProperty -Object $receipt -Name 'processId'
@@ -1193,6 +1243,14 @@ function Wait-CountdownStartupReady {
             elseif ([int] (Get-CountdownInstallerProperty -Object $process[0] -Name 'SessionId') -ne $SessionId) { $reason = "写回执的进程 $processId 不在交互会话里。" }
             elseif ((Get-FileHash -LiteralPath $Layout.ExecutablePath -Algorithm SHA256).Hash -ne $ExpectedExecutableSha256) { $reason = '已安装 EXE 的哈希与载荷清单不一致。' }
             else { return $process[0] }
+        }
+        if ($null -ne $StartedRun) {
+            $task = & $Ports.GetTask $StartedRun.TaskName
+            if ([string] (Get-CountdownInstallerProperty -Object $task -Name 'State') -eq 'Running') { $sawRunning = $true }
+            $exitCode = Get-CountdownStartedRunResult -Mark $StartedRun -Task $task -SawRunning $sawRunning
+            if ($null -ne $exitCode -and @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports).Count -eq 0) {
+                throw (New-CountdownStartupExitedRejection -ExitCode $exitCode)
+            }
         }
         if ([DateTime]::UtcNow -ge $deadline) { break }
         Start-Sleep -Milliseconds 250
@@ -1219,7 +1277,8 @@ function Install-CountdownProgram {
     停止应用（结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；把设置及其两代备份快照到事务目录；
     有设置文件时用候选 EXE 在事务目录里的副本上演练迁移，并用产品的等价判定核对快照与迁移结果；现役程序目录改名为
     旧版本目录、候选改名为现役；登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时
-    改回期望定义，不属于时保留）；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪；
+    改回期望定义，不属于时保留）；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪（启动的进程在
+    启动就绪之前就退出时不等满时限，原因 startup-exited，结果带它的退出码，#288）；
     先清除事务标记，再删除旧版本目录与事务目录。前置检查任何一项失败时只删除候选（及为它新建的安装根），
     其余什么都不改。写下事务标记之后、新版本达到启动就绪之前任何一步失败都回滚（#283，见 Undo-CountdownInstall）：
     停止新版本，把程序目录换回，用本次安装的快照恢复设置及两代备份，恢复本次改过的登录任务，经登录任务重新启动旧版本；
@@ -1260,6 +1319,8 @@ function Install-CountdownProgram {
         desktopShortcut = $null
         stoppedProcessCount = 0
         readyProcess = $null
+        # 新版本在启动就绪之前就退出时（startup-exited，#288）它的退出码，取自登录任务的上次结果；其余情况为空。
+        startupExitCode = $null
         settings = [ordered]@{ before = $null; after = $null }
         settingsRehearsal = $null
         restartedProcess = $null
@@ -1352,10 +1413,12 @@ function Install-CountdownProgram {
             $transaction.ShortcutCreated = $result.desktopShortcut.action -eq 'created'
 
             $stage = 'start-and-wait-ready'
-            if (Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+            $taskBeforeStart = & $Ports.GetTask $TaskName
+            if (Test-CountdownTaskRunning -Task $taskBeforeStart) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+            $startedRun = Get-CountdownTaskRunMark -TaskName $TaskName -Task $taskBeforeStart
             if (Test-Path -LiteralPath $layout.RuntimeStatusPath) { [System.IO.File]::Delete($layout.RuntimeStatusPath) }
             [void] (& $Ports.StartTask $TaskName)
-            $ready = Wait-CountdownStartupReady -Layout $layout -SessionId ([int] $session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds
+            $ready = Wait-CountdownStartupReady -Layout $layout -SessionId ([int] $session.SessionId) -ExpectedExecutableSha256 $manifest.ExecutableSha256 -Ports $Ports -TimeoutSeconds $ReadyTimeoutSeconds -StartedRun $startedRun
             # 新版本达到启动就绪：从此不再回滚，也不再用快照覆盖设置（用户可能已经在编辑）。
             $transaction.NewVersionReady = $true
             $result.readyProcess = [ordered]@{ processId = [int] $ready.ProcessId; sessionId = [int] $ready.SessionId }
@@ -1372,6 +1435,8 @@ function Install-CountdownProgram {
         $reason = $_.Exception.Data['CountdownInstallReason']
         $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
         $result.error = ConvertTo-CountdownBoundedError -Message $_.Exception.Message
+        $startupExitCode = $_.Exception.Data['CountdownStartupExitCode']
+        if ($null -ne $startupExitCode) { $result.startupExitCode = [long] $startupExitCode }
         if ($candidateOwned) {
             # 事务标记写下之前失败：只删除候选（以及为它新建、此刻已空的安装根），其余什么都不改。
             try {
@@ -1429,7 +1494,8 @@ function New-CountdownInstallerWindowsPorts {
             param([int] $ProcessId)
             Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
         }
-        # 状态命令（#276）读出的各项之外，再读登记登录任务要逐项比较的工作目录、电池、按需启动、强制结束与用户（#281）。
+        # 状态命令（#276）读出的各项之外，再读登记登录任务要逐项比较的工作目录、电池、按需启动、强制结束与用户（#281），
+        # 以及上次运行时间与上次结果（#288：等待启动就绪时凭它们认出启动的那次运行已经结束，上次结果就是进程的退出码）。
         # 任务计划给主体写的是账号名、给登录触发器写的是“域\账号”，都换成 SID；换不出时原样返回，比较时算作别的用户。
         # port 在别的作用域里被调用，用到的辅助块都定义在块内。
         GetTask = {
@@ -1437,6 +1503,7 @@ function New-CountdownInstallerWindowsPorts {
             $field = { param($Object, [string] $Property) $value = $Object.PSObject.Properties[$Property]; if ($value) { $value.Value } }
             try { $task = Get-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop }
             catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { return $null }; throw }
+            $info = Get-ScheduledTaskInfo -InputObject $task -ErrorAction Stop
             $kind = { param($o) $o.CimClass.CimClassName -replace '^MSFT_Task|(Action|Trigger)$' }
             $sid = {
                 param([string] $Account)
@@ -1459,6 +1526,8 @@ function New-CountdownInstallerWindowsPorts {
                 StopIfGoingOnBatteries = [bool] $task.Settings.StopIfGoingOnBatteries
                 AllowDemandStart = [bool] $task.Settings.AllowDemandStart
                 AllowHardTerminate = [bool] $task.Settings.AllowHardTerminate
+                LastRunTime = $info.LastRunTime
+                LastTaskResult = if ($null -ne $info.LastTaskResult) { [long] $info.LastTaskResult } else { $null }
             }
         }
         # 按 #279「登录任务的最终定义」注册；同名任务已存在时整份替换（与期望定义不一致时的更新）。

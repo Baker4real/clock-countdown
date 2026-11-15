@@ -355,9 +355,13 @@ function Invoke-CountdownDeployTest {
 }
 
 # 远端安装脚本的罐装应答：包内安装器报告启动就绪超时，带 #283 的回滚结果 rollback.outcome（不给就是还没有这个字段的安装器）。
+# 给了 StartupExitCode 时改为新版本在启动就绪之前退出（#288）：原因 startup-exited，结果带退出码。
 # 假远端直接回它，不在假办公室上运行安装器。
 function New-CountdownDeployTestInstallFailure {
-    param([AllowNull()] [string] $RollbackOutcome)
+    param(
+        [AllowNull()] [string] $RollbackOutcome,
+        [Nullable[long]] $StartupExitCode
+    )
 
     $installer = [ordered]@{
         schemaVersion = 1
@@ -366,6 +370,11 @@ function New-CountdownDeployTestInstallFailure {
         failedStage = 'start-and-wait-ready'
         reason = 'startup-not-ready'
         error = '30 秒内没有达到启动就绪：运行状态回执尚未出现。'
+    }
+    if ($null -ne $StartupExitCode) {
+        $installer.reason = 'startup-exited'
+        $installer.error = "经登录任务启动的进程在启动就绪之前退出，退出码 $StartupExitCode（0x$('{0:X8}' -f $StartupExitCode)），原因见应用的诊断日志。"
+        $installer.startupExitCode = $StartupExitCode
     }
     if ($RollbackOutcome) { $installer.rollback = [ordered]@{ outcome = $RollbackOutcome } }
     $envelope = [ordered]@{
@@ -671,6 +680,17 @@ try {
         Assert-Equal "$deployRollback" ([string] ([System.IO.File]::ReadAllText([string] $deployInstallResult.recordPath) | ConvertFrom-Json).rollback) "$deployLabel keeps the rollback result in the deployment record"
         Assert-CountdownDeployNoLeak -Text $deployInstallFailed.Text -Name "$deployLabel standard output"
     }
+
+    # 新版本在启动就绪之前就退出（#288）：部署照样报告安装失败与回滚结果，错误里有安装器的原因 startup-exited 与退出码，
+    # 安装结果与部署记录都保留退出码。
+    $deployCase = New-CountdownDeployTestCase -Name 'install-startup-exited'
+    $deployCase.Responses['write1'] = { param($Run) New-CountdownDeployTestInstallFailure -RollbackOutcome 'rolled-back' -StartupExitCode 1 }
+    $deployExitedRun = Invoke-CountdownDeployTest -Label 'install failed, new version exited before startup readiness'
+    $deployExitedResult = $deployExitedRun.Result
+    Assert-Equal 'failed|install|install-failed|rolled-back|startup-exited|1' "$($deployExitedResult.outcome)|$($deployExitedResult.failedStep)|$($deployExitedResult.reason)|$($deployExitedResult.rollback)|$($deployExitedResult.install.reason)|$($deployExitedResult.install.startupExitCode)" "An install whose new version exited is a failure that keeps the installer's reason and exit code: $($deployExitedResult.error)"
+    Assert-Equal $true (([string] $deployExitedResult.error).Contains('startup-exited') -and ([string] $deployExitedResult.error).Contains('0x00000001')) 'The deploy error names the early exit and the exit code'
+    Assert-Equal 1 ([int] ([System.IO.File]::ReadAllText([string] $deployExitedResult.recordPath) | ConvertFrom-Json).install.startupExitCode) 'The deployment record keeps the exit code'
+    Assert-CountdownDeployNoLeak -Text $deployExitedRun.Text -Name 'Early-exit install failure standard output'
 
     # 包没能交给安装器（办公室上核对包哈希失败）：安装器没有运行，办公室的安装没有改动；这是明确的失败，没有需要回滚的改动。
     $deployCase = New-CountdownDeployTestCase -Name 'install-not-started'

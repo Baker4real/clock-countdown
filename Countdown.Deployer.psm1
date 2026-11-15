@@ -3,12 +3,15 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# 新部署入口（#259 / #285）：把已推送的 main 当前提交部署到办公室，送过去的就是本机套件测过的那份构建输出。
-# 部署：本机预检 → 打包 → 只读连通性探测 → 传输到按运行编号命名的暂存目录 → 远端核对包哈希、解包并运行包内安装器 →
-# 只读状态读取（提交、EXE 哈希与运行中的进程都与预期一致才算成功）→ 本地部署记录。只查状态：一次只读状态读取，不做任何改动。
+# 新部署入口（#259 / #285 / #286）：把已推送的 main 当前提交部署到办公室，送过去的就是本机套件测过的那份构建输出。
+# 部署：本机预检 → 打包 → 只读连通性探测（读一次办公室的安装状态）→ 传输到按运行编号命名的暂存目录 → 远端核对包哈希、
+# 解包并运行包内安装器 → 只读状态读取（提交、EXE 哈希与运行中的进程都与预期一致才算成功）→ 本地部署记录。
+# 只查状态：一次只读状态读取，不做任何改动。
+# 结论 outcome 只有五种：deployed；already-running（探测读到当前提交已在运行，不传输、不安装）；rejected（连接远端之前就停下，
+# reason 写明缺什么）；failed（安装失败时 rollback 是安装器报告的回滚结果）；unknown（拿不到安装结果或安装后的状态，
+# 既不算成功也不算失败）。办公室现状不确定时 nextStep 提示先查状态。
 # 远端执行与传输经 port 调用：生产用 New-CountdownDeployerHostPorts 接主机受管的远端执行入口与传输入口，测试注入假 port。
 # port 的返回值只取已知字段，结果与记录里没有主机名、地址、账号、凭据或连接参数。
-# #285 只走成功路径；预检拒绝、探测失败、安装失败与回滚、结果未知、当前提交已在运行等在 #286。
 
 Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.SuiteStages.psm1')
 
@@ -17,6 +20,14 @@ $script:InstallerFiles = @('Install-CountdownProgram.ps1', 'Countdown.Installer.
 $script:StatusScriptName = 'Get-CountdownInstallStatus.ps1'
 $script:DeploySteps = @('preflight', 'package', 'probe', 'transfer', 'install', 'status', 'record')
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+# 安装器报告的回滚结果（#283 的 rollback.outcome）及其在部署结论里的说法。
+$script:RollbackOutcomes = [ordered]@{
+    'not-needed' = '没有需要回滚的改动。'
+    'rolled-back' = '已回滚，办公室回到安装前的版本。'
+    'rollback-failed' = '回滚也失败了，办公室可能停在半安装的状态。'
+}
+# 办公室现状不确定时（结果未知、回滚失败或安装器没报回滚结果）给维护者的下一步。
+$script:ReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态：transactionMarkerPresent 为 true（有未完成的安装）时重新执行部署即可，安装器会先恢复再安装；状态显示本次提交已在运行就不用再做什么。'
 
 # 写操作脚本的第一条语句（param 块之后）必须是对执行目标的断言：主机的远端执行入口缺了它就拒绝执行。
 $script:RemoteInstallScript = @'
@@ -26,7 +37,8 @@ $ErrorActionPreference = 'Stop'
 $staging = __STAGING__
 $packagePath = Join-Path $staging 'package.zip'
 $packageRoot = Join-Path $staging 'package'
-$envelope = [ordered]@{ packageVerified = $false; installer = $null; stagingRemoved = $false; error = $null }
+# installerStarted：安装器开始运行之后才可能动到安装根；它之前的失败（包哈希、解包）什么都没改。
+$envelope = [ordered]@{ packageVerified = $false; installerStarted = $false; installer = $null; stagingRemoved = $false; error = $null }
 try {
     if ((Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash -ne __SHA256__) { throw '暂存目录里的包与部署端算出的包哈希不一致。' }
     $envelope.packageVerified = $true
@@ -34,6 +46,7 @@ try {
     $arguments = @{ PackageRoot = $packageRoot; InstallRoot = __INSTALL_ROOT__; TaskName = __TASK_NAME__ }
     if ($null -ne $Port) { $arguments.Port = $Port }
     if ($LockName) { $arguments.LockName = $LockName }
+    $envelope.installerStarted = $true
     $envelope.installer = @(& (Join-Path $packageRoot 'Install-CountdownProgram.ps1') @arguments) -join "`n"
 }
 catch { $envelope.error = ($_.Exception.Message -replace '\s+', ' ').Trim() }
@@ -43,11 +56,6 @@ finally {
     $envelope.stagingRemoved = -not (Test-Path -LiteralPath $staging)
 }
 $envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
-'@
-
-$script:RemoteProbeScript = @'
-# 部署入口的连通性探测：只读，不读写任何文件。
-[ordered]@{ probe = 'ok'; powershell = $PSVersionTable.PSVersion.ToString() } | ConvertTo-Json -Compress
 '@
 
 function Get-CountdownDeployProperty {
@@ -67,11 +75,35 @@ function Test-CountdownDeployTrue {
     $Value -is [bool] -and $Value
 }
 
+# 带原因类别的失败：原因类别写进结果的 reason，消息写明缺什么或哪里不对。结论默认按是否已经连接远端定为拒绝或失败；
+# 不知道办公室上发生了什么时给 -Outcome unknown。
+function New-CountdownDeployFailure {
+    param(
+        [Parameter(Mandatory)] [string] $Reason,
+        [Parameter(Mandatory)] [string] $Message,
+        [ValidateSet('unknown')] [string] $Outcome
+    )
+
+    $exception = [System.InvalidOperationException]::new($Message)
+    $exception.Data['CountdownDeployReason'] = $Reason
+    if ($Outcome) { $exception.Data['CountdownDeployOutcome'] = $Outcome }
+    $exception
+}
+
 function ConvertTo-CountdownDeployBoundedText {
     param([AllowNull()] [AllowEmptyString()] [string] $Text)
 
     $value = ([string] $Text -replace '\s+', ' ').Trim()
     if ($value.Length -gt 400) { $value = $value.Substring(0, 400) + '…' }
+    $value
+}
+
+# 底层错误后面接部署的说法：没有句末标点时补一个句号。
+function ConvertTo-CountdownDeploySentence {
+    param([AllowEmptyString()] [string] $Text)
+
+    $value = ([string] $Text).Trim()
+    if ($value -and $value[-1] -notin [char[]] '。.!?！？') { $value += '。' }
     $value
 }
 
@@ -92,9 +124,15 @@ function Write-CountdownDeployProgress {
     [Console]::Error.WriteLine(('[deploy] {0:HH:mm:ss} {1}/{2} {3} {4}' -f [DateTime]::Now, $index, $Steps.Count, $Step, $Message))
 }
 
+# 结论是标准错误的最后一行；部署时带上与结果 JSON 相同的 outcome。
 function Write-CountdownDeployConclusion {
-    param([Parameter(Mandatory)] [string] $Message)
-    [Console]::Error.WriteLine(('[deploy] {0:HH:mm:ss} 结果：{1}' -f [DateTime]::Now, $Message))
+    param(
+        [Parameter(Mandatory)] [string] $Message,
+        [string] $Outcome
+    )
+
+    $label = if ($Outcome) { "结果 $Outcome" } else { '结果' }
+    [Console]::Error.WriteLine(('[deploy] {0:HH:mm:ss} {1}：{2}' -f [DateTime]::Now, $label, $Message))
 }
 
 function Invoke-CountdownDeployGit {
@@ -116,8 +154,88 @@ function Invoke-CountdownDeployGit {
     }
 }
 
-# 套件记录：同一提交、本 checkout、整轮通过，开跑与收尾时工作树都干净且 HEAD 不变，启动器的必过阶段全部通过，
-# 干净构建（CleanR2R）的回执带构建输出的聚合哈希。取最新的合格记录。
+function Get-CountdownDeploySuiteStage {
+    param(
+        [AllowNull()] [object[]] $Stages,
+        [Parameter(Mandatory)] [string] $Name
+    )
+    @($Stages | Where-Object { [string] (Get-CountdownDeployProperty -Object $_ -Name 'Stage') -ceq $Name })
+}
+
+# 一份同一提交套件记录的问题，按先后：必过阶段缺失或没有通过；构建回执不是带聚合哈希的完整干净构建（CleanR2R）；
+# 开跑或收尾时工作树不干净、HEAD 变了；整轮没有通过。每项带原因类别，消息写明缺什么；没有问题时什么都不返回。
+function Get-CountdownDeploySuiteRunProblem {
+    param(
+        [Parameter(Mandatory)] [object] $Run,
+        [Parameter(Mandatory)] [string] $Commit,
+        [Parameter(Mandatory)] [string[]] $RequiredStages
+    )
+
+    $stages = @(Get-CountdownDeployProperty -Object $Run -Name 'Stages')
+    $build = @(Get-CountdownDeploySuiteStage -Stages $stages -Name 'Build')
+    # 这一轮的构建若是增量构建 IncrementalBuild，按“构建不是干净构建”报，不按“没跑 Build”报。
+    $incremental = @(Get-CountdownDeploySuiteStage -Stages $stages -Name 'IncrementalBuild')
+    $missing = [System.Collections.Generic.List[string]]::new()
+    $failed = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $RequiredStages) {
+        $records = @(Get-CountdownDeploySuiteStage -Stages $stages -Name $name)
+        if ($records.Count -eq 0) {
+            if ($name -cne 'Build' -or $incremental.Count -eq 0) { $missing.Add($name) }
+            continue
+        }
+        $status = [string] (Get-CountdownDeployProperty -Object $records[0] -Name 'Status')
+        $exitCode = Get-CountdownDeployProperty -Object $records[0] -Name 'ExitCode'
+        if ($records.Count -ne 1 -or $status -cne 'Completed' -or $exitCode -ne 0) { $failed.Add("$name（$status，退出码 $exitCode）") }
+    }
+    $stagesPassed = $missing.Count -eq 0 -and $failed.Count -eq 0
+    if (-not $stagesPassed) {
+        $parts = @(
+            if ($missing.Count -gt 0) { "没跑 $($missing -join '、')" }
+            if ($failed.Count -gt 0) { "$($failed -join '、') 没有通过" }
+        )
+        [pscustomobject]@{ Reason = 'required-stages-incomplete'; Message = "必过阶段不全：$($parts -join '，')" }
+    }
+
+    $describeReceipt = {
+        param([AllowNull()] [object] $Receipt)
+        if ($null -eq $Receipt) { return '没有回执' }
+        "回执 Mode=$(Get-CountdownDeployProperty -Object $Receipt -Name 'Mode')、Clean=$(Get-CountdownDeployProperty -Object $Receipt -Name 'Clean')"
+    }
+    if ($build.Count -eq 0 -and $incremental.Count -gt 0) {
+        $receipt = Get-CountdownDeployProperty -Object $incremental[0] -Name 'BuildReceipt'
+        [pscustomobject]@{ Reason = 'build-receipt-not-clean'; Message = "构建不是干净构建：这一轮用的是 IncrementalBuild（$(& $describeReceipt $receipt)），部署要求 Build 阶段的 CleanR2R 回执" }
+    }
+    elseif ($build.Count -eq 1 -and [string] (Get-CountdownDeployProperty -Object $build[0] -Name 'Status') -ceq 'Completed') {
+        $receipt = Get-CountdownDeployProperty -Object $build[0] -Name 'BuildReceipt'
+        if ((Get-CountdownDeployProperty -Object $receipt -Name 'SchemaVersion') -ne 1 -or
+            (Get-CountdownDeployProperty -Object $receipt -Name 'Mode') -cne 'CleanR2R' -or
+            -not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $receipt -Name 'Clean')) -or
+            -not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $receipt -Name 'ReadyToRun'))) {
+            [pscustomobject]@{ Reason = 'build-receipt-not-clean'; Message = "构建回执不是完整的干净构建（$(& $describeReceipt $receipt)），部署要求 CleanR2R" }
+        }
+        elseif ([string] (Get-CountdownDeployProperty -Object $receipt -Name 'PayloadAggregateSha256') -notmatch '^[0-9A-Fa-f]{64}$') {
+            [pscustomobject]@{ Reason = 'build-receipt-not-clean'; Message = '构建回执里没有构建输出的聚合哈希（这一轮的构建脚本还不写它）' }
+        }
+    }
+
+    $source = Get-CountdownDeployProperty -Object $Run -Name 'Source'
+    $unclean = @(
+        if (-not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $source -Name 'CleanAtStart'))) { '开跑时工作树不干净' }
+        if (-not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $source -Name 'CleanAtEnd'))) { '收尾时工作树不干净' }
+        if (-not [string]::Equals([string] (Get-CountdownDeployProperty -Object $source -Name 'CommitAtEnd'), $Commit, [System.StringComparison]::OrdinalIgnoreCase)) { '收尾时 HEAD 已经变了' }
+    )
+    if ($unclean.Count -gt 0) {
+        [pscustomobject]@{ Reason = 'suite-evidence-missing'; Message = "这一轮不能代表这个提交：$($unclean -join '、')" }
+    }
+    # 必过阶段都过了、整轮却没有通过：别的阶段或收尾检查失败。
+    $runStatus = [string] (Get-CountdownDeployProperty -Object $Run -Name 'Status')
+    if ($stagesPassed -and ($runStatus -cne 'Completed' -or (Get-CountdownDeployProperty -Object $Run -Name 'ExitCode') -ne 0)) {
+        [pscustomobject]@{ Reason = 'suite-evidence-missing'; Message = "这一轮没有整轮通过（$runStatus：$(Get-CountdownDeployProperty -Object $Run -Name 'Failure')）" }
+    }
+}
+
+# 套件记录：同一提交、本 checkout 的记录里取最新的合格记录（没有问题的记录）。没有合格记录时按最新一份同一提交记录的
+# 第一个问题拒绝，消息写明这份记录的每个问题；连同一提交的记录都没有就是缺少套件证据。
 function Find-CountdownDeploySuiteRun {
     param(
         [Parameter(Mandatory)] [string] $RepositoryRoot,
@@ -127,59 +245,41 @@ function Find-CountdownDeploySuiteRun {
     $directory = Join-Path $RepositoryRoot 'logs\suite-runs'
     $repositoryPath = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
     $requiredStages = [string[]] @(Get-CountdownRequiredSuiteStage)
-    $rejections = [System.Collections.Generic.List[string]]::new()
     $runFiles = @()
     if (Test-Path -LiteralPath $directory -PathType Container) {
         $runFiles = @(Get-ChildItem -LiteralPath $directory -Filter '*-run.json' -File | Sort-Object Name -Descending)
     }
+    $newest = $null
     foreach ($runFile in $runFiles) {
-        try { $run = [System.IO.File]::ReadAllText($runFile.FullName) | ConvertFrom-Json -DateKind String }
-        catch { continue }
-        $source = Get-CountdownDeployProperty -Object $run -Name 'Source'
-        if (-not [string]::Equals([string] (Get-CountdownDeployProperty -Object $source -Name 'Commit'), $Commit, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        # 读不出、别的提交、别的 checkout 或认不出的格式：都不是这个提交在本 checkout 的证据。
         try {
-            if ((Get-CountdownDeployProperty -Object $run -Name 'SchemaVersion') -ne 1) { throw '记录格式不受支持。' }
+            $run = [System.IO.File]::ReadAllText($runFile.FullName) | ConvertFrom-Json -DateKind String
             $runRoot = [string] (Get-CountdownDeployProperty -Object $run -Name 'RepositoryRoot')
-            if ([string]::IsNullOrWhiteSpace($runRoot) -or
-                -not [string]::Equals([System.IO.Path]::GetFullPath($runRoot).TrimEnd('\'), $repositoryPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw '记录不属于这个 checkout。'
-            }
-            if ((Get-CountdownDeployProperty -Object $run -Name 'Status') -cne 'Completed' -or (Get-CountdownDeployProperty -Object $run -Name 'ExitCode') -ne 0) {
-                throw "套件没有通过（$(Get-CountdownDeployProperty -Object $run -Name 'Status')）。"
-            }
-            if (-not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $source -Name 'CleanAtStart')) -or
-                -not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $source -Name 'CleanAtEnd')) -or
-                -not [string]::Equals([string] (Get-CountdownDeployProperty -Object $source -Name 'CommitAtEnd'), $Commit, [System.StringComparison]::OrdinalIgnoreCase)) {
-                throw '套件开跑或收尾时工作树不干净，或 HEAD 已变化。'
-            }
-            $stages = @(Get-CountdownDeployProperty -Object $run -Name 'Stages')
-            foreach ($name in @($requiredStages) + @('Build')) {
-                $records = @($stages | Where-Object { [string] (Get-CountdownDeployProperty -Object $_ -Name 'Stage') -ceq $name })
-                if ($records.Count -ne 1 -or (Get-CountdownDeployProperty -Object $records[0] -Name 'Status') -cne 'Completed' -or
-                    (Get-CountdownDeployProperty -Object $records[0] -Name 'ExitCode') -ne 0) {
-                    throw "必过阶段 $name 缺失或没有通过。"
-                }
-            }
-            $build = @($stages | Where-Object { [string] (Get-CountdownDeployProperty -Object $_ -Name 'Stage') -ceq 'Build' })[0]
-            $receipt = Get-CountdownDeployProperty -Object $build -Name 'BuildReceipt'
-            if ((Get-CountdownDeployProperty -Object $receipt -Name 'SchemaVersion') -ne 1 -or
-                (Get-CountdownDeployProperty -Object $receipt -Name 'Mode') -cne 'CleanR2R' -or
-                -not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $receipt -Name 'Clean')) -or
-                -not (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $receipt -Name 'ReadyToRun'))) {
-                throw '构建回执不是完整的干净构建（CleanR2R）。'
-            }
-            $aggregate = [string] (Get-CountdownDeployProperty -Object $receipt -Name 'PayloadAggregateSha256')
-            if ($aggregate -notmatch '^[0-9A-Fa-f]{64}$') { throw '构建回执里没有构建输出的聚合哈希：用当前的构建脚本重跑套件。' }
+            $evidence = (Get-CountdownDeployProperty -Object $run -Name 'SchemaVersion') -eq 1 -and
+                [string]::Equals([string] (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $run -Name 'Source') -Name 'Commit'), $Commit, [System.StringComparison]::OrdinalIgnoreCase) -and
+                -not [string]::IsNullOrWhiteSpace($runRoot) -and
+                [string]::Equals([System.IO.Path]::GetFullPath($runRoot).TrimEnd('\'), $repositoryPath, [System.StringComparison]::OrdinalIgnoreCase)
+        }
+        catch { $evidence = $false }
+        if (-not $evidence) { continue }
+        $runId = [string] (Get-CountdownDeployProperty -Object $run -Name 'RunId')
+        $problems = @(Get-CountdownDeploySuiteRunProblem -Run $run -Commit $Commit -RequiredStages $requiredStages)
+        if ($problems.Count -eq 0) {
+            $build = @(Get-CountdownDeploySuiteStage -Stages @(Get-CountdownDeployProperty -Object $run -Name 'Stages') -Name 'Build')[0]
             return [pscustomobject]@{
-                RunId = [string] (Get-CountdownDeployProperty -Object $run -Name 'RunId')
+                RunId = $runId
                 Path = $runFile.FullName
-                PayloadAggregateSha256 = $aggregate.ToUpperInvariant()
+                PayloadAggregateSha256 = ([string] (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $build -Name 'BuildReceipt') -Name 'PayloadAggregateSha256')).ToUpperInvariant()
             }
         }
-        catch { $rejections.Add("$($runFile.Name)：$($_.Exception.Message)") }
+        if ($null -eq $newest) { $newest = [pscustomobject]@{ RunId = $runId; Problems = $problems } }
     }
-    $detail = if ($rejections.Count -gt 0) { "同一提交的记录都不合格：$(@($rejections | Select-Object -First 3) -join '；')" } else { '没有同一提交的套件记录。' }
-    throw "提交 $($Commit.Substring(0, 7)) 没有可用的套件记录（$detail）先在干净的 main 上运行 pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage $($requiredStages -join ',')。"
+    $shortCommit = $Commit.Substring(0, 7)
+    $rerun = "先在干净的 main 上运行 pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage $($requiredStages -join ',')，通过后再部署。"
+    if ($null -eq $newest) {
+        throw (New-CountdownDeployFailure -Reason 'suite-evidence-missing' -Message "缺少套件证据：logs\suite-runs 里没有提交 $shortCommit 在本 checkout 的套件记录。$rerun")
+    }
+    throw (New-CountdownDeployFailure -Reason $newest.Problems[0].Reason -Message "提交 $shortCommit 没有合格的套件记录，最新一份 $($newest.RunId)：$(@($newest.Problems | ForEach-Object { $_.Message }) -join '；')。$rerun")
 }
 
 function Test-CountdownDeployManifestPath {
@@ -205,13 +305,17 @@ function Read-CountdownDeployBuildOutput {
     )
 
     $manifestPath = Join-Path $RepositoryRoot 'app\published-payload.json'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw "没有本机构建输出的载荷清单：$manifestPath" }
+    $rebuild = '重新跑一轮套件，部署它测过的构建输出。'
+    $invalid = { param([string] $Detail) New-CountdownDeployFailure -Reason 'build-output-invalid' -Message "$Detail。$rebuild" }
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw (New-CountdownDeployFailure -Reason 'build-output-missing' -Message "本机没有构建输出：缺少载荷清单 app\published-payload.json。$rebuild")
+    }
     try { $document = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json }
-    catch { throw '本机构建输出的载荷清单不是有效 JSON。' }
-    if ((Get-CountdownDeployProperty -Object $document -Name 'schemaVersion') -ne 1) { throw '本机构建输出的载荷清单 schemaVersion 不是 1。' }
+    catch { throw (& $invalid '本机构建输出的载荷清单不是有效 JSON') }
+    if ((Get-CountdownDeployProperty -Object $document -Name 'schemaVersion') -ne 1) { throw (& $invalid '本机构建输出的载荷清单 schemaVersion 不是 1') }
     $manifestCommit = [string] (Get-CountdownDeployProperty -Object $document -Name 'commit')
     if (-not [string]::Equals($manifestCommit, $Commit, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "本机构建输出不是提交 $($Commit.Substring(0, 7)) 构建的（载荷清单记的是 $manifestCommit）。"
+        throw (& $invalid "本机构建输出不是提交 $($Commit.Substring(0, 7)) 构建的（载荷清单记的是 $manifestCommit）")
     }
     $entries = [System.Collections.Generic.List[object]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -220,16 +324,16 @@ function Read-CountdownDeployBuildOutput {
         $path = [string] (Get-CountdownDeployProperty -Object $file -Name 'path')
         $sha256 = [string] (Get-CountdownDeployProperty -Object $file -Name 'sha256')
         if (-not (Test-CountdownDeployManifestPath -Path $path) -or $sha256 -notmatch '^[0-9A-Fa-f]{64}$' -or -not $seen.Add($path)) {
-            throw "本机构建输出的载荷清单条目无效：$path"
+            throw (& $invalid "本机构建输出的载荷清单条目无效：$path")
         }
         $entries.Add([pscustomobject]@{ Path = $path; Sha256 = $sha256.ToUpperInvariant() })
         [void] $aggregateInput.Append($path).Append([char] 0).Append($sha256).Append([char] 10)
     }
-    if ($entries.Count -eq 0) { throw '本机构建输出的载荷清单没有文件。' }
-    if (-not $seen.Contains($script:ExecutableManifestPath)) { throw "本机构建输出的载荷清单没有 $($script:ExecutableManifestPath)。" }
+    if ($entries.Count -eq 0) { throw (& $invalid '本机构建输出的载荷清单没有文件') }
+    if (-not $seen.Contains($script:ExecutableManifestPath)) { throw (& $invalid "本机构建输出的载荷清单没有 $($script:ExecutableManifestPath)") }
     $aggregate = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
     if (-not [string]::Equals($aggregate, [string] (Get-CountdownDeployProperty -Object $document -Name 'aggregateSha256'), [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw '本机构建输出的载荷清单聚合哈希与文件列表不一致。'
+        throw (& $invalid '本机构建输出的载荷清单聚合哈希与文件列表不一致')
     }
     [pscustomobject]@{
         ManifestPath = $manifestPath
@@ -245,21 +349,31 @@ function Get-CountdownDeployPreflight {
     param([Parameter(Mandatory)] [string] $RepositoryRoot)
 
     $branch = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments @('symbolic-ref', '--quiet', '--short', 'HEAD')
-    if ($branch.ExitCode -ne 0 -or $branch.Text -cne 'main') { throw "只部署 main：当前不在 main 分支（$($branch.Text)）。" }
+    if ($branch.ExitCode -ne 0 -or $branch.Text -cne 'main') {
+        $current = if ($branch.ExitCode -eq 0 -and $branch.Text) { $branch.Text } else { '分离的 HEAD' }
+        throw (New-CountdownDeployFailure -Reason 'not-main' -Message "只部署 main：当前在 $current 上。先切回 main。")
+    }
     $status = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments @('--no-optional-locks', 'status', '--porcelain=v1', '--untracked-files=all')
     if ($status.ExitCode -ne 0) { throw "读不出工作树状态：$($status.Error)" }
-    if ($status.Lines.Count -gt 0) { throw "工作树不干净：有 $($status.Lines.Count) 项未提交的改动。" }
+    if ($status.Lines.Count -gt 0) {
+        # porcelain v1 每行是两位状态码、一个空格和路径。
+        $paths = @($status.Lines | Select-Object -First 5 | ForEach-Object { $_.Substring([Math]::Min(3, $_.Length)) })
+        $more = if ($status.Lines.Count -gt $paths.Count) { " 等 $($status.Lines.Count) 项" } else { '' }
+        throw (New-CountdownDeployFailure -Reason 'dirty-work-tree' -Message "工作树不干净，有未提交的改动：$($paths -join '、')$more。先提交或撤回再部署。")
+    }
     $head = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments @('rev-parse', '--verify', 'HEAD')
     if ($head.ExitCode -ne 0 -or $head.Text -notmatch '^[0-9a-f]{40}$') { throw "读不出 HEAD：$($head.Error)" }
     $commit = $head.Text
     $pushed = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments @('rev-parse', '--verify', '--quiet', 'refs/remotes/origin/main')
     if ($pushed.ExitCode -ne 0 -or $pushed.Text -ne $commit) {
-        throw "提交 $($commit.Substring(0, 7)) 尚未推送：origin/main 是 $(if ($pushed.Text) { $pushed.Text.Substring(0, [Math]::Min(7, $pushed.Text.Length)) } else { '（不存在）' })。"
+        $remoteHead = if ($pushed.Text) { $pushed.Text.Substring(0, [Math]::Min(7, $pushed.Text.Length)) } else { '（不存在）' }
+        throw (New-CountdownDeployFailure -Reason 'not-pushed' -Message "提交 $($commit.Substring(0, 7)) 尚未推送：origin/main 是 $remoteHead。只部署与 origin/main 一致的 HEAD。")
     }
     $suiteRun = Find-CountdownDeploySuiteRun -RepositoryRoot $RepositoryRoot -Commit $commit
     $buildOutput = Read-CountdownDeployBuildOutput -RepositoryRoot $RepositoryRoot -Commit $commit
     if ($buildOutput.AggregateSha256 -ne $suiteRun.PayloadAggregateSha256) {
-        throw "本机构建输出的聚合哈希与套件运行 $($suiteRun.RunId) 的构建回执不一致：程序目录不是套件测过的那份构建输出。"
+        throw (New-CountdownDeployFailure -Reason 'aggregate-mismatch' -Message ("本机构建输出的聚合哈希 $($buildOutput.AggregateSha256.Substring(0, 12))… 与套件运行 $($suiteRun.RunId) " +
+                "构建回执里的 $($suiteRun.PayloadAggregateSha256.Substring(0, 12))… 不一致：程序目录不是套件测过的那份构建输出。重新跑一轮套件，部署它测过的构建输出。"))
     }
     [pscustomobject]@{ Commit = $commit; SuiteRun = $suiteRun; BuildOutput = $buildOutput }
 }
@@ -305,7 +419,9 @@ function New-CountdownDeployPackage {
     try {
         foreach ($file in $BuildOutput.Files) {
             $sha256 = Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $file.Path) -EntryName $file.Path
-            if ($sha256 -ne $file.Sha256) { throw "本机构建输出与载荷清单不一致：$($file.Path)" }
+            if ($sha256 -ne $file.Sha256) {
+                throw (New-CountdownDeployFailure -Reason 'build-output-modified' -Message "构建输出在套件之后被改动：$($file.Path) 的 SHA-256 与载荷清单不一致，程序目录不是套件测过的那份。重新跑一轮套件，部署它测过的构建输出。")
+            }
         }
         [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath $BuildOutput.ManifestPath -EntryName 'app\published-payload.json')
         foreach ($name in $script:InstallerFiles) {
@@ -390,6 +506,23 @@ function Get-CountdownDeployStatusMismatch {
     )
 }
 
+# 当前提交已在运行：状态里的提交就是 HEAD，已安装 EXE 与办公室上的载荷清单一致，应用在运行，没有未完成的安装
+# （有事务标记时照常部署，安装器先恢复再安装）。提交相同就算，同一提交的另一份构建输出也不重复安装。
+function Test-CountdownDeployAlreadyRunning {
+    param(
+        [Parameter(Mandatory)] [object] $Status,
+        [Parameter(Mandatory)] [string] $Commit
+    )
+
+    $marker = Get-CountdownDeployProperty -Object $Status -Name 'transactionMarkerPresent'
+    [string]::Equals([string] (Get-CountdownDeployProperty -Object $Status -Name 'commit'), $Commit, [System.StringComparison]::OrdinalIgnoreCase) -and
+        (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $Status -Name 'exe') -Name 'matchesManifest')) -and
+        (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Status -Name 'running')) -and
+        $marker -is [bool] -and -not $marker
+}
+
+# 远端安装脚本的信封 → 安装结果：包内安装器的结果 JSON，加上包哈希是否核对通过、安装器是否开始运行、暂存目录是否删掉。
+# 安装器没有给出结果时 succeeded 为 null（不知道安装进行到了哪一步），error 是远端脚本的错误。
 function ConvertFrom-CountdownDeployInstallEnvelope {
     param([Parameter(Mandatory)] [object] $Envelope)
 
@@ -399,13 +532,16 @@ function ConvertFrom-CountdownDeployInstallEnvelope {
         try { $install = $installerText | ConvertFrom-Json -DateKind String }
         catch { $install = $null }
     }
-    if ($null -eq $install) {
-        $install = [pscustomobject][ordered]@{ succeeded = $false; failedStage = $null; reason = $null; error = $null }
+    if ((Get-CountdownDeployProperty -Object $install -Name 'succeeded') -isnot [bool]) {
+        $install = [pscustomobject][ordered]@{ succeeded = $null; failedStage = $null; reason = $null; error = $null }
     }
     $envelopeError = Get-CountdownDeployProperty -Object $Envelope -Name 'error'
-    if ($null -ne $envelopeError) { $install.error = ConvertTo-CountdownDeployBoundedText -Text ([string] $envelopeError) }
-    $install | Add-Member -NotePropertyName packageVerified -NotePropertyValue (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Envelope -Name 'packageVerified')) -Force
-    $install | Add-Member -NotePropertyName stagingRemoved -NotePropertyValue (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Envelope -Name 'stagingRemoved')) -Force
+    if ($null -ne $envelopeError) {
+        $install | Add-Member -NotePropertyName error -NotePropertyValue (ConvertTo-CountdownDeployBoundedText -Text ([string] $envelopeError)) -Force
+    }
+    foreach ($name in @('packageVerified', 'installerStarted', 'stagingRemoved')) {
+        $install | Add-Member -NotePropertyName $name -NotePropertyValue (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Envelope -Name $name)) -Force
+    }
     $install
 }
 
@@ -460,6 +596,11 @@ function Invoke-CountdownDeployment {
     部署入口的编排：部署，或只查状态。返回结果（由入口脚本输出为 JSON）；进度写到标准错误。
     .DESCRIPTION
     部署成功只看安装后的只读状态读取：提交是 HEAD、已安装 EXE 的哈希等于本机构建输出、达到启动就绪的进程仍在运行。
+    连通性探测本身是一次只读状态读取（结果的 statusBefore）；它显示当前提交已在运行、没有未完成的安装时，结论是
+    already-running，不传输、不安装。结论 outcome：deployed、already-running（succeeded 为 true）；rejected（连接远端之前停下）、
+    failed（succeeded 为 false）；unknown（succeeded 为 null：拿不到安装结果或安装后的状态，不知道办公室上的结果）。
+    failedStep 是停下的步骤，reason 是原因类别，error 写明缺什么或哪里不对；安装失败时 rollback 是安装器报告的回滚结果
+    （not-needed、rolled-back、rollback-failed，没报时为 null）；办公室现状不确定时 nextStep 提示先查状态。
     预检通过后无论成败都写一份本地部署记录（<RecordRoot>\<运行编号>\deployment-record.json）：提交、包哈希、安装结果、
     状态快照与传输账本引用。本机的包和办公室的暂存目录都不保留。只查状态时不写任何东西。
     -Port 需要 InvokeRemoteScript（脚本路径、是否写操作 → ExitCode、Output）与 SendFile（本地文件、远端路径、
@@ -484,9 +625,13 @@ function Invoke-CountdownDeployment {
     $result = [ordered]@{
         schemaVersion = 1
         mode = 'deploy'
+        outcome = $null
         succeeded = $false
         failedStep = $null
+        reason = $null
         error = $null
+        rollback = $null
+        nextStep = $null
         runId = $runId
         startedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         finishedAtUtc = $null
@@ -495,7 +640,7 @@ function Invoke-CountdownDeployment {
         buildOutput = $null
         package = $null
         remoteStagingDirectory = $null
-        probe = $null
+        statusBefore = $null
         transfer = $null
         install = $null
         status = $null
@@ -506,6 +651,7 @@ function Invoke-CountdownDeployment {
     $workDirectory = [System.IO.Path]::Join([System.IO.Path]::GetTempPath(), "clock-countdown-deploy-$runId")
     $packagePath = [System.IO.Path]::Join($workDirectory, 'package.zip')
     $preflightPassed = $false
+    $remoteContacted = $false
     try {
         Write-CountdownDeployProgress -Step 'preflight' -Message '本机预检：main、工作树干净、已推送、套件记录与构建回执'
         $preflight = Get-CountdownDeployPreflight -RepositoryRoot $RepositoryRoot
@@ -524,62 +670,108 @@ function Invoke-CountdownDeployment {
         $package = New-CountdownDeployPackage -RepositoryRoot $RepositoryRoot -BuildOutput $preflight.BuildOutput -PackagePath $packagePath
         $result.package = [ordered]@{ sha256 = $package.Sha256; bytes = $package.Bytes; retained = $true }
 
+        # 连通性探测就是一次只读状态读取：连得上，也知道办公室现在运行的是什么。安装后的状态读取用同一份脚本。
         $step = 'probe'
-        Write-CountdownDeployProgress -Step 'probe' -Message '经远端执行入口做只读连通性探测'
-        $probeScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'probe.ps1') -Text $script:RemoteProbeScript
-        $probe = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $probeScript -WriteOperation $false -Name '连通性探测'
-        if ([string] (Get-CountdownDeployProperty -Object $probe -Name 'probe') -cne 'ok') { throw '连通性探测没有返回 ok。' }
-        $result.probe = [ordered]@{ powershell = [string] (Get-CountdownDeployProperty -Object $probe -Name 'powershell') }
-
-        $step = 'transfer'
-        $staging = [System.IO.Path]::Join($RemoteStagingRoot, "clock-countdown-$runId")
-        $result.remoteStagingDirectory = $staging
-        Write-CountdownDeployProgress -Step 'transfer' -Message "经传输入口送到暂存目录 clock-countdown-$runId 并核对远端哈希"
-        $sent = @(& $Port.SendFile $packagePath ([System.IO.Path]::Join($staging, 'package.zip')) $package.Sha256 $runId)
-        if ($sent.Count -ne 1) { throw "传输 port 应返回一份结果，实际 $($sent.Count) 份。" }
-        $remoteSha256 = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Sha256')
-        $result.transfer = [ordered]@{
-            attemptId = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'AttemptId')
-            status = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Status')
-            remoteSha256 = $remoteSha256.ToUpperInvariant()
-            bytes = Get-CountdownDeployProperty -Object $sent[0] -Name 'Bytes'
-            ledgerPath = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'LedgerPath')
-        }
-        if ($result.transfer.status -cne 'succeeded') { throw "传输没有成功：$($result.transfer.status)" }
-        if (-not [string]::Equals($remoteSha256, $package.Sha256, [System.StringComparison]::OrdinalIgnoreCase)) { throw '远端文件的哈希与包哈希不一致。' }
-
-        $step = 'install'
-        Write-CountdownDeployProgress -Step 'install' -Message '经远端执行入口核对包哈希、解包并运行包内安装器'
-        $installText = $script:RemoteInstallScript
-        foreach ($placeholder in @(
-                @('__STAGING__', $staging), @('__SHA256__', $package.Sha256),
-                @('__INSTALL_ROOT__', $RemoteInstallRoot), @('__TASK_NAME__', $TaskName))) {
-            $installText = $installText.Replace($placeholder[0], (ConvertTo-CountdownDeployLiteral -Value $placeholder[1]))
-        }
-        $installScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'install.ps1') -Text $installText
-        $envelope = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $installScript -WriteOperation $true -Name '远端安装'
-        $result.install = ConvertFrom-CountdownDeployInstallEnvelope -Envelope $envelope
-        if (-not (Test-CountdownDeployTrue $result.install.succeeded)) {
-            throw "包内安装器报告失败：$($result.install.failedStage) $($result.install.reason) $($result.install.error)"
-        }
-
-        $step = 'status'
-        Write-CountdownDeployProgress -Step 'status' -Message '只读状态读取：提交、EXE 哈希与运行中的进程'
+        Write-CountdownDeployProgress -Step 'probe' -Message '经远端执行入口做只读连通性探测：读一次办公室的安装状态'
         $statusScript = Write-CountdownDeployStatusScript -RepositoryRoot $RepositoryRoot -Directory $workDirectory -InstallRoot $RemoteInstallRoot -TaskName $TaskName
-        $result.status = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $statusScript -WriteOperation $false -Name '状态读取'
-        $readyProcess = Get-CountdownDeployProperty -Object $result.install -Name 'readyProcess'
-        $result.statusMismatches = @(Get-CountdownDeployStatusMismatch -Status $result.status -Commit $preflight.Commit -ExecutableSha256 $preflight.BuildOutput.ExecutableSha256 `
-                -ReadyProcessId (Get-CountdownDeployProperty -Object $readyProcess -Name 'processId'))
-        if ($result.statusMismatches.Count -gt 0) { throw "安装后的状态与预期不一致：$($result.statusMismatches -join '、')。" }
-        $result.succeeded = $true
+        $remoteContacted = $true
+        try {
+            $result.statusBefore = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $statusScript -WriteOperation $false -Name '连通性探测'
+            if ((Get-CountdownDeployProperty -Object $result.statusBefore -Name 'schemaVersion') -ne 1) { throw '连通性探测没有读到办公室的安装状态。' }
+        }
+        catch { throw (New-CountdownDeployFailure -Reason 'probe-failed' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)部署停在传输之前，办公室没有改动。") }
+
+        if (Test-CountdownDeployAlreadyRunning -Status $result.statusBefore -Commit $preflight.Commit) {
+            $result.succeeded = $true
+            $result.outcome = 'already-running'
+        }
+        else {
+            $step = 'transfer'
+            $staging = [System.IO.Path]::Join($RemoteStagingRoot, "clock-countdown-$runId")
+            $result.remoteStagingDirectory = $staging
+            Write-CountdownDeployProgress -Step 'transfer' -Message "经传输入口送到暂存目录 clock-countdown-$runId 并核对远端哈希"
+            # 传输失败时安装还没开始：办公室的安装没有改动，暂存目录里可能留下不完整的包。
+            try {
+                $sent = @(& $Port.SendFile $packagePath ([System.IO.Path]::Join($staging, 'package.zip')) $package.Sha256 $runId)
+                if ($sent.Count -ne 1) { throw "传输 port 应返回一份结果，实际 $($sent.Count) 份。" }
+                $remoteSha256 = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Sha256')
+                $result.transfer = [ordered]@{
+                    attemptId = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'AttemptId')
+                    status = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Status')
+                    remoteSha256 = $remoteSha256.ToUpperInvariant()
+                    bytes = Get-CountdownDeployProperty -Object $sent[0] -Name 'Bytes'
+                    ledgerPath = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'LedgerPath')
+                }
+                if ($result.transfer.status -cne 'succeeded') { throw "传输没有成功：$($result.transfer.status)。" }
+                if (-not [string]::Equals($remoteSha256, $package.Sha256, [System.StringComparison]::OrdinalIgnoreCase)) { throw '远端文件的哈希与包哈希不一致。' }
+            }
+            catch { throw (New-CountdownDeployFailure -Reason 'transfer-failed' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)没有运行安装，办公室的安装没有改动。") }
+
+            $step = 'install'
+            Write-CountdownDeployProgress -Step 'install' -Message '经远端执行入口核对包哈希、解包并运行包内安装器'
+            $installText = $script:RemoteInstallScript
+            foreach ($placeholder in @(
+                    @('__STAGING__', $staging), @('__SHA256__', $package.Sha256),
+                    @('__INSTALL_ROOT__', $RemoteInstallRoot), @('__TASK_NAME__', $TaskName))) {
+                $installText = $installText.Replace($placeholder[0], (ConvertTo-CountdownDeployLiteral -Value $placeholder[1]))
+            }
+            $installScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'install.ps1') -Text $installText
+            # 远端安装脚本总会输出一份信封；拿不到它（连接断开、入口失败、输出不全）就不知道安装进行到了哪一步。
+            try { $envelope = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $installScript -WriteOperation $true -Name '远端安装' }
+            catch {
+                throw (New-CountdownDeployFailure -Reason 'install-result-unknown' -Outcome 'unknown' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)连接可能在安装途中断开，不知道安装进行到了哪一步。")
+            }
+            $result.install = ConvertFrom-CountdownDeployInstallEnvelope -Envelope $envelope
+            if ($null -eq $result.install.succeeded) {
+                if ($result.install.installerStarted) {
+                    throw (New-CountdownDeployFailure -Reason 'install-result-unknown' -Outcome 'unknown' -Message "安装器开始运行了，却没有给出结果（$($result.install.error)），不知道安装进行到了哪一步。")
+                }
+                $result.rollback = 'not-needed'
+                throw (New-CountdownDeployFailure -Reason 'install-failed' -Message "包没能交给安装器（$($result.install.error)）：安装器没有运行，办公室的安装没有改动。")
+            }
+            if (-not $result.install.succeeded) {
+                $rollback = [string] (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $result.install -Name 'rollback') -Name 'outcome')
+                $result.rollback = if ($rollback -cin @($script:RollbackOutcomes.Keys)) { $rollback } else { $null }
+                $rollbackText = if ($null -ne $result.rollback) { $script:RollbackOutcomes[$result.rollback] } else { '安装器没有报告回滚结果。' }
+                # 回滚结果放在安装器的错误前面：错误很长、整句被截断时也不丢。
+                throw (New-CountdownDeployFailure -Reason 'install-failed' -Message ("包内安装器报告失败（阶段 $(Get-CountdownDeployProperty -Object $result.install -Name 'failedStage')，" +
+                        "原因 $(Get-CountdownDeployProperty -Object $result.install -Name 'reason')）。$($rollbackText)安装器的错误：$(Get-CountdownDeployProperty -Object $result.install -Name 'error')"))
+            }
+
+            $step = 'status'
+            Write-CountdownDeployProgress -Step 'status' -Message '只读状态读取：提交、EXE 哈希与运行中的进程'
+            # 成功只看这次状态读取：读不到就确认不了办公室在运行什么，结果未知。
+            try { $result.status = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $statusScript -WriteOperation $false -Name '安装后的状态读取' }
+            catch {
+                throw (New-CountdownDeployFailure -Reason 'status-unreadable' -Outcome 'unknown' -Message "安装器报告成功，但$(ConvertTo-CountdownDeploySentence $_.Exception.Message)确认不了办公室现在运行的是什么。")
+            }
+            $readyProcess = Get-CountdownDeployProperty -Object $result.install -Name 'readyProcess'
+            $result.statusMismatches = @(Get-CountdownDeployStatusMismatch -Status $result.status -Commit $preflight.Commit -ExecutableSha256 $preflight.BuildOutput.ExecutableSha256 `
+                    -ReadyProcessId (Get-CountdownDeployProperty -Object $readyProcess -Name 'processId'))
+            if ($result.statusMismatches.Count -gt 0) {
+                throw (New-CountdownDeployFailure -Reason 'status-mismatch' -Message "安装器报告成功，但安装后的状态与预期不一致：$($result.statusMismatches -join '、')。")
+            }
+            $result.succeeded = $true
+            $result.outcome = 'deployed'
+        }
     }
     catch {
         $result.failedStep = $step
+        $reason = $_.Exception.Data['CountdownDeployReason']
+        $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
+        # 连接远端之前停下的是拒绝：办公室什么都没收到。不知道办公室上发生了什么时是未知：既不算成功，也不算失败。
+        $outcome = $_.Exception.Data['CountdownDeployOutcome']
+        $result.outcome = if ($null -ne $outcome) { [string] $outcome } elseif ($remoteContacted) { 'failed' } else { 'rejected' }
+        $result.succeeded = if ($result.outcome -ceq 'unknown') { $null } else { $false }
         $result.error = ConvertTo-CountdownDeployBoundedText -Text $_.Exception.Message
     }
     finally {
         Remove-CountdownDeployWorkDirectory -Path $workDirectory
         if ($null -ne $result.package) { $result.package.retained = Test-Path -LiteralPath $packagePath }
+    }
+    # 办公室现状不确定时提示先查状态：结果未知，或安装失败而回滚失败、安装器没有报告回滚结果。
+    if ($result.outcome -ceq 'unknown' -or ($result.failedStep -ceq 'install' -and $result.rollback -cnotin @('rolled-back', 'not-needed'))) {
+        $result.nextStep = $script:ReadStatusFirst
     }
 
     if ($preflightPassed) {
@@ -590,13 +782,27 @@ function Invoke-CountdownDeployment {
         try { Write-CountdownDeployRecord -Path $recordPath -Record $result }
         catch {
             $result.recordPath = $null
-            $result.succeeded = $false
-            $result.failedStep = 'record'
-            $result.error = ConvertTo-CountdownDeployBoundedText -Text "写本地部署记录失败：$($_.Exception.Message)"
+            $recordError = "本地部署记录 deployment-record.json 没写成：$($_.Exception.Message)"
+            if ($result.succeeded -eq $true) {
+                # 办公室上的结果已经确认，却没留下记录：不报告成功。没有成功的结论（包括未知）原样保留，只补上这一句。
+                $result.outcome = 'failed'
+                $result.succeeded = $false
+                $result.failedStep = 'record'
+                $result.reason = 'record-write-failed'
+                $result.error = ConvertTo-CountdownDeployBoundedText -Text $recordError
+            }
+            else { $result.error = ConvertTo-CountdownDeployBoundedText -Text "$($result.error) $recordError" }
         }
     }
     else { $result.finishedAtUtc = [DateTimeOffset]::UtcNow.ToString('o') }
-    Write-CountdownDeployConclusion -Message $(if ($result.succeeded) { "部署成功，提交 $($result.commit.Substring(0, 7)) 正在办公室运行。" } else { "部署没有成功（$($result.failedStep)）：$($result.error)" })
+    $conclusion = switch ($result.outcome) {
+        'deployed' { "部署成功，提交 $($result.commit.Substring(0, 7)) 正在办公室运行。" }
+        'already-running' { "提交 $($result.commit.Substring(0, 7)) 已在办公室运行，没有重复安装。" }
+        'rejected' { "停在 $($result.failedStep)，没有连接办公室：$($result.error)" }
+        'unknown' { "停在 $($result.failedStep)，不知道办公室上的结果：$($result.error)" }
+        default { "停在 $($result.failedStep)：$($result.error)" }
+    }
+    Write-CountdownDeployConclusion -Outcome $result.outcome -Message "$conclusion$($result.nextStep)"
     $result
 }
 

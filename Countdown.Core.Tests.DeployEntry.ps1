@@ -701,13 +701,15 @@ try {
     $deployDroppedAgain = Invoke-CountdownDeployTest -Label 'deploy again after the drop'
     Assert-Equal 'already-running' ([string] $deployDroppedAgain.Result.outcome) "Deploying again after the drop reports the commit already running: $($deployDroppedAgain.Result.error)"
     Assert-Equal 'remote-read,remote-read' ($deployCase.Calls -join ',') 'Neither the status read nor the second deploy transfers or installs'
-    # 状态显示有未完成的安装（事务标记）时，这次提交在运行也不算已在运行：重新部署照常传输并交给安装器，由安装器先恢复（#284）。
+    # 状态显示有未完成的安装（事务标记）时，这次提交在运行也不算已在运行：重新部署照常传输并交给安装器，由安装器先恢复（#284）
+    # 再安装。这里的标记读不出是哪一版、也没有候选或旧版本目录，恢复清除标记后照常装上；部署结果里带着安装器的恢复报告。
     [System.IO.File]::WriteAllText((Join-Path $deployCase.InstallRoot 'install-transaction.json'), '{}', $deployUtf8)
     $deployCase.Calls.Clear()
     $deployCase.Responses.Clear()
     $deployMarker = Invoke-CountdownDeployTest -Label 'deploy again over an unfinished install'
     Assert-Equal $true ([bool] $deployMarker.Result.statusBefore.transactionMarkerPresent) 'The probe reads the unfinished install marker'
     Assert-Equal $true ($deployMarker.Result.outcome -cne 'already-running' -and ($deployCase.Calls -join ',').StartsWith('remote-read,transfer,remote-write')) "A deploy over an unfinished install hands the package to the installer instead of reporting already running: $($deployMarker.Result.outcome) $($deployMarker.Result.error)"
+    Assert-Equal 'deployed|before-replace|discarded-candidate|recovered|False' "$($deployMarker.Result.outcome)|$($deployMarker.Result.install.recovery.state)|$($deployMarker.Result.install.recovery.action)|$($deployMarker.Result.install.recovery.outcome)|$($deployMarker.Result.status.transactionMarkerPresent)" "Deploying again recovers the unfinished install and installs: $($deployMarker.Result.error)"
 
     # 同样是结果未知：远端执行入口在安装这一步自己失败（port 抛错）；安装器开始运行了却没给出结果。
     $deployUnknownResponses = [ordered]@{

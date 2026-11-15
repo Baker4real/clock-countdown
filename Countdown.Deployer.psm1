@@ -27,7 +27,7 @@ $script:RollbackOutcomes = [ordered]@{
     'rollback-failed' = '回滚也失败了，办公室可能停在半安装的状态。'
 }
 # 办公室现状不确定时（结果未知、回滚失败或安装器没报回滚结果）给维护者的下一步。
-$script:ReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态：transactionMarkerPresent 为 true（有未完成的安装）时重新执行部署即可，安装器会先恢复再安装；状态显示本次提交已在运行就不用再做什么。'
+$script:ReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态：transactionMarkerPresent 为 true（有未完成的安装）时重新执行部署，安装器会先恢复再安装（恢复不了时安装停在 recovery 阶段，结果的 install.recovery 写明原因）；状态显示本次提交已在运行就不用再做什么。'
 
 # 写操作脚本的第一条语句（param 块之后）必须是对执行目标的断言：主机的远端执行入口缺了它就拒绝执行。
 $script:RemoteInstallScript = @'

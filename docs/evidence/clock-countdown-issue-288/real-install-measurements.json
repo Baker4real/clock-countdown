@@ -1,0 +1,3471 @@
+{
+  "schemaVersion": 1,
+  "issue": 288,
+  "spec": 259,
+  "redactions": [
+    "<runDir> = the temporary run directory %TEMP%\\minmin-288-<id> (packages, install root <runDir>\\root, scratch build); recycled after the check",
+    "<worktree> = the implementer worktree that ran the installer entry and the probe",
+    "<desktop> = the interactive user's desktop directory as the installer port resolves it",
+    "task XML: <UserId> and <Author> replaced; no account name, SID or host name is recorded"
+  ],
+  "documents": {
+    "prepare": {
+      "runId": "a2b5eae6",
+      "taskName": "MinminCountdown-Check-288-a2b5eae6",
+      "installRoot": "<runDir>\\root",
+      "preparedUtc": "2026-11-15T06:38:59.7709983+00:00",
+      "packages": {
+        "v1": {
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        },
+        "v2": {
+          "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+          "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        },
+        "v3": {
+          "commit": "aae31cf74a6973c1e836feae315f75764b75e946-fault-injected-288",
+          "aggregateSha256": "714300DFF4D752A807CCD3FF119D09B04D055EEE7533D6CB49D45E29227FD619",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        }
+      },
+      "v3OverlaidFiles": [
+        "MinminCountdown.dll"
+      ],
+      "seed": {
+        "settings.json": {
+          "exitCode": 0,
+          "migrated": true,
+          "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+        },
+        "settings.json.backup1": {
+          "exitCode": 0,
+          "migrated": true,
+          "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51"
+        },
+        "settings.json.backup2": {
+          "exitCode": 0,
+          "migrated": true,
+          "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949"
+        }
+      }
+    },
+    "dryrun": {
+      "mode": "DryRun",
+      "startedUtc": "2026-11-15T06:39:17.1412389+00:00",
+      "environment": {
+        "osBuild": "26300",
+        "pwsh": "7.6.9",
+        "shellElevated": false,
+        "apartment": "STA",
+        "kryptexProcesses": 0,
+        "tempTaskPresent": false
+      },
+      "realWorld": {
+        "atUtc": "2026-11-15T06:39:18.6782275+00:00",
+        "realTasks": [
+          {
+            "name": "Minmin Countdown",
+            "present": false,
+            "error": "ObjectNotFound"
+          },
+          {
+            "name": "敏敏子倒计时",
+            "present": false,
+            "error": "ObjectNotFound"
+          }
+        ],
+        "rootFolderTaskCount": 19,
+        "rootFolderAggregateSha256": "F9FEC7BA936795A5730B92B41EB76F86C8439C5C3F0A792F6A38BFDA08322282",
+        "realInstallRootPresent": false,
+        "desktopShortcut": {
+          "sessionId": 1,
+          "path": "<desktop>\\敏敏子倒计时.lnk",
+          "fingerprint": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:39:20.1531389Z",
+            "attributes": "Archive"
+          },
+          "isShellLink": true,
+          "targetInRunDirectory": false,
+          "targetIsThisInstall": false
+        },
+        "appProcessesOutsideRun": 0,
+        "appProcessesInRun": []
+      },
+      "packages": {
+        "v1": {
+          "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+          "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        },
+        "v2": {
+          "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+          "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        },
+        "v3": {
+          "commit": "aae31cf74a6973c1e836feae315f75764b75e946-fault-injected-288",
+          "aggregateSha256": "714300DFF4D752A807CCD3FF119D09B04D055EEE7533D6CB49D45E29227FD619",
+          "fileCount": 429,
+          "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+        }
+      },
+      "checkOnly": {
+        "v1": {
+          "package": "v1",
+          "checkOnly": true,
+          "startedUtc": "2026-11-15T06:39:20.8714645+00:00",
+          "elapsedMs": 9386,
+          "exitCode": 0,
+          "result": {
+            "schemaVersion": 1,
+            "succeeded": true,
+            "checkOnly": true,
+            "failedStage": null,
+            "reason": null,
+            "error": null,
+            "installRoot": "<runDir>\\root",
+            "taskName": "MinminCountdown-Check-288-a2b5eae6",
+            "recovery": {
+              "state": "clean",
+              "action": null,
+              "outcome": "not-needed",
+              "reason": null
+            },
+            "package": {
+              "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+              "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750"
+            },
+            "firstInstall": true,
+            "plannedSteps": [
+              "place-candidate",
+              "stop-application",
+              "write-transaction-marker",
+              "snapshot-settings",
+              "settings-rehearsal",
+              "replace-program-directory",
+              "create-login-task",
+              "register-desktop-shortcut",
+              "start-and-wait-ready",
+              "commit"
+            ],
+            "loginTask": null,
+            "desktopShortcut": null,
+            "stoppedProcessCount": 0,
+            "readyProcess": null,
+            "settings": {
+              "before": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "after": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              }
+            },
+            "settingsRehearsal": null,
+            "restartedProcess": null,
+            "rollback": {
+              "outcome": "not-needed",
+              "settings": null,
+              "loginTask": null,
+              "desktopShortcut": null,
+              "problems": []
+            },
+            "transactionMarkerPresent": false,
+            "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+          },
+          "rawOutput": null,
+          "stderr": null,
+          "timeline": null,
+          "processesSeen": null
+        },
+        "v2": {
+          "package": "v2",
+          "checkOnly": true,
+          "startedUtc": "2026-11-15T06:39:30.2741779+00:00",
+          "elapsedMs": 3002,
+          "exitCode": 0,
+          "result": {
+            "schemaVersion": 1,
+            "succeeded": true,
+            "checkOnly": true,
+            "failedStage": null,
+            "reason": null,
+            "error": null,
+            "installRoot": "<runDir>\\root",
+            "taskName": "MinminCountdown-Check-288-a2b5eae6",
+            "recovery": {
+              "state": "clean",
+              "action": null,
+              "outcome": "not-needed",
+              "reason": null
+            },
+            "package": {
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+              "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5"
+            },
+            "firstInstall": true,
+            "plannedSteps": [
+              "place-candidate",
+              "stop-application",
+              "write-transaction-marker",
+              "snapshot-settings",
+              "settings-rehearsal",
+              "replace-program-directory",
+              "create-login-task",
+              "register-desktop-shortcut",
+              "start-and-wait-ready",
+              "commit"
+            ],
+            "loginTask": null,
+            "desktopShortcut": null,
+            "stoppedProcessCount": 0,
+            "readyProcess": null,
+            "settings": {
+              "before": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "after": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              }
+            },
+            "settingsRehearsal": null,
+            "restartedProcess": null,
+            "rollback": {
+              "outcome": "not-needed",
+              "settings": null,
+              "loginTask": null,
+              "desktopShortcut": null,
+              "problems": []
+            },
+            "transactionMarkerPresent": false,
+            "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+          },
+          "rawOutput": null,
+          "stderr": null,
+          "timeline": null,
+          "processesSeen": null
+        },
+        "v3": {
+          "package": "v3",
+          "checkOnly": true,
+          "startedUtc": "2026-11-15T06:39:33.2779831+00:00",
+          "elapsedMs": 2857,
+          "exitCode": 0,
+          "result": {
+            "schemaVersion": 1,
+            "succeeded": true,
+            "checkOnly": true,
+            "failedStage": null,
+            "reason": null,
+            "error": null,
+            "installRoot": "<runDir>\\root",
+            "taskName": "MinminCountdown-Check-288-a2b5eae6",
+            "recovery": {
+              "state": "clean",
+              "action": null,
+              "outcome": "not-needed",
+              "reason": null
+            },
+            "package": {
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946-fault-injected-288",
+              "aggregateSha256": "714300DFF4D752A807CCD3FF119D09B04D055EEE7533D6CB49D45E29227FD619"
+            },
+            "firstInstall": true,
+            "plannedSteps": [
+              "place-candidate",
+              "stop-application",
+              "write-transaction-marker",
+              "snapshot-settings",
+              "settings-rehearsal",
+              "replace-program-directory",
+              "create-login-task",
+              "register-desktop-shortcut",
+              "start-and-wait-ready",
+              "commit"
+            ],
+            "loginTask": null,
+            "desktopShortcut": null,
+            "stoppedProcessCount": 0,
+            "readyProcess": null,
+            "settings": {
+              "before": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "after": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              }
+            },
+            "settingsRehearsal": null,
+            "restartedProcess": null,
+            "rollback": {
+              "outcome": "not-needed",
+              "settings": null,
+              "loginTask": null,
+              "desktopShortcut": null,
+              "problems": []
+            },
+            "transactionMarkerPresent": false,
+            "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+          },
+          "rawOutput": null,
+          "stderr": null,
+          "timeline": null,
+          "processesSeen": null
+        }
+      },
+      "rehearsal": {
+        "v1": {
+          "migrationExitCode": 0,
+          "migrated": false,
+          "migrationCategory": "current-schema",
+          "equivalenceExitCode": 0,
+          "equivalent": true,
+          "equivalenceCategory": "unchanged"
+        },
+        "v2": {
+          "migrationExitCode": 0,
+          "migrated": false,
+          "migrationCategory": "current-schema",
+          "equivalenceExitCode": 0,
+          "equivalent": true,
+          "equivalenceCategory": "unchanged"
+        },
+        "v3": {
+          "migrationExitCode": 0,
+          "migrated": false,
+          "migrationCategory": "current-schema",
+          "equivalenceExitCode": 0,
+          "equivalent": true,
+          "equivalenceCategory": "unchanged"
+        }
+      },
+      "settingsUnchangedByDryRun": {
+        "allByteIdentical": true,
+        "files": [
+          {
+            "name": "settings.json",
+            "byteIdenticalToSeed": true
+          },
+          {
+            "name": "settings.json.backup1",
+            "byteIdenticalToSeed": true
+          },
+          {
+            "name": "settings.json.backup2",
+            "byteIdenticalToSeed": true
+          }
+        ]
+      },
+      "shortcutPorts": {
+        "written": true,
+        "readIsShellLink": true,
+        "readTargetMatches": true,
+        "removed": true
+      },
+      "processFactsSelfCheck": {
+        "atUtc": "2026-11-15T06:39:38.5835344+00:00",
+        "processId": 32800,
+        "imagePath": "<pwsh>",
+        "sessionId": 1,
+        "priorityClass": "Normal",
+        "ioPriority": "Normal",
+        "memoryPriority": 5,
+        "inJob": true,
+        "tokenElevated": false,
+        "elevationType": "Limited",
+        "integrityRid": "0x2000",
+        "parentProcessName": "pwsh.exe",
+        "startTimeUtc": "2026-11-15T06:39:16.4396980Z",
+        "imageSha256": "2A6769A3330DC1084D0154BFDE7D164AB750CA7F700F313F9D417C1BE78B2233",
+        "nativeError": null
+      },
+      "shellWindowsInRun": 0,
+      "shellWindowsTotal": 1,
+      "finishedUtc": "2026-11-15T06:39:38.6506309+00:00"
+    },
+    "run": {
+      "mode": "Run",
+      "consent": "可以，安排上（2026-11-15 约 14:00，用户经编排会话当场同意 #288 的真实安装验收）",
+      "startedUtc": "2026-11-15T06:40:33.2053300+00:00",
+      "steps": {
+        "r1FirstInstall": {
+          "name": "r1-first-install-v1",
+          "install": {
+            "package": "v1",
+            "checkOnly": false,
+            "startedUtc": "2026-11-15T06:40:38.3646739+00:00",
+            "elapsedMs": 13973,
+            "exitCode": 0,
+            "result": {
+              "schemaVersion": 1,
+              "succeeded": true,
+              "checkOnly": false,
+              "failedStage": null,
+              "reason": null,
+              "error": null,
+              "installRoot": "<runDir>\\root",
+              "taskName": "MinminCountdown-Check-288-a2b5eae6",
+              "recovery": {
+                "state": "clean",
+                "action": null,
+                "outcome": "not-needed",
+                "reason": null
+              },
+              "package": {
+                "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+                "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750"
+              },
+              "firstInstall": true,
+              "plannedSteps": [
+                "place-candidate",
+                "stop-application",
+                "write-transaction-marker",
+                "snapshot-settings",
+                "settings-rehearsal",
+                "replace-program-directory",
+                "create-login-task",
+                "register-desktop-shortcut",
+                "start-and-wait-ready",
+                "commit"
+              ],
+              "loginTask": {
+                "action": "created",
+                "changes": []
+              },
+              "desktopShortcut": {
+                "name": "敏敏子倒计时.lnk",
+                "action": "kept-foreign",
+                "reason": "other-target",
+                "changes": []
+              },
+              "stoppedProcessCount": 0,
+              "readyProcess": {
+                "processId": 73776,
+                "sessionId": 1
+              },
+              "settings": {
+                "before": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                },
+                "after": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                }
+              },
+              "settingsRehearsal": {
+                "outcome": "equivalent",
+                "migration": "current-schema",
+                "equivalence": "unchanged"
+              },
+              "restartedProcess": null,
+              "rollback": {
+                "outcome": "not-needed",
+                "settings": null,
+                "loginTask": null,
+                "desktopShortcut": null,
+                "problems": []
+              },
+              "transactionMarkerPresent": false,
+              "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+            },
+            "rawOutput": null,
+            "stderr": null,
+            "timeline": [
+              {
+                "ms": 46,
+                "present": [],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 2783,
+                "present": [
+                  "app.candidate"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 10811,
+                "present": [
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 10906,
+                "present": [
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  47544
+                ]
+              },
+              {
+                "ms": 11191,
+                "present": [
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  83244
+                ]
+              },
+              {
+                "ms": 12172,
+                "present": [
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 12243,
+                "present": [
+                  "app",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 12642,
+                "present": [
+                  "app",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              },
+              {
+                "ms": 13470,
+                "present": [
+                  "app",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              },
+              {
+                "ms": 13928,
+                "present": [
+                  "app",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              },
+              {
+                "ms": 13991,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              }
+            ],
+            "processesSeen": [
+              {
+                "processId": 73776,
+                "firstSeenMs": 12641,
+                "imageInRoot": true,
+                "exited": false,
+                "exitCodeHex": null,
+                "exitTimeUtc": null
+              },
+              {
+                "processId": 83244,
+                "firstSeenMs": 11190,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:40:49.7819741Z"
+              },
+              {
+                "processId": 47544,
+                "firstSeenMs": 10897,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:40:49.5046136Z"
+              }
+            ]
+          },
+          "readyProcessFacts": {
+            "atUtc": "2026-11-15T06:40:53.4365568+00:00",
+            "processId": 73776,
+            "imagePath": "<runDir>\\root\\app\\MinminCountdown.exe",
+            "sessionId": 1,
+            "priorityClass": "Normal",
+            "ioPriority": "Normal",
+            "memoryPriority": 5,
+            "inJob": true,
+            "tokenElevated": false,
+            "elevationType": "Limited",
+            "integrityRid": "0x2000",
+            "parentProcessName": "svchost.exe",
+            "startTimeUtc": "2026-11-15T06:40:50.9750110Z",
+            "imageSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "nativeError": null
+          },
+          "task": {
+            "atUtc": "2026-11-15T06:40:54.0519382+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:40:50.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              73776
+            ],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "settings": {
+            "atUtc": "2026-11-15T06:40:54.0945080+00:00",
+            "settings.json": {
+              "present": true,
+              "length": 1362,
+              "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+            },
+            "settings.json.backup1": {
+              "present": true,
+              "length": 1383,
+              "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+            },
+            "settings.json.backup2": {
+              "present": true,
+              "length": 1383,
+              "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+            }
+          },
+          "settingsVersusSeed": {
+            "allByteIdentical": true,
+            "files": [
+              {
+                "name": "settings.json",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup1",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup2",
+                "byteIdenticalToSeed": true
+              }
+            ]
+          },
+          "rootListing": [
+            "app\\",
+            "holiday-cache\\",
+            "logs\\",
+            "runtime-status.json",
+            "settings.json",
+            "settings.json.backup1",
+            "settings.json.backup2"
+          ],
+          "programManifest": {
+            "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+            "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+            "fileCount": 429,
+            "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+          },
+          "status": {
+            "exitCode": 0,
+            "json": {
+              "schemaVersion": 1,
+              "installRoot": "<runDir>\\root",
+              "manifest": "present",
+              "commit": "29860c23c580d72b04ddb8d7e754313ea5faa99b",
+              "aggregateSha256": "13464B67BC405813592D08CC6ACC0E75A34AB5C12D705B5C5255BA9714514750",
+              "exe": {
+                "present": true,
+                "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+                "matchesManifest": true
+              },
+              "running": true,
+              "processes": [
+                {
+                  "processId": 73776,
+                  "path": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "sessionId": 1,
+                  "startTimeUtc": "2026-11-15T06:40:50.9750110Z"
+                }
+              ],
+              "loginTask": {
+                "name": "MinminCountdown-Check-288-a2b5eae6",
+                "present": true,
+                "state": "Running",
+                "matchesExpected": true,
+                "mismatches": []
+              },
+              "settings": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "transactionMarkerPresent": false
+            }
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:40:51.2026415+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 73776,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:40:51.8468336+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 73776,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:40:52.0824098+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 73776,
+              "sessionId": 1
+            }
+          ],
+          "appProcessesInRun": [
+            {
+              "processId": 73776,
+              "sessionId": 1
+            }
+          ],
+          "desktopShortcut": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:40:57.6022591Z",
+            "attributes": "Archive"
+          }
+        },
+        "r2PriorityBefore": {
+          "requested": 5,
+          "actual": 5,
+          "error": null
+        },
+        "r2Upgrade": {
+          "name": "r2-upgrade-v2",
+          "install": {
+            "package": "v2",
+            "checkOnly": false,
+            "startedUtc": "2026-11-15T06:40:59.7784733+00:00",
+            "elapsedMs": 17029,
+            "exitCode": 0,
+            "result": {
+              "schemaVersion": 1,
+              "succeeded": true,
+              "checkOnly": false,
+              "failedStage": null,
+              "reason": null,
+              "error": null,
+              "installRoot": "<runDir>\\root",
+              "taskName": "MinminCountdown-Check-288-a2b5eae6",
+              "recovery": {
+                "state": "clean",
+                "action": null,
+                "outcome": "not-needed",
+                "reason": null
+              },
+              "package": {
+                "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+                "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5"
+              },
+              "firstInstall": false,
+              "plannedSteps": [
+                "place-candidate",
+                "stop-application",
+                "write-transaction-marker",
+                "snapshot-settings",
+                "settings-rehearsal",
+                "replace-program-directory",
+                "update-login-task",
+                "register-desktop-shortcut",
+                "start-and-wait-ready",
+                "commit"
+              ],
+              "loginTask": {
+                "action": "updated",
+                "changes": [
+                  {
+                    "item": "priority",
+                    "before": 5,
+                    "after": 4
+                  }
+                ]
+              },
+              "desktopShortcut": {
+                "name": "敏敏子倒计时.lnk",
+                "action": "kept-foreign",
+                "reason": "other-target",
+                "changes": []
+              },
+              "stoppedProcessCount": 1,
+              "readyProcess": {
+                "processId": 77612,
+                "sessionId": 1
+              },
+              "settings": {
+                "before": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                },
+                "after": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                }
+              },
+              "settingsRehearsal": {
+                "outcome": "equivalent",
+                "migration": "current-schema",
+                "equivalence": "unchanged"
+              },
+              "restartedProcess": null,
+              "rollback": {
+                "outcome": "not-needed",
+                "settings": null,
+                "loginTask": null,
+                "desktopShortcut": null,
+                "problems": []
+              },
+              "transactionMarkerPresent": false,
+              "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+            },
+            "rawOutput": null,
+            "stderr": null,
+            "timeline": [
+              {
+                "ms": 24,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              },
+              {
+                "ms": 2708,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  73776
+                ]
+              },
+              {
+                "ms": 12061,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 13227,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  74320
+                ]
+              },
+              {
+                "ms": 13597,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  20972
+                ]
+              },
+              {
+                "ms": 14589,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 14664,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 15661,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  77612
+                ]
+              },
+              {
+                "ms": 16535,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  77612
+                ]
+              },
+              {
+                "ms": 16937,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  77612
+                ]
+              },
+              {
+                "ms": 17001,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  77612
+                ]
+              }
+            ],
+            "processesSeen": [
+              {
+                "processId": 77612,
+                "firstSeenMs": 15660,
+                "imageInRoot": true,
+                "exited": false,
+                "exitCodeHex": null,
+                "exitTimeUtc": null
+              },
+              {
+                "processId": 73776,
+                "firstSeenMs": 18,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0xFFFFFFFF",
+                "exitTimeUtc": "2026-11-15T06:41:11.8024207Z"
+              },
+              {
+                "processId": 74320,
+                "firstSeenMs": 13227,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:41:13.3102749Z"
+              },
+              {
+                "processId": 20972,
+                "firstSeenMs": 13597,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:41:13.5979541Z"
+              }
+            ]
+          },
+          "readyProcessFacts": {
+            "atUtc": "2026-11-15T06:41:17.6830581+00:00",
+            "processId": 77612,
+            "imagePath": "<runDir>\\root\\app\\MinminCountdown.exe",
+            "sessionId": 1,
+            "priorityClass": "Normal",
+            "ioPriority": "Normal",
+            "memoryPriority": 5,
+            "inJob": true,
+            "tokenElevated": false,
+            "elevationType": "Limited",
+            "integrityRid": "0x2000",
+            "parentProcessName": "svchost.exe",
+            "startTimeUtc": "2026-11-15T06:41:15.4013070Z",
+            "imageSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "nativeError": null
+          },
+          "task": {
+            "atUtc": "2026-11-15T06:41:18.0836915+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:41:15.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              77612
+            ],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "settings": {
+            "atUtc": "2026-11-15T06:41:18.0864303+00:00",
+            "settings.json": {
+              "present": true,
+              "length": 1362,
+              "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+            },
+            "settings.json.backup1": {
+              "present": true,
+              "length": 1383,
+              "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+            },
+            "settings.json.backup2": {
+              "present": true,
+              "length": 1383,
+              "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+            }
+          },
+          "settingsVersusSeed": {
+            "allByteIdentical": true,
+            "files": [
+              {
+                "name": "settings.json",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup1",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup2",
+                "byteIdenticalToSeed": true
+              }
+            ]
+          },
+          "rootListing": [
+            "app\\",
+            "holiday-cache\\",
+            "logs\\",
+            "runtime-status.json",
+            "settings.json",
+            "settings.json.backup1",
+            "settings.json.backup2"
+          ],
+          "programManifest": {
+            "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+            "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+            "fileCount": 429,
+            "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+          },
+          "status": {
+            "exitCode": 0,
+            "json": {
+              "schemaVersion": 1,
+              "installRoot": "<runDir>\\root",
+              "manifest": "present",
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+              "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+              "exe": {
+                "present": true,
+                "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+                "matchesManifest": true
+              },
+              "running": true,
+              "processes": [
+                {
+                  "processId": 77612,
+                  "path": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "sessionId": 1,
+                  "startTimeUtc": "2026-11-15T06:41:15.4013070Z"
+                }
+              ],
+              "loginTask": {
+                "name": "MinminCountdown-Check-288-a2b5eae6",
+                "present": true,
+                "state": "Running",
+                "matchesExpected": true,
+                "mismatches": []
+              },
+              "settings": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "transactionMarkerPresent": false
+            }
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:40:51.2026415+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 73776,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:40:51.8468336+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 73776,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:40:52.0824098+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 73776,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:15.6242968+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:16.2570646+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:16.3266017+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 77612,
+              "sessionId": 1
+            }
+          ],
+          "appProcessesInRun": [
+            {
+              "processId": 77612,
+              "sessionId": 1
+            }
+          ],
+          "desktopShortcut": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:41:21.2114573Z",
+            "attributes": "Archive"
+          }
+        },
+        "r3StopThroughTask": {
+          "processId": 77612,
+          "calledUtc": "2026-11-15T06:41:21.6739745+00:00",
+          "stopCallMs": 16,
+          "exited": true,
+          "msToExit": 126,
+          "exitCode": 0,
+          "taskBefore": {
+            "atUtc": "2026-11-15T06:41:21.6735580+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:41:15.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              77612
+            ],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "taskAfter": {
+            "atUtc": "2026-11-15T06:41:23.8038729+00:00",
+            "present": true,
+            "state": "Ready",
+            "lastRunTimeUtc": "2026-11-15T06:41:15.0000000Z",
+            "lastTaskResultHex": "0x00041306",
+            "runningEnginePids": [],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:41:15.6242968+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:16.2570646+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:16.3266017+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:21.7155757+00:00",
+              "level": "Info",
+              "event": "ExitConfirmationSkippedExternalClose",
+              "processId": 77612,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:21.7332539+00:00",
+              "level": "Info",
+              "event": "ProcessExited",
+              "processId": 77612,
+              "sessionId": 1
+            }
+          ],
+          "exitConfirmationSkippedExternalClose": 1,
+          "processExitedLogged": 1,
+          "fatalUnhandledException": 0,
+          "appProcessesInRunAfter": []
+        },
+        "r3SettingsVersusSeed": {
+          "allByteIdentical": true,
+          "files": [
+            {
+              "name": "settings.json",
+              "byteIdenticalToSeed": true
+            },
+            {
+              "name": "settings.json.backup1",
+              "byteIdenticalToSeed": true
+            },
+            {
+              "name": "settings.json.backup2",
+              "byteIdenticalToSeed": true
+            }
+          ]
+        },
+        "r4PriorityBefore": {
+          "requested": 5,
+          "actual": 5,
+          "error": null
+        },
+        "r4TaskBefore": {
+          "atUtc": "2026-11-15T06:41:25.4090155+00:00",
+          "present": true,
+          "state": "Ready",
+          "lastRunTimeUtc": "2026-11-15T06:41:15.0000000Z",
+          "lastTaskResultHex": "0x00041306",
+          "runningEnginePids": [],
+          "priority": 5,
+          "triggers": [
+            "LogonTrigger"
+          ],
+          "logonType": "Interactive",
+          "runLevel": "Limited",
+          "actions": [
+            {
+              "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+              "arguments": "",
+              "workingDirectory": ""
+            }
+          ],
+          "executionTimeLimit": "PT0S",
+          "multipleInstances": "IgnoreNew",
+          "disallowStartIfOnBatteries": false,
+          "stopIfGoingOnBatteries": false,
+          "xmlSha256": "0AB694127CF9EC98BA4442BC865988852F11D680A9F55082847668603AE21569",
+          "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>5</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+        },
+        "r4SettingsBefore": {
+          "atUtc": "2026-11-15T06:41:25.4098714+00:00",
+          "settings.json": {
+            "present": true,
+            "length": 1362,
+            "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+            "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+          },
+          "settings.json.backup1": {
+            "present": true,
+            "length": 1383,
+            "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+            "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+          },
+          "settings.json.backup2": {
+            "present": true,
+            "length": 1383,
+            "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+            "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+          }
+        },
+        "r4InducedFailure": {
+          "name": "r4-induced-startup-failure-v3",
+          "install": {
+            "package": "v3",
+            "checkOnly": false,
+            "startedUtc": "2026-11-15T06:41:26.6919988+00:00",
+            "elapsedMs": 47848,
+            "exitCode": 0,
+            "result": {
+              "schemaVersion": 1,
+              "succeeded": false,
+              "checkOnly": false,
+              "failedStage": "start-and-wait-ready",
+              "reason": "startup-not-ready",
+              "error": "30 秒内没有达到启动就绪：运行状态回执尚未出现。",
+              "installRoot": "<runDir>\\root",
+              "taskName": "MinminCountdown-Check-288-a2b5eae6",
+              "recovery": {
+                "state": "clean",
+                "action": null,
+                "outcome": "not-needed",
+                "reason": null
+              },
+              "package": {
+                "commit": "aae31cf74a6973c1e836feae315f75764b75e946-fault-injected-288",
+                "aggregateSha256": "714300DFF4D752A807CCD3FF119D09B04D055EEE7533D6CB49D45E29227FD619"
+              },
+              "firstInstall": false,
+              "plannedSteps": [
+                "place-candidate",
+                "stop-application",
+                "write-transaction-marker",
+                "snapshot-settings",
+                "settings-rehearsal",
+                "replace-program-directory",
+                "update-login-task",
+                "register-desktop-shortcut",
+                "start-and-wait-ready",
+                "commit"
+              ],
+              "loginTask": {
+                "action": "updated",
+                "changes": [
+                  {
+                    "item": "priority",
+                    "before": 5,
+                    "after": 4
+                  }
+                ]
+              },
+              "desktopShortcut": {
+                "name": "敏敏子倒计时.lnk",
+                "action": "kept-foreign",
+                "reason": "other-target",
+                "changes": []
+              },
+              "stoppedProcessCount": 0,
+              "readyProcess": null,
+              "settings": {
+                "before": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                },
+                "after": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                }
+              },
+              "settingsRehearsal": {
+                "outcome": "equivalent",
+                "migration": "current-schema",
+                "equivalence": "unchanged"
+              },
+              "restartedProcess": {
+                "processId": 65616,
+                "sessionId": 1
+              },
+              "rollback": {
+                "outcome": "rolled-back",
+                "settings": "restored",
+                "loginTask": "restored",
+                "desktopShortcut": null,
+                "problems": []
+              },
+              "transactionMarkerPresent": false,
+              "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+            },
+            "rawOutput": null,
+            "stderr": null,
+            "timeline": [
+              {
+                "ms": 17,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 3070,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 12211,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 12278,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  72960
+                ]
+              },
+              {
+                "ms": 12537,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  1952
+                ]
+              },
+              {
+                "ms": 12817,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 12892,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 14667,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  86176
+                ]
+              },
+              {
+                "ms": 15297,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303217019308769",
+                  "settings.json.backup1:639303215390919097",
+                  "settings.json.backup2:639303215394137071"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 45551,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303217019308769",
+                  "settings.json.backup1:639303215390919097",
+                  "settings.json.backup2:639303215394137071"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 45612,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 46441,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              },
+              {
+                "ms": 47333,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              },
+              {
+                "ms": 47811,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              },
+              {
+                "ms": 47893,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              }
+            ],
+            "processesSeen": [
+              {
+                "processId": 72960,
+                "firstSeenMs": 12277,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:41:39.2198327Z"
+              },
+              {
+                "processId": 65616,
+                "firstSeenMs": 46441,
+                "imageInRoot": true,
+                "exited": false,
+                "exitCodeHex": null,
+                "exitTimeUtc": null
+              },
+              {
+                "processId": 1952,
+                "firstSeenMs": 12537,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:41:39.4921878Z"
+              },
+              {
+                "processId": 86176,
+                "firstSeenMs": 14667,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000001",
+                "exitTimeUtc": "2026-11-15T06:41:41.9677040Z"
+              }
+            ]
+          },
+          "restartedProcessFacts": {
+            "atUtc": "2026-11-15T06:42:15.4459959+00:00",
+            "processId": 65616,
+            "imagePath": "<runDir>\\root\\app\\MinminCountdown.exe",
+            "sessionId": 1,
+            "priorityClass": "Normal",
+            "ioPriority": "Normal",
+            "memoryPriority": 4,
+            "inJob": true,
+            "tokenElevated": false,
+            "elevationType": "Limited",
+            "integrityRid": "0x2000",
+            "parentProcessName": "svchost.exe",
+            "startTimeUtc": "2026-11-15T06:42:13.1164300Z",
+            "imageSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "nativeError": null
+          },
+          "task": {
+            "atUtc": "2026-11-15T06:42:15.8380353+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:42:13.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              65616
+            ],
+            "priority": 5,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "0AB694127CF9EC98BA4442BC865988852F11D680A9F55082847668603AE21569",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>5</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "settings": {
+            "atUtc": "2026-11-15T06:42:15.8404884+00:00",
+            "settings.json": {
+              "present": true,
+              "length": 1362,
+              "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+            },
+            "settings.json.backup1": {
+              "present": true,
+              "length": 1383,
+              "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+            },
+            "settings.json.backup2": {
+              "present": true,
+              "length": 1383,
+              "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+            }
+          },
+          "settingsVersusSeed": {
+            "allByteIdentical": true,
+            "files": [
+              {
+                "name": "settings.json",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup1",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup2",
+                "byteIdenticalToSeed": true
+              }
+            ]
+          },
+          "rootListing": [
+            "app\\",
+            "holiday-cache\\",
+            "logs\\",
+            "runtime-status.json",
+            "settings.json",
+            "settings.json.backup1",
+            "settings.json.backup2"
+          ],
+          "programManifest": {
+            "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+            "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+            "fileCount": 429,
+            "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+          },
+          "status": {
+            "exitCode": 0,
+            "json": {
+              "schemaVersion": 1,
+              "installRoot": "<runDir>\\root",
+              "manifest": "present",
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+              "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+              "exe": {
+                "present": true,
+                "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+                "matchesManifest": true
+              },
+              "running": true,
+              "processes": [
+                {
+                  "processId": 65616,
+                  "path": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "sessionId": 1,
+                  "startTimeUtc": "2026-11-15T06:42:13.1164300Z"
+                }
+              ],
+              "loginTask": {
+                "name": "MinminCountdown-Check-288-a2b5eae6",
+                "present": true,
+                "state": "Running",
+                "matchesExpected": true,
+                "mismatches": []
+              },
+              "settings": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "transactionMarkerPresent": false
+            }
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:41:41.5766587+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 86176,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:41:41.9389118+00:00",
+              "level": "Error",
+              "event": "FatalUnhandledException",
+              "processId": 86176,
+              "sessionId": 1,
+              "exceptionType": "System.InvalidOperationException",
+              "exceptionMessage": "Induced startup failure for the #288 real-install check.",
+              "hResult": -2146233079
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:13.3551945+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 65616,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:14.0003293+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 65616,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:14.0634489+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 65616,
+              "sessionId": 1
+            }
+          ],
+          "appProcessesInRun": [
+            {
+              "processId": 65616,
+              "sessionId": 1
+            }
+          ],
+          "desktopShortcut": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:42:18.6781103Z",
+            "attributes": "Archive"
+          }
+        },
+        "r4TaskXmlRestoredExactly": true,
+        "r5ExplorerOpen": {
+          "name": "r5-reinstall-v2-explorer-open",
+          "install": {
+            "package": "v2",
+            "checkOnly": false,
+            "startedUtc": "2026-11-15T06:42:23.8772546+00:00",
+            "elapsedMs": 16646,
+            "exitCode": 0,
+            "result": {
+              "schemaVersion": 1,
+              "succeeded": true,
+              "checkOnly": false,
+              "failedStage": null,
+              "reason": null,
+              "error": null,
+              "installRoot": "<runDir>\\root",
+              "taskName": "MinminCountdown-Check-288-a2b5eae6",
+              "recovery": {
+                "state": "clean",
+                "action": null,
+                "outcome": "not-needed",
+                "reason": null
+              },
+              "package": {
+                "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+                "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5"
+              },
+              "firstInstall": false,
+              "plannedSteps": [
+                "place-candidate",
+                "stop-application",
+                "write-transaction-marker",
+                "snapshot-settings",
+                "settings-rehearsal",
+                "replace-program-directory",
+                "update-login-task",
+                "register-desktop-shortcut",
+                "start-and-wait-ready",
+                "commit"
+              ],
+              "loginTask": {
+                "action": "updated",
+                "changes": [
+                  {
+                    "item": "priority",
+                    "before": 5,
+                    "after": 4
+                  }
+                ]
+              },
+              "desktopShortcut": {
+                "name": "敏敏子倒计时.lnk",
+                "action": "kept-foreign",
+                "reason": "other-target",
+                "changes": []
+              },
+              "stoppedProcessCount": 1,
+              "readyProcess": {
+                "processId": 28380,
+                "sessionId": 1
+              },
+              "settings": {
+                "before": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                },
+                "after": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                }
+              },
+              "settingsRehearsal": {
+                "outcome": "equivalent",
+                "migration": "current-schema",
+                "equivalence": "unchanged"
+              },
+              "restartedProcess": null,
+              "rollback": {
+                "outcome": "not-needed",
+                "settings": null,
+                "loginTask": null,
+                "desktopShortcut": null,
+                "problems": []
+              },
+              "transactionMarkerPresent": false,
+              "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+            },
+            "rawOutput": null,
+            "stderr": null,
+            "timeline": [
+              {
+                "ms": 27,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              },
+              {
+                "ms": 2693,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  65616
+                ]
+              },
+              {
+                "ms": 12152,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 13056,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  18872
+                ]
+              },
+              {
+                "ms": 13409,
+                "present": [
+                  "app",
+                  "app.candidate",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  49608
+                ]
+              },
+              {
+                "ms": 13683,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": []
+              },
+              {
+                "ms": 15179,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  28380
+                ]
+              },
+              {
+                "ms": 16089,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction.json",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  28380
+                ]
+              },
+              {
+                "ms": 16565,
+                "present": [
+                  "app",
+                  "app.previous",
+                  "install-transaction",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  28380
+                ]
+              },
+              {
+                "ms": 16644,
+                "present": [
+                  "app",
+                  "runtime-status.json"
+                ],
+                "settingsStamps": [
+                  "settings.json:639303215390919097",
+                  "settings.json.backup1:639303215394137071",
+                  "settings.json.backup2:639303215397119776"
+                ],
+                "processIds": [
+                  28380
+                ]
+              }
+            ],
+            "processesSeen": [
+              {
+                "processId": 49608,
+                "firstSeenMs": 13409,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:42:37.5057046Z"
+              },
+              {
+                "processId": 65616,
+                "firstSeenMs": 20,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0xFFFFFFFF",
+                "exitTimeUtc": "2026-11-15T06:42:35.9726576Z"
+              },
+              {
+                "processId": 28380,
+                "firstSeenMs": 15178,
+                "imageInRoot": true,
+                "exited": false,
+                "exitCodeHex": null,
+                "exitTimeUtc": null
+              },
+              {
+                "processId": 18872,
+                "firstSeenMs": 13055,
+                "imageInRoot": true,
+                "exited": true,
+                "exitCodeHex": "0x00000000",
+                "exitTimeUtc": "2026-11-15T06:42:37.2321884Z"
+              }
+            ]
+          },
+          "readyProcessFacts": {
+            "atUtc": "2026-11-15T06:42:41.4615415+00:00",
+            "processId": 28380,
+            "imagePath": "<runDir>\\root\\app\\MinminCountdown.exe",
+            "sessionId": 1,
+            "priorityClass": "Normal",
+            "ioPriority": "Normal",
+            "memoryPriority": 5,
+            "inJob": true,
+            "tokenElevated": false,
+            "elevationType": "Limited",
+            "integrityRid": "0x2000",
+            "parentProcessName": "svchost.exe",
+            "startTimeUtc": "2026-11-15T06:42:39.0549240Z",
+            "imageSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+            "nativeError": null
+          },
+          "task": {
+            "atUtc": "2026-11-15T06:42:42.0722745+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:42:39.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              28380
+            ],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "settings": {
+            "atUtc": "2026-11-15T06:42:42.0768605+00:00",
+            "settings.json": {
+              "present": true,
+              "length": 1362,
+              "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+            },
+            "settings.json.backup1": {
+              "present": true,
+              "length": 1383,
+              "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+            },
+            "settings.json.backup2": {
+              "present": true,
+              "length": 1383,
+              "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+              "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+            }
+          },
+          "settingsVersusSeed": {
+            "allByteIdentical": true,
+            "files": [
+              {
+                "name": "settings.json",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup1",
+                "byteIdenticalToSeed": true
+              },
+              {
+                "name": "settings.json.backup2",
+                "byteIdenticalToSeed": true
+              }
+            ]
+          },
+          "rootListing": [
+            "app\\",
+            "holiday-cache\\",
+            "logs\\",
+            "runtime-status.json",
+            "settings.json",
+            "settings.json.backup1",
+            "settings.json.backup2"
+          ],
+          "programManifest": {
+            "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+            "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+            "fileCount": 429,
+            "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+          },
+          "status": {
+            "exitCode": 0,
+            "json": {
+              "schemaVersion": 1,
+              "installRoot": "<runDir>\\root",
+              "manifest": "present",
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+              "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+              "exe": {
+                "present": true,
+                "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+                "matchesManifest": true
+              },
+              "running": true,
+              "processes": [
+                {
+                  "processId": 28380,
+                  "path": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "sessionId": 1,
+                  "startTimeUtc": "2026-11-15T06:42:39.0549240Z"
+                }
+              ],
+              "loginTask": {
+                "name": "MinminCountdown-Check-288-a2b5eae6",
+                "present": true,
+                "state": "Running",
+                "matchesExpected": true,
+                "mismatches": []
+              },
+              "settings": {
+                "present": true,
+                "length": 1362,
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+              },
+              "transactionMarkerPresent": false
+            }
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:42:13.3551945+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 65616,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:14.0003293+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 65616,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:14.0634489+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 65616,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:39.2725777+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 28380,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:39.9084281+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 28380,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:42:39.9764616+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 28380,
+              "sessionId": 1
+            }
+          ],
+          "appProcessesInRun": [
+            {
+              "processId": 28380,
+              "sessionId": 1
+            }
+          ],
+          "desktopShortcut": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:42:45.6107744Z",
+            "attributes": "Archive"
+          }
+        },
+        "r5Explorer": {
+          "openedAfterMs": 3373,
+          "hwnd": 20124408,
+          "pathBefore": "<runDir>\\root\\app",
+          "windowStillOpen": true,
+          "pathAfter": "<runDir>\\root\\app",
+          "closedWindows": 1,
+          "windowsInRunAfterClose": 0
+        },
+        "r6Recovery": {
+          "leftoversAfterR5": [],
+          "stopThroughTask": {
+            "processId": 28380,
+            "calledUtc": "2026-11-15T06:42:47.0963045+00:00",
+            "stopCallMs": 11,
+            "exited": true,
+            "msToExit": 128,
+            "exitCode": 0,
+            "taskBefore": {
+              "atUtc": "2026-11-15T06:42:47.0958550+00:00",
+              "present": true,
+              "state": "Running",
+              "lastRunTimeUtc": "2026-11-15T06:42:39.0000000Z",
+              "lastTaskResultHex": "0x00041301",
+              "runningEnginePids": [
+                28380
+              ],
+              "priority": 4,
+              "triggers": [
+                "LogonTrigger"
+              ],
+              "logonType": "Interactive",
+              "runLevel": "Limited",
+              "actions": [
+                {
+                  "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "arguments": "",
+                  "workingDirectory": ""
+                }
+              ],
+              "executionTimeLimit": "PT0S",
+              "multipleInstances": "IgnoreNew",
+              "disallowStartIfOnBatteries": false,
+              "stopIfGoingOnBatteries": false,
+              "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+              "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+            },
+            "taskAfter": {
+              "atUtc": "2026-11-15T06:42:49.0921792+00:00",
+              "present": true,
+              "state": "Ready",
+              "lastRunTimeUtc": "2026-11-15T06:42:39.0000000Z",
+              "lastTaskResultHex": "0x00041306",
+              "runningEnginePids": [],
+              "priority": 4,
+              "triggers": [
+                "LogonTrigger"
+              ],
+              "logonType": "Interactive",
+              "runLevel": "Limited",
+              "actions": [
+                {
+                  "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "arguments": "",
+                  "workingDirectory": ""
+                }
+              ],
+              "executionTimeLimit": "PT0S",
+              "multipleInstances": "IgnoreNew",
+              "disallowStartIfOnBatteries": false,
+              "stopIfGoingOnBatteries": false,
+              "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+              "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+            },
+            "diagnostics": [
+              {
+                "timestampUtc": "2026-11-15T06:42:39.2725777+00:00",
+                "level": "Info",
+                "event": "ProcessStarted",
+                "processId": 28380,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:42:39.9084281+00:00",
+                "level": "Info",
+                "event": "WindowReady",
+                "processId": 28380,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:42:39.9764616+00:00",
+                "level": "Info",
+                "event": "HolidayCalendarReady",
+                "processId": 28380,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:42:47.1384046+00:00",
+                "level": "Info",
+                "event": "ExitConfirmationSkippedExternalClose",
+                "processId": 28380,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:42:47.1589076+00:00",
+                "level": "Info",
+                "event": "ProcessExited",
+                "processId": 28380,
+                "sessionId": 1
+              }
+            ],
+            "exitConfirmationSkippedExternalClose": 1,
+            "processExitedLogged": 1,
+            "fatalUnhandledException": 0,
+            "appProcessesInRunAfter": []
+          },
+          "emulatedRenameMs": 1,
+          "emulated": "mid-replace",
+          "rootListingBefore": [
+            "app.previous\\",
+            "holiday-cache\\",
+            "install-transaction.json",
+            "logs\\",
+            "runtime-status.json",
+            "settings.json",
+            "settings.json.backup1",
+            "settings.json.backup2"
+          ],
+          "install": {
+            "name": "r6-recovery-then-install-v2",
+            "install": {
+              "package": "v2",
+              "checkOnly": false,
+              "startedUtc": "2026-11-15T06:42:50.5954441+00:00",
+              "elapsedMs": 13995,
+              "exitCode": 0,
+              "result": {
+                "schemaVersion": 1,
+                "succeeded": true,
+                "checkOnly": false,
+                "failedStage": null,
+                "reason": null,
+                "error": null,
+                "installRoot": "<runDir>\\root",
+                "taskName": "MinminCountdown-Check-288-a2b5eae6",
+                "recovery": {
+                  "state": "mid-replace",
+                  "action": "renamed-back",
+                  "outcome": "recovered",
+                  "reason": null
+                },
+                "package": {
+                  "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+                  "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5"
+                },
+                "firstInstall": false,
+                "plannedSteps": [
+                  "place-candidate",
+                  "stop-application",
+                  "write-transaction-marker",
+                  "snapshot-settings",
+                  "settings-rehearsal",
+                  "replace-program-directory",
+                  "register-desktop-shortcut",
+                  "start-and-wait-ready",
+                  "commit"
+                ],
+                "loginTask": {
+                  "action": "unchanged",
+                  "changes": []
+                },
+                "desktopShortcut": {
+                  "name": "敏敏子倒计时.lnk",
+                  "action": "kept-foreign",
+                  "reason": "other-target",
+                  "changes": []
+                },
+                "stoppedProcessCount": 0,
+                "readyProcess": {
+                  "processId": 19136,
+                  "sessionId": 1
+                },
+                "settings": {
+                  "before": {
+                    "present": true,
+                    "length": 1362,
+                    "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                    "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                  },
+                  "after": {
+                    "present": true,
+                    "length": 1362,
+                    "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                    "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                  }
+                },
+                "settingsRehearsal": {
+                  "outcome": "equivalent",
+                  "migration": "current-schema",
+                  "equivalence": "unchanged"
+                },
+                "restartedProcess": null,
+                "rollback": {
+                  "outcome": "not-needed",
+                  "settings": null,
+                  "loginTask": null,
+                  "desktopShortcut": null,
+                  "problems": []
+                },
+                "transactionMarkerPresent": false,
+                "diagnosticLogPath": "<runDir>\\root\\logs\\application.jsonl"
+              },
+              "rawOutput": null,
+              "stderr": null,
+              "timeline": [
+                {
+                  "ms": 22,
+                  "present": [
+                    "app.previous",
+                    "install-transaction.json",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 424,
+                  "present": [
+                    "app",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 2689,
+                  "present": [
+                    "app",
+                    "app.candidate",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 10849,
+                  "present": [
+                    "app",
+                    "app.candidate",
+                    "install-transaction.json",
+                    "install-transaction",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": [
+                    51256
+                  ]
+                },
+                {
+                  "ms": 11904,
+                  "present": [
+                    "app",
+                    "app.candidate",
+                    "install-transaction.json",
+                    "install-transaction",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 11977,
+                  "present": [
+                    "app",
+                    "app.previous",
+                    "install-transaction.json",
+                    "install-transaction",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 12469,
+                  "present": [
+                    "app",
+                    "app.previous",
+                    "install-transaction.json",
+                    "install-transaction"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": []
+                },
+                {
+                  "ms": 12530,
+                  "present": [
+                    "app",
+                    "app.previous",
+                    "install-transaction.json",
+                    "install-transaction"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": [
+                    19136
+                  ]
+                },
+                {
+                  "ms": 13381,
+                  "present": [
+                    "app",
+                    "app.previous",
+                    "install-transaction.json",
+                    "install-transaction",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": [
+                    19136
+                  ]
+                },
+                {
+                  "ms": 13936,
+                  "present": [
+                    "app",
+                    "app.previous",
+                    "install-transaction",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": [
+                    19136
+                  ]
+                },
+                {
+                  "ms": 14011,
+                  "present": [
+                    "app",
+                    "runtime-status.json"
+                  ],
+                  "settingsStamps": [
+                    "settings.json:639303215390919097",
+                    "settings.json.backup1:639303215394137071",
+                    "settings.json.backup2:639303215397119776"
+                  ],
+                  "processIds": [
+                    19136
+                  ]
+                }
+              ],
+              "processesSeen": [
+                {
+                  "processId": 19136,
+                  "firstSeenMs": 12530,
+                  "imageInRoot": true,
+                  "exited": false,
+                  "exitCodeHex": null,
+                  "exitTimeUtc": null
+                },
+                {
+                  "processId": 51256,
+                  "firstSeenMs": 10849,
+                  "imageInRoot": true,
+                  "exited": true,
+                  "exitCodeHex": "0x00000000",
+                  "exitTimeUtc": "2026-11-15T06:43:01.7267671Z"
+                }
+              ]
+            },
+            "readyProcessFacts": {
+              "atUtc": "2026-11-15T06:43:05.5677085+00:00",
+              "processId": 19136,
+              "imagePath": "<runDir>\\root\\app\\MinminCountdown.exe",
+              "sessionId": 1,
+              "priorityClass": "Normal",
+              "ioPriority": "Normal",
+              "memoryPriority": 5,
+              "inJob": true,
+              "tokenElevated": false,
+              "elevationType": "Limited",
+              "integrityRid": "0x2000",
+              "parentProcessName": "svchost.exe",
+              "startTimeUtc": "2026-11-15T06:43:03.0818560Z",
+              "imageSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+              "nativeError": null
+            },
+            "task": {
+              "atUtc": "2026-11-15T06:43:05.9177976+00:00",
+              "present": true,
+              "state": "Running",
+              "lastRunTimeUtc": "2026-11-15T06:43:03.0000000Z",
+              "lastTaskResultHex": "0x00041301",
+              "runningEnginePids": [
+                19136
+              ],
+              "priority": 4,
+              "triggers": [
+                "LogonTrigger"
+              ],
+              "logonType": "Interactive",
+              "runLevel": "Limited",
+              "actions": [
+                {
+                  "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                  "arguments": "",
+                  "workingDirectory": ""
+                }
+              ],
+              "executionTimeLimit": "PT0S",
+              "multipleInstances": "IgnoreNew",
+              "disallowStartIfOnBatteries": false,
+              "stopIfGoingOnBatteries": false,
+              "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+              "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+            },
+            "settings": {
+              "atUtc": "2026-11-15T06:43:05.9210596+00:00",
+              "settings.json": {
+                "present": true,
+                "length": 1362,
+                "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+              },
+              "settings.json.backup1": {
+                "present": true,
+                "length": 1383,
+                "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+              },
+              "settings.json.backup2": {
+                "present": true,
+                "length": 1383,
+                "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+                "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+              }
+            },
+            "settingsVersusSeed": {
+              "allByteIdentical": true,
+              "files": [
+                {
+                  "name": "settings.json",
+                  "byteIdenticalToSeed": true
+                },
+                {
+                  "name": "settings.json.backup1",
+                  "byteIdenticalToSeed": true
+                },
+                {
+                  "name": "settings.json.backup2",
+                  "byteIdenticalToSeed": true
+                }
+              ]
+            },
+            "rootListing": [
+              "app\\",
+              "holiday-cache\\",
+              "logs\\",
+              "runtime-status.json",
+              "settings.json",
+              "settings.json.backup1",
+              "settings.json.backup2"
+            ],
+            "programManifest": {
+              "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+              "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+              "fileCount": 429,
+              "exeSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5"
+            },
+            "status": {
+              "exitCode": 0,
+              "json": {
+                "schemaVersion": 1,
+                "installRoot": "<runDir>\\root",
+                "manifest": "present",
+                "commit": "aae31cf74a6973c1e836feae315f75764b75e946",
+                "aggregateSha256": "DC6A806CABECC120F3415DDAE017E94AA0462F40DACEC9931BAA89C1BEC252E5",
+                "exe": {
+                  "present": true,
+                  "sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+                  "matchesManifest": true
+                },
+                "running": true,
+                "processes": [
+                  {
+                    "processId": 19136,
+                    "path": "<runDir>\\root\\app\\MinminCountdown.exe",
+                    "sessionId": 1,
+                    "startTimeUtc": "2026-11-15T06:43:03.0818560Z"
+                  }
+                ],
+                "loginTask": {
+                  "name": "MinminCountdown-Check-288-a2b5eae6",
+                  "present": true,
+                  "state": "Running",
+                  "matchesExpected": true,
+                  "mismatches": []
+                },
+                "settings": {
+                  "present": true,
+                  "length": 1362,
+                  "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z",
+                  "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9"
+                },
+                "transactionMarkerPresent": false
+              }
+            },
+            "diagnostics": [
+              {
+                "timestampUtc": "2026-11-15T06:43:03.2967935+00:00",
+                "level": "Info",
+                "event": "ProcessStarted",
+                "processId": 19136,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:43:03.9228769+00:00",
+                "level": "Info",
+                "event": "WindowReady",
+                "processId": 19136,
+                "sessionId": 1
+              },
+              {
+                "timestampUtc": "2026-11-15T06:43:03.9897679+00:00",
+                "level": "Info",
+                "event": "HolidayCalendarReady",
+                "processId": 19136,
+                "sessionId": 1
+              }
+            ],
+            "appProcessesInRun": [
+              {
+                "processId": 19136,
+                "sessionId": 1
+              }
+            ],
+            "desktopShortcut": {
+              "present": true,
+              "length": 1022,
+              "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+              "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+              "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+              "lastAccessTimeUtc": "2026-11-15T06:43:08.6438590Z",
+              "attributes": "Archive"
+            }
+          }
+        },
+        "r7StopThroughTask": {
+          "processId": 19136,
+          "calledUtc": "2026-11-15T06:43:09.3072899+00:00",
+          "stopCallMs": 9,
+          "exited": true,
+          "msToExit": 98,
+          "exitCode": 0,
+          "taskBefore": {
+            "atUtc": "2026-11-15T06:43:09.3068816+00:00",
+            "present": true,
+            "state": "Running",
+            "lastRunTimeUtc": "2026-11-15T06:43:03.0000000Z",
+            "lastTaskResultHex": "0x00041301",
+            "runningEnginePids": [
+              19136
+            ],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "taskAfter": {
+            "atUtc": "2026-11-15T06:43:11.4392808+00:00",
+            "present": true,
+            "state": "Ready",
+            "lastRunTimeUtc": "2026-11-15T06:43:03.0000000Z",
+            "lastTaskResultHex": "0x00041306",
+            "runningEnginePids": [],
+            "priority": 4,
+            "triggers": [
+              "LogonTrigger"
+            ],
+            "logonType": "Interactive",
+            "runLevel": "Limited",
+            "actions": [
+              {
+                "execute": "<runDir>\\root\\app\\MinminCountdown.exe",
+                "arguments": "",
+                "workingDirectory": ""
+              }
+            ],
+            "executionTimeLimit": "PT0S",
+            "multipleInstances": "IgnoreNew",
+            "disallowStartIfOnBatteries": false,
+            "stopIfGoingOnBatteries": false,
+            "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA",
+            "xml": "<?xml version=\"1.0\" encoding=\"UTF-16\"?>\r\n<Task version=\"1.3\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">\r\n  <RegistrationInfo>\r\n    <Description>登录后直接启动敏敏子倒计时。</Description>\r\n    <URI>\\MinminCountdown-Check-288-a2b5eae6</URI>\r\n  </RegistrationInfo>\r\n  <Principals>\r\n    <Principal id=\"Author\">\r\n      <UserId>{InteractiveUser}</UserId>\r\n      <LogonType>InteractiveToken</LogonType>\r\n    </Principal>\r\n  </Principals>\r\n  <Settings>\r\n    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>\r\n    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>\r\n    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>\r\n    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>\r\n    <Priority>4</Priority>\r\n    <IdleSettings>\r\n      <Duration>PT10M</Duration>\r\n      <WaitTimeout>PT1H</WaitTimeout>\r\n      <StopOnIdleEnd>true</StopOnIdleEnd>\r\n      <RestartOnIdle>false</RestartOnIdle>\r\n    </IdleSettings>\r\n    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>\r\n  </Settings>\r\n  <Triggers>\r\n    <LogonTrigger>\r\n      <UserId>{InteractiveUser}</UserId>\r\n    </LogonTrigger>\r\n  </Triggers>\r\n  <Actions Context=\"Author\">\r\n    <Exec>\r\n      <Command><runDir>\\root\\app\\MinminCountdown.exe</Command>\r\n    </Exec>\r\n  </Actions>\r\n</Task>"
+          },
+          "diagnostics": [
+            {
+              "timestampUtc": "2026-11-15T06:43:03.2967935+00:00",
+              "level": "Info",
+              "event": "ProcessStarted",
+              "processId": 19136,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:43:03.9228769+00:00",
+              "level": "Info",
+              "event": "WindowReady",
+              "processId": 19136,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:43:03.9897679+00:00",
+              "level": "Info",
+              "event": "HolidayCalendarReady",
+              "processId": 19136,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:43:09.3386767+00:00",
+              "level": "Info",
+              "event": "ExitConfirmationSkippedExternalClose",
+              "processId": 19136,
+              "sessionId": 1
+            },
+            {
+              "timestampUtc": "2026-11-15T06:43:09.3509676+00:00",
+              "level": "Info",
+              "event": "ProcessExited",
+              "processId": 19136,
+              "sessionId": 1
+            }
+          ],
+          "exitConfirmationSkippedExternalClose": 1,
+          "processExitedLogged": 1,
+          "fatalUnhandledException": 0,
+          "appProcessesInRunAfter": []
+        },
+        "r7SettingsVersusSeed": {
+          "allByteIdentical": true,
+          "files": [
+            {
+              "name": "settings.json",
+              "byteIdenticalToSeed": true
+            },
+            {
+              "name": "settings.json.backup1",
+              "byteIdenticalToSeed": true
+            },
+            {
+              "name": "settings.json.backup2",
+              "byteIdenticalToSeed": true
+            }
+          ]
+        }
+      },
+      "before": {
+        "atUtc": "2026-11-15T06:40:34.1087708+00:00",
+        "realTasks": [
+          {
+            "name": "Minmin Countdown",
+            "present": false,
+            "error": "ObjectNotFound"
+          },
+          {
+            "name": "敏敏子倒计时",
+            "present": false,
+            "error": "ObjectNotFound"
+          }
+        ],
+        "rootFolderTaskCount": 19,
+        "rootFolderAggregateSha256": "F9FEC7BA936795A5730B92B41EB76F86C8439C5C3F0A792F6A38BFDA08322282",
+        "realInstallRootPresent": false,
+        "desktopShortcut": {
+          "sessionId": 1,
+          "path": "<desktop>\\敏敏子倒计时.lnk",
+          "fingerprint": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:40:35.7980134Z",
+            "attributes": "Archive"
+          },
+          "isShellLink": true,
+          "targetInRunDirectory": false,
+          "targetIsThisInstall": false
+        },
+        "appProcessesOutsideRun": 0,
+        "appProcessesInRun": []
+      },
+      "shortcutBefore": {
+        "sessionId": 1,
+        "path": "<desktop>\\敏敏子倒计时.lnk",
+        "fingerprint": {
+          "present": true,
+          "length": 1022,
+          "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+          "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+          "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+          "lastAccessTimeUtc": "2026-11-15T06:40:38.3098997Z",
+          "attributes": "Archive"
+        },
+        "isShellLink": true,
+        "targetInRunDirectory": false,
+        "targetIsThisInstall": false
+      },
+      "settingsSeed": {
+        "atUtc": "2026-11-15T06:40:38.3145656+00:00",
+        "settings.json": {
+          "present": true,
+          "length": 1362,
+          "sha256": "6855BCFBC04BF2C5B477C9BBE724702AA486B5B7E0B3BF96C850D07CE1E550A9",
+          "lastWriteTimeUtc": "2026-11-15T06:38:59.0919097Z"
+        },
+        "settings.json.backup1": {
+          "present": true,
+          "length": 1383,
+          "sha256": "2D3B2E388E68DFB8602E7AF1140E2CED0D5D54799176D184C031FBABE9724D51",
+          "lastWriteTimeUtc": "2026-11-15T06:38:59.4137071Z"
+        },
+        "settings.json.backup2": {
+          "present": true,
+          "length": 1383,
+          "sha256": "7D8A6D7411D0EFE982A5D683765330D6DC26CCDA3AE8847F5EA8E544F2FF7949",
+          "lastWriteTimeUtc": "2026-11-15T06:38:59.7119776Z"
+        }
+      },
+      "finishedUtc": "2026-11-15T06:43:11.7132354+00:00"
+    },
+    "cleanup": {
+      "mode": "Cleanup",
+      "startedUtc": "2026-11-15T06:43:36.1788340+00:00",
+      "stoppedLeftovers": [],
+      "taskBefore": {
+        "state": "Ready",
+        "priority": 4,
+        "xmlSha256": "00C4AB0A9EB12E3981E26CB464AAFB03D8B43DECF92145A1B1461199AB59D5BA"
+      },
+      "unregisteredUtc": "2026-11-15T06:43:37.4817375+00:00",
+      "taskGone": true,
+      "taskGoneByAnyPath": true,
+      "closedShellWindows": 0,
+      "shellWindowsInRunAfter": 0,
+      "after": {
+        "atUtc": "2026-11-15T06:43:39.6726566+00:00",
+        "realTasks": [
+          {
+            "name": "Minmin Countdown",
+            "present": false,
+            "error": "ObjectNotFound"
+          },
+          {
+            "name": "敏敏子倒计时",
+            "present": false,
+            "error": "ObjectNotFound"
+          }
+        ],
+        "rootFolderTaskCount": 19,
+        "rootFolderAggregateSha256": "F9FEC7BA936795A5730B92B41EB76F86C8439C5C3F0A792F6A38BFDA08322282",
+        "realInstallRootPresent": false,
+        "desktopShortcut": {
+          "sessionId": 1,
+          "path": "<desktop>\\敏敏子倒计时.lnk",
+          "fingerprint": {
+            "present": true,
+            "length": 1022,
+            "sha256": "96FE73023AFFC49BD519B97B36850A21FE65E70C12DC641A12E9BFADBBF7C204",
+            "creationTimeUtc": "2026-09-09T15:50:23.7847257Z",
+            "lastWriteTimeUtc": "2026-10-28T02:39:49.8410882Z",
+            "lastAccessTimeUtc": "2026-11-15T06:43:41.1401144Z",
+            "attributes": "Archive"
+          },
+          "isShellLink": true,
+          "targetInRunDirectory": false,
+          "targetIsThisInstall": false
+        },
+        "appProcessesOutsideRun": 0,
+        "appProcessesInRun": []
+      },
+      "finishedUtc": "2026-11-15T06:43:41.7500671+00:00"
+    },
+    "recycle": {
+      "tool": "Invoke-ManagedRecycle (Check, Plan, Apply)",
+      "runId": "20261115T064420Z-cbf2b3c1",
+      "mode": "Apply",
+      "status": "recycled",
+      "authorization": "可以，安排上",
+      "target": "<runDir>",
+      "kind": "directory",
+      "fileCount": 2765,
+      "directoryCount": 185,
+      "totalBytes": 1022283790,
+      "longestPath": 216,
+      "startedUtc": "2026-11-15T06:44:25Z",
+      "returnCode": "0x0",
+      "aborted": false,
+      "targetStillExists": false,
+      "manifestSha256": "6ECA65FF8D327E7939428235C97DEAC2A260EC6FD60CEB775D8B580ED3CD88DC",
+      "binManifestSha256": "6ECA65FF8D327E7939428235C97DEAC2A260EC6FD60CEB775D8B580ED3CD88DC",
+      "note": "plan and result files stay in the managed-recycle run-evidence folder; the recycle-bin location is not recorded here because it names the account"
+    }
+  }
+}

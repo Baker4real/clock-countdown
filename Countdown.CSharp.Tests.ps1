@@ -907,10 +907,10 @@ function Save-DiagnosticConcurrencyFailureEvidence {
                 -FilePath $createdumpPath `
                 -ArgumentList @('-n', '--name', $dumpPath, [string] $state.pid) `
                 -WorkingDirectory $evidenceDirectory
-            $dumpLog = @(
+            $dumpLog = @(@(
                 [string] $dumpCapture.Stdout
                 [string] $dumpCapture.Stderr
-            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
             if ($dumpLog.Count -gt 0) {
                 [System.IO.File]::WriteAllText(
                     (Join-Path $evidenceDirectory ("client-{0}-pid-{1}.createdump.log" -f $index, $state.pid)),

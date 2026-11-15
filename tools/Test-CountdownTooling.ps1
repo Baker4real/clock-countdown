@@ -140,10 +140,10 @@ $ciParityDetail = if ($ciParityProblems.Count -eq 0) { "CI 的 $($ciScripts.Coun
 Add-ToolingCheck -Name 'ci:local-parity' -Passed ($ciParityProblems.Count -eq 0) -Detail $ciParityDetail
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
-$scriptPaths = @(
+$scriptPaths = @(@(
     Get-ChildItem -LiteralPath $repoRoot -Filter '*.ps1' -File
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -Filter '*.ps1' -File
-) | Sort-Object FullName -Unique
+) | Sort-Object FullName -Unique)
 foreach ($scriptPath in $scriptPaths) {
     $tokens = $null
     $errors = $null
@@ -233,10 +233,10 @@ foreach ($case in @(
     if ($caseGaps -ne $case.Gaps) { $captureSelfTestFailures.Add("self-test $($case.Name): expected $($case.Gaps) gap(s), got $caseGaps") }
 }
 $captureGaps = [System.Collections.Generic.List[string]]::new()
-$capturePaths = @(
+$capturePaths = @(@(
     Get-ChildItem -LiteralPath $repoRoot -File | Where-Object { $_.Name -like '*.Tests.ps1' -or $_.Name -like '*.Tests.*.ps1' }
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File | Where-Object Extension -in @('.ps1', '.psm1')
-) | Sort-Object FullName -Unique
+) | Sort-Object FullName -Unique)
 foreach ($capturePath in $capturePaths) {
     $tokens = $null
     $errors = $null
@@ -500,13 +500,13 @@ $forcedMoveCeilings = @{
     'Countdown.Settings.psm1' = 1
 }
 $forcedMoveFailures = [System.Collections.Generic.List[string]]::new()
-$forcedMovePaths = @(
+$forcedMovePaths = @(@(
     Get-ChildItem -LiteralPath $repoRoot -File
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File
 ) | Where-Object {
     $_.Extension -in @('.ps1', '.psm1') -and $_.Name -notlike '*.Tests.ps1' -and $_.Name -notlike '*.Tests.*.ps1' -and
     -not ($_.Directory.Name -eq 'tools' -and $_.Name -like 'Test-*.ps1')
-}
+})
 $forcedMoveCounts = foreach ($forcedMovePath in $forcedMovePaths) {
     $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $forcedMovePath.FullName).Replace('\', '/')
     $tokens = $null

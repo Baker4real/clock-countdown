@@ -55,7 +55,7 @@ function Get-TextSha256 {
 
 function Get-Records {
     param([Parameter(Mandatory)] [object] $Document)
-    $records = if ($Document.PSObject.Properties.Name -contains 'issues') { @($Document.issues) } else { @($Document) }
+    $records = @(if ($Document.PSObject.Properties.Name -contains 'issues') { @($Document.issues) } else { @($Document) })
     if ($records.Count -eq 0) { throw '记录没有 issues。' }
     return $records
 }
@@ -324,7 +324,7 @@ function Invoke-Writeback {
     $script:Repo = Resolve-WritebackRepo
     if ($Apply -and [string]::IsNullOrWhiteSpace($Repo)) { throw '-Apply 必须提供 -Repo。' }
     if ($CloseSatisfied -and -not $Apply) { throw '-CloseSatisfied 只能与 -Apply 一起使用。' }
-    $records = Get-Records -Document $Document; Assert-WritebackRecords -Records $records
+    $records = @(Get-Records -Document $Document); Assert-WritebackRecords -Records $records
     if ($Apply -and -not $CloseSatisfied -and @($records | Where-Object { [string] $_.status -eq 'closed' }).Count -gt 0) { throw 'Apply 包含 closed issue 时必须同时传 -CloseSatisfied，避免只写评论而没有关闭。' }
     $parent = Resolve-ParentIssueNumber -Document $Document
     if ($parent -gt 0 -and @($records | Where-Object { [int] $_.number -eq $parent }).Count -gt 0) { throw "parent issue #$parent 不能同时作为子票记录。" }

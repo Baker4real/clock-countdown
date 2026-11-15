@@ -341,7 +341,8 @@ function Stop-CountdownInstalledProcess {
 }
 
 # 停止应用：结束映像路径是已安装 EXE 的进程，直到它们都退出，并且登录任务没有运行中的实例。不经计划任务停止：
-# #279 实测停止任务会让应用走崩溃路径（日志留下致命异常，退出码 1），也停不掉在任务之外启动的实例。
+# 停止任务停不掉在任务之外启动的实例（#279 实测）。#279 见到的停止任务走崩溃路径已由 #295 修复，#288 在真实任务上
+# 复核为正常退出（退出码 0，不留致命异常）；结束进程不写 ProcessExited，被结束的版本在诊断日志里只有启动没有退出。
 # 任务实例还在时经任务启动会被 IgnoreNew 拒绝，所以这里一并等它结束。未保存的编辑草稿会丢失，与现有安装器相同。
 # 返回开始时在运行的应用进程数。
 function Stop-CountdownInstalledApplication {
@@ -1461,7 +1462,8 @@ function New-CountdownInstallerWindowsPorts {
             }
         }
         # 按 #279「登录任务的最终定义」注册；同名任务已存在时整份替换（与期望定义不一致时的更新）。
-        # 非提升时能否注册登录触发器、能否替换提升时注册的任务都未实测（#279 第 7 项），留给 #288 在真实任务上确认。
+        # #288 在真实任务上实测：非提升（UAC 筛选后的管理员令牌）时能注册带登录触发器的任务，也能整份替换非提升时注册的
+        # 同名任务。能否替换提升时注册的任务（旧安装器在管理员 PowerShell 里注册）、标准用户能否注册仍未实测。
         RegisterTask = {
             param([string] $Name, [object] $Definition, [object] $Session)
             $action = New-ScheduledTaskAction -Execute ([string] $Definition.Actions[0].Execute)
@@ -1490,7 +1492,8 @@ function New-CountdownInstallerWindowsPorts {
             [string] (Export-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop)
         }
         # 回滚时把登录任务恢复成导出的定义：按 XML 整份重新注册（同名任务整份替换）；定义为空表示安装前没有这个任务，删除它。
-        # 与 RegisterTask 一样，非提升时能否替换、删除提升时注册的任务未实测，留给 #288 在真实任务上确认。
+        # #288 实测非提升时按导出的 XML 恢复（恢复后再导出与原导出逐字节相同）和删除都可行；与 RegisterTask 一样，
+        # 提升时注册的任务仍未实测。
         RestoreTask = {
             param([string] $Name, [object] $Definition)
             if ($null -eq $Definition) {

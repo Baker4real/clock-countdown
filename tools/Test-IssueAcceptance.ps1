@@ -54,7 +54,7 @@ function Assert-IssueAcceptance {
     }
 
     $recordDocument = Read-IssueAcceptanceJson -Path $RecordPath
-    $records = if ($recordDocument.PSObject.Properties.Name -contains 'issues') { @($recordDocument.issues) } else { @($recordDocument) }
+    $records = @(if ($recordDocument.PSObject.Properties.Name -contains 'issues') { @($recordDocument.issues) } else { @($recordDocument) })
     if ($records.Count -eq 0) { throw '记录没有 issues。' }
     $seen = [System.Collections.Generic.HashSet[int]]::new()
     foreach ($record in $records) {

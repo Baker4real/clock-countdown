@@ -85,13 +85,14 @@ $switchPorts = [pscustomobject]@{
         param([string] $Name)
         @($switchCase.Processes | Where-Object { $_.Name -eq $Name })
     }
-    # 由任务直接启动的进程一退出，任务实例随之结束。
+    # 由任务直接启动的进程一退出，任务实例随之结束。用例可经 OnStopProcess 在结束一个进程之后插一步。
     StopProcess = {
         param([int] $ProcessId)
         foreach ($process in @($switchCase.Processes | Where-Object { $_.ProcessId -eq $ProcessId -and $_.StartedByTask })) {
             if ($switchCase.Tasks.ContainsKey($process.StartedByTask)) { $switchCase.Tasks[$process.StartedByTask].State = 'Ready' }
         }
         $switchCase.Processes = @($switchCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
+        if ($null -ne $switchCase.OnStopProcess) { & $switchCase.OnStopProcess $ProcessId }
     }
     GetTask = {
         param([string] $Name)
@@ -150,8 +151,10 @@ $switchPorts = [pscustomobject]@{
         }
         if ($null -ne $switchCase.OnStartTask) { & $switchCase.OnStartTask $exePath }
     }
+    # 用例可经 OnMoveDirectory 让一次改名失败。
     MoveDirectory = {
         param([string] $Source, [string] $Destination)
+        if ($null -ne $switchCase.OnMoveDirectory) { & $switchCase.OnMoveDirectory $Source $Destination }
         [System.IO.Directory]::Move($Source, $Destination)
     }
     # 导出是不含运行状态的整份定义，恢复按导出整份替换；导出为空表示没有这个任务，恢复即删除。用例可经 OnRestoreTask 在恢复前插一步。
@@ -277,6 +280,8 @@ function New-CountdownSwitchTestCase {
         OnRegisterTask = $null
         OnStartTask = $null
         OnRestoreTask = $null
+        OnStopProcess = $null
+        OnMoveDirectory = $null
         Observed = @{}
         Json = $null
     }
@@ -459,6 +464,22 @@ try {
     Assert-Equal "<missing>|$rootBefore|$tasksBefore|$desktopBefore|4101,4103" "$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop)|$(Get-CountdownSwitchTestRunning)" 'The switch refused for a run in progress writes no backup and leaves the install root, the tasks, the desktop and the running old version alone'
     Assert-Equal 'True|False' "$($lockedStatus.installInProgress)|$((Invoke-CountdownSwitchStatusRead).installInProgress)" 'The status command reads a run in progress while the install lock is held and none after it is released'
 
+    # 结束前按 PID 重读进程身份（映像路径与启动时间）：旧版本有两个进程在跑（4101、4102），结束 4101 的那一刻 4102 退出、
+    # 它的 PID 被开发目录里的同名程序复用。切换不结束这个复用了 PID 的进程，照常走完。
+    $switchCase = New-CountdownSwitchTestCase -Name 'pid-reuse'
+    Initialize-CountdownSwitchTestOldLayout
+    $switchCase.Processes = @($switchCase.Processes) + @(New-CountdownSwitchTestProcess -ProcessId 4102 -ExecutablePath $switchCase.ExePath)
+    $switchCase.OnStopProcess = {
+        param([int] $ProcessId)
+        if ($ProcessId -ne 4101) { return }
+        $reused = New-CountdownSwitchTestProcess -ProcessId 4102 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe'
+        $reused.CreationDate = [DateTimeOffset]::Parse('2026-11-15T09:20:30Z').LocalDateTime
+        $switchCase.Processes = @(@($switchCase.Processes | Where-Object { $_.ProcessId -ne 4102 }) + @($reused))
+    }
+    $pidReuse = Invoke-CountdownSwitchTest
+    Assert-Equal 'True|2' "$($pidReuse.succeeded)|$($pidReuse.stoppedProcessCount)" "The switch stops both old-version processes it found: $($pidReuse.failedStage) $($pidReuse.error)"
+    Assert-Equal '4102,4103,7001' (Get-CountdownSwitchTestRunning) 'The switch does not end a process that reused the PID of an old-version process before it was ended'
+
     # 切换中途失败：前置检查按 DACL 判定权限够，新安装器更新登录任务时却被任务计划拒绝。新安装器自己回滚到切换前的程序目录与
     # 登录任务并重新启动旧版本；切换停下报告，备份完整保留，遗留没动。
     $switchCase = New-CountdownSwitchTestCase -Name 'install-fails'
@@ -526,6 +547,28 @@ try {
     $afterRollback = Invoke-CountdownSwitchTest
     Assert-Equal 'False|precheck|backup-used-for-rollback' "$($afterRollback.succeeded)|$($afterRollback.failedStage)|$($afterRollback.reason)" 'A backup used for a rollback is not reused by another switch'
     Assert-Equal "$rootAfterRollback|$tasksBefore|4103,7002" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestRunning)" 'The refused switch after a rollback changes nothing'
+
+    # 回退中途失败：安装根已整个改名进保留目录，按备份复制好的副本改名成安装根时失败。恢复文件之前登录任务、遗留任务与
+    # 桌面快捷方式就已移除、新版本已停下：没有任何启动路径能从半恢复的安装根启动应用。再次运行回退接着做完。
+    $switchCase = New-CountdownSwitchTestCase -Name 'rollback-interrupted'
+    Initialize-CountdownSwitchTestOldLayout
+    $rootBefore = Get-CountdownSwitchTestTree -Root $switchCase.Root -Exclude 'runtime-status.json'
+    $tasksBefore = Get-CountdownSwitchTestTaskDefinitions
+    $desktopBefore = Get-CountdownSwitchTestTree -Root $switchCase.Desktop
+    Assert-Equal $true ([bool] (Invoke-CountdownSwitchTest).succeeded) 'The switch before the interrupted rollback succeeds'
+    [System.IO.File]::WriteAllText((Join-Path $switchCase.Root 'settings.json'), $editedSettings, $switchUtf8)
+    $rollbackScript = Join-Path $switchCase.Backup 'tools\Switch-CountdownInstallLayout.ps1'
+    $switchCase.OnMoveDirectory = { param([string] $Source, [string] $Destination) if ($Destination -eq $switchCase.Root) { throw '假的中途失败：复制好的安装根改不了名。' } }
+    $interrupted = Invoke-CountdownSwitchTest -Rollback -Script $rollbackScript
+    $switchCase.OnMoveDirectory = $null
+    Assert-Equal 'False|restore-root|removed|absent|removed|1' "$($interrupted.succeeded)|$($interrupted.failedStage)|$($interrupted.inert.currentTask)|$($interrupted.inert.legacyTask)|$($interrupted.inert.shortcut)|$($interrupted.stoppedProcessCount)" "The interrupted rollback removed the launch paths and stopped the new version before restoring files: $($interrupted.error)"
+    Assert-Equal "<missing>|current=<missing>;legacy=<missing>|desktop-note.txt|4103" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop -NamesOnly)|$(Get-CountdownSwitchTestRunning)" 'After the interrupted rollback no login task, legacy task or desktop shortcut is left to start the application and no version runs'
+    Assert-Equal $editedSettings ([System.IO.File]::ReadAllText((Join-Path $interrupted.preservedDirectory 'root\settings.json'))) 'The interrupted rollback keeps the whole install root from after the switch in the backup directory'
+    $resumedRollback = Invoke-CountdownSwitchTest -Rollback -Script $rollbackScript
+    Assert-Equal 'True|' "$($resumedRollback.succeeded)|$($resumedRollback.failedStage)" "Running the rollback again finishes the job: $($resumedRollback.error)"
+    Assert-Equal $rootBefore (Get-CountdownSwitchTestTree -Root $switchCase.Root -Exclude 'runtime-status.json') 'After the resumed rollback the install root equals the state before the switch'
+    Assert-Equal "$tasksBefore|$desktopBefore|4103,7002" "$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop)|$(Get-CountdownSwitchTestRunning)" 'After the resumed rollback both tasks and the desktop launchers are as before the switch and the old version runs again'
+    Assert-Equal '<missing>' (Get-CountdownSwitchTestTree -Root "$($switchCase.Root).rollback-staging") 'The resumed rollback leaves no staging copy beside the install root'
 }
 finally {
     Remove-CountdownIsolatedTestTree -Path $switchTestRoot -AllowedRoot $switchTempRoot

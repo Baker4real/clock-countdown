@@ -372,17 +372,23 @@ function New-CountdownStartupExitedRejection {
     $rejection
 }
 
-# 结束前按 PID 重新读一次映像路径，仍是已安装 EXE 才结束：枚举之后进程可能已经退出，PID 也可能已被别的进程复用。
+# 结束前按 PID 重新读一次进程，映像路径仍是已安装 EXE、启动时间仍是枚举时那个才结束：枚举之后进程可能已经退出，PID 也可能
+# 已被别的进程复用。返回是否结束了它。
 function Stop-CountdownInstalledProcess {
     param(
         [Parameter(Mandatory)] [object] $Layout,
         [Parameter(Mandatory)] [object] $Ports,
-        [Parameter(Mandatory)] [int] $ProcessId
+        [Parameter(Mandatory)] [object] $Process
     )
 
-    if (@(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports | Where-Object { [int] $_.ProcessId -eq $ProcessId }).Count -gt 0) {
-        [void] (& $Ports.StopProcess $ProcessId)
-    }
+    $processId = [int] $Process.ProcessId
+    $startTime = Get-CountdownInstallerProperty -Object $Process -Name 'CreationDate'
+    $same = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports | Where-Object {
+            [int] $_.ProcessId -eq $processId -and [object]::Equals((Get-CountdownInstallerProperty -Object $_ -Name 'CreationDate'), $startTime)
+        })
+    if ($same.Count -eq 0) { return $false }
+    [void] (& $Ports.StopProcess $processId)
+    $true
 }
 
 # 停止应用：结束映像路径是已安装 EXE 的进程，直到它们都退出，并且登录任务没有运行中的实例。不经计划任务停止：
@@ -410,7 +416,7 @@ function Stop-CountdownInstalledApplication {
             throw (New-CountdownInstallRejection -Reason 'application-still-running' -Message "$TimeoutSeconds 秒内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程。")
         }
         foreach ($process in $remaining) {
-            Stop-CountdownInstalledProcess -Layout $Layout -Ports $Ports -ProcessId ([int] $process.ProcessId)
+            [void] (Stop-CountdownInstalledProcess -Layout $Layout -Ports $Ports -Process $process)
         }
         Start-Sleep -Milliseconds 200
     }
@@ -1691,5 +1697,8 @@ function New-CountdownInstallerWindowsPorts {
     }
 }
 
-# 安装锁另供切换脚本（#287）在整个切换与回退期间持有。
-Export-ModuleMember -Function Install-CountdownProgram, New-CountdownInstallerWindowsPorts, Enter-CountdownInstallLock, Exit-CountdownInstallLock
+# 另供切换脚本（#287）：整个切换与回退期间持有的安装锁，以及它与安装器共用的安装布局、交互会话、按身份结束进程、
+# 目录改名与经登录任务启动并等到启动就绪。
+Export-ModuleMember -Function Install-CountdownProgram, New-CountdownInstallerWindowsPorts, Enter-CountdownInstallLock, Exit-CountdownInstallLock,
+    Resolve-CountdownInstallerLayout, Get-CountdownSingleInteractiveSession, Get-CountdownInstalledProcesses, Stop-CountdownInstalledProcess,
+    Move-CountdownInstallDirectory, Start-CountdownPreviousVersion

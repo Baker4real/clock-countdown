@@ -20,9 +20,11 @@
 删掉本次写了一半的备份，经登录任务重新启动旧版本，其余什么都没改。备份之后任何一步失败都停下报告，备份保留：新安装器失败时
 由它自己回滚程序目录与登录任务并重新启动旧版本。再次运行切换会沿用这份完整备份接着做（不重新备份）；用过回退的备份不再沿用。
 
-回退（-Rollback，从备份目录的 tools\ 运行）：核对备份完整与任务权限 → 停止应用 → 让安装根与备份逐项一致（被覆盖或删除的现有文件先复制到
-备份目录下的 after-switch-<时刻>\）→ 按导出的定义恢复两个任务（切换前没有的删除）→ 按备份恢复桌面启动器文件，删除切换建立的
-快捷方式 → 写 rollback.json → 经恢复的登录任务启动旧版本并等到启动就绪。中途失败时停下报告，再次运行回退会接着做。
+回退（-Rollback，从备份目录的 tools\ 运行）：核对备份完整、任务权限与唯一的交互会话 → 先让启动路径失效：移除现役与遗留任务、
+桌面上指向已安装 EXE 的快捷方式（先保留一份）→ 停止应用 → 在安装根旁边按备份复制出 <安装根>.rollback-staging 并核对，把安装根
+整个改名进备份目录下的 after-switch-<时刻>\root\，再把副本改名成安装根 → 按导出的定义恢复两个任务（切换前没有的不再建）→
+按备份恢复桌面启动器文件 → 写 rollback.json → 经恢复的登录任务启动旧版本并等到启动就绪（与新安装器同一个就绪判定）。
+中途失败时停下报告，没有启动路径指向半恢复的安装根；再次运行回退会接着做。
 -Port 供测试注入计划任务、进程、交互会话、桌面目录与快捷方式（与新安装器同一组 port，另加只读的 GetProcessIdentity 与
 GetTaskSecurity），-LockName 供测试隔离安装锁；不传时操作真实 Windows。输出不含设置内容、凭据、主机名、账号或 SID。
 #>
@@ -95,6 +97,15 @@ function New-CountdownSwitchRejection {
     $exception = [System.InvalidOperationException]::new($Message)
     $exception.Data['CountdownSwitchReason'] = $Reason
     $exception
+}
+
+# 停下的原因类别：切换自己的，或切换调用的新安装器函数给的（如交互会话不止一个、启动就绪之前退出），都没有时是意外错误。
+function Get-CountdownSwitchReason {
+    param([Parameter(Mandatory)] [System.Exception] $Exception)
+    foreach ($key in @('CountdownSwitchReason', 'CountdownInstallReason')) {
+        if ($null -ne $Exception.Data[$key]) { return [string] $Exception.Data[$key] }
+    }
+    'unexpected-error'
 }
 
 # 全机安装锁（与新旧安装器同一把，#289）：切换与回退在整个运行期间持有它，另一个安装、切换或回退在运行时什么都不改就停下。
@@ -188,22 +199,16 @@ function Assert-CountdownSwitchTaskAccess {
     }
 }
 
-# 已安装 EXE 的进程（映像路径是安装根的 app\MinminCountdown.exe）。
-function Get-CountdownSwitchProcesses {
-    @(& $Port.GetProcesses 'MinminCountdown.exe' | Where-Object {
-            $property = $_.PSObject.Properties['ExecutablePath']
-            $null -ne $property -and -not [string]::IsNullOrWhiteSpace([string] $property.Value) -and
-                [string]::Equals([System.IO.Path]::GetFullPath([string] $property.Value), $exePath, [System.StringComparison]::OrdinalIgnoreCase)
-        })
-}
-
-# 停止应用：结束已安装 EXE 的进程，直到它们都退出，并且登录任务没有运行中的实例（新布局的任务实例跟着进程）。
-# 与新安装器一样不经计划任务停止。返回开始时在运行的进程数。
+# 停止应用：结束已安装 EXE 的进程（映像路径是安装根的 app\MinminCountdown.exe），直到它们都退出，并且登录任务没有运行中的
+# 实例（新布局的任务实例跟着进程）。不经计划任务停止：办公室的旧版本早于 #295，经任务停止会走崩溃路径。每个进程结束前按 PID
+# 重读映像路径与启动时间（与新安装器同一个函数），PID 被别的进程复用时不结束它。返回开始时在运行的进程数。
 function Stop-CountdownSwitchApplication {
+    param([Parameter(Mandatory)] [object] $Layout)
+
     $running = $null
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     while ($true) {
-        $remaining = @(Get-CountdownSwitchProcesses)
+        $remaining = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Port)
         if ($null -eq $running) { $running = $remaining.Count }
         $task = & $Port.GetTask $TaskName
         $taskRunning = $null -ne $task -and [string] $task.State -eq 'Running'
@@ -211,7 +216,7 @@ function Stop-CountdownSwitchApplication {
         if ([DateTime]::UtcNow -ge $deadline) {
             throw (New-CountdownSwitchRejection -Reason 'application-still-running' -Message "10 秒内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程，或登录任务 $TaskName 仍在运行。")
         }
-        foreach ($process in $remaining) { [void] (& $Port.StopProcess ([int] $process.ProcessId)) }
+        foreach ($process in $remaining) { [void] (Stop-CountdownInstalledProcess -Layout $Layout -Ports $Port -Process $process) }
         Start-Sleep -Milliseconds 200
     }
 }
@@ -315,28 +320,14 @@ function Read-CountdownSwitchBackup {
     $manifest
 }
 
-# 经登录任务启动应用并等到启动就绪：删除旧的运行状态回执后启动，新回执写明首帧已渲染，写它的进程在运行且映像路径是已安装 EXE。
+# 经登录任务启动应用并等到启动就绪：用新安装器的同一个函数（Start-CountdownPreviousVersion）与同一个就绪判定，回执由交互会话里
+# 一个存活的已安装 EXE 进程写出、EXE 哈希等于启动之前取的它本身，那次运行在就绪之前就结束时报 startup-exited。
 # 返回该进程；30 秒内达不到时抛出。
 function Start-CountdownSwitchApplication {
-    $statusPath = Join-Path $root 'runtime-status.json'
-    if (Test-Path -LiteralPath $statusPath) { [System.IO.File]::Delete($statusPath) }
-    [void] (& $Port.StartTask $TaskName)
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
-    while ($true) {
-        $receipt = $null
-        try {
-            $stream = [System.IO.File]::Open($statusPath, 'Open', 'Read', 'ReadWrite, Delete')
-            try { $receipt = [System.IO.StreamReader]::new($stream, $utf8).ReadToEnd() | ConvertFrom-Json }
-            finally { $stream.Dispose() }
-        }
-        catch { $receipt = $null }
-        if ($null -ne $receipt -and $null -ne $receipt.PSObject.Properties['processId'] -and $null -ne $receipt.PSObject.Properties['stage'] -and [string] $receipt.stage -eq 'window-ready') {
-            $process = @(Get-CountdownSwitchProcesses | Where-Object { [long] $_.ProcessId -eq [long] $receipt.processId })
-            if ($process.Count -gt 0) { return [ordered]@{ processId = [int] $process[0].ProcessId; sessionId = [int] $process[0].SessionId } }
-        }
-        if ([DateTime]::UtcNow -ge $deadline) { throw "经登录任务 $TaskName 启动后 30 秒内没有达到启动就绪。" }
-        Start-Sleep -Milliseconds 250
-    }
+    param([Parameter(Mandatory)] [object] $Layout)
+
+    $session = Get-CountdownSingleInteractiveSession -Ports $Port
+    Start-CountdownPreviousVersion -Layout $Layout -TaskName $TaskName -Session $session -Ports $Port -ReadyTimeoutSeconds 30
 }
 
 # 移除遗留：遗留任务；桌面上属于旧安装器的启动器（EXE 与它的临时文件按内容等于备份里的 CountdownLauncher.exe 认，.cmd 按旧安装器
@@ -415,9 +406,11 @@ function Invoke-CountdownLayoutSwitch {
     $stage = 'precheck'
     $backupStarted = $false
     $lock = $null
+    $layout = $null
     try {
         $lock = Enter-CountdownSwitchLock
         if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw (New-CountdownSwitchRejection -Reason 'install-root-missing' -Message "安装根不存在：$root") }
+        $layout = Resolve-CountdownInstallerLayout -InstallRoot $root
         $manifest = Read-CountdownSwitchBackup
         if ($null -ne $manifest) {
             $result.backup.complete = $true
@@ -432,11 +425,11 @@ function Invoke-CountdownLayoutSwitch {
             throw (New-CountdownSwitchRejection -Reason ([string] $check.reason) -Message "新安装器的前置检查没通过（阶段 $($check.failedStage)）：$($check.error)")
         }
         if ($null -eq $manifest) {
-            $session = @(& $Port.GetInteractiveSessions)[0]
+            $session = Get-CountdownSingleInteractiveSession -Ports $Port
             $desktopDirectory = [System.IO.Path]::GetFullPath([string] (& $Port.GetDesktopDirectory $session))
 
             $stage = 'stop-application'
-            $result.stoppedProcessCount = Stop-CountdownSwitchApplication
+            $result.stoppedProcessCount = Stop-CountdownSwitchApplication -Layout $layout
 
             $stage = 'backup'
             $backupStarted = $true
@@ -468,8 +461,7 @@ function Invoke-CountdownLayoutSwitch {
     }
     catch {
         $result.failedStage = $stage
-        $reason = $_.Exception.Data['CountdownSwitchReason']
-        $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
+        $result.reason = Get-CountdownSwitchReason -Exception $_.Exception
         $result.error = ConvertTo-CountdownSwitchBoundedText -Text $_.Exception.Message
         if ($backupStarted -and $stage -eq 'backup') {
             # 备份阶段失败时除了停下应用什么都没改：删掉本次写了一半的备份（前置检查确认过之前没有备份目录）。
@@ -477,8 +469,9 @@ function Invoke-CountdownLayoutSwitch {
             catch { $result.error = ConvertTo-CountdownSwitchBoundedText -Text "$($result.error)；写了一半的备份没删掉：$($_.Exception.Message)" }
         }
         # 切换停下了旧版本、随后在动安装之前停下（备份失败，或新安装器什么都没改就失败）时，经登录任务重新启动旧版本。
-        if ($result.stoppedProcessCount -gt 0 -and $stage -in @('backup', 'install') -and $result.rollback.outcome -eq 'not-needed' -and @(Get-CountdownSwitchProcesses).Count -eq 0) {
-            try { $result.restartedProcess = Start-CountdownSwitchApplication }
+        if ($result.stoppedProcessCount -gt 0 -and $stage -in @('backup', 'install') -and $result.rollback.outcome -eq 'not-needed' -and
+            @(Get-CountdownInstalledProcesses -Layout $layout -Ports $Port).Count -eq 0) {
+            try { $result.restartedProcess = Start-CountdownSwitchApplication -Layout $layout }
             catch { $result.error = ConvertTo-CountdownSwitchBoundedText -Text "$($result.error)；重新启动旧版本失败：$($_.Exception.Message)" }
         }
     }
@@ -500,55 +493,94 @@ function Invoke-CountdownLayoutSwitch {
     $result
 }
 
-# 回退时让安装根与备份逐项一致：备份里没有的现有文件先复制到保留目录再删除，内容与备份不同的先复制到保留目录再按备份覆盖，
-# 缺的与修改时间不同的按备份复制（File.Copy 保留修改时间），备份里没有的目录删空后删除；最后按路径、长度、修改时间与
-# SHA-256 核对整个安装根。返回恢复、删除与保留了哪些条目。
+# 目录树或备份清单的逐行文本（目录以 \ 结尾，文件带长度、修改时间与 SHA-256），两棵树相同当且仅当文本相同。
+function ConvertTo-CountdownSwitchTreeText {
+    param([AllowNull()] [object[]] $Directories, [AllowNull()] [object[]] $Files)
+    (@(@($Directories) | Where-Object { $null -ne $_ } | ForEach-Object { "$_\" }) +
+        @(@($Files) | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.path)|$($_.length)|$($_.lastWriteTimeUtc)|$($_.sha256)" }) | Sort-Object) -join "`n"
+}
+
+# 回退时把安装根换成备份里的样子（#289）：先在安装根旁边按备份复制出 <安装根>.rollback-staging 并逐项核对（File.Copy 保留修改
+# 时间），再把现在的安装根整个改名进保留目录的 root\、把这份副本改名成安装根，最后按路径、长度、修改时间与 SHA-256 核对整个
+# 安装根。安装根从不处于一半旧一半新的样子：中途失败时它要么还是回退之前的样子，要么不在（只差把副本改名过去）。再次运行接着做：
+# 上次留下的完整副本沿用、不完整的重做，安装根已与备份一致时什么都不动。返回按改名之前与备份的差别列出的恢复、删除与保留条目。
 function Restore-CountdownSwitchRoot {
     param([Parameter(Mandatory)] [object] $Manifest, [Parameter(Mandatory)] [string] $PreservedDirectory)
 
-    $comparer = [System.StringComparer]::OrdinalIgnoreCase
-    $expectedFiles = [System.Collections.Generic.Dictionary[string, object]]::new($comparer)
-    foreach ($file in @($Manifest.root.files)) { $expectedFiles[[string] $file.path] = $file }
-    $expectedDirectories = [System.Collections.Generic.HashSet[string]]::new([string[]] @($Manifest.root.directories), $comparer)
+    $staging = "$root.rollback-staging"
+    $expectedText = ConvertTo-CountdownSwitchTreeText -Directories @($Manifest.root.directories) -Files @($Manifest.root.files)
     $restored = [System.Collections.Generic.List[string]]::new()
     $removed = [System.Collections.Generic.List[string]]::new()
     $preserved = [System.Collections.Generic.List[string]]::new()
-    $line = { param($File) "$($File.path)|$($File.length)|$($File.lastWriteTimeUtc)|$($File.sha256)" }
+    $rootPresent = Test-Path -LiteralPath $root -PathType Container
+    if ($rootPresent) {
+        $current = Get-CountdownSwitchTree -Directory $root
+        if ((ConvertTo-CountdownSwitchTreeText -Directories $current.Directories -Files $current.Files) -eq $expectedText) {
+            return [ordered]@{ restoredFiles = @(); removedEntries = @(); preservedFiles = @() }
+        }
+        $comparer = [System.StringComparer]::OrdinalIgnoreCase
+        $expectedFiles = [System.Collections.Generic.Dictionary[string, object]]::new($comparer)
+        foreach ($file in @($Manifest.root.files)) { $expectedFiles[[string] $file.path] = $file }
+        $expectedDirectories = [System.Collections.Generic.HashSet[string]]::new([string[]] @($Manifest.root.directories), $comparer)
+        $currentLines = [System.Collections.Generic.HashSet[string]]::new($comparer)
+        foreach ($file in $current.Files) {
+            [void] $currentLines.Add((ConvertTo-CountdownSwitchTreeText -Files @($file)))
+            $expected = if ($expectedFiles.ContainsKey($file.path)) { $expectedFiles[$file.path] } else { $null }
+            if ($null -eq $expected -or $file.sha256 -ne $expected.sha256) { $preserved.Add($file.path) }
+            if ($null -eq $expected) { $removed.Add($file.path) }
+        }
+        foreach ($directory in $current.Directories) { if (-not $expectedDirectories.Contains($directory)) { $removed.Add("$directory\") } }
+        foreach ($file in @($Manifest.root.files)) { if (-not $currentLines.Contains((ConvertTo-CountdownSwitchTreeText -Files @($file)))) { $restored.Add([string] $file.path) } }
+    }
+    else { foreach ($file in @($Manifest.root.files)) { $restored.Add([string] $file.path) } }
 
-    [void] [System.IO.Directory]::CreateDirectory($root)
-    $currentFiles = [System.Collections.Generic.Dictionary[string, object]]::new($comparer)
-    foreach ($file in (Get-CountdownSwitchTree -Directory $root).Files) {
-        $currentFiles[[string] $file.path] = $file
-        $expected = if ($expectedFiles.ContainsKey($file.path)) { $expectedFiles[$file.path] } else { $null }
-        if ($null -eq $expected -or $file.sha256 -ne $expected.sha256) {
-            Copy-CountdownSwitchFile -Source (Join-Path $root $file.path) -Destination (Join-Path $PreservedDirectory "root\$($file.path)")
-            $preserved.Add($file.path)
-        }
-        if ($null -eq $expected) {
-            [System.IO.File]::Delete((Join-Path $root $file.path))
-            $removed.Add($file.path)
-        }
+    if (Test-Path -LiteralPath $staging) {
+        $existing = Get-CountdownSwitchTree -Directory $staging
+        if ((ConvertTo-CountdownSwitchTreeText -Directories $existing.Directories -Files $existing.Files) -ne $expectedText) { [System.IO.Directory]::Delete($staging, $true) }
     }
-    foreach ($directory in $expectedDirectories) { [void] [System.IO.Directory]::CreateDirectory((Join-Path $root $directory)) }
-    foreach ($file in @($Manifest.root.files)) {
-        if ($currentFiles.ContainsKey($file.path) -and (& $line $currentFiles[$file.path]) -eq (& $line $file)) { continue }
-        Copy-CountdownSwitchFile -Source (Join-Path $backup "root\$($file.path)") -Destination (Join-Path $root $file.path)
-        $restored.Add($file.path)
-    }
-    $prefix = $root + '\'
-    foreach ($directory in @(Get-ChildItem -LiteralPath $root -Recurse -Force -Directory | Sort-Object { $_.FullName.Length } -Descending)) {
-        $relative = $directory.FullName.Substring($prefix.Length)
-        if (-not $expectedDirectories.Contains($relative)) {
-            [System.IO.Directory]::Delete($directory.FullName)
-            $removed.Add("$relative\")
+    if (-not (Test-Path -LiteralPath $staging)) {
+        [void] [System.IO.Directory]::CreateDirectory($staging)
+        foreach ($directory in @($Manifest.root.directories)) { [void] [System.IO.Directory]::CreateDirectory((Join-Path $staging $directory)) }
+        foreach ($file in @($Manifest.root.files)) { Copy-CountdownSwitchFile -Source (Join-Path $backup "root\$($file.path)") -Destination (Join-Path $staging $file.path) }
+        $copy = Get-CountdownSwitchTree -Directory $staging
+        if ((ConvertTo-CountdownSwitchTreeText -Directories $copy.Directories -Files $copy.Files) -ne $expectedText) {
+            throw (New-CountdownSwitchRejection -Reason 'root-mismatch' -Message "按备份复制出的 $staging 与备份不一致。")
         }
     }
-
+    if ($rootPresent) {
+        [void] [System.IO.Directory]::CreateDirectory($PreservedDirectory)
+        Move-CountdownInstallDirectory -Ports $Port -Source $root -Destination (Join-Path $PreservedDirectory 'root') -RetrySeconds 15
+    }
+    Move-CountdownInstallDirectory -Ports $Port -Source $staging -Destination $root -RetrySeconds 15
     $after = Get-CountdownSwitchTree -Directory $root
-    $actualText = (@(@($after.Directories) | ForEach-Object { "$_\" }) + @(@($after.Files) | ForEach-Object { & $line $_ }) | Sort-Object) -join "`n"
-    $expectedText = (@(@($Manifest.root.directories) | ForEach-Object { "$_\" }) + @(@($Manifest.root.files) | ForEach-Object { & $line $_ }) | Sort-Object) -join "`n"
-    if ($actualText -ne $expectedText) { throw (New-CountdownSwitchRejection -Reason 'root-mismatch' -Message '恢复之后安装根仍与备份不一致。') }
+    if ((ConvertTo-CountdownSwitchTreeText -Directories $after.Directories -Files $after.Files) -ne $expectedText) {
+        throw (New-CountdownSwitchRejection -Reason 'root-mismatch' -Message '恢复之后安装根仍与备份不一致。')
+    }
     [ordered]@{ restoredFiles = $restored.ToArray(); removedEntries = $removed.ToArray(); preservedFiles = $preserved.ToArray() }
+}
+
+# 恢复文件之前先让启动路径失效（#289）：移除现役与遗留任务（之后按备份恢复），桌面上指向已安装 EXE 的快捷方式先保留一份再
+# 移除。回退中途失败时没有任何启动路径能把应用从半恢复的安装根启动起来，停下的应用也不会被重新拉起。返回各做了什么。
+function Disable-CountdownSwitchLaunchPaths {
+    param([Parameter(Mandatory)] [object] $Manifest, [Parameter(Mandatory)] [string] $PreservedDirectory)
+
+    $report = [ordered]@{ currentTask = 'absent'; legacyTask = 'absent'; shortcut = 'absent' }
+    foreach ($entry in @(@('currentTask', $TaskName), @('legacyTask', $LegacyTaskName))) {
+        if ($null -eq (& $Port.GetTask $entry[1])) { continue }
+        [void] (& $Port.RestoreTask $entry[1] $null)
+        $report[$entry[0]] = 'removed'
+    }
+    $path = Join-Path ([string] $Manifest.desktopDirectory) $shortcutName
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        $link = & $Port.ReadShortcut $path
+        if ($null -ne $link -and [bool] $link.IsShellLink -and [string]::Equals(([string] $link.TargetPath).Trim('"'), $exePath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Copy-CountdownSwitchFile -Source $path -Destination (Join-Path $PreservedDirectory "desktop\$shortcutName")
+            [void] (& $Port.RemoveShortcut $path)
+            $report.shortcut = 'removed'
+        }
+        else { $report.shortcut = 'kept' }
+    }
+    $report
 }
 
 # 回退一个任务：备份里有定义时按它整份恢复；切换前没有这个任务时，现在有就删除。
@@ -606,8 +638,10 @@ function Invoke-CountdownLayoutRollback {
         legacyTaskName = $LegacyTaskName
         elevated = $null
         backupDirectory = $backup
-        # 回退时被覆盖或删除的现有文件（切换后的程序目录、切换后改过的用户数据等）的副本，没有时为空。
+        # 回退之前的安装根（切换后的程序目录、切换后改过的用户数据等，整个在 root\ 里）与被替换的桌面文件，没有时为空。
         preservedDirectory = $null
+        # 恢复文件之前先移除的启动路径：现役与遗留任务、指向已安装 EXE 的桌面快捷方式（removed、absent 或 kept）。
+        inert = $null
         stoppedProcessCount = 0
         root = $null
         tasks = $null
@@ -622,13 +656,19 @@ function Invoke-CountdownLayoutRollback {
         $manifest = Read-CountdownSwitchBackup
         if ($null -eq $manifest) { throw (New-CountdownSwitchRejection -Reason 'backup-missing' -Message "没有切换前的备份：$backup") }
         Assert-CountdownSwitchTaskAccess -Result $result -Action '回退'
-
-        $stage = 'stop-application'
-        $result.stoppedProcessCount = Stop-CountdownSwitchApplication
-
-        $stage = 'restore-root'
+        $layout = Resolve-CountdownInstallerLayout -InstallRoot $root
+        # 最后要经恢复的登录任务在交互会话里启动旧版本：没有或不止一个交互会话时什么都不改就停下。
+        [void] (Get-CountdownSingleInteractiveSession -Ports $Port)
         $preserved = Join-Path $backup ('after-switch-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))
         $result.preservedDirectory = $preserved
+
+        $stage = 'disable-launch-paths'
+        $result.inert = Disable-CountdownSwitchLaunchPaths -Manifest $manifest -PreservedDirectory $preserved
+
+        $stage = 'stop-application'
+        $result.stoppedProcessCount = Stop-CountdownSwitchApplication -Layout $layout
+
+        $stage = 'restore-root'
         $result.root = Restore-CountdownSwitchRoot -Manifest $manifest -PreservedDirectory $preserved
 
         $stage = 'restore-tasks'
@@ -645,20 +685,20 @@ function Invoke-CountdownLayoutRollback {
         [System.IO.File]::WriteAllText((Join-Path $backup 'rollback.json'), ($record | ConvertTo-Json -EscapeHandling EscapeNonAscii), $utf8)
 
         $stage = 'start'
-        if ([bool] $manifest.tasks.current.present) { $result.restartedProcess = Start-CountdownSwitchApplication }
+        if ([bool] $manifest.tasks.current.present) { $result.restartedProcess = Start-CountdownSwitchApplication -Layout $layout }
         $result.succeeded = $true
     }
     catch {
         $result.failedStage = $stage
-        $reason = $_.Exception.Data['CountdownSwitchReason']
-        $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
+        $result.reason = Get-CountdownSwitchReason -Exception $_.Exception
         $result.error = ConvertTo-CountdownSwitchBoundedText -Text $_.Exception.Message
         $result.nextStep = if ($result.reason -eq 'transaction-in-progress') { $transactionInProgressNextStep }
         elseif ($result.reason -in @('backup-missing', 'backup-incomplete')) { "回退没有开始，什么都没改：备份 $backup 不在或不完整，没法按它回退。" }
         elseif ($stage -eq 'precheck') { '回退没有开始，什么都没改：排除原因后再运行回退。' }
-        else { "回退没有走完，备份原样保留在 $backup：排除原因后再次运行回退，它会接着把安装根、两个任务与桌面启动器恢复成备份的样子。" }
+        else { "回退没有走完，备份原样保留在 $backup；登录任务与桌面快捷方式在恢复文件之前已移除，应用不会从半恢复的安装根启动：排除原因后再次运行回退，它会接着把安装根、两个任务与桌面启动器恢复成备份的样子。" }
     }
     finally { Exit-CountdownInstallLock -Mutex $lock }
+    if ($null -ne $result.preservedDirectory -and -not (Test-Path -LiteralPath $result.preservedDirectory)) { $result.preservedDirectory = $null }
     $result
 }
 

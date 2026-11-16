@@ -540,16 +540,18 @@ function Get-CountdownDeployStatusMismatch {
     )
 }
 
-# 当前提交已在运行：状态里的提交就是 HEAD，已安装 EXE 与办公室上的载荷清单一致，应用在运行，没有未完成的安装
-# （有事务标记时照常部署，安装器先恢复再安装）。提交相同就算，同一提交的另一份构建输出也不重复安装。
+# 当前提交已在运行：状态里的提交就是 HEAD，办公室载荷清单的聚合哈希就是包里那份构建输出的，已安装 EXE 与该清单一致，
+# 应用在运行，没有未完成的安装（有事务标记时照常部署，安装器先恢复再安装）。同一提交的另一份构建输出（聚合哈希不同）照常安装。
 function Test-CountdownDeployAlreadyRunning {
     param(
         [Parameter(Mandatory)] [object] $Status,
-        [Parameter(Mandatory)] [string] $Commit
+        [Parameter(Mandatory)] [string] $Commit,
+        [Parameter(Mandatory)] [string] $AggregateSha256
     )
 
     $marker = Get-CountdownDeployProperty -Object $Status -Name 'transactionMarkerPresent'
     [string]::Equals([string] (Get-CountdownDeployProperty -Object $Status -Name 'commit'), $Commit, [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals([string] (Get-CountdownDeployProperty -Object $Status -Name 'aggregateSha256'), $AggregateSha256, [System.StringComparison]::OrdinalIgnoreCase) -and
         (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $Status -Name 'exe') -Name 'matchesManifest')) -and
         (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Status -Name 'running')) -and
         $marker -is [bool] -and -not $marker
@@ -801,8 +803,8 @@ function Invoke-CountdownDeployment {
     部署入口的编排：部署、只查状态，或一次性的布局切换与它的回退（#287）。返回结果（由入口脚本输出为 JSON）；进度写到标准错误。
     .DESCRIPTION
     部署成功只看安装后的只读状态读取：提交是 HEAD、已安装 EXE 的哈希等于本机构建输出、达到启动就绪的进程仍在运行。
-    连通性探测本身是一次只读状态读取（结果的 statusBefore）；它显示当前提交已在运行、没有未完成的安装时，结论是
-    already-running，不传输、不安装。结论 outcome：deployed、already-running（succeeded 为 true）；rejected（连接远端之前停下，
+    连通性探测本身是一次只读状态读取（结果的 statusBefore）；它显示当前提交的这份构建输出（聚合哈希相同）已在运行、
+    没有未完成的安装时，结论是 already-running，不传输、不安装。结论 outcome：deployed、already-running（succeeded 为 true）；rejected（连接远端之前停下，
     或办公室上另一个安装、切换或回退正在运行、包内入口什么都没改，后者 nextStep 是等它结束、先读状态）、failed（succeeded 为 false）；unknown（succeeded 为 null：拿不到安装结果或安装后的状态，不知道办公室上的结果）。
     failedStep 是停下的步骤，reason 是原因类别，error 写明缺什么或哪里不对；安装失败时 rollback 是安装器报告的回滚结果
     （not-needed、rolled-back、rollback-failed，没报时为 null）；办公室现状不确定时 nextStep 提示先查状态。
@@ -916,7 +918,7 @@ function Invoke-CountdownDeployment {
         catch { throw (New-CountdownDeployFailure -Reason 'probe-failed' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)部署停在传输之前，办公室没有改动。") }
 
         # 布局切换不看这一条：现有布局里运行的可能正是当前提交，切换照常进行。
-        if (-not $LayoutSwitch -and (Test-CountdownDeployAlreadyRunning -Status $result.statusBefore -Commit $preflight.Commit)) {
+        if (-not $LayoutSwitch -and (Test-CountdownDeployAlreadyRunning -Status $result.statusBefore -Commit $preflight.Commit -AggregateSha256 $preflight.BuildOutput.AggregateSha256)) {
             $result.succeeded = $true
             $result.outcome = 'already-running'
         }

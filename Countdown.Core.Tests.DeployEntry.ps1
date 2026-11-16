@@ -575,6 +575,17 @@ try {
     Assert-Equal "$($deployRepo.Head)|True|7001" "$($deployAgain.Result.statusBefore.commit)|$($deployAgain.Result.statusBefore.running)|$(@($deployAgain.Result.statusBefore.processes | ForEach-Object { [int] $_.processId }) -join ',')" 'The report carries the status read that shows the commit running'
     Assert-Equal 'already-running' ([string] ([System.IO.File]::ReadAllText([string] $deployAgain.Result.recordPath) | ConvertFrom-Json).outcome) 'The deployment record says the commit was already running'
 
+    # 办公室上运行的是同一提交的另一份构建输出（#259 评审）：载荷清单记的聚合哈希不是包的那份，探测不报已在运行，照常传输并安装。
+    $deployOfficeManifestPath = Join-Path $deployCase.InstallRoot 'app\published-payload.json'
+    $deployOfficeManifest = [System.IO.File]::ReadAllText($deployOfficeManifestPath) | ConvertFrom-Json
+    $deployOfficeManifest.aggregateSha256 = 'ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789'
+    [System.IO.File]::WriteAllText($deployOfficeManifestPath, ($deployOfficeManifest | ConvertTo-Json -Depth 4), $deployUtf8)
+    $deployCase.Calls.Clear()
+    $deployOtherBuild = Invoke-CountdownDeployTest -Label 'same commit, another build output running'
+    Assert-Equal 'deployed|True' "$($deployOtherBuild.Result.outcome)|$($deployOtherBuild.Result.succeeded)" "Deploying over another build output of the same commit installs the suite-tested one: $($deployOtherBuild.Result.failedStep) $($deployOtherBuild.Result.error)"
+    Assert-Equal 'remote-read,transfer,remote-write,remote-read' ($deployCase.Calls -join ',') 'Another build output of the same commit gets the transfer, the install and the status read'
+    Assert-Equal (Get-CountdownDeployTestFileHash -Path (Join-Path $deployRepo.Root 'app\published-payload.json')) (Get-CountdownDeployTestFileHash -Path $deployOfficeManifestPath) 'The office gets the payload manifest of the suite-tested build output'
+
     # 远端脚本的占位符一次替换（#259 评审）：暂存根与任务名里拼着别的占位符字样和单引号，远端脚本照原样用它们。
     $deployCase = New-CountdownDeployTestCase -Name 'placeholders'
     $deployCase.StagingRoot = Join-Path $deployCase.OfficeRoot 'deploy __TASK_NAME__ __SHA256__'

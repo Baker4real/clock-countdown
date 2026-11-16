@@ -391,11 +391,11 @@ function Stop-CountdownInstalledProcess {
     $true
 }
 
-# 停止应用：结束映像路径是已安装 EXE 的进程，直到它们都退出，并且登录任务没有运行中的实例。不经计划任务停止：
-# 停止任务停不掉在任务之外启动的实例（#279 实测）。#279 见到的停止任务走崩溃路径已由 #295 修复，#288 在真实任务上
-# 复核为正常退出（退出码 0，不留致命异常）；结束进程不写 ProcessExited，被结束的版本在诊断日志里只有启动没有退出。
-# 任务实例还在时经任务启动会被 IgnoreNew 拒绝，所以这里一并等它结束。未保存的编辑草稿会丢失，与现有安装器相同。
-# 返回开始时在运行的应用进程数。
+# 停止应用（#259 第 3 步）：登录任务有运行中的实例时先结束任务实例，给映像路径是已安装 EXE 的进程一段有界正常退出时间。
+# 停止任务停不掉在任务之外启动的实例（#279 实测），所以任务结束或宽限期到达后仍存活的进程才按 PID 复核身份并强制结束。
+# #279 见到的停止任务走崩溃路径已由 #295 修复，#288 复核为正常退出（退出码 0，不留致命异常）；被强杀的进程不写 ProcessExited。
+# 任务实例还在时经任务启动会被 IgnoreNew 拒绝，所以返回前一并确认它已结束。未保存的编辑草稿会丢失，与现有安装器相同。
+# 返回开始时的进程数、其中正常退出数与本次强杀数。
 function Stop-CountdownInstalledApplication {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -404,19 +404,37 @@ function Stop-CountdownInstalledApplication {
         [Parameter(Mandatory)] [int] $TimeoutSeconds
     )
 
-    $running = $null
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $initial = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports)
+    $killed = [System.Collections.Generic.HashSet[int]]::new()
+    $taskRunning = Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)
+    if ($taskRunning) { [void] (& $Ports.EndTask $TaskName) }
+    $force = -not $taskRunning
+    $graceDeadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $forceDeadline = if ($force) { [DateTime]::UtcNow.AddSeconds($TimeoutSeconds) } else { $null }
     while ($true) {
         $remaining = @(Get-CountdownInstalledProcesses -Layout $Layout -Ports $Ports)
-        if ($null -eq $running) { $running = $remaining.Count }
         $taskRunning = Test-CountdownTaskRunning -Task (& $Ports.GetTask $TaskName)
-        if ($remaining.Count -eq 0 -and -not $taskRunning) { return $running }
-        if ([DateTime]::UtcNow -ge $deadline) {
-            if ($remaining.Count -eq 0) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
-            throw (New-CountdownInstallRejection -Reason 'application-still-running' -Message "$TimeoutSeconds 秒内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程。")
+        if ($remaining.Count -eq 0 -and -not $taskRunning) {
+            return [pscustomobject]@{
+                ProcessCount = $initial.Count
+                ExitedProcessCount = [Math]::Max(0, $initial.Count - $killed.Count)
+                KilledProcessCount = $killed.Count
+            }
         }
-        foreach ($process in $remaining) {
-            [void] (Stop-CountdownInstalledProcess -Layout $Layout -Ports $Ports -Process $process)
+
+        $now = [DateTime]::UtcNow
+        if (-not $force -and (-not $taskRunning -or $now -ge $graceDeadline)) {
+            $force = $true
+            $forceDeadline = $now.AddSeconds($TimeoutSeconds)
+        }
+        if ($force) {
+            foreach ($process in $remaining) {
+                if (Stop-CountdownInstalledProcess -Layout $Layout -Ports $Ports -Process $process) { [void] $killed.Add([int] $process.ProcessId) }
+            }
+            if ($null -ne $forceDeadline -and $now -ge $forceDeadline) {
+                if ($remaining.Count -eq 0) { throw (New-CountdownTaskStillRunningRejection -TaskName $TaskName) }
+                throw (New-CountdownInstallRejection -Reason 'application-still-running' -Message "$TimeoutSeconds 秒宽限期及其后的强制结束等待内没能停止应用：仍有 $($remaining.Count) 个已安装 EXE 的进程。")
+            }
         }
         Start-Sleep -Milliseconds 200
     }
@@ -1296,7 +1314,7 @@ function Install-CountdownProgram {
     步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；中断恢复（#284，见
     Invoke-CountdownInstallRecovery）：安装根留有上次没走完的安装时先按恢复表收拾好，收拾不了时停在恢复阶段、不继续安装；
     前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并按载荷清单逐项核对）；
-    停止应用（结束已安装 EXE 的进程，等登录任务没有运行中的实例）；写下事务标记；把设置及其两代备份快照到事务目录；
+    停止应用（先结束运行中的登录任务实例并给进程有界正常退出时间，再按 PID 复核并结束剩余进程；结果分别记开始时、正常退出与强杀的进程数）；写下事务标记；把设置及其两代备份快照到事务目录；
     有设置文件时用候选 EXE 在事务目录里的副本上演练迁移，并用产品的等价判定核对快照与迁移结果；现役程序目录改名为
     旧版本目录、候选改名为现役；登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时
     改回期望定义，不属于时保留）；确认任务仍没有运行中的实例，删除旧回执，经登录任务启动，等到启动就绪（启动的进程在
@@ -1340,6 +1358,8 @@ function Install-CountdownProgram {
         loginTask = $null
         desktopShortcut = $null
         stoppedProcessCount = 0
+        exitedProcessCount = 0
+        killedProcessCount = 0
         readyProcess = $null
         # 新版本在启动就绪之前就退出时（startup-exited，#288）它的退出码，取自登录任务的上次结果；其余情况为空。
         startupExitCode = $null
@@ -1407,7 +1427,10 @@ function Install-CountdownProgram {
             $result.plannedSteps = $plan.ToArray()
 
             $stage = 'stop-application'
-            $result.stoppedProcessCount = Stop-CountdownInstalledApplication -Layout $layout -TaskName $TaskName -Ports $Ports -TimeoutSeconds $StopTimeoutSeconds
+            $stopped = Stop-CountdownInstalledApplication -Layout $layout -TaskName $TaskName -Ports $Ports -TimeoutSeconds $StopTimeoutSeconds
+            $result.stoppedProcessCount = $stopped.ProcessCount
+            $result.exitedProcessCount = $stopped.ExitedProcessCount
+            $result.killedProcessCount = $stopped.KilledProcessCount
 
             # 从这里起失败都由回滚接手（#283），候选随回滚处理。
             $stage = 'write-transaction-marker'
@@ -1515,6 +1538,11 @@ function New-CountdownInstallerWindowsPorts {
         StopProcess = {
             param([int] $ProcessId)
             Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        # 先给任务启动的应用一次正常退出机会；任务外启动的实例由调用方在有界等待后按 PID 复核并结束。
+        EndTask = {
+            param([string] $Name)
+            Stop-ScheduledTask -TaskPath '\' -TaskName $Name -ErrorAction Stop
         }
         # 状态命令（#276）读出的各项之外，再读登记登录任务要逐项比较的工作目录、电池、按需启动、强制结束与用户（#281），
         # 以及上次运行时间与上次结果（#288：等待启动就绪时凭它们认出启动的那次运行已经结束，上次结果就是进程的退出码）。

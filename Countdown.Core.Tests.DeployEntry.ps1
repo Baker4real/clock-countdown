@@ -194,6 +194,11 @@ $deployWindowsPorts = [pscustomobject]@{
         }
         $deployCase.Processes = @($deployCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
     }
+    EndTask = {
+        param([string] $Name)
+        $deployCase.Processes = @($deployCase.Processes | Where-Object { $_.StartedByTask -ne $Name })
+        if ($deployCase.Tasks.ContainsKey($Name)) { $deployCase.Tasks[$Name].State = 'Ready' }
+    }
     GetTask = {
         param([string] $Name)
         if ($deployCase.Tasks.ContainsKey($Name)) { $deployCase.Tasks[$Name] }

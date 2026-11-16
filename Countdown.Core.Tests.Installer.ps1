@@ -69,6 +69,17 @@ $installerPorts = [pscustomobject]@{
         $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
         if ($null -ne $installerCase.OnStopProcess) { & $installerCase.OnStopProcess $ProcessId }
     }
+    # Stop-ScheduledTask：只让任务启动的进程经外部关闭路径退出；任务外启动的实例留着，等待之后由安装器结束。
+    EndTask = {
+        param([string] $Name)
+        $installerCase.EndTaskCalls++
+        if (-not $installerCase.EndTaskLeavesRunning) {
+            $task = $installerCase.Tasks[$Name]
+            $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.StartedByTask -ne $Name })
+            Set-CountdownInstallerTestTaskRun -Task $task -State 'Ready' -LastTaskResult 0x41306
+            if ($null -ne $installerCase.OnEndTask) { & $installerCase.OnEndTask $Name }
+        }
+    }
     GetTask = {
         param([string] $Name)
         if ($installerCase.Tasks.ContainsKey($Name)) { $installerCase.Tasks[$Name] }
@@ -332,6 +343,9 @@ function New-CountdownInstallerTestCase {
         PreviousLaunch = [pscustomobject]@{ SessionId = 3; StaysAlive = $true; WritesReceipt = $true; ExitCode = 0 }
         MoveLocks = @()
         OnStopProcess = $null
+        EndTaskCalls = 0
+        EndTaskLeavesRunning = $false
+        OnEndTask = $null
         OnMoveDirectory = $null
         OnStartTask = $null
         OnGetDesktopDirectory = $null
@@ -508,7 +522,7 @@ try {
     Assert-Equal 'unchanged|0' "$($upgrade.loginTask.action)|$(@($upgrade.loginTask.changes).Count)" 'Upgrade reports a login task that matches the expected definition as unchanged'
     Assert-Equal "$($installerCase.TaskName)=Running/existing-task-owner" (Get-CountdownInstallerTestTasks) 'Upgrade keeps the existing login task as it is'
     Assert-Equal $upgradeTaskBefore (Get-CountdownInstallerTestTaskDefinition -Task $installerCase.Tasks[$installerCase.TaskName]) 'Upgrade leaves every item of a matching login task as it was'
-    Assert-Equal 2 ([int] $upgrade.stoppedProcessCount) 'Upgrade stops the task-started and the desktop-started application'
+    Assert-Equal '2|1|1|1' "$($upgrade.stoppedProcessCount)|$($upgrade.exitedProcessCount)|$($upgrade.killedProcessCount)|$($installerCase.EndTaskCalls)" 'Upgrade ends the task instance, lets its process exit and kills the desktop-started process, with counts in the result'
     Assert-Equal '4103' ([string] $installerCase.Observed.RunningBeforeStart) 'Upgrade stops only processes of the installed EXE before starting the new version'
     Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) 'Upgrade leaves the same-named EXE outside the install root running'
     Assert-Equal 6001 ([int] $upgrade.readyProcess.processId) 'Upgrade reaches startup readiness with the newly started process'
@@ -537,11 +551,9 @@ try {
     # 安装器不能凭先前的枚举结束这个进程。
     $installerCase = New-CountdownInstallerTestCase -Name 'pid-reused-before-stop'
     Initialize-CountdownInstallerTestInstalledVersion
-    $installerCase.OnStopProcess = {
-        param([int] $ProcessId)
-        if ($ProcessId -eq 4101) {
-            $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne 4102 }) + @(New-CountdownInstallerTestProcess -ProcessId 4102 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe')
-        }
+    $installerCase.OnEndTask = {
+        # 任务启动的 4101 已正常退出；桌面启动的 4102 同时退出，PID 被开发目录里的同名 EXE 复用。
+        $installerCase.Processes = @($installerCase.Processes | Where-Object { $_.ProcessId -ne 4102 }) + @(New-CountdownInstallerTestProcess -ProcessId 4102 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe')
     }
     $reusedPid = Invoke-CountdownInstallerTest
     Assert-Equal $true ([bool] $reusedPid.succeeded) "Install succeeds when a PID is reused while the application stops: $($reusedPid.failedStage) $($reusedPid.error)"
@@ -803,8 +815,14 @@ try {
         [pscustomobject]@{ Name = 'not-ready-exe-changed'; Stage = 'start-and-wait-ready'; Reason = 'startup-not-ready'; ExitCode = ''; Rollback = 'rolled-back'; Running = '4103,6002'; Arrange = {
                 $installerCase.OnStartTask = { param([string] $ExePath) if (Test-CountdownInstallerTestNewVersion -ExecutablePath $ExePath) { [System.IO.File]::WriteAllText($ExePath, 'installer exe v2 changed after placement', $installerUtf8) } }
             } }
-        [pscustomobject]@{ Name = 'task-instance-outlives-app'; Stage = 'stop-application'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'not-needed'; Running = '4103'; Arrange = { $installerCase.Processes[0].StartedByTask = $null } }
-        [pscustomobject]@{ Name = 'task-runs-during-replace'; Stage = 'start-and-wait-ready'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'rollback-failed'; Running = '4103'; Arrange = { $installerCase.OnMoveDirectory = { $installerCase.Tasks[$installerCase.TaskName].State = 'Running' } } }
+        [pscustomobject]@{ Name = 'task-instance-outlives-app'; Stage = 'stop-application'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'not-needed'; Running = '4103'; Arrange = {
+                $installerCase.EndTaskLeavesRunning = $true
+                $installerCase.Processes[0].StartedByTask = $null
+            } }
+        [pscustomobject]@{ Name = 'task-runs-during-replace'; Stage = 'start-and-wait-ready'; Reason = 'login-task-still-running'; ExitCode = ''; Rollback = 'rollback-failed'; Running = '4103'; Arrange = { $installerCase.OnMoveDirectory = {
+                    $installerCase.EndTaskLeavesRunning = $true
+                    $installerCase.Tasks[$installerCase.TaskName].State = 'Running'
+                } } }
     )
     foreach ($shortWait in $installerShortWaits) {
         $installerCase = New-CountdownInstallerTestCase -Name $shortWait.Name
@@ -852,6 +870,13 @@ try {
         $installerCase.Json = $moduleResult | ConvertTo-Json -Depth 6 -EscapeHandling EscapeNonAscii
         $installerCase.Json | ConvertFrom-Json -DateKind String
     }
+    # 停止任务没有让任何进程退出时，安装器先等到有界宽限期结束，再按 PID 复核并结束仍存活的两个进程；这次安装照常完成。
+    $installerCase = New-CountdownInstallerTestCase -Name 'stop-grace-expires'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.EndTaskLeavesRunning = $true
+    $graceExpired = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'True|2|0|2|1' "$($graceExpired.succeeded)|$($graceExpired.stoppedProcessCount)|$($graceExpired.exitedProcessCount)|$($graceExpired.killedProcessCount)|$($installerCase.EndTaskCalls)" "After the graceful-stop grace period the installer kills the remaining processes and reports both counts: $($graceExpired.failedStage) $($graceExpired.error)"
+
     $installerSettingsFamilyNames = @('settings.json', 'settings.json.backup1', 'settings.json.backup2')
     $installerCase = New-CountdownInstallerTestCase -Name 'rollback-not-ready'
     Initialize-CountdownInstallerTestInstalledVersion
@@ -1140,7 +1165,7 @@ try {
                 } }
             [pscustomobject]@{ Name = 'recover-settings-changed-while-stopping'; Arrange = {
                     $installerCase.Launch.WritesReceipt = $false
-                    $installerCase.OnStopProcess = { param([int] $ProcessId) Invoke-CountdownInstallerTestStartupMigration }
+                    $installerCase.OnEndTask = { Invoke-CountdownInstallerTestStartupMigration }
                 } }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $changedSettings.Name

@@ -94,6 +94,11 @@ $switchPorts = [pscustomobject]@{
         $switchCase.Processes = @($switchCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })
         if ($null -ne $switchCase.OnStopProcess) { & $switchCase.OnStopProcess $ProcessId }
     }
+    EndTask = {
+        param([string] $Name)
+        $switchCase.Processes = @($switchCase.Processes | Where-Object { $_.StartedByTask -ne $Name })
+        if ($switchCase.Tasks.ContainsKey($Name)) { $switchCase.Tasks[$Name].State = 'Ready' }
+    }
     GetTask = {
         param([string] $Name)
         if ($switchCase.Tasks.ContainsKey($Name)) { $switchCase.Tasks[$Name] }

@@ -496,6 +496,25 @@ try {
     Assert-Equal 'True|2' "$($pidReuse.succeeded)|$($pidReuse.stoppedProcessCount)" "The switch stops both old-version processes it found: $($pidReuse.failedStage) $($pidReuse.error)"
     Assert-Equal '4102,4103,7001' (Get-CountdownSwitchTestRunning) 'The switch does not end a process that reused the PID of an old-version process before it was ended'
 
+    # 桌面上已有一个同名的 敏敏子倒计时.lnk，却不是安装器的快捷方式（#259 评审）：新安装器原样保留它（kept-foreign），不登记自己的
+    # 快捷方式。切换照常走完，但留下桌面上属于旧安装器的启动器（它们同样启动安装根里的 app\MinminCountdown.exe），否则桌面上没有
+    # 入口；结果逐个写明保留（kept-no-shortcut），下一步是把那个同名文件移走后再次运行切换。移走之后再次运行切换沿用备份，
+    # 登记快捷方式并移除旧启动器。
+    $switchCase = New-CountdownSwitchTestCase -Name 'foreign-shortcut'
+    Initialize-CountdownSwitchTestOldLayout
+    $foreignShortcutPath = Join-Path $switchCase.Desktop $switchShortcutName
+    Write-CountdownSwitchTestFile -Path $foreignShortcutPath -Text 'my own notes that happen to share the shortcut name'
+    $desktopBefore = Get-CountdownSwitchTestTree -Root $switchCase.Desktop
+    $foreignShortcut = Invoke-CountdownSwitchTest
+    Assert-Equal 'True|kept-foreign|not-a-shell-link' "$($foreignShortcut.succeeded)|$($foreignShortcut.installer.desktopShortcut.action)|$($foreignShortcut.installer.desktopShortcut.reason)" "The switch completes when a foreign file holds the shortcut name: $($foreignShortcut.failedStage) $($foreignShortcut.error)"
+    Assert-Equal 'removed|敏敏子倒计时.exe=kept-no-shortcut,敏敏子倒计时.exe.new=absent,敏敏子倒计时.cmd=kept-no-shortcut' "$($foreignShortcut.legacy.task)|$((@($foreignShortcut.legacy.desktop) | ForEach-Object { "$($_.name)=$($_.action)" }) -join ',')" 'Without its own shortcut on the desktop the switch keeps the old installer''s desktop launchers and says so'
+    Assert-Equal $desktopBefore (Get-CountdownSwitchTestTree -Root $switchCase.Desktop) 'The desktop keeps the launchers, the foreign file and the user''s other files as they were'
+    Assert-Equal $true ([string] $foreignShortcut.nextStep).Contains($switchShortcutName) "The next step tells to move the foreign file away and run the switch again: $($foreignShortcut.nextStep)"
+    [System.IO.File]::Move($foreignShortcutPath, (Join-Path (Split-Path -Parent $switchCase.Desktop) 'moved-away.lnk'))
+    $foreignResumed = Invoke-CountdownSwitchTest
+    Assert-Equal 'True|reused|created|' "$($foreignResumed.succeeded)|$($foreignResumed.backup.action)|$($foreignResumed.installer.desktopShortcut.action)|$($foreignResumed.nextStep)" "Running the switch again after the foreign file is moved away registers the shortcut: $($foreignResumed.failedStage) $($foreignResumed.error)"
+    Assert-Equal "敏敏子倒计时.exe=removed,敏敏子倒计时.exe.new=absent,敏敏子倒计时.cmd=removed|desktop-note.txt,$switchShortcutName" "$((@($foreignResumed.legacy.desktop) | ForEach-Object { "$($_.name)=$($_.action)" }) -join ',')|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop -NamesOnly)" 'The second switch replaces the kept launchers with the shortcut'
+
     # 切换中途失败：前置检查按 DACL 判定权限够，新安装器更新登录任务时却被任务计划拒绝。新安装器自己回滚到切换前的程序目录与
     # 登录任务并重新启动旧版本；切换停下报告，备份完整保留，遗留没动。
     $switchCase = New-CountdownSwitchTestCase -Name 'install-fails'

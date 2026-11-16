@@ -72,6 +72,8 @@ $envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
 '@
 # 布局切换没有成功时，切换脚本给的下一步之后补这一句：经部署入口怎么接着切换或回退。
 $script:LayoutSwitchNextStep = '经部署入口再次切换运行 Deploy-CountdownProgram.ps1 -LayoutSwitch（备份完整时沿用它接着做），回到切换前运行 -LayoutRollback。'
+# 布局切换成功、切换脚本仍给了下一步（桌面上同名的快捷方式不是安装器的，旧启动器留着）时补这一句。
+$script:LayoutSwitchAgainNextStep = '经部署入口再次切换运行 Deploy-CountdownProgram.ps1 -LayoutSwitch，它沿用办公室上的备份。'
 # 回退结果不确定时给维护者的下一步。
 $script:RollbackReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态；回退可以重复运行，状态还不是切换前的样子就再运行一次 -LayoutRollback。'
 
@@ -1006,6 +1008,11 @@ function Invoke-CountdownDeployment {
     if ($LayoutSwitch -and $result.failedStep -cin @('install', 'status') -and -not $inProgress) {
         $switchNextStep = [string] (Get-CountdownDeployProperty -Object $result.install -Name 'nextStep')
         $result.nextStep = (@($switchNextStep, $result.nextStep, $script:LayoutSwitchNextStep) | Where-Object { $_ }) -join ''
+    }
+    # 切换成功而切换脚本仍给了下一步时（旧启动器因桌面上同名的外来文件留着），照样转给维护者，再说经部署入口怎么再次切换。
+    if ($LayoutSwitch -and $result.outcome -ceq 'deployed') {
+        $switchNextStep = [string] (Get-CountdownDeployProperty -Object $result.install -Name 'nextStep')
+        if (-not [string]::IsNullOrWhiteSpace($switchNextStep)) { $result.nextStep = $switchNextStep + $script:LayoutSwitchAgainNextStep }
     }
 
     if ($preflightPassed) {

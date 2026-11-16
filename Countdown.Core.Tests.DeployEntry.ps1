@@ -817,38 +817,44 @@ try {
     Assert-Equal 'unknown|install|True' "$($deployRecordBlocked.Result.outcome)|$($deployRecordBlocked.Result.failedStep)|$($null -eq $deployRecordBlocked.Result.recordPath)" "A record that cannot be written keeps the unknown result: $($deployRecordBlocked.Result.error)"
     Assert-Equal $true ([string] $deployRecordBlocked.Result.error).Contains('deployment-record.json') 'The error says the deployment record was not written'
 
-    # 布局切换经新部署入口（#287）：办公室还是现有布局，登录任务经 pwsh 运行 adapter，桌面上是启动器 EXE；程序目录里已经是 HEAD
-    # 这一版（经现有部署路径送达），切换模式不因此报告已在运行。包里带上切换脚本，远端写操作在办公室上运行它：备份、经新安装器
-    # 换布局、移除遗留；再读一次状态，登录任务已是新定义。
+    # 办公室还是现有布局：登录任务经 pwsh 运行 adapter，桌面上是启动器 EXE；程序目录里已经是 HEAD 这一版（经现有部署路径送达），
+    # 旧版本在运行。
+    function Initialize-CountdownDeployTestOldLayout {
+        $oldRoot = $deployCase.InstallRoot
+        foreach ($file in $deployBuildFiles) {
+            $path = Join-Path $oldRoot $file.Path
+            New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+            [System.IO.File]::WriteAllText($path, $file.Text, $deployUtf8)
+        }
+        [System.IO.File]::Copy((Join-Path $deployRepo.Root 'app\published-payload.json'), (Join-Path $oldRoot 'app\published-payload.json'))
+        foreach ($name in @('敏敏子倒计时.ps1', 'CountdownLauncher.exe')) { [System.IO.File]::WriteAllText((Join-Path $oldRoot $name), "deploy old layout $name", $deployUtf8) }
+        [System.IO.File]::WriteAllText((Join-Path $oldRoot 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":4101,"sessionId":3}', $deployUtf8)
+        [System.IO.File]::Copy((Join-Path $oldRoot 'CountdownLauncher.exe'), (Join-Path $deployCase.Desktop '敏敏子倒计时.exe'))
+        $deployCase.Tasks[$deployCase.TaskName] = [pscustomobject]@{
+            State = 'Ready'
+            Enabled = $true
+            Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = 'C:\Program Files\PowerShell\7\pwsh.exe'; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $oldRoot '敏敏子倒计时.ps1')`""; WorkingDirectory = $oldRoot })
+            Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $deploySessionSid })
+            UserSid = $deploySessionSid
+            LogonType = 'Interactive'
+            RunLevel = 'Limited'
+            Priority = 7
+            ExecutionTimeLimit = 'PT0S'
+            MultipleInstances = 'IgnoreNew'
+            DisallowStartIfOnBatteries = $false
+            StopIfGoingOnBatteries = $false
+            AllowDemandStart = $true
+            AllowHardTerminate = $true
+            UserId = 'old-installer-task-owner'
+        }
+        $deployCase.Processes = @([pscustomobject]@{ ProcessId = 4101; Name = 'MinminCountdown.exe'; ExecutablePath = (Join-Path $oldRoot 'app\MinminCountdown.exe'); SessionId = 3; CreationDate = [DateTimeOffset]::Parse('2026-11-14T09:00:00Z').LocalDateTime; StartedByTask = $null })
+    }
+
+    # 布局切换经新部署入口（#287）：办公室还是现有布局，程序目录里的 HEAD 这一版不让切换模式报告已在运行。包里带上切换脚本，
+    # 远端写操作在办公室上运行它：备份、经新安装器换布局、移除遗留；再读一次状态，登录任务已是新定义。
     $deployCase = New-CountdownDeployTestCase -Name 'layout-switch'
     $deployOldRoot = $deployCase.InstallRoot
-    foreach ($deployFile in $deployBuildFiles) {
-        $deployOldPath = Join-Path $deployOldRoot $deployFile.Path
-        New-Item -ItemType Directory -Path (Split-Path -Parent $deployOldPath) -Force | Out-Null
-        [System.IO.File]::WriteAllText($deployOldPath, $deployFile.Text, $deployUtf8)
-    }
-    [System.IO.File]::Copy((Join-Path $deployRepo.Root 'app\published-payload.json'), (Join-Path $deployOldRoot 'app\published-payload.json'))
-    foreach ($deployOldName in @('敏敏子倒计时.ps1', 'CountdownLauncher.exe')) { [System.IO.File]::WriteAllText((Join-Path $deployOldRoot $deployOldName), "deploy old layout $deployOldName", $deployUtf8) }
-    [System.IO.File]::WriteAllText((Join-Path $deployOldRoot 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":4101,"sessionId":3}', $deployUtf8)
-    [System.IO.File]::Copy((Join-Path $deployOldRoot 'CountdownLauncher.exe'), (Join-Path $deployCase.Desktop '敏敏子倒计时.exe'))
-    $deployCase.Tasks[$deployCase.TaskName] = [pscustomobject]@{
-        State = 'Ready'
-        Enabled = $true
-        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = 'C:\Program Files\PowerShell\7\pwsh.exe'; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $deployOldRoot '敏敏子倒计时.ps1')`""; WorkingDirectory = $deployOldRoot })
-        Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $deploySessionSid })
-        UserSid = $deploySessionSid
-        LogonType = 'Interactive'
-        RunLevel = 'Limited'
-        Priority = 7
-        ExecutionTimeLimit = 'PT0S'
-        MultipleInstances = 'IgnoreNew'
-        DisallowStartIfOnBatteries = $false
-        StopIfGoingOnBatteries = $false
-        AllowDemandStart = $true
-        AllowHardTerminate = $true
-        UserId = 'old-installer-task-owner'
-    }
-    $deployCase.Processes = @([pscustomobject]@{ ProcessId = 4101; Name = 'MinminCountdown.exe'; ExecutablePath = (Join-Path $deployOldRoot 'app\MinminCountdown.exe'); SessionId = 3; CreationDate = [DateTimeOffset]::Parse('2026-11-14T09:00:00Z').LocalDateTime; StartedByTask = $null })
+    Initialize-CountdownDeployTestOldLayout
     $deployLayoutState = {
         $tree = @((Get-CountdownDeployTestTree -Root $deployOldRoot) -split "`n" | Where-Object { $_ -notlike 'file:runtime-status.json|*' }) -join "`n"
         $task = $deployCase.Tasks[$deployCase.TaskName] | Select-Object -Property * -ExcludeProperty State | ConvertTo-Json -Depth 4 -Compress
@@ -896,6 +902,16 @@ try {
     Assert-Equal 'layout-rollback|rolled-back' "$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).mode)|$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).outcome)" 'The local record keeps the rollback result'
     Assert-CountdownDeployNoLeak -Text $deployRolledBack.Text -Name 'Layout rollback standard output'
     Assert-CountdownDeployNoLeak -Text $deployRolledBack.Stderr -Name 'Layout rollback progress'
+
+    # 办公室桌面上已有一个同名的 敏敏子倒计时.lnk，却不是安装器的（#259 评审）：切换经部署入口照常完成，旧启动器留在桌面上；
+    # 结论之后的下一步带上切换脚本给的那句（移走那个文件、再次切换），再说经部署入口怎么再次切换。
+    $deployCase = New-CountdownDeployTestCase -Name 'layout-switch-foreign-shortcut'
+    Initialize-CountdownDeployTestOldLayout
+    [System.IO.File]::WriteAllText((Join-Path $deployCase.Desktop '敏敏子倒计时.lnk'), 'my own notes that happen to share the shortcut name', $deployUtf8)
+    $deployForeignShortcut = Invoke-CountdownDeployTest -Label 'layout switch with a foreign file holding the shortcut name' -LayoutSwitch
+    Assert-Equal 'deployed|True|kept-foreign|敏敏子倒计时.exe=kept-no-shortcut' "$($deployForeignShortcut.Result.outcome)|$($deployForeignShortcut.Result.succeeded)|$($deployForeignShortcut.Result.install.installer.desktopShortcut.action)|$(@($deployForeignShortcut.Result.install.legacy.desktop | Where-Object { $_.name -eq '敏敏子倒计时.exe' } | ForEach-Object { "$($_.name)=$($_.action)" }) -join ',')" "A switch that has to keep the old launchers still completes through the deploy entry: $($deployForeignShortcut.Result.failedStep) $($deployForeignShortcut.Result.error)"
+    Assert-Equal 'True|True' "$(([string] $deployForeignShortcut.Result.nextStep).StartsWith([string] $deployForeignShortcut.Result.install.nextStep))|$(([string] $deployForeignShortcut.Result.nextStep).Contains('-LayoutSwitch'))" "The next step carries the switch's own next step and how to run the switch again through the deploy entry: $($deployForeignShortcut.Result.nextStep)"
+    Assert-Equal $true ([string] $deployForeignShortcut.Result.install.nextStep).Contains('敏敏子倒计时.lnk') "The switch's next step names the foreign file: $($deployForeignShortcut.Result.install.nextStep)"
 
     # 没有备份时回退什么都不做，明确报告失败；三种模式只能选一个，同时给出时在连接办公室之前拒绝。
     $deployCase = New-CountdownDeployTestCase -Name 'rollback-without-backup'

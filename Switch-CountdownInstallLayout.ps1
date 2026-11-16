@@ -376,9 +376,11 @@ function Start-CountdownSwitchApplication {
 }
 
 # 移除遗留：遗留任务；桌面上属于旧安装器的启动器（EXE 与它的临时文件按内容等于备份里的 CountdownLauncher.exe 认，.cmd 按旧安装器
-# 写的原文认），不属于的保留并写明；安装根里的旧文件与删空的旧目录。最后列出安装根里认不出的顶层条目（保留不动）。
+# 写的原文认），不属于的保留并写明（kept-foreign）；安装根里的旧文件与删空的旧目录。最后列出安装根里认不出的顶层条目（保留不动）。
+# -KeepDesktopLaunchers（新安装器没能登记快捷方式，#259 评审）：属于旧安装器的启动器也留着（kept-no-shortcut），桌面上才有入口；
+# 它们同样启动安装根里的 app\MinminCountdown.exe（.cmd 经登录任务）。
 function Remove-CountdownSwitchLegacy {
-    param([Parameter(Mandatory)] [object] $Manifest)
+    param([Parameter(Mandatory)] [object] $Manifest, [switch] $KeepDesktopLaunchers)
 
     $report = [ordered]@{ task = 'absent'; desktop = @(); removedRootEntries = @(); unknownRootEntries = @() }
     if ($null -ne (& $Port.GetTask $LegacyTaskName)) {
@@ -394,11 +396,12 @@ function Remove-CountdownSwitchLegacy {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { [ordered]@{ name = $name; action = 'absent' }; continue }
             $owned = if ($name.EndsWith('.cmd')) { [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::ASCII) -ceq $legacyCommand }
             else { $null -ne $launcherSha256 -and (Get-CountdownSwitchSha256 -Path $path) -eq $launcherSha256 }
-            if ($owned) {
+            if (-not $owned) { [ordered]@{ name = $name; action = 'kept-foreign' } }
+            elseif ($KeepDesktopLaunchers) { [ordered]@{ name = $name; action = 'kept-no-shortcut' } }
+            else {
                 [System.IO.File]::Delete($path)
                 [ordered]@{ name = $name; action = 'removed' }
             }
-            else { [ordered]@{ name = $name; action = 'kept-foreign' } }
         })
 
     $removed = [System.Collections.Generic.List[string]]::new()
@@ -501,8 +504,15 @@ function Invoke-CountdownLayoutSwitch {
         }
 
         $stage = 'remove-legacy'
-        $result.legacy = Remove-CountdownSwitchLegacy -Manifest $manifest
+        # 桌面上同名的 敏敏子倒计时.lnk 不是安装器的（新安装器原样保留，kept-foreign）：没有新版本的快捷方式，旧安装器的启动器留着。
+        $shortcut = $installer.desktopShortcut
+        $shortcutKeptForeign = $null -ne $shortcut -and [string] $shortcut.action -ceq 'kept-foreign'
+        $result.legacy = Remove-CountdownSwitchLegacy -Manifest $manifest -KeepDesktopLaunchers:$shortcutKeptForeign
         $result.succeeded = $true
+        if ($shortcutKeptForeign) {
+            $result.nextStep = "桌面上已有的 $shortcutName 不是安装器的快捷方式（$($shortcut.reason)），新安装器原样保留了它，没有登记新版本的快捷方式；" +
+                '所以旧安装器的桌面启动器也留着，它们照样启动新版本。看过那个文件、把它移到别处之后再次运行切换：它沿用这份备份，登记快捷方式并移除旧启动器。'
+        }
     }
     catch {
         $result.failedStage = $stage

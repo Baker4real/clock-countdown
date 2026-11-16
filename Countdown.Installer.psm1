@@ -1483,12 +1483,23 @@ function Install-CountdownProgram {
         $startupExitCode = $_.Exception.Data['CountdownStartupExitCode']
         if ($null -ne $startupExitCode) { $result.startupExitCode = [long] $startupExitCode }
         if ($candidateOwned) {
-            # 事务标记写下之前失败：只删除候选（以及为它新建、此刻已空的安装根），其余什么都不改。
+            # 事务标记写下之前失败：删除候选（以及为它新建、此刻已空的安装根）；停止阶段在旧版本进程已退出后失败时，另按 RA5 重启旧版本。
             try {
                 if (Test-Path -LiteralPath $layout.CandidateDirectory) { [System.IO.Directory]::Delete($layout.CandidateDirectory, $true) }
                 if ($rootCreated -and @(Get-ChildItem -LiteralPath $layout.Root -Force).Count -eq 0) { [System.IO.Directory]::Delete($layout.Root) }
             }
             catch { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；删除候选失败：$($_.Exception.Message)" }
+        }
+        if ($stage -eq 'stop-application' -and $result.firstInstall -eq $false) {
+            # RA5：停止动作已经结束了旧版本、随后才报错时，不把用户留在无应用状态；安装仍按原错误失败。
+            try {
+                $remaining = @(Get-CountdownInstalledProcesses -Layout $layout -Ports $Ports)
+                $task = & $Ports.GetTask $TaskName
+                if ($remaining.Count -eq 0 -and -not (Test-CountdownTaskRunning -Task $task)) {
+                    $result.restartedProcess = Start-CountdownPreviousVersion -Layout $layout -TaskName $TaskName -Session $session -Ports $Ports -ReadyTimeoutSeconds $ReadyTimeoutSeconds
+                }
+            }
+            catch { $result.error = ConvertTo-CountdownBoundedError -Message "$($result.error)；重新启动旧版本失败：$($_.Exception.Message)" }
         }
         if ($null -ne $transaction -and -not $transaction.NewVersionReady) {
             $undo = Undo-CountdownInstall -Layout $layout -TaskName $TaskName -Session $session -DesktopDirectory $desktopDirectory -Transaction $transaction -Ports $Ports `

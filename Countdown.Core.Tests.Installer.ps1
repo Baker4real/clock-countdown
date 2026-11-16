@@ -877,6 +877,17 @@ try {
     $graceExpired = Invoke-CountdownInstallerModuleTest
     Assert-Equal 'True|2|0|2|1' "$($graceExpired.succeeded)|$($graceExpired.stoppedProcessCount)|$($graceExpired.exitedProcessCount)|$($graceExpired.killedProcessCount)|$($installerCase.EndTaskCalls)" "After the graceful-stop grace period the installer kills the remaining processes and reports both counts: $($graceExpired.failedStage) $($graceExpired.error)"
 
+    # 停止阶段自身报错，但旧版本进程实际上都已退出（#259 评审 RA5）：安装仍如实失败，同时经登录任务重新启动旧版本。
+    $installerCase = New-CountdownInstallerTestCase -Name 'stop-failure-restarts-previous'
+    Initialize-CountdownInstallerTestInstalledVersion
+    $installerCase.OnStopProcess = {
+        param([int] $ProcessId)
+        if ($ProcessId -eq 4102) { throw '假的停止失败：进程已退出，停止动作随后报错。' }
+    }
+    $stopFailure = Invoke-CountdownInstallerModuleTest
+    Assert-Equal 'False|stop-application|unexpected-error|6001' "$($stopFailure.succeeded)|$($stopFailure.failedStage)|$($stopFailure.reason)|$($stopFailure.restartedProcess.processId)" "A stop-stage failure after the processes exited restarts the previous version and reports it: $($stopFailure.error)"
+    Assert-Equal '4103,6001' (Get-CountdownInstallerTestRunning) 'The previous version runs again after the stop-stage failure; only the unrelated process was never touched'
+
     $installerSettingsFamilyNames = @('settings.json', 'settings.json.backup1', 'settings.json.backup2')
     $installerCase = New-CountdownInstallerTestCase -Name 'rollback-not-ready'
     Initialize-CountdownInstallerTestInstalledVersion

@@ -172,7 +172,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 
 本地迭代使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild`；它保留增量编译，仍走隔离桌面与 BelowNormal。`Build` 始终表示受管 `-Clean` + R2R。开始正式收尾时，使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,SourceValidation,InstallValidate -Closeout`：入口先用现有 `-RequireClean` 预检当前 checkout 的清理能力，失败就不启动长阶段；完成状态由五阶段结果及构建实际输出的 `CleanR2R` 回执共同判定。只有退出0但没有模式回执、增量构建或缺少任何必需阶段，都不能算正式收尾完成。回执另记程序目录的聚合哈希 `PayloadAggregateSha256`，新部署入口据此确认送出的就是套件测过的那份构建输出；这个字段之前跑出的套件记录没有它，部署前要用当前构建脚本重跑套件。
 
-启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行（`-AllowForegroundDesktopLauncher`）。下方为启动器转发的**实现细节**（不是复制模板；CSharp/SourceValidation 直跑会 fail-closed）：
+启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、`Deploy-OfficeCountdown.ps1 -ValidateOnly`、#288 真实安装验收 `tools/Invoke-CountdownRealInstallCheck.ps1 -Mode Run`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行（`-AllowForegroundDesktopLauncher`）。真实安装验收的 `-Mode Run` 注册一个临时的真实计划任务，在当前用户桌面上显示悬浮窗并打开一次资源管理器窗口，只在用户当场同意后运行，同意的原话传给 `-Consent`（不给就拒绝）；`Prepare`、`DryRun`、`Cleanup` 不注册任务、不开窗口。下方为启动器转发的**实现细节**（不是复制模板；CSharp/SourceValidation 直跑会 fail-closed）：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Clean

@@ -903,7 +903,19 @@ try {
     Assert-Equal 'rolled-back|restored||' "$($notReady.rollback.outcome)|$($notReady.rollback.settings)|$($notReady.rollback.loginTask)|$($notReady.rollback.desktopShortcut)" "Result JSON reports the rollback and that it put the settings back: $(@($notReady.rollback.problems) -join '；')"
     Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) 'Rollback puts the previous program directory back byte for byte'
     Assert-Equal $familyBefore (Get-CountdownInstallerTestSettingsFamily -Directory $installerCase.Root) 'Rollback restores the settings and both backups byte for byte, without the backup the new version added'
-    Assert-Equal $otherUserDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude ($installerOwnEntries + $installerSettingsFamilyNames) -Detailed) 'Rollback leaves the other user data as it was'
+    $liveCopies = @($notReady.rollback.PSObject.Properties['settingsLiveCopies'] | ForEach-Object { $_.Value } | Where-Object { $null -ne $_ })
+    Assert-Equal $otherUserDataBefore (Get-CountdownInstallerTestTree -Root $installerCase.Root -Exclude ($installerOwnEntries + $installerSettingsFamilyNames + $liveCopies) -Detailed) 'Rollback leaves the other user data as it was, apart from the reported live-settings copies'
+    # 新版本运行期间保存过设置时，回滚仍恢复安装前快照，但先把将被覆盖或删除的现役三份文件留在原目录旁（#259 评审 RA4）。
+    Assert-Equal 3 $liveCopies.Count "Rollback reports the live main settings and both backups it preserved before restoring the snapshot: $($liveCopies -join ',')"
+    Assert-Equal 3 @($liveCopies | Where-Object { $_ -match '^settings\.json(?:\.backup[12])?\.before-rollback-\d+T\d+Z$' -and -not $_.Contains('\') }).Count 'The live-copy report contains only sibling file names, no directories or settings content'
+    if ($liveCopies.Count -eq 3) {
+        $mainLiveCopy = @($liveCopies | Where-Object { $_ -like 'settings.json.before-rollback-*' })[0]
+        $backup1LiveCopy = @($liveCopies | Where-Object { $_ -like 'settings.json.backup1.before-rollback-*' })[0]
+        $backup2LiveCopy = @($liveCopies | Where-Object { $_ -like 'settings.json.backup2.before-rollback-*' })[0]
+        Assert-Equal '{"schemaVersion":11,"note":"migrated by the new version at startup"}' ([System.IO.File]::ReadAllText((Join-Path $installerCase.Root $mainLiveCopy))) 'The preserved live main settings keep the version written by the new version'
+        Assert-Equal $installerUserDataFiles['settings.json'] ([System.IO.File]::ReadAllText((Join-Path $installerCase.Root $backup1LiveCopy))) 'The preserved live backup1 keeps the bytes that were about to be replaced'
+        Assert-Equal 'installer settings backup 1' ([System.IO.File]::ReadAllText((Join-Path $installerCase.Root $backup2LiveCopy))) 'The preserved live backup2 is not deleted with the snapshot restore'
+    }
     Assert-Equal '4103,6002' (Get-CountdownInstallerTestRunning) 'Rollback stops the new version and the previous version runs again'
     Assert-Equal '6002|3' "$($notReady.restartedProcess.processId)|$($notReady.restartedProcess.sessionId)" 'Result JSON reports the restarted previous version'
     Assert-Equal 'app,runtime-status.json' ((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',') 'Rollback leaves no transaction marker, candidate, previous-version or transaction directory'

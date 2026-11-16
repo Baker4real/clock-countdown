@@ -557,7 +557,8 @@ function Test-CountdownSameFileBytes {
 # 新版本至多运行了等待就绪的时限，通常还没渲染悬浮窗；就绪之后用户可能已经在编辑，不再覆盖。逐个比较，与快照逐字节相同的
 # 不动；不同的先复制到事务目录里的临时文件，再整份替换现役文件（同卷改名，替换要么完成要么没发生）；快照里没有的（安装前
 # 就不存在，例如新版本迁移时轮转出的 backup 2）删除。主文件最先恢复：中途失败时旧版本至少读到安装前的主文件。
-# 返回 restored（写回或删除过）或 unchanged。
+# RA4：现役文件与快照不同、即将被覆盖或删除时，先把它的逐字节副本留在同目录的 .before-rollback-<UTC> 文件中；返回 restored
+# 或 unchanged，以及这些副本的文件名（不含正文）。副本不随事务目录删除。
 function Restore-CountdownSettingsSnapshot {
     param(
         [Parameter(Mandatory)] [object] $Layout,
@@ -567,24 +568,33 @@ function Restore-CountdownSettingsSnapshot {
 
     $stagingDirectory = Join-Path $Layout.TransactionDirectory 'settings-restore'
     $outcome = 'unchanged'
+    $liveCopies = [System.Collections.Generic.List[string]]::new()
+    $suffix = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ')
     foreach ($name in $script:SettingsFamilyNames) {
         $live = Join-Path $Layout.Root $name
         $saved = Join-Path $SnapshotDirectory $name
         $liveExists = Test-Path -LiteralPath $live -PathType Leaf
-        if (Test-Path -LiteralPath $saved -PathType Leaf) {
-            if ($liveExists -and (Test-CountdownSameFileBytes -Left $live -Right $saved)) { continue }
+        $savedExists = Test-Path -LiteralPath $saved -PathType Leaf
+        if ($liveExists -and $savedExists -and (Test-CountdownSameFileBytes -Left $live -Right $saved)) { continue }
+        if (-not $liveExists -and -not $savedExists) { continue }
+
+        if ($liveExists) {
+            $copyName = "$name.before-rollback-$suffix"
+            [System.IO.File]::Copy($live, (Join-Path $Layout.Root $copyName))
+            $liveCopies.Add($copyName)
+        }
+        if ($savedExists) {
             $staged = Join-Path $stagingDirectory $name
             [void] [System.IO.Directory]::CreateDirectory($stagingDirectory)
             [System.IO.File]::Copy($saved, $staged, $true)
             Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action { [System.IO.File]::Move($staged, $live, $true) }
         }
-        elseif ($liveExists) {
+        else {
             Invoke-CountdownWithFileLockRetry -RetrySeconds $RetrySeconds -Action { [System.IO.File]::Delete($live) }
         }
-        else { continue }
         $outcome = 'restored'
     }
-    $outcome
+    [pscustomobject]@{ Outcome = $outcome; LiveCopies = $liveCopies.ToArray() }
 }
 
 # 经 port 运行候选 EXE 的一个无界面命令；stdout 应是一份 JSON 报告，读不出时 Report 为 $null。
@@ -744,7 +754,7 @@ function Undo-CountdownInstall {
         [Parameter(Mandatory)] [int] $RetrySeconds
     )
 
-    $report = [ordered]@{ outcome = 'rollback-failed'; settings = $null; loginTask = $null; desktopShortcut = $null; problems = @() }
+    $report = [ordered]@{ outcome = 'rollback-failed'; settings = $null; settingsLiveCopies = @(); loginTask = $null; desktopShortcut = $null; problems = @() }
     $problems = [System.Collections.Generic.List[string]]::new()
     $note = { param([string] $What, [object] $ErrorRecord) $problems.Add((ConvertTo-CountdownBoundedError -Message "$What：$($ErrorRecord.Exception.Message)")) }
     $restarted = $null
@@ -768,7 +778,11 @@ function Undo-CountdownInstall {
     }
     if ($programBack) {
         if ($Transaction.ProgramReplaced) {
-            try { $report.settings = Restore-CountdownSettingsSnapshot -Layout $Layout -SnapshotDirectory $Transaction.SnapshotDirectory -RetrySeconds $RetrySeconds }
+            try {
+                $restoredSettings = Restore-CountdownSettingsSnapshot -Layout $Layout -SnapshotDirectory $Transaction.SnapshotDirectory -RetrySeconds $RetrySeconds
+                $report.settings = $restoredSettings.Outcome
+                $report.settingsLiveCopies = $restoredSettings.LiveCopies
+            }
             catch { & $note '恢复设置失败' $_ }
         }
         try { $report.loginTask = Restore-CountdownLoginTask -TaskName $TaskName -Session $Session -Transaction $Transaction -Ports $Ports }
@@ -1367,7 +1381,7 @@ function Install-CountdownProgram {
         settingsRehearsal = $null
         restartedProcess = $null
         # 回滚（#283）：outcome 为 not-needed（没有要撤回的改动，或新版本已达到启动就绪）、rolled-back 或 rollback-failed。
-        rollback = [ordered]@{ outcome = 'not-needed'; settings = $null; loginTask = $null; desktopShortcut = $null; problems = @() }
+        rollback = [ordered]@{ outcome = 'not-needed'; settings = $null; settingsLiveCopies = @(); loginTask = $null; desktopShortcut = $null; problems = @() }
         transactionMarkerPresent = $false
         diagnosticLogPath = $null
     }

@@ -1298,7 +1298,10 @@ try {
     # 生产 port 真的运行，在创建窗口之前返回、不开窗口；交互会话、进程、计划任务与目录改名仍是测试 port，新版本不会真的启动。
     # 设置都是夹具：等价的旧版本夹具是 schema v9（循环提醒已经开始，迁移出的 cursor 取决于迁移时刻）带两代备份，安装继续并
     # 提交；不等价反例是 schema v2，产品迁移得了，等价判定却只认 v3-v9 到 v10（unsupported-schema），安装失败、旧版本重新运行。
-    # 第三例的候选 EXE 不是可执行文件（测试包里的文本），演练没能完成，同样不换程序。各例现役设置与两代备份都与安装前逐字节相同。
+    # 另一个不等价反例（#282 AC5）是同一份 v9 在倒计时名称后多一个不是 UTF-8 的字节 0xFF：迁移命令宽松解码（读成 U+FFFD）照常
+    # 迁移，等价判定严格解码，判为 invalid-settings，安装同样失败。v3-v9 两侧的迁移算法相同（同一迁移时刻），真实演练里走不到
+    # data-mismatch。第三例的候选 EXE 不是可执行文件（测试包里的文本），演练没能完成，同样不换程序。各例现役设置与两代备份都与
+    # 安装前逐字节相同。
     Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
     $installerCommandPorts = $installerPorts.PSObject.Copy()
     $installerCommandPorts.RunHeadlessCommand = (New-CountdownInstallerWindowsPorts).RunHeadlessCommand
@@ -1309,9 +1312,12 @@ try {
         '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}'
         '{"schemaVersion":1,"timeZoneId":"China Standard Time","targetUtc":"2030-01-02T03:04:05.0000000+00:00"}'
     )
+    $installerFixtureCut = $installerFixtureV9.IndexOf('版本九倒计时') + '版本九倒计时'.Length
+    $installerFixtureV9InvalidUtf8 = [byte[]] @([System.Text.Encoding]::UTF8.GetBytes($installerFixtureV9.Substring(0, $installerFixtureCut)) + [byte] 0xFF + [System.Text.Encoding]::UTF8.GetBytes($installerFixtureV9.Substring($installerFixtureCut)))
     foreach ($realRehearsal in @(
             [pscustomobject]@{ Name = 'real-exe-v9-equivalent'; BuiltPackage = $true; Settings = $installerFixtureV9; Outcome = 'True||'; Report = 'equivalent|migrated|migrated' }
             [pscustomobject]@{ Name = 'real-exe-v2-not-equivalent'; BuiltPackage = $true; Settings = $installerFixtureV2; Outcome = 'False|settings-rehearsal|settings-not-equivalent'; Report = 'not-equivalent|migrated|unsupported-schema' }
+            [pscustomobject]@{ Name = 'real-exe-v9-invalid-utf8-not-equivalent'; BuiltPackage = $true; Settings = $installerFixtureV9InvalidUtf8; Outcome = 'False|settings-rehearsal|settings-not-equivalent'; Report = 'not-equivalent|migrated|invalid-settings' }
             [pscustomobject]@{ Name = 'real-port-unrunnable-candidate'; BuiltPackage = $false; Settings = $installerFixtureV9; Outcome = 'False|settings-rehearsal|settings-rehearsal-failed'; Report = 'failed||' }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $realRehearsal.Name
@@ -1319,7 +1325,8 @@ try {
         Initialize-CountdownInstallerTestInstalledVersion
         foreach ($member in @(@('settings.json', $realRehearsal.Settings), @('settings.json.backup1', $installerFixtureBackups[0]), @('settings.json.backup2', $installerFixtureBackups[1]))) {
             $memberPath = Join-Path $installerCase.Root $member[0]
-            [System.IO.File]::WriteAllText($memberPath, $member[1], $installerUtf8)
+            if ($member[1] -is [byte[]]) { [System.IO.File]::WriteAllBytes($memberPath, $member[1]) }
+            else { [System.IO.File]::WriteAllText($memberPath, $member[1], $installerUtf8) }
             [System.IO.File]::SetCreationTimeUtc($memberPath, $installerUserDataTimeUtc)
             [System.IO.File]::SetLastWriteTimeUtc($memberPath, $installerUserDataTimeUtc)
         }

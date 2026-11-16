@@ -112,7 +112,12 @@ function New-CountdownDeployFailure {
 function ConvertTo-CountdownDeployBoundedText {
     param([AllowNull()] [AllowEmptyString()] [string] $Text)
 
-    $value = ([string] $Text -replace '\s+', ' ').Trim()
+    # 部署错误与部署记录共用这一边界：Users 路径里的账户替换成 <user>，不把远端异常原文带出。
+    $value = [regex]::Replace([string] $Text, '(?i)([\\/]+Users[\\/]+)[^\\/:*?"<>|\r\n]+', {
+            param($Match)
+            $Match.Groups[1].Value + '<user>'
+        })
+    $value = ($value -replace '\s+', ' ').Trim()
     if ($value.Length -gt 400) { $value = $value.Substring(0, 400) + '…' }
     $value
 }

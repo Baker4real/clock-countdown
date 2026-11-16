@@ -127,7 +127,12 @@ $transactionInProgressNextStep = '另一个安装、切换或回退正在运行�
 
 function ConvertTo-CountdownSwitchBoundedText {
     param([AllowEmptyString()] [string] $Text)
-    $value = ([string] $Text -replace '\s+', ' ').Trim()
+    # 异常里的 Users 路径只保留形状，不写账户；截断在脱敏之后做。
+    $value = [regex]::Replace([string] $Text, '(?i)([\\/]+Users[\\/]+)[^\\/:*?"<>|\r\n]+', {
+            param($Match)
+            $Match.Groups[1].Value + '<user>'
+        })
+    $value = ($value -replace '\s+', ' ').Trim()
     if ($value.Length -gt 400) { $value = $value.Substring(0, 400) + '…' }
     $value
 }

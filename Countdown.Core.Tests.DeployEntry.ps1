@@ -155,8 +155,8 @@ function New-CountdownDeployTestCase {
     param([Parameter(Mandatory)] [string] $Name)
 
     $officeRoot = Join-Path $deployTestRoot "office-$Name"
-    # 交互用户的桌面也在假办公室里：只读调用前后的办公室现状连桌面一起比较。
-    $desktop = Join-Path $officeRoot 'desktop'
+    # 交互用户的桌面也在假办公室里：路径带账户哨兵，凡是它进入错误或结果都必须脱敏（#259 评审）。
+    $desktop = Join-Path $officeRoot "Users\$deployAccountSentinel\Desktop"
     New-Item -ItemType Directory -Path $officeRoot, $desktop -Force | Out-Null
     [pscustomobject]@{
         Name = $Name
@@ -707,15 +707,18 @@ try {
     finally { [System.IO.File]::WriteAllBytes($deployManifestPath, $deployManifestBytes) }
     Assert-CountdownDeployRejected -Deploy $deployOtherBuildRun -Reason 'build-output-invalid' -Names @("$($deployRepo.Head)-dirty") -Label 'Build output built from another state than HEAD'
 
-    # 连通性探测失败：远端执行入口连不上办公室（退出码 255、没有输出），部署在传输之前停下，办公室没有收到包。
+    # 连通性探测失败：远端执行入口的异常带一个账户目录，部署在传输之前停下，公开结果与记录只保留 <user>。
     $deployCase = New-CountdownDeployTestCase -Name 'probe'
-    $deployCase.Responses['read1'] = { param($Run) [pscustomobject]@{ ExitCode = 255; Output = ''; Host = $deployHostSentinel; User = $deployAccountSentinel } }
+    $deployCase.Responses['read1'] = { param($Run) throw "读不到 C:\Users\$deployAccountSentinel\Desktop 下的状态。" }
     $deployProbe = Invoke-CountdownDeployTest -Label 'probe failure'
     Assert-Equal 'failed|False|probe|probe-failed' "$($deployProbe.Result.outcome)|$($deployProbe.Result.succeeded)|$($deployProbe.Result.failedStep)|$($deployProbe.Result.reason)" "A failed probe fails the deploy at the probe: $($deployProbe.Result.error)"
     Assert-Equal 'remote-read' ($deployCase.Calls -join ',') 'A failed probe stops the deploy before any transfer'
     Assert-Equal $false (Test-Path -LiteralPath $deployCase.StagingRoot) 'A failed probe leaves no staging directory on the office'
-    Assert-Equal 'probe' ([string] ([System.IO.File]::ReadAllText([string] $deployProbe.Result.recordPath) | ConvertFrom-Json).failedStep) 'The deployment record names the failed probe'
+    $deployProbeRecordText = [System.IO.File]::ReadAllText([string] $deployProbe.Result.recordPath)
+    Assert-Equal 'probe' ([string] ($deployProbeRecordText | ConvertFrom-Json).failedStep) 'The deployment record names the failed probe'
+    Assert-Equal $true ([string] $deployProbe.Result.error).Contains('C:\Users\<user>\Desktop', [System.StringComparison]::OrdinalIgnoreCase) "The probe error keeps the path shape with the account redacted: $($deployProbe.Result.error)"
     Assert-CountdownDeployNoLeak -Text $deployProbe.Text -Name 'Probe failure standard output'
+    Assert-CountdownDeployNoLeak -Text $deployProbeRecordText -Name 'Probe failure deployment record'
 
     # 传输失败：传输入口报告失败，部署停在传输，不运行安装。
     $deployCase = New-CountdownDeployTestCase -Name 'transfer'
@@ -833,7 +836,7 @@ try {
         $deployCase.Tasks[$deployCase.TaskName] = [pscustomobject]@{
             State = 'Ready'
             Enabled = $true
-            Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = 'C:\Program Files\PowerShell\7\pwsh.exe'; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $oldRoot '敏敏子倒计时.ps1')`""; WorkingDirectory = $oldRoot })
+            Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = "C:\Users\$deployAccountSentinel\AppData\Local\Microsoft\WindowsApps\pwsh.exe"; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $oldRoot '敏敏子倒计时.ps1')`""; WorkingDirectory = $oldRoot })
             Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $deploySessionSid })
             UserSid = $deploySessionSid
             LogonType = 'Interactive'
@@ -870,6 +873,7 @@ try {
     Assert-Equal 'False|False|敏敏子倒计时.lnk' "$(Test-Path -LiteralPath (Join-Path $deployOldRoot '敏敏子倒计时.ps1'))|$(Test-Path -LiteralPath (Join-Path $deployOldRoot 'CountdownLauncher.exe'))|$(@(Get-ChildItem -LiteralPath $deployCase.Desktop -Force | ForEach-Object { $_.Name }) -join ',')" 'The switch through the deploy entry removes the old files and leaves the shortcut on the desktop'
     Assert-Equal $true ($deployCase.MaxEncodedLength -gt 0 -and $deployCase.MaxEncodedLength -le 29000) "The switch's remote scripts fit the remote entry's encoded command limit: $($deployCase.MaxEncodedLength)"
     Assert-CountdownDeployNoLeak -Text $deploySwitched.Text -Name 'Layout switch standard output'
+    Assert-CountdownDeployNoLeak -Text ([System.IO.File]::ReadAllText([string] $deploySwitch.recordPath)) -Name 'Layout switch deployment record'
 
     # 另一个运行持有全机安装锁时，回退在办公室上被拒绝，什么都没改：结论是 rejected，下一步是等它结束、先读状态。
     $deploySwitchedState = Get-CountdownDeployTestOfficeState

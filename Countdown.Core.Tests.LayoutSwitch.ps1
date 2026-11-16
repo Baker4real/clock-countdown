@@ -424,11 +424,13 @@ try {
     # 备份不完整时切换不开始：备份途中读不了安装根里的一个文件（被别的程序独占打开）。切换删掉写了一半的备份，经登录任务
     # 重新启动旧版本，安装根、两个任务与桌面都没动（运行状态回执由重新启动的旧版本重写）。
     $switchCase = New-CountdownSwitchTestCase -Name 'backup-fails'
+    # 桌面路径带账户哨兵，备份失败底层异常会带完整路径；公开结果只能保留 <user>（#259 评审）。
+    $switchCase.Desktop = Join-Path $switchTestRoot 'Users\layout-switch-account-sentinel\Desktop'
     Initialize-CountdownSwitchTestOldLayout
     $rootBefore = Get-CountdownSwitchTestTree -Root $switchCase.Root -Exclude 'runtime-status.json'
     $tasksBefore = Get-CountdownSwitchTestTaskDefinitions
     $desktopBefore = Get-CountdownSwitchTestTree -Root $switchCase.Desktop
-    $exclusiveHandle = [System.IO.File]::Open((Join-Path $switchCase.Root 'user-notes.txt'), 'Open', 'Read', 'None')
+    $exclusiveHandle = [System.IO.File]::Open((Join-Path $switchCase.Desktop '敏敏子倒计时.exe'), 'Open', 'Read', 'None')
     try { $backupFails = Invoke-CountdownSwitchTest }
     finally { $exclusiveHandle.Dispose() }
     Assert-Equal 'False|backup|False|False' "$($backupFails.succeeded)|$($backupFails.failedStage)|$($backupFails.backup.complete)|$(Test-Path -LiteralPath $switchCase.Backup)" 'A backup that cannot read a file of the install root stops the switch and removes the half-written backup'
@@ -436,6 +438,8 @@ try {
     Assert-Equal $tasksBefore (Get-CountdownSwitchTestTaskDefinitions) 'A failed backup leaves both tasks as they were'
     Assert-Equal $desktopBefore (Get-CountdownSwitchTestTree -Root $switchCase.Desktop) 'A failed backup leaves the desktop as it was'
     Assert-Equal '1|7001|4103,7001' "$($backupFails.stoppedProcessCount)|$($backupFails.restartedProcess.processId)|$(Get-CountdownSwitchTestRunning)" 'After a failed backup the old version runs again, started through its login task'
+    Assert-Equal $false ($switchCase.Json.Contains('layout-switch-account-sentinel', [System.StringComparison]::OrdinalIgnoreCase)) 'A backup failure does not leak the account from the desktop path'
+    Assert-Equal $true (([string] $backupFails.error).Contains('Users\<user>\Desktop', [System.StringComparison]::OrdinalIgnoreCase)) "The backup failure keeps the useful path shape with the account redacted: $($backupFails.error)"
 
     # 已有一份不完整的备份（上一次在备份途中被打断，没写下 backup.json）：切换在前置检查停下，不停应用，什么都不动。
     $switchCase = New-CountdownSwitchTestCase -Name 'incomplete-backup'

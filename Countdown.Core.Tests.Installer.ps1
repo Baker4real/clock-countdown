@@ -554,8 +554,9 @@ try {
     $installerCase = New-CountdownInstallerTestCase -Name 'login-task-update'
     Initialize-CountdownInstallerTestInstalledVersion
     $installerCase.Processes[0].StartedByTask = $null
-    $legacyPwsh = Join-Path (Split-Path -Parent $installerCase.Root) 'no-such-pwsh\pwsh.exe'
-    $legacyArguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $installerCase.Root '敏敏子倒计时.ps1')`""
+    # 旧任务的改前值故意带账户目录：结果只能写脱敏后的 <user>，不能把路径里的账号写进 stdout JSON（#259 评审）。
+    $legacyPwsh = 'C:\Users\installer-account-sentinel\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
+    $legacyArguments = '-NoLogo -NoProfile -STA -File "C:\Users\installer-account-sentinel\Desktop\敏敏子倒计时.ps1"'
     $installerCase.Tasks[$installerCase.TaskName] = [pscustomobject]@{
         State = 'Disabled'
         Enabled = $false
@@ -578,7 +579,7 @@ try {
     Assert-Equal 'updated' ([string] $taskUpdate.loginTask.action) 'Result JSON reports the mismatched login task as updated'
     $expectedTaskChanges = @(
         'enabled=False->True'
-        "action=Exec $legacyPwsh $legacyArguments (in $($installerCase.Root))->Exec $($installerCase.ExePath)"
+        'action=Exec C:\Users\<user>\AppData\Local\Microsoft\WindowsApps\pwsh.exe -NoLogo -NoProfile -STA -File "C:\Users\<user>\Desktop\敏敏子倒计时.ps1" (in ' + $installerCase.Root + ')->Exec ' + $installerCase.ExePath
         'trigger=Logon for other user->Logon for interactive user'
         'principal=other user->interactive user'
         'logonType=Password->Interactive'

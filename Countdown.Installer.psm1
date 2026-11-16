@@ -1096,7 +1096,12 @@ function New-CountdownInstallChange {
         [AllowNull()] [object] $After
     )
 
-    $bound = { param($Value) if ($Value -is [string] -and $Value.Length -gt 1000) { $Value.Substring(0, 1000) + '…' } else { $Value } }
+    $bound = {
+        param($Value)
+        if ($Value -isnot [string]) { return $Value }
+        $publicValue = ConvertTo-CountdownInstallPublicText -Text $Value
+        if ($publicValue.Length -gt 1000) { $publicValue.Substring(0, 1000) + '…' } else { $publicValue }
+    }
     [ordered]@{ item = $Item; before = & $bound $Before; after = & $bound $After }
 }
 
@@ -1265,10 +1270,20 @@ function Wait-CountdownStartupReady {
     throw (New-CountdownInstallRejection -Reason 'startup-not-ready' -Message "$TimeoutSeconds 秒内没有达到启动就绪：$reason")
 }
 
+# 公开结果保留本机 Users 路径的形状，但把账户一段换成 <user>；替换是幂等的。
+function ConvertTo-CountdownInstallPublicText {
+    param([AllowNull()] [AllowEmptyString()] [string] $Text)
+
+    [regex]::Replace([string] $Text, '(?i)([\\/]+Users[\\/]+)[^\\/:*?"<>|\r\n]+', {
+            param($Match)
+            $Match.Groups[1].Value + '<user>'
+        })
+}
+
 function ConvertTo-CountdownBoundedError {
     param([AllowEmptyString()] [string] $Message)
 
-    $text = ($Message -replace '\s+', ' ').Trim()
+    $text = ((ConvertTo-CountdownInstallPublicText -Text $Message) -replace '\s+', ' ').Trim()
     if ($text.Length -gt 400) { $text = $text.Substring(0, 400) + '…' }
     $text
 }

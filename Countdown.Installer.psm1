@@ -94,8 +94,9 @@ function Resolve-CountdownInstallerLayout {
     $layout
 }
 
+# 全机安装锁按线程归属：持有它的线程再取会重入成功（切换在同一线程里调用安装器，#289），各自放开时只减去自己那一层。
 function Enter-CountdownInstallLock {
-    param([Parameter(Mandatory)] [string] $Name)
+    param([ValidateNotNullOrEmpty()] [string] $Name = $script:InstallLockName)
 
     $mutex = [System.Threading.Mutex]::new($false, $Name)
     $acquired = $false
@@ -1690,4 +1691,5 @@ function New-CountdownInstallerWindowsPorts {
     }
 }
 
-Export-ModuleMember -Function Install-CountdownProgram, New-CountdownInstallerWindowsPorts
+# 安装锁另供切换脚本（#287）在整个切换与回退期间持有。
+Export-ModuleMember -Function Install-CountdownProgram, New-CountdownInstallerWindowsPorts, Enter-CountdownInstallLock, Exit-CountdownInstallLock

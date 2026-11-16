@@ -16,6 +16,8 @@ $statusCommit = '5e1a7b2c9d3f4e6a8b0c1d2e3f405162738495a6'
 $statusAggregate = '0F1E2D3C4B5A69788796A5B4C3D2E1F00F1E2D3C4B5A69788796A5B4C3D2E1F0'
 # 设置正文、账号和进程命令行只出现在夹具里；任何一个出现在输出里都算泄漏。
 $statusPrivacySentinels = @('settings-content-sentinel-276', 'status-account-sentinel', 'status-commandline-sentinel', 'MINMIN-OFFICE')
+# 每次运行用自己的安装锁名，不读本机真实安装的全机锁。
+$statusLockName = 'Local\MinminCountdownStatusTest-' + [guid]::NewGuid().ToString('N')
 $statusCase = $null
 
 # 测试 port 只读当前 $statusCase：状态脚本回调时按动态作用域解析到这里的变量。
@@ -99,7 +101,7 @@ function Invoke-CountdownStatusTestRead {
     param([Parameter(Mandatory)] [string] $Label)
 
     $before = Get-CountdownStatusTestTreeState -Root $statusCase.Root
-    $output = @(& $statusScript -InstallRoot $statusCase.Root -TaskName $statusCase.TaskName -Port $statusPort)
+    $output = @(& $statusScript -InstallRoot $statusCase.Root -TaskName $statusCase.TaskName -Port $statusPort -LockName $statusLockName)
     Assert-Equal $before (Get-CountdownStatusTestTreeState -Root $statusCase.Root) "Status read leaves every file and directory in the install root unchanged: $Label"
     Assert-Equal 1 $output.Count "Status writes exactly one JSON document: $Label"
     $text = [string] $output[0]
@@ -135,6 +137,23 @@ try {
     Assert-Equal '2026-11-01T08:30:00.0000000Z' ([string] $running.settings.lastWriteTimeUtc) 'Status reports the settings modification time in UTC'
     Assert-Equal $statusSettingsSha256 ([string] $running.settings.sha256) 'Status reports the settings SHA-256'
     Assert-Equal $false ([bool] $running.transactionMarkerPresent) 'Status reports no unfinished install transaction'
+    Assert-Equal $false $running.installInProgress 'Status reports no install, switch or rollback in progress while nobody holds the install lock'
+
+    # 另一个运行持有全机安装锁（安装、切换或回退正在进行）：状态命令只看锁在不在，读到有运行在进行；它不取锁、不等待。
+    $statusLockHolder = Start-CountdownTestLockHolder -Name $statusLockName
+    try { $statusInProgress = Invoke-CountdownStatusTestRead -Label 'install lock held' }
+    finally { Stop-CountdownTestLockHolder -Holder $statusLockHolder }
+    Assert-Equal $true $statusInProgress.installInProgress 'Status reports a run in progress while another process holds the install lock'
+    Assert-Equal $false (Invoke-CountdownStatusTestRead -Label 'install lock released').installInProgress 'Status reports no run in progress after the install lock is released'
+
+    # 全机安装锁的名字有三份：新安装器、旧安装器（Countdown.InstallTransaction.psm1）与自成一体的状态命令的默认值。
+    # 三份相同，新旧安装器与切换才互斥，状态命令也才读得到正在进行的运行。
+    $statusLockParameter = @([System.Management.Automation.Language.Parser]::ParseFile($statusScript, [ref] $null, [ref] $null).ParamBlock.Parameters |
+            Where-Object { $_.Name.VariablePath.UserPath -eq 'LockName' })
+    $statusDefaultLockName = if ($statusLockParameter.Count -eq 1 -and $null -ne $statusLockParameter[0].DefaultValue) { [string] $statusLockParameter[0].DefaultValue.SafeGetValue() }
+    $installerLockNameValue = & (Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force -PassThru) { $script:InstallLockName }
+    $oldInstallerLockName = & (Get-Module Countdown.InstallTransaction) { $script:CountdownInstallMutexName }
+    Assert-Equal "Global\MinminCountdownInstallTransaction-v1|$oldInstallerLockName|$oldInstallerLockName" "$oldInstallerLockName|$installerLockNameValue|$statusDefaultLockName" 'The new installer, the old installer and the status command name the same machine-wide install lock'
 
     # 应用未运行：只有别处的同名进程。
     $statusCase.Processes = @(New-CountdownStatusTestProcess -ProcessId 4243 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe')
@@ -233,7 +252,7 @@ try {
     # 远端执行入口把整条命令限制在 30000 字符内（UTF-16 的 Base64 加上约 1000 字符的前缀）。
     $statusEncodedLength = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes('& {' + $statusSource.TrimEnd() + "`n}")).Length
     Assert-Equal $true ($statusEncodedLength -le 29000) "Status command fits the remote entry's encoded command limit: $statusEncodedLength"
-    $realCommand = '& {' + $statusSource.TrimEnd() + "`n} -InstallRoot '" + $realRoot.Replace("'", "''") + "' -TaskName '" + $realTaskName + "'"
+    $realCommand = '& {' + $statusSource.TrimEnd() + "`n} -InstallRoot '" + $realRoot.Replace("'", "''") + "' -TaskName '" + $realTaskName + "' -LockName '" + $statusLockName + "'"
     $realOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -EncodedCommand ([Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($realCommand))))
     Assert-Equal 0 $LASTEXITCODE 'Status command runs as a script block with real Windows queries'
     Assert-Equal '' (Get-CountdownStatusTestTreeState -Root $realRoot) 'Status command with real Windows queries creates nothing in the install root'
@@ -248,6 +267,7 @@ try {
     Assert-Equal $false ([bool] $realStatus.loginTask.present) 'Real status reports a task that does not exist as missing'
     Assert-Equal $false ([bool] $realStatus.settings.present) 'Real status reports the settings file missing'
     Assert-Equal $false ([bool] $realStatus.transactionMarkerPresent) 'Real status reports no transaction marker'
+    Assert-Equal $false $realStatus.installInProgress 'Real status reports no run in progress for an install lock nobody holds'
     $identityLeaks = @(@($env:COMPUTERNAME, $env:USERNAME) | Where-Object { [string] $_ -and ([string] $_).Length -ge 4 -and $realText.IndexOf([string] $_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 })
     Assert-Equal 0 $identityLeaks.Count 'Real status output carries no host name or account'
 

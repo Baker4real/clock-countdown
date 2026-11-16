@@ -833,6 +833,16 @@ try {
     Assert-Equal $true ($deployCase.MaxEncodedLength -gt 0 -and $deployCase.MaxEncodedLength -le 29000) "The switch's remote scripts fit the remote entry's encoded command limit: $($deployCase.MaxEncodedLength)"
     Assert-CountdownDeployNoLeak -Text $deploySwitched.Text -Name 'Layout switch standard output'
 
+    # 另一个运行持有全机安装锁时，回退在办公室上被拒绝，什么都没改：结论是 rejected，下一步是等它结束、先读状态。
+    $deploySwitchedState = Get-CountdownDeployTestOfficeState
+    $deployCase.Calls.Clear()
+    $deployLockHolder = Start-CountdownTestLockHolder -Name $deployLockName
+    try { $deployRollbackLocked = Invoke-CountdownDeployTest -Label 'layout rollback while another run holds the install lock' -LayoutRollback }
+    finally { Stop-CountdownTestLockHolder -Holder $deployLockHolder }
+    Assert-Equal 'rejected|False|rollback|transaction-in-progress|remote-write' "$($deployRollbackLocked.Result.outcome)|$($deployRollbackLocked.Result.succeeded)|$($deployRollbackLocked.Result.failedStep)|$($deployRollbackLocked.Result.reason)|$($deployCase.Calls -join ',')" "A rollback refused on the office for a run in progress is rejected: $($deployRollbackLocked.Result.error)"
+    Assert-Equal $true ([string] $deployRollbackLocked.Result.nextStep).Contains('-StatusOnly') "A rollback refused for a run in progress tells to wait and read the status first: $($deployRollbackLocked.Result.nextStep)"
+    Assert-Equal $deploySwitchedState (Get-CountdownDeployTestOfficeState) 'A rollback refused for a run in progress changes nothing on the office'
+
     # 回退经新部署入口：一次写操作运行备份里的回退脚本；安装根、登录任务与桌面启动器回到切换前，旧版本经恢复的任务重新启动；
     # 本地记录写下回退结果。
     $deployCase.Calls.Clear()
@@ -852,6 +862,27 @@ try {
     $deployCase.Calls.Clear()
     $deployBothModes = Invoke-CountdownDeployTest -Label 'switch and rollback together' -LayoutSwitch -LayoutRollback
     Assert-Equal 'rejected|conflicting-modes|' "$($deployBothModes.Result.outcome)|$($deployBothModes.Result.reason)|$($deployCase.Calls -join ',')" 'Asking for two modes at once is rejected before contacting the office'
+
+    # 办公室上另一个安装、切换或回退正在运行（持有全机安装锁）：只查状态读到有运行在进行；部署与布局切换都在办公室上被拒绝，
+    # 什么都没改。结论是 rejected（不是失败），下一步是等它结束、先读状态。
+    $deployCase = New-CountdownDeployTestCase -Name 'locked'
+    New-Item -ItemType Directory -Path $deployCase.StagingRoot -Force | Out-Null
+    $deployLockedBefore = Get-CountdownDeployTestOfficeState
+    $deployLockedRuns = [ordered]@{}
+    $deployLockHolder = Start-CountdownTestLockHolder -Name $deployLockName
+    try {
+        $deployLockedStatus = Invoke-CountdownDeployTest -Label 'status read while another run holds the install lock' -StatusOnly
+        foreach ($deployLockedMode in @('deploy', 'layout-switch')) {
+            $deployCase.Calls.Clear()
+            $deployLockedRun = Invoke-CountdownDeployTest -Label "$deployLockedMode while another run holds the install lock" -LayoutSwitch:($deployLockedMode -eq 'layout-switch')
+            $deployLockedRuns[$deployLockedMode] = "$($deployLockedRun.Result.outcome)|$($deployLockedRun.Result.succeeded)|$($deployLockedRun.Result.failedStep)|$($deployLockedRun.Result.reason)|$($deployCase.Calls -join ',')|$(([string] $deployLockedRun.Result.nextStep).Contains('-StatusOnly'))"
+        }
+    }
+    finally { Stop-CountdownTestLockHolder -Holder $deployLockHolder }
+    Assert-Equal $true $deployLockedStatus.Result.status.installInProgress 'Status-only mode reads a run in progress while another run holds the install lock'
+    Assert-Equal 'rejected|False|install|install-in-progress|remote-read,transfer,remote-write|True' $deployLockedRuns['deploy'] 'A deploy refused on the office for a run in progress is rejected and tells to wait and read the status first'
+    Assert-Equal 'rejected|False|install|transaction-in-progress|remote-read,transfer,remote-write|True' $deployLockedRuns['layout-switch'] 'A layout switch refused on the office for a run in progress is rejected and tells to wait and read the status first'
+    Assert-Equal $deployLockedBefore (Get-CountdownDeployTestOfficeState) 'A deploy and a layout switch refused for a run in progress change nothing on the office'
 
     # 切换中途失败（罐装的切换结果：新安装器注册登录任务失败并已回滚，备份完整保留）：部署入口报告失败，下一步带上切换脚本
     # 给的那句，再说明经部署入口怎么接着切换或回退。

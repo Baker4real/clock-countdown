@@ -8,8 +8,9 @@ $ErrorActionPreference = 'Stop'
 # 解包并运行包内安装器 → 只读状态读取（提交、EXE 哈希与运行中的进程都与预期一致才算成功）→ 本地部署记录。
 # 只查状态：一次只读状态读取，不做任何改动。
 # 部署的结论 outcome 只有五种：deployed；already-running（探测读到当前提交已在运行，不传输、不安装）；rejected（连接远端之前就停下，
-# reason 写明缺什么）；failed（安装失败时 rollback 是安装器报告的回滚结果）；unknown（拿不到安装结果或安装后的状态，
-# 既不算成功也不算失败）。办公室现状不确定时 nextStep 提示先查状态。回退成功的结论是 rolled-back。
+# reason 写明缺什么；或办公室上另一个安装、切换或回退正在运行，包内入口什么都没改就停下）；failed（安装失败时 rollback 是安装器
+# 报告的回滚结果）；unknown（拿不到安装结果或安装后的状态，既不算成功也不算失败）。办公室现状不确定时 nextStep 提示先查状态。
+# 回退成功的结论是 rolled-back。
 # 一次性布局切换（#287）：-LayoutSwitch 与部署同一流程，包里另带切换脚本，远端写操作运行它（备份、经包内安装器换布局、移除遗留），
 # 探测读到当前提交已在运行也照常切换；-LayoutRollback 一次远端写操作运行办公室备份里的回退脚本，不打包、不传输。
 # 远端执行与传输经 port 调用：生产用 New-CountdownDeployerHostPorts 接主机受管的远端执行入口与传输入口，测试注入假 port。
@@ -30,7 +31,11 @@ $script:RollbackOutcomes = [ordered]@{
     'rollback-failed' = '回滚也失败了，办公室可能停在半安装的状态。'
 }
 # 办公室现状不确定时（结果未知、回滚失败或安装器没报回滚结果）给维护者的下一步。
-$script:ReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态：transactionMarkerPresent 为 true（有未完成的安装）时重新执行部署，安装器会先恢复再安装（恢复不了时安装停在 recovery 阶段，结果的 install.recovery 写明原因）；状态显示本次提交已在运行就不用再做什么。'
+$script:ReadStatusFirst = '先运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次办公室的状态：installInProgress 为 true（另一个安装、切换或回退还在运行）时等它结束再读；transactionMarkerPresent 为 true（有未完成的安装）时重新执行部署，安装器会先恢复再安装（恢复不了时安装停在 recovery 阶段，结果的 install.recovery 写明原因）；状态显示本次提交已在运行就不用再做什么。'
+# 办公室上另一个安装、切换或回退正在运行（持有全机安装锁）时包内入口报告的原因：安装器的 install-in-progress，切换与回退的
+# transaction-in-progress。它们什么都没改就停下，部署的结论是 rejected。
+$script:InProgressReasons = @('install-in-progress', 'transaction-in-progress')
+$script:InProgressNextStep = '办公室上另一个安装、切换或回退正在运行，这次什么都没改：等它结束，再运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次状态（installInProgress 为 false 之后再看其余各项），据此决定要不要重新运行；它还在运行时不要再部署、切换或回退。'
 
 # 写操作脚本的第一条语句（param 块之后）必须是对执行目标的断言：主机的远端执行入口缺了它就拒绝执行。
 # 包内入口 __ENTRY__ 是安装器，布局切换时是切换脚本（两者参数相同，都输出一份结果 JSON）。
@@ -75,6 +80,7 @@ try {
     if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw "没有切换前的备份：$entry 不在。" }
     $arguments = @{ Rollback = $true; InstallRoot = $installRoot; TaskName = __TASK_NAME__ }
     if ($null -ne $Port) { $arguments.Port = $Port }
+    if ($LockName) { $arguments.LockName = $LockName }
     $envelope.rollbackStarted = $true
     $envelope.rollback = @(& $entry @arguments) -join "`n"
 }
@@ -104,12 +110,12 @@ function Test-CountdownDeployTrue {
 }
 
 # 带原因类别的失败：原因类别写进结果的 reason，消息写明缺什么或哪里不对。结论默认按是否已经连接远端定为拒绝或失败；
-# 不知道办公室上发生了什么时给 -Outcome unknown。
+# 不知道办公室上发生了什么时给 -Outcome unknown，办公室上什么都没改就拒绝了（另一个运行在进行）时给 -Outcome rejected。
 function New-CountdownDeployFailure {
     param(
         [Parameter(Mandatory)] [string] $Reason,
         [Parameter(Mandatory)] [string] $Message,
-        [ValidateSet('unknown')] [string] $Outcome
+        [ValidateSet('unknown', 'rejected')] [string] $Outcome
     )
 
     $exception = [System.InvalidOperationException]::new($Message)
@@ -486,9 +492,10 @@ function Write-CountdownDeployStatusScript {
 
     $statusSource = [System.IO.File]::ReadAllText((Join-Path $RepositoryRoot $script:StatusScriptName))
     $text = @(
-        'param([object] $Port)'
+        'param([object] $Port, [string] $LockName)'
         "`$arguments = @{ InstallRoot = $(ConvertTo-CountdownDeployLiteral -Value $InstallRoot); TaskName = $(ConvertTo-CountdownDeployLiteral -Value $TaskName) }"
         'if ($null -ne $Port) { $arguments.Port = $Port }'
+        'if ($LockName) { $arguments.LockName = $LockName }'
         '& {'
         $statusSource.TrimEnd()
         '} @arguments'
@@ -624,8 +631,9 @@ function New-CountdownDeployRunId {
 }
 
 # 按切换前的备份回退（#287）：一次远端写操作运行办公室备份里的回退脚本，取回它的结果 JSON（结果的 rollback）；本机不需要
-# 构建输出，不打包、不传输。结论 outcome：rolled-back（succeeded 为 true）；failed（没有备份，或回退报告失败，nextStep 是回退
-# 给的下一步）；unknown（succeeded 为 null：连接在回退途中断开，或回退开始运行却没给结果）。写一份本地记录。
+# 构建输出，不打包、不传输。结论 outcome：rolled-back（succeeded 为 true）；rejected（另一个安装、切换或回退正在运行，回退什么都
+# 没改，nextStep 是等它结束、先读状态）；failed（没有备份，或回退报告失败，nextStep 是回退给的下一步）；unknown（succeeded 为
+# null：连接在回退途中断开，或回退开始运行却没给结果）。写一份本地记录。
 function Invoke-CountdownDeployLayoutRollback {
     param(
         [Parameter(Mandatory)] [string] $RecordRoot,
@@ -678,6 +686,9 @@ function Invoke-CountdownDeployLayoutRollback {
             throw (New-CountdownDeployFailure -Reason 'rollback-failed' -Message "回退没有开始，办公室没有改动：$envelopeError")
         }
         $result.rollback = $rollback
+        if (-not $rollback.succeeded -and [string] (Get-CountdownDeployProperty -Object $rollback -Name 'reason') -cin $script:InProgressReasons) {
+            throw (New-CountdownDeployFailure -Reason ([string] $rollback.reason) -Outcome 'rejected' -Message "办公室上另一个安装、切换或回退正在运行，回退没有开始：$(Get-CountdownDeployProperty -Object $rollback -Name 'error')")
+        }
         if (-not $rollback.succeeded) {
             $result.nextStep = [string] (Get-CountdownDeployProperty -Object $rollback -Name 'nextStep')
             throw (New-CountdownDeployFailure -Reason 'rollback-failed' -Message ("回退报告失败（阶段 $(Get-CountdownDeployProperty -Object $rollback -Name 'failedStage')，" +
@@ -695,6 +706,7 @@ function Invoke-CountdownDeployLayoutRollback {
         $result.succeeded = if ($result.outcome -ceq 'unknown') { $null } else { $false }
         $result.error = ConvertTo-CountdownDeployBoundedText -Text $_.Exception.Message
         if ($result.outcome -ceq 'unknown') { $result.nextStep = $script:RollbackReadStatusFirst }
+        if ($result.outcome -ceq 'rejected') { $result.nextStep = $script:InProgressNextStep }
     }
     finally { Remove-CountdownDeployWorkDirectory -Path $workDirectory }
 
@@ -702,6 +714,7 @@ function Invoke-CountdownDeployLayoutRollback {
     Complete-CountdownDeployRecord -Result $result -RecordRoot $RecordRoot
     $conclusion = switch ($result.outcome) {
         'rolled-back' { '已按切换前的备份回退，旧版本在办公室运行。' }
+        'rejected' { "停在 $($result.failedStep)，办公室没有改动：$($result.error)" }
         'unknown' { "停在 $($result.failedStep)，不知道办公室上的结果：$($result.error)" }
         default { "停在 $($result.failedStep)：$($result.error)" }
     }
@@ -742,8 +755,8 @@ function Invoke-CountdownDeployment {
     .DESCRIPTION
     部署成功只看安装后的只读状态读取：提交是 HEAD、已安装 EXE 的哈希等于本机构建输出、达到启动就绪的进程仍在运行。
     连通性探测本身是一次只读状态读取（结果的 statusBefore）；它显示当前提交已在运行、没有未完成的安装时，结论是
-    already-running，不传输、不安装。结论 outcome：deployed、already-running（succeeded 为 true）；rejected（连接远端之前停下）、
-    failed（succeeded 为 false）；unknown（succeeded 为 null：拿不到安装结果或安装后的状态，不知道办公室上的结果）。
+    already-running，不传输、不安装。结论 outcome：deployed、already-running（succeeded 为 true）；rejected（连接远端之前停下，
+    或办公室上另一个安装、切换或回退正在运行、包内入口什么都没改，后者 nextStep 是等它结束、先读状态）、failed（succeeded 为 false）；unknown（succeeded 为 null：拿不到安装结果或安装后的状态，不知道办公室上的结果）。
     failedStep 是停下的步骤，reason 是原因类别，error 写明缺什么或哪里不对；安装失败时 rollback 是安装器报告的回滚结果
     （not-needed、rolled-back、rollback-failed，没报时为 null）；办公室现状不确定时 nextStep 提示先查状态。
     预检通过后无论成败都写一份本地部署记录（<RecordRoot>\<运行编号>\deployment-record.json）：提交、包哈希、安装结果、
@@ -903,6 +916,11 @@ function Invoke-CountdownDeployment {
                 $result.rollback = 'not-needed'
                 throw (New-CountdownDeployFailure -Reason 'install-failed' -Message "包没能交给$($entryLabel)（$($result.install.error)）：$($entryLabel)没有运行，办公室的安装没有改动。")
             }
+            # 办公室上另一个安装、切换或回退正在运行：包内入口在全机安装锁处什么都没改就停下。
+            if (-not $result.install.succeeded -and [string] (Get-CountdownDeployProperty -Object $result.install -Name 'reason') -cin $script:InProgressReasons) {
+                $result.rollback = 'not-needed'
+                throw (New-CountdownDeployFailure -Reason ([string] $result.install.reason) -Outcome 'rejected' -Message "办公室上另一个安装、切换或回退正在运行，包内$($entryLabel)什么都没改：$(Get-CountdownDeployProperty -Object $result.install -Name 'error')")
+            }
             if (-not $result.install.succeeded) {
                 $rollback = [string] (Get-CountdownDeployProperty -Object (Get-CountdownDeployProperty -Object $result.install -Name 'rollback') -Name 'outcome')
                 $result.rollback = if ($rollback -cin @($script:RollbackOutcomes.Keys)) { $rollback } else { $null }
@@ -947,9 +965,11 @@ function Invoke-CountdownDeployment {
     if ($result.outcome -ceq 'unknown' -or ($result.failedStep -ceq 'install' -and $result.rollback -cnotin @('rolled-back', 'not-needed'))) {
         $result.nextStep = $script:ReadStatusFirst
     }
+    $inProgress = $remoteContacted -and $result.outcome -ceq 'rejected'
+    if ($inProgress) { $result.nextStep = $script:InProgressNextStep }
     # 切换脚本可能运行过、切换却没有成功时：先是切换脚本自己给的下一步（备份在不在、能不能接着做），再说经部署入口怎么做。
-    # 停在传输之前（探测、传输失败）时切换没有开始，没有这一句。
-    if ($LayoutSwitch -and $result.failedStep -cin @('install', 'status')) {
+    # 停在传输之前（探测、传输失败）时切换没有开始，没有这一句；另一个运行在进行时只说等它结束、先读状态。
+    if ($LayoutSwitch -and $result.failedStep -cin @('install', 'status') -and -not $inProgress) {
         $switchNextStep = [string] (Get-CountdownDeployProperty -Object $result.install -Name 'nextStep')
         $result.nextStep = (@($switchNextStep, $result.nextStep, $script:LayoutSwitchNextStep) | Where-Object { $_ }) -join ''
     }
@@ -963,7 +983,7 @@ function Invoke-CountdownDeployment {
         { $_ -ceq 'deployed' -and $LayoutSwitch } { "布局切换完成，提交 $($result.commit.Substring(0, 7)) 以新布局在办公室运行；切换前的备份留在办公室上。"; break }
         'deployed' { "部署成功，提交 $($result.commit.Substring(0, 7)) 正在办公室运行。" }
         'already-running' { "提交 $($result.commit.Substring(0, 7)) 已在办公室运行，没有重复安装。" }
-        'rejected' { "停在 $($result.failedStep)，没有连接办公室：$($result.error)" }
+        'rejected' { if ($inProgress) { "停在 $($result.failedStep)，办公室没有改动：$($result.error)" } else { "停在 $($result.failedStep)，没有连接办公室：$($result.error)" } }
         'unknown' { "停在 $($result.failedStep)，不知道办公室上的结果：$($result.error)" }
         default { "停在 $($result.failedStep)：$($result.error)" }
     }

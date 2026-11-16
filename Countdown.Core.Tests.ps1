@@ -108,6 +108,52 @@ function Remove-CountdownIsolatedTestTree {
     Remove-Item -LiteralPath $resolvedPath -Force
 }
 
+# 另一个运行持有全机安装锁：另一个线程取得测试自己的锁名并一直持有，直到 Stop-CountdownTestLockHolder 放开。
+# 安装锁按线程归属，同一线程再取会重入成功，所以持有者与探测都在别的线程里。
+function Start-CountdownTestLockHolder {
+    param([Parameter(Mandatory)] [string] $Name)
+
+    $held = [System.Threading.ManualResetEventSlim]::new($false)
+    $release = [System.Threading.ManualResetEventSlim]::new($false)
+    $job = Start-ThreadJob -ArgumentList $Name, $held, $release -ScriptBlock {
+        param($Name, $Held, $Release)
+        $mutex = [System.Threading.Mutex]::new($false, $Name)
+        try {
+            [void] $mutex.WaitOne()
+            $Held.Set()
+            [void] $Release.Wait(120000)
+            $mutex.ReleaseMutex()
+        }
+        finally { $mutex.Dispose() }
+    }
+    if (-not $held.Wait(30000)) { throw "另一个线程 30 秒内没能取得锁 $Name。" }
+    [pscustomobject]@{ Job = $job; Release = $release }
+}
+
+function Stop-CountdownTestLockHolder {
+    param([Parameter(Mandatory)] [object] $Holder)
+
+    $Holder.Release.Set()
+    [void] (Receive-Job -Job $Holder.Job -Wait -AutoRemoveJob)
+}
+
+# 从另一个线程试取一次锁（不等待），取到就马上放开：返回锁此刻是否空闲。
+function Test-CountdownTestLockFree {
+    param([Parameter(Mandatory)] [string] $Name)
+
+    $job = Start-ThreadJob -ArgumentList $Name -ScriptBlock {
+        param($Name)
+        $mutex = [System.Threading.Mutex]::new($false, $Name)
+        try {
+            $acquired = try { $mutex.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $true }
+            if ($acquired) { $mutex.ReleaseMutex() }
+            $acquired
+        }
+        finally { $mutex.Dispose() }
+    }
+    [bool] (Receive-Job -Job $job -Wait -AutoRemoveJob)
+}
+
 function Get-CountdownValidationSettingsArtifactPaths {
     param([Parameter(Mandatory)] [string] $SettingsPath)
 

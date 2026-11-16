@@ -154,13 +154,14 @@ $switchPorts = [pscustomobject]@{
         param([string] $Source, [string] $Destination)
         [System.IO.Directory]::Move($Source, $Destination)
     }
-    # 导出是不含运行状态的整份定义，恢复按导出整份替换；导出为空表示没有这个任务，恢复即删除。
+    # 导出是不含运行状态的整份定义，恢复按导出整份替换；导出为空表示没有这个任务，恢复即删除。用例可经 OnRestoreTask 在恢复前插一步。
     ExportTask = {
         param([string] $Name)
         if ($switchCase.Tasks.ContainsKey($Name)) { Get-CountdownSwitchTestTaskDefinition -Task $switchCase.Tasks[$Name] }
     }
     RestoreTask = {
         param([string] $Name, [object] $Definition)
+        if ($null -ne $switchCase.OnRestoreTask) { & $switchCase.OnRestoreTask $Name $Definition }
         if ($null -eq $Definition) {
             [void] $switchCase.Tasks.Remove($Name)
             return
@@ -275,6 +276,8 @@ function New-CountdownSwitchTestCase {
         TaskSecurity = @{}
         OnRegisterTask = $null
         OnStartTask = $null
+        OnRestoreTask = $null
+        Observed = @{}
         Json = $null
     }
 }
@@ -352,7 +355,7 @@ function Invoke-CountdownSwitchTest {
 }
 
 function Invoke-CountdownSwitchStatusRead {
-    $output = @(& $switchStatusScript -InstallRoot $switchCase.Root -TaskName $switchCase.TaskName -Port $switchPorts)
+    $output = @(& $switchStatusScript -InstallRoot $switchCase.Root -TaskName $switchCase.TaskName -Port $switchPorts -LockName $switchLockName)
     [string] $output[-1] | ConvertFrom-Json -DateKind String
 }
 
@@ -367,10 +370,15 @@ try {
     $desktopBefore = Get-CountdownSwitchTestTree -Root $switchCase.Desktop
     $currentTaskBefore = Get-CountdownSwitchTestTaskDefinition -Task $switchCase.Tasks[$switchCase.TaskName]
     $legacyTaskBefore = Get-CountdownSwitchTestTaskDefinition -Task $switchCase.Tasks[$switchCase.LegacyTaskName]
+    # 切换整个运行期间持有全机安装锁：新安装器在同一线程里重入同一把锁照常安装，它放开之后切换仍持有，
+    # 移除遗留任务时另一个线程取不到锁。
+    $switchCase.OnRestoreTask = { param([string] $Name, [object] $Definition) $switchCase.Observed.LockFreeDuringRemoveLegacy = Test-CountdownTestLockFree -Name $switchLockName }
     $switch = Invoke-CountdownSwitchTest
+    $switchCase.OnRestoreTask = $null
     Assert-Equal 'True||created|True' "$($switch.succeeded)|$($switch.failedStage)|$($switch.backup.action)|$($switch.backup.complete)" 'The switch on the current office layout succeeds after creating a complete backup'
     Assert-Equal '1|7001' "$($switch.stoppedProcessCount)|$($switch.readyProcess.processId)" 'The switch stops the running old version and the new version reaches startup readiness'
     Assert-Equal 'True' "$($switch.elevated)" 'The switch reports that it ran elevated'
+    Assert-Equal 'False|True' "$($switchCase.Observed.LockFreeDuringRemoveLegacy)|$(Test-CountdownTestLockFree -Name $switchLockName)" 'The switch still holds the install lock after the installer it called released its own hold, and frees it at the end'
 
     # 状态命令读回新布局：清单记的提交、EXE 与清单一致、应用在运行、登录任务与期望定义一致、没有事务标记。
     $switchStatus = Invoke-CountdownSwitchStatusRead
@@ -434,6 +442,23 @@ try {
     Assert-Equal 'True|False' "$(([string] $accessDenied.error).Contains($switchCase.TaskName))|$(([string] $accessDenied.error).Contains($switchCase.LegacyTaskName))" "The refusal names the task the process may not modify and not the one it may: $($accessDenied.error)"
     Assert-Equal "<missing>|$rootBefore|$tasksBefore|$desktopBefore|4101,4103" "$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop)|$(Get-CountdownSwitchTestRunning)" 'The refused switch writes no backup and leaves the install root, the tasks, the desktop and the running old version alone'
 
+    # 另一个安装、切换或回退正在运行（持有全机安装锁）：切换在前置检查停下，不停应用、不备份，什么都不动；
+    # 这期间状态命令读到有运行在进行，锁放开后读不到。
+    $switchCase = New-CountdownSwitchTestCase -Name 'locked'
+    Initialize-CountdownSwitchTestOldLayout
+    $rootBefore = Get-CountdownSwitchTestTree -Root $switchCase.Root
+    $tasksBefore = Get-CountdownSwitchTestTaskDefinitions
+    $desktopBefore = Get-CountdownSwitchTestTree -Root $switchCase.Desktop
+    $switchLockHolder = Start-CountdownTestLockHolder -Name $switchLockName
+    try {
+        $locked = Invoke-CountdownSwitchTest
+        $lockedStatus = Invoke-CountdownSwitchStatusRead
+    }
+    finally { Stop-CountdownTestLockHolder -Holder $switchLockHolder }
+    Assert-Equal 'False|precheck|transaction-in-progress|0' "$($locked.succeeded)|$($locked.failedStage)|$($locked.reason)|$($locked.stoppedProcessCount)" "While another run holds the install lock the switch stops in the precheck: $($locked.error)"
+    Assert-Equal "<missing>|$rootBefore|$tasksBefore|$desktopBefore|4101,4103" "$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop)|$(Get-CountdownSwitchTestRunning)" 'The switch refused for a run in progress writes no backup and leaves the install root, the tasks, the desktop and the running old version alone'
+    Assert-Equal 'True|False' "$($lockedStatus.installInProgress)|$((Invoke-CountdownSwitchStatusRead).installInProgress)" 'The status command reads a run in progress while the install lock is held and none after it is released'
+
     # 切换中途失败：前置检查按 DACL 判定权限够，新安装器更新登录任务时却被任务计划拒绝。新安装器自己回滚到切换前的程序目录与
     # 登录任务并重新启动旧版本；切换停下报告，备份完整保留，遗留没动。
     $switchCase = New-CountdownSwitchTestCase -Name 'install-fails'
@@ -479,6 +504,13 @@ try {
     Assert-Equal 'False|precheck|task-access-denied|False' "$($rollbackDenied.succeeded)|$($rollbackDenied.failedStage)|$($rollbackDenied.reason)|$($rollbackDenied.elevated)" "Without the rights to modify the login task the rollback stops in the precheck: $($rollbackDenied.error)"
     Assert-Equal "$rootSwitched|$tasksSwitched|$backupSwitched|4103,7001" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestRunning)" 'The refused rollback leaves the install root, the tasks, the backup and the running new version alone'
     $switchCase.Identity = [pscustomobject]@{ Elevated = $true; Sids = $switchElevatedSids }
+
+    # 另一个运行持有全机安装锁时回退同样不开始，什么都不动。
+    $switchLockHolder = Start-CountdownTestLockHolder -Name $switchLockName
+    try { $rollbackLocked = Invoke-CountdownSwitchTest -Rollback -Script (Join-Path $switchCase.Backup 'tools\Switch-CountdownInstallLayout.ps1') }
+    finally { Stop-CountdownTestLockHolder -Holder $switchLockHolder }
+    Assert-Equal 'False|precheck|transaction-in-progress' "$($rollbackLocked.succeeded)|$($rollbackLocked.failedStage)|$($rollbackLocked.reason)" "While another run holds the install lock the rollback stops in the precheck: $($rollbackLocked.error)"
+    Assert-Equal "$rootSwitched|$tasksSwitched|$backupSwitched|4103,7001" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestRunning)" 'The rollback refused for a run in progress leaves the install root, the tasks, the backup and the running new version alone'
 
     $rollback = Invoke-CountdownSwitchTest -Rollback -Script (Join-Path $switchCase.Backup 'tools\Switch-CountdownInstallLayout.ps1')
     Assert-Equal 'True||1|restored|restored' "$($rollback.succeeded)|$($rollback.failedStage)|$($rollback.stoppedProcessCount)|$($rollback.tasks.current)|$($rollback.tasks.legacy)" 'The rollback from the backup succeeds after stopping the new version'

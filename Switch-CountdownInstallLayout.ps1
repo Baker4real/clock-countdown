@@ -9,6 +9,8 @@
 
 切换与回退都要替换并删除计划任务，旧安装器的登录任务是在提权的 PowerShell 里注册的：两者都要在以管理员身份运行的进程里运行。
 前置检查只读地看当前进程是否提权（结果的 elevated）、按两个现有任务的 DACL 能否替换并删除它们，不能就指名停下（task-access-denied）。
+切换与回退在整个运行期间持有全机安装锁（与新旧安装器同一把）：另一个安装、切换或回退正在运行时在前置检查停下
+（transaction-in-progress），什么都不改。
 切换按顺序：前置检查（安装根存在，已有备份可沿用，任务权限够，新安装器 -CheckOnly 通过）→ 停止应用 → 备份到 <安装根>.layout-switch-backup：
 完整复制安装根到 root\，导出现役与遗留任务的定义到 tasks\，复制桌面上的启动器文件到 desktop\，复制本脚本与新安装器 module
 到 tools\，逐项核对哈希后最后写 backup.json → 用新安装器装入程序目录、更新登录任务、登记桌面快捷方式并启动到启动就绪 →
@@ -94,6 +96,20 @@ function New-CountdownSwitchRejection {
     $exception.Data['CountdownSwitchReason'] = $Reason
     $exception
 }
+
+# 全机安装锁（与新旧安装器同一把，#289）：切换与回退在整个运行期间持有它，另一个安装、切换或回退在运行时什么都不改就停下。
+# 切换在同一线程里调用新安装器，安装器重入同一把锁照常安装。
+function Enter-CountdownSwitchLock {
+    $arguments = @{}
+    if (-not [string]::IsNullOrWhiteSpace($LockName)) { $arguments.Name = $LockName }
+    try { Enter-CountdownInstallLock @arguments }
+    catch {
+        if ($_.Exception.Data['CountdownInstallReason'] -ne 'install-in-progress') { throw }
+        throw (New-CountdownSwitchRejection -Reason 'transaction-in-progress' -Message '另一个安装、切换或回退正在运行（它持有全机安装锁），本次什么都没改。')
+    }
+}
+
+$transactionInProgressNextStep = '另一个安装、切换或回退正在运行，本次什么都没改：等它结束，先读一次状态（installInProgress 为 false 之后再看其余各项），再决定要不要重新运行；它还在运行时不要再切换或回退。'
 
 function ConvertTo-CountdownSwitchBoundedText {
     param([AllowEmptyString()] [string] $Text)
@@ -398,7 +414,9 @@ function Invoke-CountdownLayoutSwitch {
     if (-not [string]::IsNullOrWhiteSpace($LockName)) { $installerArguments.LockName = $LockName }
     $stage = 'precheck'
     $backupStarted = $false
+    $lock = $null
     try {
+        $lock = Enter-CountdownSwitchLock
         if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw (New-CountdownSwitchRejection -Reason 'install-root-missing' -Message "安装根不存在：$root") }
         $manifest = Read-CountdownSwitchBackup
         if ($null -ne $manifest) {
@@ -464,9 +482,11 @@ function Invoke-CountdownLayoutSwitch {
             catch { $result.error = ConvertTo-CountdownSwitchBoundedText -Text "$($result.error)；重新启动旧版本失败：$($_.Exception.Message)" }
         }
     }
+    finally { Exit-CountdownInstallLock -Mutex $lock }
     $result.transactionMarkerPresent = Test-Path -LiteralPath (Join-Path $root 'install-transaction.json')
     if (-not $result.succeeded) {
-        $result.nextStep = if ($result.reason -eq 'backup-used-for-rollback') {
+        $result.nextStep = if ($result.reason -eq 'transaction-in-progress') { $transactionInProgressNextStep }
+        elseif ($result.reason -eq 'backup-used-for-rollback') {
             "要再次切换，先把备份目录 $backup 整个移走（里面的 after-switch-* 是回退时留下的切换后文件），再运行切换，它会重新备份。"
         }
         elseif ($result.backup.complete) {
@@ -596,7 +616,9 @@ function Invoke-CountdownLayoutRollback {
         nextStep = $null
     }
     $stage = 'precheck'
+    $lock = $null
     try {
+        $lock = Enter-CountdownSwitchLock
         $manifest = Read-CountdownSwitchBackup
         if ($null -eq $manifest) { throw (New-CountdownSwitchRejection -Reason 'backup-missing' -Message "没有切换前的备份：$backup") }
         Assert-CountdownSwitchTaskAccess -Result $result -Action '回退'
@@ -631,10 +653,12 @@ function Invoke-CountdownLayoutRollback {
         $reason = $_.Exception.Data['CountdownSwitchReason']
         $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
         $result.error = ConvertTo-CountdownSwitchBoundedText -Text $_.Exception.Message
-        $result.nextStep = if ($result.reason -in @('backup-missing', 'backup-incomplete')) { "回退没有开始，什么都没改：备份 $backup 不在或不完整，没法按它回退。" }
+        $result.nextStep = if ($result.reason -eq 'transaction-in-progress') { $transactionInProgressNextStep }
+        elseif ($result.reason -in @('backup-missing', 'backup-incomplete')) { "回退没有开始，什么都没改：备份 $backup 不在或不完整，没法按它回退。" }
         elseif ($stage -eq 'precheck') { '回退没有开始，什么都没改：排除原因后再运行回退。' }
         else { "回退没有走完，备份原样保留在 $backup：排除原因后再次运行回退，它会接着把安装根、两个任务与桌面启动器恢复成备份的样子。" }
     }
+    finally { Exit-CountdownInstallLock -Mutex $lock }
     $result
 }
 

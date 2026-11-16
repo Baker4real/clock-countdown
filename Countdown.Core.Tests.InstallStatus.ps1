@@ -14,8 +14,10 @@ $statusSettingsText = '{"schemaVersion":10,"note":"settings-content-sentinel-276
 $statusSettingsSha256 = 'F1DC9C8BF0DCCFF4C088D16AE0EA902131E8DB0490154C9B15B7665C89E2745D'
 $statusCommit = '5e1a7b2c9d3f4e6a8b0c1d2e3f405162738495a6'
 $statusAggregate = '0F1E2D3C4B5A69788796A5B4C3D2E1F00F1E2D3C4B5A69788796A5B4C3D2E1F0'
-# 设置正文、账号和进程命令行只出现在夹具里；任何一个出现在输出里都算泄漏。
-$statusPrivacySentinels = @('settings-content-sentinel-276', 'status-account-sentinel', 'status-commandline-sentinel', 'MINMIN-OFFICE')
+$statusSessionSid = 'S-1-5-21-2760000000-2760000001-2760000002-1001'
+$statusOtherSid = 'S-1-5-21-2760000000-2760000001-2760000002-2002'
+# 设置正文、账号、SID 和进程命令行只出现在夹具里；任何一个出现在输出里都算泄漏。
+$statusPrivacySentinels = @('settings-content-sentinel-276', 'status-account-sentinel', 'status-commandline-sentinel', 'MINMIN-OFFICE', $statusSessionSid, $statusOtherSid)
 # 每次运行用自己的安装锁名，不读本机真实安装的全机锁。
 $statusLockName = 'Local\MinminCountdownStatusTest-' + [guid]::NewGuid().ToString('N')
 $statusCase = $null
@@ -30,6 +32,7 @@ $statusPort = [pscustomobject]@{
         param([string] $Name)
         if ($Name -eq $statusCase.TaskName) { $statusCase.Task }
     }
+    GetInteractiveSessions = { $statusCase.Sessions }
 }
 
 function New-CountdownStatusTestProcess {
@@ -65,6 +68,7 @@ function New-CountdownStatusTestCase {
         Root = $root
         ExePath = $exePath
         TaskName = "Minmin Countdown Status $Name"
+        Sessions = @([pscustomobject]@{ SessionId = 3; User = 'MINMIN-OFFICE\status-account-sentinel'; Sid = $statusSessionSid })
         # 第一项用测试进程自己的 PID：状态命令若结束列出的进程，整个测试进程会随之退出。另外两项是别处的同名
         # 程序和读不到映像路径的同名进程，都不属于这个安装。
         Processes = @(
@@ -75,13 +79,18 @@ function New-CountdownStatusTestCase {
         Task = [pscustomobject]@{
             State = 'Running'
             Enabled = $true
-            Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = "`"$exePath`""; Arguments = $null })
-            Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true })
+            Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = "`"$exePath`""; Arguments = $null; WorkingDirectory = $null })
+            Triggers = @([pscustomobject]@{ Type = 'Logon'; Enabled = $true; UserSid = $statusSessionSid })
+            UserSid = $statusSessionSid
             LogonType = 'Interactive'
             RunLevel = 'Limited'
-            Priority = 5
+            Priority = 4
             ExecutionTimeLimit = 'PT0S'
             MultipleInstances = 'IgnoreNew'
+            DisallowStartIfOnBatteries = $false
+            StopIfGoingOnBatteries = $false
+            AllowDemandStart = $true
+            AllowHardTerminate = $true
             UserId = 'MINMIN-OFFICE\status-account-sentinel'
         }
     }
@@ -226,22 +235,48 @@ try {
     Assert-Equal $false ([bool] $legacyTask.loginTask.matchesExpected) 'The existing-layout login task does not match the direct-start definition'
     Assert-Equal 'action,priority' (@($legacyTask.loginTask.mismatches) -join ',') 'Status names the action and the below-normal priority as the existing-layout mismatches'
 
-    # 其余每一项都不符：带参数的动作、开机触发、密码登录、提升、72 小时时限、允许并行、已禁用。
+    # 多项同时不符：带参数与固定工作目录的动作、开机触发、另一个主体、密码登录、提升、72 小时时限、允许并行、
+    # 电池供电不启动且拔电即停、不能按需启动或强制结束、已禁用。
     $statusCase.Task = [pscustomobject]@{
         State = 'Disabled'
         Enabled = $false
-        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $statusCase.ExePath; Arguments = '--require-startup-request' })
-        Triggers = @([pscustomobject]@{ Type = 'Boot'; Enabled = $true })
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $statusCase.ExePath; Arguments = '--require-startup-request'; WorkingDirectory = $statusCase.Root })
+        Triggers = @([pscustomobject]@{ Type = 'Boot'; Enabled = $true; UserSid = $statusOtherSid })
+        UserSid = $statusOtherSid
         LogonType = 'Password'
         RunLevel = 'Highest'
         Priority = 4
         ExecutionTimeLimit = 'PT72H'
         MultipleInstances = 'Parallel'
+        DisallowStartIfOnBatteries = $true
+        StopIfGoingOnBatteries = $true
+        AllowDemandStart = $false
+        AllowHardTerminate = $false
         UserId = 'MINMIN-OFFICE\status-account-sentinel'
     }
     $driftedTask = Invoke-CountdownStatusTestRead -Label 'drifted task'
     Assert-Equal 'Disabled' ([string] $driftedTask.loginTask.state) 'Status reports the disabled task state'
-    Assert-Equal 'action,trigger,logonType,runLevel,executionTimeLimit,multipleInstances,enabled' (@($driftedTask.loginTask.mismatches) -join ',') 'Status names every login task property that differs from the expected definition'
+    Assert-Equal 'action,trigger,principal,logonType,runLevel,executionTimeLimit,multipleInstances,disallowStartIfOnBatteries,stopIfGoingOnBatteries,allowDemandStart,allowHardTerminate,enabled' (@($driftedTask.loginTask.mismatches) -join ',') 'Status names every login task property that differs from the expected definition'
+
+    # 与安装器的期望定义逐项一致（#259 评审）：每个字段单独偏离都不能被状态命令接受。安装器分段另在首次安装与任务更新后
+    # 读回它真实注册的假任务，证明 matchesExpected=true 的正向路径也经过同一命令。
+    $statusSingleFieldDrifts = @(
+        [pscustomobject]@{ Name = 'priority-five'; Mismatch = 'priority'; Apply = { param($Task) $Task.Priority = 5 } }
+        [pscustomobject]@{ Name = 'battery-start-refused'; Mismatch = 'disallowStartIfOnBatteries'; Apply = { param($Task) $Task.DisallowStartIfOnBatteries = $true } }
+        [pscustomobject]@{ Name = 'battery-stop'; Mismatch = 'stopIfGoingOnBatteries'; Apply = { param($Task) $Task.StopIfGoingOnBatteries = $true } }
+        [pscustomobject]@{ Name = 'demand-start-refused'; Mismatch = 'allowDemandStart'; Apply = { param($Task) $Task.AllowDemandStart = $false } }
+        [pscustomobject]@{ Name = 'hard-terminate-refused'; Mismatch = 'allowHardTerminate'; Apply = { param($Task) $Task.AllowHardTerminate = $false } }
+        [pscustomobject]@{ Name = 'other-principal'; Mismatch = 'principal'; Apply = { param($Task) $Task.UserSid = $statusOtherSid } }
+        [pscustomobject]@{ Name = 'other-logon-user'; Mismatch = 'trigger'; Apply = { param($Task) $Task.Triggers[0].UserSid = $statusOtherSid } }
+        [pscustomobject]@{ Name = 'action-working-directory'; Mismatch = 'action'; Apply = { param($Task) $Task.Actions[0].WorkingDirectory = 'D:\elsewhere' } }
+    )
+    foreach ($statusDrift in $statusSingleFieldDrifts) {
+        $statusCase = New-CountdownStatusTestCase -Name $statusDrift.Name
+        & $statusDrift.Apply $statusCase.Task
+        $statusDriftResult = Invoke-CountdownStatusTestRead -Label $statusDrift.Name
+        Assert-Equal $false ([bool] $statusDriftResult.loginTask.matchesExpected) "A single-field deviation is rejected: $($statusDrift.Name)"
+        Assert-Equal $statusDrift.Mismatch (@($statusDriftResult.loginTask.mismatches) -join ',') "Status names only the field that deviated: $($statusDrift.Name)"
+    }
 
     # 真实 Windows 查询：按远端执行入口的方式把脚本包进脚本块、经 -EncodedCommand 在子进程运行（没有脚本文件），
     # 对一个空安装根和一个不存在的任务名只读。

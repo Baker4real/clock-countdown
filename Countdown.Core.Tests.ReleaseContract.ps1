@@ -1567,7 +1567,7 @@ function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE
         Write-InvalidReleaseContentWithRetry -Path $lockRetryFixturePath
     }
     finally {
-        Receive-Job -Job $lockRetryReleaseJob -Wait -AutoRemoveJob | Out-Null
+        [void] (Receive-CountdownTestThreadJob -Job $lockRetryReleaseJob)
         $lockRetryStream.Dispose()
     }
     Assert-Equal 'invalid release content' `

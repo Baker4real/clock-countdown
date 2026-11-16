@@ -773,7 +773,7 @@ try {
             $ports = [pscustomobject]@{ GetInteractiveSessions = $refuse; GetProcesses = $refuse; StopProcess = $refuse; GetTask = $refuse; RegisterTask = $refuse; StartTask = $refuse; ExportTask = $refuse; RestoreTask = $refuse; MoveDirectory = $refuse; GetDesktopDirectory = $refuse; ReadShortcut = $refuse; WriteShortcut = $refuse; RemoveShortcut = $refuse; RunHeadlessCommand = $refuse }
             & $Script -PackageRoot $PackageRoot -InstallRoot $InstallRoot -TaskName $TaskName -Port $ports -LockName $LockName
         }
-        $installerCase.Observed.SecondInstall = @(Receive-Job -Job $secondInstall -Wait -AutoRemoveJob)
+        $installerCase.Observed.SecondInstall = @(Receive-CountdownTestThreadJob -Job $secondInstall)
     }
     $firstOfTwo = Invoke-CountdownInstallerTest
     Assert-Equal 1 @($installerCase.Observed.SecondInstall).Count 'The second install writes exactly one JSON document'

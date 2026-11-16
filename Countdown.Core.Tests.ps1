@@ -108,6 +108,16 @@ function Remove-CountdownIsolatedTestTree {
     Remove-Item -LiteralPath $resolvedPath -Force
 }
 
+# 等线程作业结束、取回输出再移除。不用 Receive-Job -Wait -AutoRemoveJob：作业恰在它等待时结束，它会移除两次，第二次报
+# “作业不存在”（本机 pwsh 7.6.9 实测 200 次里 4 次）；先 Wait-Job 再取回、移除没有这个竞态。
+function Receive-CountdownTestThreadJob {
+    param([Parameter(Mandatory)] [System.Management.Automation.Job] $Job)
+
+    [void] (Wait-Job -Job $Job)
+    try { Receive-Job -Job $Job }
+    finally { Remove-Job -Job $Job -Force }
+}
+
 # 另一个运行持有全机安装锁：另一个线程取得测试自己的锁名并一直持有，直到 Stop-CountdownTestLockHolder 放开。
 # 安装锁按线程归属，同一线程再取会重入成功，所以持有者与探测都在别的线程里。
 function Start-CountdownTestLockHolder {
@@ -134,7 +144,7 @@ function Stop-CountdownTestLockHolder {
     param([Parameter(Mandatory)] [object] $Holder)
 
     $Holder.Release.Set()
-    [void] (Receive-Job -Job $Holder.Job -Wait -AutoRemoveJob)
+    [void] (Receive-CountdownTestThreadJob -Job $Holder.Job)
 }
 
 # 从另一个线程试取一次锁（不等待），取到就马上放开：返回锁此刻是否空闲。
@@ -151,7 +161,7 @@ function Test-CountdownTestLockFree {
         }
         finally { $mutex.Dispose() }
     }
-    [bool] (Receive-Job -Job $job -Wait -AutoRemoveJob)
+    [bool] (Receive-CountdownTestThreadJob -Job $job)
 }
 
 function Get-CountdownValidationSettingsArtifactPaths {

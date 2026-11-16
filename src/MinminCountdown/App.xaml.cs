@@ -397,21 +397,8 @@ public sealed partial class App : Application
             throw new InvalidOperationException("应用宿主尚未初始化。");
         }
 
-        // #213：Alt+F4 与标题栏关闭走同一条退出确认；取消时不关掉最后一扇窗。
-        FloatingWindowCloseBridge.Attach(
-            _floatingWindow,
-            () => ShutdownInteractiveHost(),
-            () => _shuttingDown);
+        AttachFloatingWindow(_floatingWindow);
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
-        _floatingWindow.Closed += (_, _) =>
-        {
-            _floatingWindowClosed = true;
-            if (!_shuttingDown)
-            {
-                ShutdownAfterExternalClose();
-            }
-        };
-        _floatingWindow.ContentRendered += OnFloatingContentRendered;
         if (_acceptanceReadOnly)
         {
             _floatingWindow.IsEnabled = false;
@@ -419,6 +406,30 @@ public sealed partial class App : Application
         }
 
         _floatingWindow.Show();
+    }
+
+    private void AttachFloatingWindow(FloatingWindow window)
+    {
+        // #213：Alt+F4 与标题栏关闭走同一条退出确认；取消时不关掉最后一扇窗。
+        FloatingWindowCloseBridge.Attach(
+            window,
+            () => ShutdownInteractiveHost(),
+            () => _shuttingDown);
+        window.Closed += (_, _) =>
+        {
+            // 外部关闭后的旧实例可能迟于替换实例收到 Closed；它不能再改变新实例的状态。
+            if (!ReferenceEquals(window, _floatingWindow))
+            {
+                return;
+            }
+
+            _floatingWindowClosed = true;
+            if (!_shuttingDown)
+            {
+                ShutdownAfterExternalClose();
+            }
+        };
+        window.ContentRendered += OnFloatingContentRendered;
     }
 
     private void WriteFirstFloatingFrameReady()
@@ -632,10 +643,14 @@ public sealed partial class App : Application
             _ = RefreshHolidayCalendarAsync(nowUtc);
         }
         _mainWindow?.UpdateTime(ChinaStandardTime.ToBeijingTime(nowUtc));
-        _floatingWindow.UpdateTime(nowUtc);
+        if (!_floatingWindowClosed)
+        {
+            _floatingWindow.UpdateTime(nowUtc);
+        }
         // #214：10 秒撤销窗口唯一的节拍来源；到期判断在工作区里按注入时钟做。
         _desktopWorkspace.ExpireUndoIfDue();
-        if (_acceptanceReadOnly)
+        // 退出确认打开期间旧悬浮窗已被销毁；取消后新建实例再恢复提醒派发。
+        if (_acceptanceReadOnly || _floatingWindowClosed)
         {
             return;
         }
@@ -723,11 +738,45 @@ public sealed partial class App : Application
         if (FindVisibleExitConfirmationOwner() is not null)
         {
             ShutdownInteractiveHost();
+            if (!_shuttingDown && _floatingWindowClosed)
+            {
+                RecreateFloatingWindowAfterExternalClose();
+            }
+
             return;
         }
 
         _logger?.Info("ExitConfirmationSkippedExternalClose");
         ShutdownInteractiveHost(confirmDirtyExit: false);
+    }
+
+    private void RecreateFloatingWindowAfterExternalClose()
+    {
+        if (_desktopWorkspace is null || _calendar is null || _managerLifecycle is null)
+        {
+            throw new InvalidOperationException("外部关闭后重建悬浮窗所需的宿主尚未初始化。");
+        }
+
+        // #295：用户取消退出后进程继续运行，但旧 FloatingWindow 已被系统销毁。托盘、激活与提醒都必须绑定新实例。
+        _floatingTrayController?.Dispose();
+        _floatingTrayController = null;
+        _floatingWindow = new FloatingWindow(
+            _desktopWorkspace,
+            _calendar,
+            _managerLifecycle,
+            AppContext.BaseDirectory,
+            deferAssets: false);
+        _floatingWindowClosed = false;
+        AttachFloatingWindow(_floatingWindow);
+        _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
+        if (_acceptanceReadOnly)
+        {
+            _floatingWindow.IsEnabled = false;
+        }
+
+        _floatingWindow.Show();
+        EnsureFloatingTrayController();
+        _logger?.Info("FloatingWindowRecreatedAfterExternalClose");
     }
 
     // 退出确认挂在仍打开、可见的窗口上：悬浮退出时归悬浮窗，托盘退出（悬浮已隐藏）时归管理窗口。
@@ -788,7 +837,7 @@ public sealed partial class App : Application
             reasons.Add(mainReason);
         }
 
-        if (_floatingWindow?.DescribeUnsavedExitWork() is { } floatingReason)
+        if (!_floatingWindowClosed && _floatingWindow?.DescribeUnsavedExitWork() is { } floatingReason)
         {
             reasons.Add(floatingReason);
         }

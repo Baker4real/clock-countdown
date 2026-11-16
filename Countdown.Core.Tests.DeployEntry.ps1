@@ -275,6 +275,17 @@ $deployWindowsPorts = [pscustomobject]@{
         $restored | Add-Member -NotePropertyName State -NotePropertyValue 'Ready'
         $deployCase.Tasks[$Name] = $restored
     }
+    # 回退恢复任务前读导出定义里的主体、运行级别与动作；切换的备份目录经受保护目录 port 建出（这里只建目录）。
+    ReadTaskDefinition = {
+        param([string] $Definition)
+        $task = $Definition | ConvertFrom-Json
+        [pscustomobject]@{ UserSid = $task.UserSid; RunLevel = $task.RunLevel; Actions = @($task.Actions) }
+    }
+    CreateProtectedDirectory = {
+        param([string] $Path, [string] $ReaderSid)
+        if (Test-Path -LiteralPath $Path) { throw "目录已存在：$Path" }
+        [void] [System.IO.Directory]::CreateDirectory($Path)
+    }
     # 切换前置检查读的令牌与任务 DACL（#288）：远端步骤提权运行，任务都是提权注册的（只有 SYSTEM 与 Administrators 能改）。
     GetProcessIdentity = { [pscustomobject]@{ Elevated = $true; Sids = @('S-1-5-32-544', 'S-1-5-32-545', 'S-1-5-11') } }
     GetTaskSecurity = { param([string] $Name) 'D:AI(A;ID;0x1f019f;;;BA)(A;ID;0x1f019f;;;SY)(A;ID;FA;;;BA)' }
@@ -849,16 +860,26 @@ try {
     $deployLockHolder = Start-CountdownTestLockHolder -Name $deployLockName
     try { $deployRollbackLocked = Invoke-CountdownDeployTest -Label 'layout rollback while another run holds the install lock' -LayoutRollback }
     finally { Stop-CountdownTestLockHolder -Holder $deployLockHolder }
-    Assert-Equal 'rejected|False|rollback|transaction-in-progress|remote-write' "$($deployRollbackLocked.Result.outcome)|$($deployRollbackLocked.Result.succeeded)|$($deployRollbackLocked.Result.failedStep)|$($deployRollbackLocked.Result.reason)|$($deployCase.Calls -join ',')" "A rollback refused on the office for a run in progress is rejected: $($deployRollbackLocked.Result.error)"
+    Assert-Equal 'rejected|False|rollback|transaction-in-progress|transfer,remote-write' "$($deployRollbackLocked.Result.outcome)|$($deployRollbackLocked.Result.succeeded)|$($deployRollbackLocked.Result.failedStep)|$($deployRollbackLocked.Result.reason)|$($deployCase.Calls -join ',')" "A rollback refused on the office for a run in progress is rejected: $($deployRollbackLocked.Result.error)"
     Assert-Equal $true ([string] $deployRollbackLocked.Result.nextStep).Contains('-StatusOnly') "A rollback refused for a run in progress tells to wait and read the status first: $($deployRollbackLocked.Result.nextStep)"
     Assert-Equal $deploySwitchedState (Get-CountdownDeployTestOfficeState) 'A rollback refused for a run in progress changes nothing on the office'
 
-    # 回退经新部署入口：一次写操作运行备份里的回退脚本；安装根、登录任务与桌面启动器回到切换前，旧版本经恢复的任务重新启动；
-    # 本地记录写下回退结果。
+    # 回退经新部署入口：把仓库里的切换脚本与新安装器 module 打成包送到暂存目录，一次写操作核对包哈希后以 -Rollback 运行包里的
+    # 切换脚本（#259 评审），不运行办公室备份里的副本：备份 tools\ 里的切换脚本被换成一个只留下记号的脚本（backup.json 里的哈希也
+    # 跟着改了），回退照常走完，记号没有出现。安装根、登录任务与桌面启动器回到切换前，旧版本经恢复的任务重新启动；本地记录写下回退结果。
+    $deployBackupRoot = "$($deployCase.InstallRoot).layout-switch-backup"
+    $deployForgedTool = Join-Path $deployBackupRoot 'tools\Switch-CountdownInstallLayout.ps1'
+    $deployForgedMarker = Join-Path $deployCase.OfficeRoot 'forged-tool-ran.txt'
+    [System.IO.File]::WriteAllText($deployForgedTool, "[System.IO.File]::WriteAllText('$($deployForgedMarker.Replace("'", "''"))', 'ran')", $deployUtf8)
+    $deployBackupManifest = [System.IO.File]::ReadAllText((Join-Path $deployBackupRoot 'backup.json')) | ConvertFrom-Json -DateKind String
+    @($deployBackupManifest.tools | Where-Object { $_.name -eq 'Switch-CountdownInstallLayout.ps1' })[0].sha256 = (Get-FileHash -LiteralPath $deployForgedTool -Algorithm SHA256).Hash
+    [System.IO.File]::WriteAllText((Join-Path $deployBackupRoot 'backup.json'), ($deployBackupManifest | ConvertTo-Json -Depth 6), $deployUtf8)
     $deployCase.Calls.Clear()
     $deployRolledBack = Invoke-CountdownDeployTest -Label 'layout rollback' -LayoutRollback
     $deployRollback = $deployRolledBack.Result
-    Assert-Equal 'rolled-back|True|layout-rollback|remote-write' "$($deployRollback.outcome)|$($deployRollback.succeeded)|$($deployRollback.mode)|$($deployCase.Calls -join ',')" "The rollback runs through the deploy entry as one remote write: $($deployRollback.failedStep) $($deployRollback.error)"
+    Assert-Equal 'rolled-back|True|layout-rollback|transfer,remote-write' "$($deployRollback.outcome)|$($deployRollback.succeeded)|$($deployRollback.mode)|$($deployCase.Calls -join ',')" "The rollback runs through the deploy entry as a transfer and one remote write: $($deployRollback.failedStep) $($deployRollback.error)"
+    Assert-Equal 'True|True|False' "$($deployRollback.rollback.packageVerified)|$($deployRollback.rollback.stagingRemoved)|$(Test-Path -LiteralPath $deployForgedMarker)" 'The rollback runs the switch script of the hash-checked package, not the copy in the office backup, and removes the staging directory'
+    Assert-Equal ([string] $deployRollback.package.sha256) ([string] $deployRollback.transfer.remoteSha256) 'The rollback transfer verified the package hash on the office'
     Assert-Equal $deployLayoutBefore (& $deployLayoutState) 'After the rollback through the deploy entry the install root, the login task and the desktop launcher are as before the switch'
     Assert-Equal '7002|7002' "$($deployRollback.rollback.restartedProcess.processId)|$(@($deployCase.Processes | ForEach-Object { $_.ProcessId }) -join ',')" 'After the rollback the old version runs again'
     Assert-Equal 'layout-rollback|rolled-back' "$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).mode)|$(([System.IO.File]::ReadAllText([string] $deployRollback.recordPath) | ConvertFrom-Json).outcome)" 'The local record keeps the rollback result'
@@ -868,7 +889,7 @@ try {
     # 没有备份时回退什么都不做，明确报告失败；三种模式只能选一个，同时给出时在连接办公室之前拒绝。
     $deployCase = New-CountdownDeployTestCase -Name 'rollback-without-backup'
     $deployNoBackup = Invoke-CountdownDeployTest -Label 'rollback without a backup' -LayoutRollback
-    Assert-Equal 'failed|rollback|rollback-failed|remote-write' "$($deployNoBackup.Result.outcome)|$($deployNoBackup.Result.failedStep)|$($deployNoBackup.Result.reason)|$($deployCase.Calls -join ',')" "A rollback without a backup fails and says so: $($deployNoBackup.Result.error)"
+    Assert-Equal 'failed|rollback|rollback-failed|transfer,remote-write' "$($deployNoBackup.Result.outcome)|$($deployNoBackup.Result.failedStep)|$($deployNoBackup.Result.reason)|$($deployCase.Calls -join ',')" "A rollback without a backup fails and says so: $($deployNoBackup.Result.error)"
     $deployCase.Calls.Clear()
     $deployBothModes = Invoke-CountdownDeployTest -Label 'switch and rollback together' -LayoutSwitch -LayoutRollback
     Assert-Equal 'rejected|conflicting-modes|' "$($deployBothModes.Result.outcome)|$($deployBothModes.Result.reason)|$($deployCase.Calls -join ',')" 'Asking for two modes at once is rejected before contacting the office'
@@ -966,7 +987,8 @@ Write-Host 'scp to $deployHostSentinel'
     $deployEntryPackage = Join-Path $deployEntryRoot 'package.zip'
     [System.IO.File]::WriteAllText($deployEntryPackage, 'bytes', $deployUtf8)
     $deployEntryPackageSha256 = (Get-FileHash -LiteralPath $deployEntryPackage -Algorithm SHA256).Hash
-    $deployEntrySent = @(& $deployProductionPorts.SendFile $deployEntryPackage 'D:\deploy-staging\clock-countdown-run-1\package.zip' $deployEntryPackageSha256 'run-1' *>&1)
+    $deployEntryStaging = Join-Path $deployEntryRoot 'office-deploy\clock-countdown-run-1'
+    $deployEntrySent = @(& $deployProductionPorts.SendFile $deployEntryPackage (Join-Path $deployEntryStaging 'package.zip') $deployEntryPackageSha256 'run-1' *>&1)
     Assert-Equal 1 $deployEntrySent.Count 'The host transfer port returns one result and lets none of the entry output through'
     Assert-Equal "succeeded|run-1|$deployEntryPackageSha256" ("$($deployEntrySent[0].Status)|$($deployEntrySent[0].AttemptId)|$(([string] $deployEntrySent[0].Sha256).ToUpperInvariant())") 'The host transfer port returns the status, attempt and remote hash'
     Assert-Equal $true ([string] $deployEntrySent[0].LedgerPath).StartsWith($deployEntryLedgerRoot + '\') 'The host transfer port keeps the ledger under its ledger root'
@@ -975,7 +997,27 @@ Write-Host 'scp to $deployHostSentinel'
     $deployEntryStepLog = @([System.IO.File]::ReadAllLines($deployEntryStepCalls) | ForEach-Object { $_ | ConvertFrom-Json })
     Assert-Equal 'office:False:True:False,office:True:True:True,office:True:True:False' (@($deployEntryStepLog | ForEach-Object { "$($_.target):$($_.write):$($_.includeOutput):$($_.refused)" }) -join ',') 'The host ports run reads and writes on the office with output, and create the staging directory with an accepted write payload'
     $deployEntryTransferLog = [System.IO.File]::ReadAllText($deployEntryTransferCalls) | ConvertFrom-Json
-    Assert-Equal "D:/deploy-staging/clock-countdown-run-1/package.zip|$($deployEntryPackageSha256.ToLowerInvariant())" "$($deployEntryTransferLog.remotePath)|$($deployEntryTransferLog.expectedHash)" 'The host transfer port passes a forward-slash remote path and a lower-case hash'
+    Assert-Equal "$($deployEntryStaging.Replace('\', '/'))/package.zip|$($deployEntryPackageSha256.ToLowerInvariant())" "$($deployEntryTransferLog.remotePath)|$($deployEntryTransferLog.expectedHash)" 'The host transfer port passes a forward-slash remote path and a lower-case hash'
+
+    # 暂存目录（#259 评审）：在本机按办公室的样子运行建暂存目录的远端脚本（目标指向本测试的临时目录）。目录不继承上级、只有
+    # SYSTEM 与 Administrators 完全控制，远端步骤没提权时另给运行者自己完全控制（传输才写得进去）；目录已在就拒绝。
+    $deployEntryCreate = Join-Path $deployEntryLedgerRoot 'run-1\create-staging.ps1'
+    $deployEntryPreviousTarget = $env:CODEX_REMOTE_EXECUTION_TARGET
+    $env:CODEX_REMOTE_EXECUTION_TARGET = 'office'
+    try {
+        $deployEntryCreated = (@(& $deployEntryCreate) | ForEach-Object { [string] $_ }) -join ''
+        $deployEntryCreatedAgain = try { [void] (& $deployEntryCreate); 'created' } catch { 'refused' }
+    }
+    finally { $env:CODEX_REMOTE_EXECUTION_TARGET = $deployEntryPreviousTarget }
+    $deployEntryIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $deployEntryElevated = ([System.Security.Principal.WindowsPrincipal] $deployEntryIdentity).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    $deployEntryExpectedRules = @(@('S-1-5-18', 'S-1-5-32-544') + @(if (-not $deployEntryElevated) { $deployEntryIdentity.User.Value }) |
+            ForEach-Object { "$_=FullControl/ContainerInherit, ObjectInherit/False" } | Sort-Object)
+    $deployEntryAcl = Get-Acl -LiteralPath $deployEntryStaging
+    $deployEntryRules = @($deployEntryAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |
+            ForEach-Object { "$($_.IdentityReference.Value)=$($_.FileSystemRights)/$($_.InheritanceFlags)/$($_.IsInherited)" } | Sort-Object)
+    Assert-Equal "{`"created`":true}|True|$($deployEntryExpectedRules -join ',')" "$deployEntryCreated|$($deployEntryAcl.AreAccessRulesProtected)|$($deployEntryRules -join ',')" 'The staging directory script creates a directory that inherits nothing and only SYSTEM, Administrators and an unelevated runner may write'
+    Assert-Equal 'refused' $deployEntryCreatedAgain 'The staging directory script refuses a directory that already exists'
 }
 finally {
     # Windows 上 git init 把 .git 设为隐藏，入口的清理函数不枚举隐藏项，所以先去掉隐藏属性。

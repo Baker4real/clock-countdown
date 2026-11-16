@@ -11,21 +11,24 @@
 前置检查只读地看当前进程是否提权（结果的 elevated）、按两个现有任务的 DACL 能否替换并删除它们，不能就指名停下（task-access-denied）。
 切换与回退在整个运行期间持有全机安装锁（与新旧安装器同一把）：另一个安装、切换或回退正在运行时在前置检查停下
 （transaction-in-progress），什么都不改。
-切换按顺序：前置检查（安装根存在，已有备份可沿用，任务权限够，新安装器 -CheckOnly 通过）→ 停止应用 → 备份到 <安装根>.layout-switch-backup：
-完整复制安装根到 root\，导出现役与遗留任务的定义到 tasks\，复制桌面上的启动器文件到 desktop\，复制本脚本与新安装器 module
-到 tools\，逐项核对哈希后最后写 backup.json → 用新安装器装入程序目录、更新登录任务、登记桌面快捷方式并启动到启动就绪 →
+切换按顺序：前置检查（安装根存在，已有备份可沿用，任务权限够，新安装器 -CheckOnly 通过）→ 停止应用 → 备份到 <安装根>.layout-switch-backup
+（目录建成只给 SYSTEM 与 Administrators 写、交互用户只能读，之后才往里写）：完整复制安装根到 root\，导出现役与遗留任务的定义到
+tasks\，复制桌面上的启动器文件到 desktop\，复制本脚本与新安装器 module 到 tools\，逐项核对哈希后最后写 backup.json →
+用新安装器装入程序目录、更新登录任务、登记桌面快捷方式并启动到启动就绪 →
 移除遗留任务、属于旧安装器的桌面启动器与安装根里的旧文件。用户数据（设置及其两代备份、恢复证据、诊断日志、节假日缓存）
 不被移动或改写；安装根里认不出的条目原样保留并在结果里列出。
 备份不完整时切换不开始：已有备份目录而其中没有完整的 backup.json、或副本对不上时，在前置检查停下，什么都不动；备份途中失败时
 删掉本次写了一半的备份，经登录任务重新启动旧版本，其余什么都没改。备份之后任何一步失败都停下报告，备份保留：新安装器失败时
 由它自己回滚程序目录与登录任务并重新启动旧版本。再次运行切换会沿用这份完整备份接着做（不重新备份）；用过回退的备份不再沿用。
 
-回退（-Rollback，从备份目录的 tools\ 运行）：核对备份完整、任务权限与唯一的交互会话 → 先让启动路径失效：移除现役与遗留任务、
+回退（-Rollback；部署入口从它核对过哈希的部署包运行，不用备份里的副本）：核对备份完整、任务权限、唯一的交互会话，以及备份里
+要恢复的任务定义（主体是这个会话的登录用户、以最低权限运行、动作落在安装根里，不符合时 backup-task-invalid，什么都不改）
+→ 先让启动路径失效：移除现役与遗留任务、
 桌面上指向已安装 EXE 的快捷方式（先保留一份）→ 停止应用 → 在安装根旁边按备份复制出 <安装根>.rollback-staging 并核对，把安装根
 整个改名进备份目录下的 after-switch-<时刻>\root\，再把副本改名成安装根 → 按导出的定义恢复两个任务（切换前没有的不再建）→
 按备份恢复桌面启动器文件 → 写 rollback.json → 经恢复的登录任务启动旧版本并等到启动就绪（与新安装器同一个就绪判定）。
 中途失败时停下报告，没有启动路径指向半恢复的安装根；再次运行回退会接着做。
--Port 供测试注入计划任务、进程、交互会话、桌面目录与快捷方式（与新安装器同一组 port，另加只读的 GetProcessIdentity 与
+-Port 供测试注入计划任务、进程、交互会话、桌面目录、快捷方式与受保护目录（与新安装器同一组 port，另加只读的 GetProcessIdentity 与
 GetTaskSecurity），-LockName 供测试隔离安装锁；不传时操作真实 Windows。输出不含设置内容、凭据、主机名、账号或 SID。
 #>
 [CmdletBinding()]
@@ -223,10 +226,11 @@ function Stop-CountdownSwitchApplication {
 
 # 备份：安装根的完整副本、两个任务导出的定义、桌面上的启动器文件（含已有的同名快捷方式）、回退要用的本脚本与新安装器 module；
 # 逐项核对副本的哈希之后最后写 backup.json，它在就表示备份完整。返回读回的 backup.json。
+# 备份目录先建成只给 SYSTEM 与 Administrators 写、交互用户只能读与执行（#259 评审），再往里写：提权运行的回退要从里面读任务定义。
 function New-CountdownSwitchBackup {
-    param([Parameter(Mandatory)] [string] $DesktopDirectory)
+    param([Parameter(Mandatory)] [string] $DesktopDirectory, [Parameter(Mandatory)] [object] $Session)
 
-    [void] [System.IO.Directory]::CreateDirectory($backup)
+    [void] (& $Port.CreateProtectedDirectory $backup ([string] $Session.Sid))
     $tree = Get-CountdownSwitchTree -Directory $root
     [void] [System.IO.Directory]::CreateDirectory((Join-Path $backup 'root'))
     foreach ($directory in $tree.Directories) { [void] [System.IO.Directory]::CreateDirectory((Join-Path $backup "root\$directory")) }
@@ -318,6 +322,47 @@ function Read-CountdownSwitchBackup {
         throw (New-CountdownSwitchRejection -Reason 'backup-incomplete' -Message "备份目录 $backup 已存在但备份不完整（$($problems[0])，共 $($problems.Count) 项问题）。")
     }
     $manifest
+}
+
+# 回退恢复任务之前核对备份里的任务定义（#259 评审）：提权运行的回退会按它们原样注册任务。主体必须是唯一交互会话的登录用户、
+# 以最低权限运行；每个动作都是运行程序，直接运行安装根里的程序，或经 pwsh/powershell -File 运行安装根里的脚本，工作目录为空
+# 或在安装根里。不符合时什么都不改就停下（backup-task-invalid），指名是哪个定义、哪一项。
+function Assert-CountdownSwitchBackupTasks {
+    param([Parameter(Mandatory)] [object] $Manifest, [Parameter(Mandatory)] [object] $Session)
+
+    $underRoot = {
+        param([AllowEmptyString()] [string] $Path, [switch] $AllowRoot)
+        $candidate = $Path.Trim().Trim('"')
+        if (-not [System.IO.Path]::IsPathFullyQualified($candidate)) { return $false }
+        $full = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($candidate))
+        ($AllowRoot -and [string]::Equals($full, $root, [System.StringComparison]::OrdinalIgnoreCase)) -or
+            $full.StartsWith("$root\", [System.StringComparison]::OrdinalIgnoreCase)
+    }
+    foreach ($kind in @('current', 'legacy')) {
+        if (-not [bool] $Manifest.tasks.$kind.present) { continue }
+        $definition = & $Port.ReadTaskDefinition ([System.IO.File]::ReadAllText((Join-Path $backup "tasks\$kind.task"), $utf8))
+        $actions = @($definition.Actions)
+        $problem = if ([string] $definition.UserSid -cne [string] $Session.Sid) { '主体不是交互会话的登录用户' }
+        elseif ([string] $definition.RunLevel -cne 'Limited') { '不是以最低权限运行' }
+        elseif ($actions.Count -eq 0) { '没有动作' }
+        else {
+            @(foreach ($action in $actions) {
+                    if ([string] $action.Type -cne 'Exec') { "有一个动作不是运行程序（$($action.Type)）"; continue }
+                    $execute = ([string] $action.Execute).Trim().Trim('"')
+                    $target = $execute
+                    if ([System.IO.Path]::GetFileName($execute) -in @('pwsh.exe', 'powershell.exe')) {
+                        $target = if ([string] $action.Arguments -match '(?i)(?:^|\s)-File\s+(?:"([^"]+)"|(\S+))') { "$($Matches[1])$($Matches[2])" } else { '' }
+                    }
+                    if (-not (& $underRoot $target)) { '有一个动作运行的不是安装根里的程序或脚本' }
+                    elseif (-not [string]::IsNullOrWhiteSpace([string] $action.WorkingDirectory) -and -not (& $underRoot ([string] $action.WorkingDirectory) -AllowRoot)) {
+                        '有一个动作的工作目录不在安装根里'
+                    }
+                }) | Select-Object -First 1
+        }
+        if ($problem) {
+            throw (New-CountdownSwitchRejection -Reason 'backup-task-invalid' -Message "备份里的任务定义 $kind（任务 $($Manifest.tasks.$kind.name)）不能按原样恢复：$problem。")
+        }
+    }
 }
 
 # 经登录任务启动应用并等到启动就绪：用新安装器的同一个函数（Start-CountdownPreviousVersion）与同一个就绪判定，回执由交互会话里
@@ -433,7 +478,7 @@ function Invoke-CountdownLayoutSwitch {
 
             $stage = 'backup'
             $backupStarted = $true
-            $manifest = New-CountdownSwitchBackup -DesktopDirectory $desktopDirectory
+            $manifest = New-CountdownSwitchBackup -DesktopDirectory $desktopDirectory -Session $session
             $result.backup.action = 'created'
         }
         else {
@@ -658,7 +703,8 @@ function Invoke-CountdownLayoutRollback {
         Assert-CountdownSwitchTaskAccess -Result $result -Action '回退'
         $layout = Resolve-CountdownInstallerLayout -InstallRoot $root
         # 最后要经恢复的登录任务在交互会话里启动旧版本：没有或不止一个交互会话时什么都不改就停下。
-        [void] (Get-CountdownSingleInteractiveSession -Ports $Port)
+        $session = Get-CountdownSingleInteractiveSession -Ports $Port
+        Assert-CountdownSwitchBackupTasks -Manifest $manifest -Session $session
         $preserved = Join-Path $backup ('after-switch-' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'))
         $result.preservedDirectory = $preserved
 
@@ -694,6 +740,7 @@ function Invoke-CountdownLayoutRollback {
         $result.error = ConvertTo-CountdownSwitchBoundedText -Text $_.Exception.Message
         $result.nextStep = if ($result.reason -eq 'transaction-in-progress') { $transactionInProgressNextStep }
         elseif ($result.reason -in @('backup-missing', 'backup-incomplete')) { "回退没有开始，什么都没改：备份 $backup 不在或不完整，没法按它回退。" }
+        elseif ($result.reason -eq 'backup-task-invalid') { "回退没有开始，什么都没改：备份 $backup 里的任务定义不是切换前的样子（被改过），不要按它回退；先查明是谁改了备份目录。" }
         elseif ($stage -eq 'precheck') { '回退没有开始，什么都没改：排除原因后再运行回退。' }
         else { "回退没有走完，备份原样保留在 $backup；登录任务与桌面快捷方式在恢复文件之前已移除，应用不会从半恢复的安装根启动：排除原因后再次运行回退，它会接着把安装根、两个任务与桌面启动器恢复成备份的样子。" }
     }

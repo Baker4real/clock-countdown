@@ -1578,6 +1578,48 @@ function New-CountdownInstallerWindowsPorts {
             }
             Register-ScheduledTask -TaskPath '\' -TaskName $Name -Xml ([string] $Definition) -Force -ErrorAction Stop | Out-Null
         }
+        # 切换脚本（#259 评审）：导出的定义（ExportTask 的 XML）里回退恢复之前要核对的几项。唯一主体的用户 SID（账号名换成 SID，
+        # 换不出时原样返回；没有或不止一个主体时为空）、运行级别（HighestAvailable 为 Highest，其余为 Limited）与各个动作
+        # （类型、命令、参数、工作目录）。
+        ReadTaskDefinition = {
+            param([string] $Definition)
+            $document = [System.Xml.XmlDocument]::new()
+            $document.LoadXml($Definition)
+            $namespaces = [System.Xml.XmlNamespaceManager]::new($document.NameTable)
+            $namespaces.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+            $value = { param([System.Xml.XmlNode] $Node, [string] $Name) $found = $Node.SelectSingleNode("t:$Name", $namespaces); if ($null -ne $found) { $found.InnerText } }
+            $principals = @($document.SelectNodes('/t:Task/t:Principals/t:Principal', $namespaces))
+            $userId = if ($principals.Count -eq 1) { [string] (& $value $principals[0] 'UserId') }
+            $userSid = if ([string]::IsNullOrWhiteSpace($userId) -or $userId.StartsWith('S-1-')) { $userId }
+            else {
+                try { ([System.Security.Principal.NTAccount] $userId).Translate([System.Security.Principal.SecurityIdentifier]).Value }
+                catch { $userId }
+            }
+            [pscustomobject]@{
+                UserSid = $userSid
+                RunLevel = if ($principals.Count -eq 1 -and (& $value $principals[0] 'RunLevel') -ceq 'HighestAvailable') { 'Highest' } else { 'Limited' }
+                Actions = @(foreach ($action in @($document.SelectNodes('/t:Task/t:Actions/*', $namespaces))) {
+                        [pscustomobject]@{ Type = $action.LocalName; Execute = & $value $action 'Command'; Arguments = & $value $action 'Arguments'; WorkingDirectory = & $value $action 'WorkingDirectory' }
+                    })
+            }
+        }
+        # 切换脚本（#259 评审）：只给 SYSTEM 与 Administrators 写的目录，提权运行的切换往里写备份、回退从里面读。不继承上级的
+        # 权限，SYSTEM 与 Administrators 完全控制，读者（交互用户）只能读与执行，子目录与文件都继承这三条。目录已在时拒绝，
+        # 不改别人建的目录的权限；不在的上级目录照常建出（按它自己的上级继承）。
+        CreateProtectedDirectory = {
+            param([string] $Path, [string] $ReaderSid)
+            if (Test-Path -LiteralPath $Path) { throw "目录已存在：$Path" }
+            [void] [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($Path))
+            $security = [System.Security.AccessControl.DirectorySecurity]::new()
+            $security.SetAccessRuleProtection($true, $false)
+            foreach ($rule in @(@('S-1-5-18', 'FullControl'), @('S-1-5-32-544', 'FullControl'), @($ReaderSid, 'ReadAndExecute'))) {
+                $security.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new(
+                        [System.Security.Principal.SecurityIdentifier]::new([string] $rule[0]), [System.Security.AccessControl.FileSystemRights] $rule[1],
+                        [System.Security.AccessControl.InheritanceFlags] 'ContainerInherit, ObjectInherit', [System.Security.AccessControl.PropagationFlags]::None,
+                        [System.Security.AccessControl.AccessControlType]::Allow))
+            }
+            [System.IO.FileSystemAclExtensions]::Create([System.IO.DirectoryInfo]::new($Path), $security)
+        }
         # 交互用户的桌面目录（#281）：取该用户注册表 User Shell Folders 里 Desktop 的原值，只按该用户的注册表环境展开
         # （机器环境、该用户的 Environment 与 Volatile Environment，USERPROFILE 取 ProfileList 里的配置文件目录），不用当前进程的
         # 环境：经 SSH 运行时那不是桌面会话的环境（docs/办公室部署.md）。只读注册表，不访问桌面目录本身。

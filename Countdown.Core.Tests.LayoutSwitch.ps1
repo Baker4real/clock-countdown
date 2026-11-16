@@ -173,6 +173,20 @@ $switchPorts = [pscustomobject]@{
         $restored | Add-Member -NotePropertyName State -NotePropertyValue 'Ready'
         $switchCase.Tasks[$Name] = $restored
     }
+    # 导出的定义里回退要核对的几项：主体、运行级别与动作。
+    ReadTaskDefinition = {
+        param([string] $Definition)
+        $task = $Definition | ConvertFrom-Json
+        [pscustomobject]@{ UserSid = $task.UserSid; RunLevel = $task.RunLevel; Actions = @($task.Actions) }
+    }
+    # 受保护目录：建出目录，记下路径与读者 SID（生产 port 的权限另有一段直接检查）。
+    CreateProtectedDirectory = {
+        param([string] $Path, [string] $ReaderSid)
+        if (Test-Path -LiteralPath $Path) { throw "目录已存在：$Path" }
+        [void] [System.IO.Directory]::CreateDirectory($Path)
+        if (-not $switchCase.Observed.ContainsKey('ProtectedDirectories')) { $switchCase.Observed.ProtectedDirectories = [System.Collections.Generic.List[string]]::new() }
+        $switchCase.Observed.ProtectedDirectories.Add("$Path|$ReaderSid")
+    }
     ReadShortcut = $switchWindowsPorts.ReadShortcut
     WriteShortcut = $switchWindowsPorts.WriteShortcut
     RemoveShortcut = $switchWindowsPorts.RemoveShortcut
@@ -404,6 +418,8 @@ try {
     Assert-Equal "$currentTaskBefore|$legacyTaskBefore" "$([System.IO.File]::ReadAllText((Join-Path $switchCase.Backup 'tasks\current.task')))|$([System.IO.File]::ReadAllText((Join-Path $switchCase.Backup 'tasks\legacy.task')))" 'The backup holds the exported definitions of the current and the legacy task'
     Assert-Equal ($desktopBefore -replace 'desktop-note\.txt\|[^,]*,', '') (Get-CountdownSwitchTestTree -Root (Join-Path $switchCase.Backup 'desktop')) 'The backup holds copies of the desktop launcher files'
     Assert-Equal $true ($tasksBefore -ne (Get-CountdownSwitchTestTaskDefinitions)) 'The switch changed the task definitions it backed up'
+    # 备份目录先经受保护目录 port 建出（只给 SYSTEM 与 Administrators 写、交互用户只能读），之后才往里写（#259 评审）。
+    Assert-Equal "$($switchCase.Backup)|$switchSessionSid" (@($switchCase.Observed['ProtectedDirectories']) -join ',') 'The switch creates the backup directory as a protected directory readable by the interactive user before writing into it'
 
     # 备份不完整时切换不开始：备份途中读不了安装根里的一个文件（被别的程序独占打开）。切换删掉写了一半的备份，经登录任务
     # 重新启动旧版本，安装根、两个任务与桌面都没动（运行状态回执由重新启动的旧版本重写）。
@@ -533,6 +549,32 @@ try {
     Assert-Equal 'False|precheck|transaction-in-progress' "$($rollbackLocked.succeeded)|$($rollbackLocked.failedStage)|$($rollbackLocked.reason)" "While another run holds the install lock the rollback stops in the precheck: $($rollbackLocked.error)"
     Assert-Equal "$rootSwitched|$tasksSwitched|$backupSwitched|4103,7001" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestRunning)" 'The rollback refused for a run in progress leaves the install root, the tasks, the backup and the running new version alone'
 
+    # 备份里的任务定义被改过（#259 评审）：现役任务的定义各改一项（以最高权限运行、主体换成 SYSTEM、动作改成安装根外的程序），
+    # backup.json 里它的哈希也跟着改了，备份仍算完整。回退每次都在前置检查停下，不按它注册任务，什么都不动。
+    $forgedTaskPath = Join-Path $switchCase.Backup 'tasks\current.task'
+    $backupJsonPath = Join-Path $switchCase.Backup 'backup.json'
+    $originalTaskText = [System.IO.File]::ReadAllText($forgedTaskPath)
+    $originalBackupJson = [System.IO.File]::ReadAllText($backupJsonPath)
+    $taskForgeries = [ordered]@{
+        'highest privileges' = { param($Task) $Task.RunLevel = 'Highest' }
+        'another principal' = { param($Task) $Task.UserSid = 'S-1-5-18' }
+        'a program outside the install root' = { param($Task) $Task.Actions[0].Execute = 'C:\Windows\System32\cmd.exe'; $Task.Actions[0].Arguments = '/c exit 0' }
+    }
+    foreach ($forgery in $taskForgeries.Keys) {
+        $forgedTask = $originalTaskText | ConvertFrom-Json
+        & $taskForgeries[$forgery] $forgedTask
+        [System.IO.File]::WriteAllText($forgedTaskPath, ($forgedTask | ConvertTo-Json -Depth 4 -Compress), $switchUtf8)
+        $forgedManifest = $originalBackupJson | ConvertFrom-Json -DateKind String
+        $forgedManifest.tasks.current.sha256 = (Get-FileHash -LiteralPath $forgedTaskPath -Algorithm SHA256).Hash
+        [System.IO.File]::WriteAllText($backupJsonPath, ($forgedManifest | ConvertTo-Json -Depth 6), $switchUtf8)
+        $backupForged = Get-CountdownSwitchTestTree -Root $switchCase.Backup
+        $rollbackForged = Invoke-CountdownSwitchTest -Rollback
+        Assert-Equal 'False|precheck|backup-task-invalid' "$($rollbackForged.succeeded)|$($rollbackForged.failedStage)|$($rollbackForged.reason)" "A backup task definition with $forgery stops the rollback in the precheck: $($rollbackForged.error)"
+        Assert-Equal "$rootSwitched|$tasksSwitched|$backupForged|4103,7001" "$(Get-CountdownSwitchTestTree -Root $switchCase.Root)|$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Backup)|$(Get-CountdownSwitchTestRunning)" "The rollback refused for a task definition with $forgery leaves the install root, the tasks, the backup and the running new version alone"
+    }
+    [System.IO.File]::WriteAllText($forgedTaskPath, $originalTaskText, $switchUtf8)
+    [System.IO.File]::WriteAllText($backupJsonPath, $originalBackupJson, $switchUtf8)
+
     $rollback = Invoke-CountdownSwitchTest -Rollback -Script (Join-Path $switchCase.Backup 'tools\Switch-CountdownInstallLayout.ps1')
     Assert-Equal 'True||1|restored|restored' "$($rollback.succeeded)|$($rollback.failedStage)|$($rollback.stoppedProcessCount)|$($rollback.tasks.current)|$($rollback.tasks.legacy)" 'The rollback from the backup succeeds after stopping the new version'
     Assert-Equal $rootBefore (Get-CountdownSwitchTestTree -Root $switchCase.Root -Exclude 'runtime-status.json') 'After the rollback the install root equals the state before the switch'
@@ -569,6 +611,43 @@ try {
     Assert-Equal $rootBefore (Get-CountdownSwitchTestTree -Root $switchCase.Root -Exclude 'runtime-status.json') 'After the resumed rollback the install root equals the state before the switch'
     Assert-Equal "$tasksBefore|$desktopBefore|4103,7002" "$(Get-CountdownSwitchTestTaskDefinitions)|$(Get-CountdownSwitchTestTree -Root $switchCase.Desktop)|$(Get-CountdownSwitchTestRunning)" 'After the resumed rollback both tasks and the desktop launchers are as before the switch and the old version runs again'
     Assert-Equal '<missing>' (Get-CountdownSwitchTestTree -Root "$($switchCase.Root).rollback-staging") 'The resumed rollback leaves no staging copy beside the install root'
+
+    # 生产 port（#259 评审）：受保护目录不继承上级，只有 SYSTEM 与 Administrators 完全控制、读者只能读与执行，已有的目录不动。
+    $protectedPath = Join-Path $switchTestRoot 'protected\backup'
+    $protectedReader = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    & $switchWindowsPorts.CreateProtectedDirectory $protectedPath $protectedReader
+    try {
+        $protectedAcl = Get-Acl -LiteralPath $protectedPath
+        $protectedRules = @($protectedAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |
+                ForEach-Object { "$($_.IdentityReference.Value)=$($_.FileSystemRights)/$($_.InheritanceFlags)/$($_.IsInherited)" } | Sort-Object)
+        $protectedExpected = @('S-1-5-18=FullControl/ContainerInherit, ObjectInherit/False', 'S-1-5-32-544=FullControl/ContainerInherit, ObjectInherit/False',
+            "$protectedReader=ReadAndExecute, Synchronize/ContainerInherit, ObjectInherit/False") | Sort-Object
+        Assert-Equal "True|$($protectedExpected -join ',')" "$($protectedAcl.AreAccessRulesProtected)|$($protectedRules -join ',')" 'The protected directory inherits nothing and grants SYSTEM and Administrators full control and the reader only read and execute'
+        $protectedAgain = try { & $switchWindowsPorts.CreateProtectedDirectory $protectedPath $protectedReader; 'created' } catch { 'refused' }
+        Assert-Equal 'refused' $protectedAgain 'The protected directory port refuses a directory that already exists'
+    }
+    finally {
+        # 清理之前作为属主把权限放开：未提权时读者只能读，删不掉它。
+        $protectedOpen = [System.Security.AccessControl.DirectorySecurity]::new()
+        $protectedOpen.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new([System.Security.Principal.SecurityIdentifier]::new($protectedReader), 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow'))
+        [System.IO.FileSystemAclExtensions]::SetAccessControl([System.IO.DirectoryInfo]::new($protectedPath), $protectedOpen)
+    }
+
+    # 生产 port 读导出的任务定义（XML）：唯一主体的 SID、运行级别（没写时是最低权限）与各个动作。
+    $exportedTask = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Principals><Principal id="Author"><UserId>$switchSessionSid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>HighestAvailable</RunLevel></Principal></Principals>
+  <Actions Context="Author">
+    <Exec><Command>"$switchPwsh"</Command><Arguments>-NoProfile -File "D:\敏敏子倒计时\敏敏子倒计时.ps1"</Arguments><WorkingDirectory>D:\敏敏子倒计时</WorkingDirectory></Exec>
+    <ComHandler><ClassId>{00000000-0000-0000-0000-000000000000}</ClassId></ComHandler>
+  </Actions>
+</Task>
+"@
+    $readTask = & $switchWindowsPorts.ReadTaskDefinition $exportedTask
+    Assert-Equal "$switchSessionSid|Highest|Exec:`"$switchPwsh`"|-NoProfile -File `"D:\敏敏子倒计时\敏敏子倒计时.ps1`"|D:\敏敏子倒计时,ComHandler:||" "$($readTask.UserSid)|$($readTask.RunLevel)|$(@($readTask.Actions | ForEach-Object { "$($_.Type):$($_.Execute)|$($_.Arguments)|$($_.WorkingDirectory)" }) -join ',')" 'The task definition port reads the principal, the run level and the actions of an exported task'
+    $readDefaultLevel = & $switchWindowsPorts.ReadTaskDefinition "<Task xmlns=`"http://schemas.microsoft.com/windows/2004/02/mit/task`"><Principals><Principal id=`"Author`"><UserId>$switchSessionSid</UserId></Principal></Principals><Actions><Exec><Command>D:\敏敏子倒计时\app\MinminCountdown.exe</Command></Exec></Actions></Task>"
+    Assert-Equal 'Limited|1' "$($readDefaultLevel.RunLevel)|$(@($readDefaultLevel.Actions).Count)" 'A task without a run level reads as least privilege'
 }
 finally {
     Remove-CountdownIsolatedTestTree -Path $switchTestRoot -AllowedRoot $switchTempRoot

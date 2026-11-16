@@ -12,7 +12,9 @@ $ErrorActionPreference = 'Stop'
 # 报告的回滚结果）；unknown（拿不到安装结果或安装后的状态，既不算成功也不算失败）。办公室现状不确定时 nextStep 提示先查状态。
 # 回退成功的结论是 rolled-back。
 # 一次性布局切换（#287）：-LayoutSwitch 与部署同一流程，包里另带切换脚本，远端写操作运行它（备份、经包内安装器换布局、移除遗留），
-# 探测读到当前提交已在运行也照常切换；-LayoutRollback 一次远端写操作运行办公室备份里的回退脚本，不打包、不传输。
+# 探测读到当前提交已在运行也照常切换；-LayoutRollback 把仓库里的切换脚本与新安装器 module 打成包、送到暂存目录，远端写操作核对
+# 包哈希后以 -Rollback 运行包里的切换脚本（#259 评审：不运行办公室备份里的副本）。
+# 办公室上的暂存目录建成只给 SYSTEM 与 Administrators 写（#259 评审）：提权的远端写操作从那里解包并运行包里的脚本。
 # 远端执行与传输经 port 调用：生产用 New-CountdownDeployerHostPorts 接主机受管的远端执行入口与传输入口，测试注入假 port。
 # port 的返回值只取已知字段，结果与记录里没有主机名、地址、账号、凭据或连接参数。
 
@@ -38,7 +40,8 @@ $script:InProgressReasons = @('install-in-progress', 'transaction-in-progress')
 $script:InProgressNextStep = '办公室上另一个安装、切换或回退正在运行，这次什么都没改：等它结束，再运行 Deploy-CountdownProgram.ps1 -StatusOnly 读一次状态（installInProgress 为 false 之后再看其余各项），据此决定要不要重新运行；它还在运行时不要再部署、切换或回退。'
 
 # 写操作脚本的第一条语句（param 块之后）必须是对执行目标的断言：主机的远端执行入口缺了它就拒绝执行。
-# 包内入口 __ENTRY__ 是安装器，布局切换时是切换脚本（两者参数相同，都输出一份结果 JSON）。
+# 包内入口 __ENTRY__ 是安装器，布局切换时是切换脚本，回退时是以 -Rollback 运行的切换脚本（__MODE__ 为 rollback）；
+# 三者参数相同，都输出一份结果 JSON。
 $script:RemoteInstallScript = @'
 param([object] $Port, [string] $LockName)
 if ($env:CODEX_REMOTE_EXECUTION_TARGET -ne 'office') { throw '安装脚本只能经远端执行入口在办公室上运行。' }
@@ -53,6 +56,7 @@ try {
     $envelope.packageVerified = $true
     [System.IO.Compression.ZipFile]::ExtractToDirectory($packagePath, $packageRoot)
     $arguments = @{ PackageRoot = $packageRoot; InstallRoot = __INSTALL_ROOT__; TaskName = __TASK_NAME__ }
+    if (__MODE__ -ceq 'rollback') { $arguments.Rollback = $true }
     if ($null -ne $Port) { $arguments.Port = $Port }
     if ($LockName) { $arguments.LockName = $LockName }
     $envelope.installerStarted = $true
@@ -64,27 +68,6 @@ finally {
     try { if (Test-Path -LiteralPath $staging) { [System.IO.Directory]::Delete($staging, $true) } } catch { }
     $envelope.stagingRemoved = -not (Test-Path -LiteralPath $staging)
 }
-$envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
-'@
-
-# 回退（#287）：切换脚本把自己和新安装器 module 复制进了办公室上的备份 <安装根>.layout-switch-backup\tools\，从那里以 -Rollback 运行。
-$script:RemoteRollbackScript = @'
-param([object] $Port, [string] $LockName)
-if ($env:CODEX_REMOTE_EXECUTION_TARGET -ne 'office') { throw '回退脚本只能经远端执行入口在办公室上运行。' }
-$ErrorActionPreference = 'Stop'
-$installRoot = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath(__INSTALL_ROOT__))
-$entry = Join-Path "$installRoot.layout-switch-backup" 'tools\Switch-CountdownInstallLayout.ps1'
-# rollbackStarted：回退脚本开始运行之后才可能动到安装；它之前的失败（没有备份）什么都没改。
-$envelope = [ordered]@{ rollbackStarted = $false; rollback = $null; error = $null }
-try {
-    if (-not (Test-Path -LiteralPath $entry -PathType Leaf)) { throw "没有切换前的备份：$entry 不在。" }
-    $arguments = @{ Rollback = $true; InstallRoot = $installRoot; TaskName = __TASK_NAME__ }
-    if ($null -ne $Port) { $arguments.Port = $Port }
-    if ($LockName) { $arguments.LockName = $LockName }
-    $envelope.rollbackStarted = $true
-    $envelope.rollback = @(& $entry @arguments) -join "`n"
-}
-catch { $envelope.error = ($_.Exception.Message -replace '\s+', ' ').Trim() }
 $envelope | ConvertTo-Json -Compress -EscapeHandling EscapeNonAscii
 '@
 # 布局切换没有成功时，切换脚本给的下一步之后补这一句：经部署入口怎么接着切换或回退。
@@ -454,23 +437,26 @@ function Add-CountdownDeployPackageEntry {
 
 # 包：程序目录里载荷清单列出的文件、载荷清单和安装器（布局切换时另带切换脚本）。程序目录的文件取自本机构建输出，
 # 不重新导出、不重新构建；边写进包边算 SHA-256，与清单不一致就停。
+# 不给构建输出时（回退）包里只有脚本。
 function New-CountdownDeployPackage {
     param(
         [Parameter(Mandatory)] [string] $RepositoryRoot,
-        [Parameter(Mandatory)] [object] $BuildOutput,
+        [object] $BuildOutput,
         [Parameter(Mandatory)] [string] $PackagePath,
         [string[]] $Scripts = $script:InstallerFiles
     )
 
     $archive = [System.IO.Compression.ZipFile]::Open($PackagePath, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($file in $BuildOutput.Files) {
-            $sha256 = Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $file.Path) -EntryName $file.Path
-            if ($sha256 -ne $file.Sha256) {
-                throw (New-CountdownDeployFailure -Reason 'build-output-modified' -Message "构建输出在套件之后被改动：$($file.Path) 的 SHA-256 与载荷清单不一致，程序目录不是套件测过的那份。重新跑一轮套件，部署它测过的构建输出。")
+        if ($null -ne $BuildOutput) {
+            foreach ($file in $BuildOutput.Files) {
+                $sha256 = Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $file.Path) -EntryName $file.Path
+                if ($sha256 -ne $file.Sha256) {
+                    throw (New-CountdownDeployFailure -Reason 'build-output-modified' -Message "构建输出在套件之后被改动：$($file.Path) 的 SHA-256 与载荷清单不一致，程序目录不是套件测过的那份。重新跑一轮套件，部署它测过的构建输出。")
+                }
             }
+            [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath $BuildOutput.ManifestPath -EntryName 'app\published-payload.json')
         }
-        [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath $BuildOutput.ManifestPath -EntryName 'app\published-payload.json')
         foreach ($name in $Scripts) {
             [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $name) -EntryName $name)
         }
@@ -642,19 +628,52 @@ function New-CountdownDeployRunId {
     [DateTime]::Now.ToString('yyyyMMddTHHmmssfff') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
 }
 
-# 按切换前的备份回退（#287）：一次远端写操作运行办公室备份里的回退脚本，取回它的结果 JSON（结果的 rollback）；本机不需要
-# 构建输出，不打包、不传输。结论 outcome：rolled-back（succeeded 为 true）；rejected（另一个安装、切换或回退正在运行，回退什么都
-# 没改，nextStep 是等它结束、先读状态）；failed（没有备份，或回退报告失败，nextStep 是回退给的下一步）；unknown（succeeded 为
-# null：连接在回退途中断开，或回退开始运行却没给结果）。写一份本地记录。
+# 经传输入口把包送到办公室上的暂存目录 <Staging>\package.zip 并核对远端哈希；传输记录（尝试编号、状态、远端哈希、字节数与账本
+# 位置）一拿到就写进结果的 transfer。失败时远端还没有运行任何东西：原因 transfer-failed，消息之后接 -NothingRan 的说法。
+function Send-CountdownDeployPackage {
+    param(
+        [Parameter(Mandatory)] [object] $Port,
+        [Parameter(Mandatory)] [object] $Package,
+        [Parameter(Mandatory)] [string] $Staging,
+        [Parameter(Mandatory)] [string] $RunId,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Result,
+        [Parameter(Mandatory)] [string] $NothingRan
+    )
+
+    try {
+        $sent = @(& $Port.SendFile $Package.Path ([System.IO.Path]::Join($Staging, 'package.zip')) $Package.Sha256 $RunId)
+        if ($sent.Count -ne 1) { throw "传输 port 应返回一份结果，实际 $($sent.Count) 份。" }
+        $remoteSha256 = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Sha256')
+        $Result.transfer = [ordered]@{
+            attemptId = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'AttemptId')
+            status = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Status')
+            remoteSha256 = $remoteSha256.ToUpperInvariant()
+            bytes = Get-CountdownDeployProperty -Object $sent[0] -Name 'Bytes'
+            ledgerPath = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'LedgerPath')
+        }
+        if ($Result.transfer.status -cne 'succeeded') { throw "传输没有成功：$($Result.transfer.status)。" }
+        if (-not [string]::Equals($remoteSha256, $Package.Sha256, [System.StringComparison]::OrdinalIgnoreCase)) { throw '远端文件的哈希与包哈希不一致。' }
+    }
+    catch { throw (New-CountdownDeployFailure -Reason 'transfer-failed' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)$NothingRan") }
+}
+
+# 按切换前的备份回退（#287）：把仓库里的切换脚本与新安装器 module 打成一个包，经传输入口送到按运行编号命名的暂存目录，一次远端
+# 写操作核对包哈希、解包并以 -Rollback 运行包里的切换脚本（#259 评审：不运行办公室备份里的副本），取回它的结果 JSON（结果的
+# rollback，带包哈希是否核对通过、切换脚本是否开始运行、暂存目录是否删掉）。不需要构建输出，不做部署的本机预检。
+# 结论 outcome：rolled-back（succeeded 为 true）；rejected（打包失败，没有连接办公室；或另一个安装、切换或回退正在运行，回退什么都
+# 没改，nextStep 是等它结束、先读状态）；failed（传输失败、包没能交给切换脚本、没有备份，或回退报告失败，nextStep 是回退给的
+# 下一步）；unknown（succeeded 为 null：连接在回退途中断开，或回退开始运行却没给结果）。写一份本地记录。
 function Invoke-CountdownDeployLayoutRollback {
     param(
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
         [Parameter(Mandatory)] [string] $RecordRoot,
         [Parameter(Mandatory)] [string] $RemoteInstallRoot,
         [Parameter(Mandatory)] [string] $TaskName,
+        [Parameter(Mandatory)] [string] $RemoteStagingRoot,
         [Parameter(Mandatory)] [object] $Port
     )
 
-    $steps = @('rollback', 'record')
+    $steps = @('package', 'transfer', 'rollback', 'record')
     $runId = New-CountdownDeployRunId
     $result = [ordered]@{
         schemaVersion = 1
@@ -668,33 +687,48 @@ function Invoke-CountdownDeployLayoutRollback {
         runId = $runId
         startedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         finishedAtUtc = $null
+        package = $null
+        remoteStagingDirectory = $null
+        transfer = $null
         rollback = $null
         recordPath = $null
     }
+    $step = 'package'
+    $remoteContacted = $false
     $workDirectory = [System.IO.Path]::Join([System.IO.Path]::GetTempPath(), "clock-countdown-rollback-$runId")
+    $packagePath = [System.IO.Path]::Join($workDirectory, 'package.zip')
     try {
-        Write-CountdownDeployProgress -Step 'rollback' -Steps $steps -Message '经远端执行入口运行办公室备份里的回退脚本'
+        Write-CountdownDeployProgress -Step 'package' -Steps $steps -Message '把仓库里的切换脚本与新安装器 module 打成一个包'
         [void] [System.IO.Directory]::CreateDirectory($workDirectory)
-        $text = Expand-CountdownDeployTemplate -Template $script:RemoteRollbackScript -Values ([ordered]@{ '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName })
+        $package = New-CountdownDeployPackage -RepositoryRoot $RepositoryRoot -PackagePath $packagePath -Scripts @($script:LayoutSwitchScript, $script:InstallerFiles[1])
+        $result.package = [ordered]@{ sha256 = $package.Sha256; bytes = $package.Bytes; retained = $true }
+
+        $step = 'transfer'
+        $staging = [System.IO.Path]::Join($RemoteStagingRoot, "clock-countdown-$runId")
+        $result.remoteStagingDirectory = $staging
+        Write-CountdownDeployProgress -Step 'transfer' -Steps $steps -Message "经传输入口送到暂存目录 clock-countdown-$runId 并核对远端哈希"
+        $remoteContacted = $true
+        Send-CountdownDeployPackage -Port $Port -Package $package -Staging $staging -RunId $runId -Result $result -NothingRan '没有运行回退，办公室的安装没有改动。'
+
+        $step = 'rollback'
+        Write-CountdownDeployProgress -Step 'rollback' -Steps $steps -Message '经远端执行入口核对包哈希、解包并以 -Rollback 运行包里的切换脚本'
+        $text = Expand-CountdownDeployTemplate -Template $script:RemoteInstallScript -Values ([ordered]@{
+                '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__ENTRY__' = $script:LayoutSwitchScript; '__MODE__' = 'rollback'
+                '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName
+            })
         $scriptPath = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'rollback.ps1') -Text $text
         try { $envelope = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $scriptPath -WriteOperation $true -Name '远端回退' }
         catch {
             throw (New-CountdownDeployFailure -Reason 'rollback-result-unknown' -Outcome 'unknown' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)连接可能在回退途中断开，不知道回退进行到了哪一步。")
         }
-        $rollbackText = [string] (Get-CountdownDeployProperty -Object $envelope -Name 'rollback')
-        $rollback = $null
-        if (-not [string]::IsNullOrWhiteSpace($rollbackText)) {
-            try { $rollback = $rollbackText | ConvertFrom-Json -DateKind String }
-            catch { $rollback = $null }
-        }
-        $envelopeError = ConvertTo-CountdownDeployBoundedText -Text ([string] (Get-CountdownDeployProperty -Object $envelope -Name 'error'))
-        if ((Get-CountdownDeployProperty -Object $rollback -Name 'succeeded') -isnot [bool]) {
-            if (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $envelope -Name 'rollbackStarted')) {
-                throw (New-CountdownDeployFailure -Reason 'rollback-result-unknown' -Outcome 'unknown' -Message "回退脚本开始运行了，却没有给出结果（$envelopeError），不知道回退进行到了哪一步。")
-            }
-            throw (New-CountdownDeployFailure -Reason 'rollback-failed' -Message "回退没有开始，办公室没有改动：$envelopeError")
-        }
+        $rollback = ConvertFrom-CountdownDeployInstallEnvelope -Envelope $envelope
         $result.rollback = $rollback
+        if ($null -eq $rollback.succeeded) {
+            if ($rollback.installerStarted) {
+                throw (New-CountdownDeployFailure -Reason 'rollback-result-unknown' -Outcome 'unknown' -Message "回退脚本开始运行了，却没有给出结果（$($rollback.error)），不知道回退进行到了哪一步。")
+            }
+            throw (New-CountdownDeployFailure -Reason 'rollback-failed' -Message "包没能交给回退脚本（$($rollback.error)）：回退没有开始，办公室的安装没有改动。")
+        }
         if (-not $rollback.succeeded -and [string] (Get-CountdownDeployProperty -Object $rollback -Name 'reason') -cin $script:InProgressReasons) {
             throw (New-CountdownDeployFailure -Reason ([string] $rollback.reason) -Outcome 'rejected' -Message "办公室上另一个安装、切换或回退正在运行，回退没有开始：$(Get-CountdownDeployProperty -Object $rollback -Name 'error')")
         }
@@ -707,17 +741,21 @@ function Invoke-CountdownDeployLayoutRollback {
         $result.outcome = 'rolled-back'
     }
     catch {
-        $result.failedStep = 'rollback'
+        $result.failedStep = $step
         $reason = $_.Exception.Data['CountdownDeployReason']
         $result.reason = if ($null -ne $reason) { [string] $reason } else { 'unexpected-error' }
+        # 连接办公室之前停下（打包失败）是拒绝；之后没有成功又不是未知或拒绝的是失败。
         $outcome = $_.Exception.Data['CountdownDeployOutcome']
-        $result.outcome = if ($null -ne $outcome) { [string] $outcome } else { 'failed' }
+        $result.outcome = if ($null -ne $outcome) { [string] $outcome } elseif ($remoteContacted) { 'failed' } else { 'rejected' }
         $result.succeeded = if ($result.outcome -ceq 'unknown') { $null } else { $false }
         $result.error = ConvertTo-CountdownDeployBoundedText -Text $_.Exception.Message
         if ($result.outcome -ceq 'unknown') { $result.nextStep = $script:RollbackReadStatusFirst }
-        if ($result.outcome -ceq 'rejected') { $result.nextStep = $script:InProgressNextStep }
+        if ($remoteContacted -and $result.outcome -ceq 'rejected') { $result.nextStep = $script:InProgressNextStep }
     }
-    finally { Remove-CountdownDeployWorkDirectory -Path $workDirectory }
+    finally {
+        Remove-CountdownDeployWorkDirectory -Path $workDirectory
+        if ($null -ne $result.package) { $result.package.retained = Test-Path -LiteralPath $packagePath }
+    }
 
     Write-CountdownDeployProgress -Step 'record' -Steps $steps -Message '写本地记录'
     Complete-CountdownDeployRecord -Result $result -RecordRoot $RecordRoot
@@ -809,7 +847,8 @@ function Invoke-CountdownDeployment {
         return Invoke-CountdownDeployStatusRead -RepositoryRoot $RepositoryRoot -RemoteInstallRoot $RemoteInstallRoot -TaskName $TaskName -Port $Port
     }
     if ($LayoutRollback) {
-        return Invoke-CountdownDeployLayoutRollback -RecordRoot $RecordRoot -RemoteInstallRoot $RemoteInstallRoot -TaskName $TaskName -Port $Port
+        return Invoke-CountdownDeployLayoutRollback -RepositoryRoot $RepositoryRoot -RecordRoot $RecordRoot -RemoteInstallRoot $RemoteInstallRoot -TaskName $TaskName `
+            -RemoteStagingRoot $RemoteStagingRoot -Port $Port
     }
 
     # 包内入口：安装器，布局切换时是切换脚本。
@@ -887,26 +926,12 @@ function Invoke-CountdownDeployment {
             $result.remoteStagingDirectory = $staging
             Write-CountdownDeployProgress -Step 'transfer' -Message "经传输入口送到暂存目录 clock-countdown-$runId 并核对远端哈希"
             # 传输失败时安装还没开始：办公室的安装没有改动，暂存目录里可能留下不完整的包。
-            try {
-                $sent = @(& $Port.SendFile $packagePath ([System.IO.Path]::Join($staging, 'package.zip')) $package.Sha256 $runId)
-                if ($sent.Count -ne 1) { throw "传输 port 应返回一份结果，实际 $($sent.Count) 份。" }
-                $remoteSha256 = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Sha256')
-                $result.transfer = [ordered]@{
-                    attemptId = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'AttemptId')
-                    status = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'Status')
-                    remoteSha256 = $remoteSha256.ToUpperInvariant()
-                    bytes = Get-CountdownDeployProperty -Object $sent[0] -Name 'Bytes'
-                    ledgerPath = [string] (Get-CountdownDeployProperty -Object $sent[0] -Name 'LedgerPath')
-                }
-                if ($result.transfer.status -cne 'succeeded') { throw "传输没有成功：$($result.transfer.status)。" }
-                if (-not [string]::Equals($remoteSha256, $package.Sha256, [System.StringComparison]::OrdinalIgnoreCase)) { throw '远端文件的哈希与包哈希不一致。' }
-            }
-            catch { throw (New-CountdownDeployFailure -Reason 'transfer-failed' -Message "$(ConvertTo-CountdownDeploySentence $_.Exception.Message)没有运行安装，办公室的安装没有改动。") }
+            Send-CountdownDeployPackage -Port $Port -Package $package -Staging $staging -RunId $runId -Result $result -NothingRan '没有运行安装，办公室的安装没有改动。'
 
             $step = 'install'
             Write-CountdownDeployProgress -Step 'install' -Message "经远端执行入口核对包哈希、解包并运行包内$(if ($LayoutSwitch) { '切换脚本：备份、经新安装器换布局、移除遗留' } else { '安装器' })"
             $installText = Expand-CountdownDeployTemplate -Template $script:RemoteInstallScript -Values ([ordered]@{
-                    '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__ENTRY__' = $entryName
+                    '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__ENTRY__' = $entryName; '__MODE__' = 'install'
                     '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName
                 })
             $installScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'install.ps1') -Text $installText
@@ -1006,7 +1031,7 @@ function New-CountdownDeployerHostPorts {
     连接参数与凭据由两个入口自己加载，项目里不出现主机名、地址、账号或凭据。入口的全部输出流都收进来，只解析最后一行
     JSON 摘要并只取已知字段；入口失败时只报异常类型：原始输出与异常文本可能带出主机名。传输账本按尝试编号放在 -LedgerRoot 下，
     属于主机的传输记账，不放进项目的部署记录目录（传输入口的远端哈希探针输出里有远端计算机名）。scp 不建远端目录，
-    送包前先以写操作建出暂存目录（已存在就拒绝）。
+    送包前先以写操作建出暂存目录（已存在就拒绝），建成只给 SYSTEM 与 Administrators 写（远端步骤没有提权时另给运行者自己）。
     #>
     [CmdletBinding()]
     param(
@@ -1046,11 +1071,21 @@ function New-CountdownDeployerHostPorts {
         [void] [System.IO.Directory]::CreateDirectory($ledgerDirectory)
         $remoteDirectory = "'" + [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent([System.IO.Path]::GetDirectoryName($RemotePath)) + "'"
         $createScript = [System.IO.Path]::Join($ledgerDirectory, 'create-staging.ps1')
+        # 暂存目录（#259 评审）：提权的远端写操作从这里解包并运行包里的安装器或切换脚本，目录建成不继承上级、只有 SYSTEM 与
+        # Administrators 完全控制，别的账号改不了包和解出来的脚本；远端步骤没有提权时另给运行者自己完全控制，传输才写得进去。
         [System.IO.File]::WriteAllText($createScript, (@(
                     "if (`$env:CODEX_REMOTE_EXECUTION_TARGET -ne 'office') { throw '只能经远端执行入口在办公室上运行。' }"
                     "`$path = $remoteDirectory"
                     "if (Test-Path -LiteralPath `$path) { throw '远端暂存目录已存在。' }"
-                    '[void] [System.IO.Directory]::CreateDirectory($path)'
+                    '[void] [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($path))'
+                    '$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()'
+                    '$elevated = ([System.Security.Principal.WindowsPrincipal] $identity).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)'
+                    '$security = [System.Security.AccessControl.DirectorySecurity]::new()'
+                    '$security.SetAccessRuleProtection($true, $false)'
+                    'foreach ($sid in @(''S-1-5-18'', ''S-1-5-32-544'') + @(if (-not $elevated) { $identity.User.Value })) {'
+                    '    $security.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new([System.Security.Principal.SecurityIdentifier]::new($sid), ''FullControl'', ''ContainerInherit, ObjectInherit'', ''None'', ''Allow''))'
+                    '}'
+                    '[System.IO.FileSystemAclExtensions]::Create([System.IO.DirectoryInfo]::new($path), $security)'
                     "'{""created"":true}'"
                 ) -join "`n"), [System.Text.UTF8Encoding]::new($false))
         $created = & $invokeRemote $createScript $true

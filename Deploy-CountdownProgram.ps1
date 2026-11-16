@@ -12,11 +12,14 @@
 -StatusOnly 只做一次只读状态读取，不做任何改动，也不写记录。
 一次性布局切换（#287，步骤见 docs/办公室布局切换.md）：-LayoutSwitch 走与部署相同的预检、打包、探测、传输与状态读取，
 包里另带切换脚本，安装一步在办公室上运行它：先把安装根、两个登录任务定义和桌面启动器备份到 <安装根>.layout-switch-backup，
-再经包内新安装器换成新布局、移除遗留；当前提交已在运行也照常切换。-LayoutRollback 一次远端写操作运行备份里的回退脚本，
-把安装根、任务定义与桌面启动器恢复成切换前的样子，结论 rolled-back；不需要构建输出。三种模式一次只能选一种。
-进度写到标准错误，最后一行是结论；结果 JSON 写到标准输出，退出码总是 0。结论看 outcome：deployed、already-running
-（succeeded 为 true）；rejected（预检拒绝，没有连接办公室）、failed（succeeded 为 false）；unknown（succeeded 为 null，
-不知道办公室上的结果）。failedStep 是停下的步骤，reason 是原因类别，error 写明缺什么或哪里不对；安装失败时 rollback 是
+再经包内新安装器换成新布局、移除遗留；当前提交已在运行也照常切换。-LayoutRollback 把仓库里的切换脚本与新安装器 module
+打成包送到暂存目录，远端核对包哈希后以 -Rollback 运行包里的切换脚本（不运行办公室备份里的副本），把安装根、任务定义与
+桌面启动器恢复成切换前的样子，结论 rolled-back；不需要构建输出，不做部署的本机预检。三种模式一次只能选一种。
+办公室上的暂存目录建成只给 SYSTEM 与 Administrators 写，包与解出来的脚本别的账号改不了。
+进度写到标准错误，最后一行是结论；结果 JSON 写到标准输出，退出码总是 0。结论看 outcome：deployed、already-running、
+rolled-back（succeeded 为 true）；rejected（预检拒绝，没有连接办公室；或办公室上另一个安装、切换或回退正在运行，什么都没改）、
+failed（succeeded 为 false）；unknown（succeeded 为 null，不知道办公室上的结果）。failedStep 是停下的步骤，reason 是原因类别，
+error 写明缺什么或哪里不对；安装失败时 rollback 是
 安装器报告的回滚结果；办公室现状不确定时 nextStep 提示先用 -StatusOnly 读状态。输出和记录不含主机名、地址、账号或凭据：
 连接由主机受管的两个入口负责。-Port 供测试注入假的远端执行与传输 port；不传时接主机入口。
 #>

@@ -146,6 +146,18 @@ function ConvertTo-CountdownDeployLiteral {
     "'" + [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($Value) + "'"
 }
 
+# 远端脚本模板的占位符一次替换成各自值的单引号字面量：替换进去的值里拼着别的占位符字样（暂存根、任务名都由调用方给出）
+# 也不会被再替换一次。
+function Expand-CountdownDeployTemplate {
+    param(
+        [Parameter(Mandatory)] [string] $Template,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Values
+    )
+
+    $pattern = (@($Values.Keys) | ForEach-Object { [regex]::Escape([string] $_) }) -join '|'
+    $Template -creplace $pattern, { ConvertTo-CountdownDeployLiteral -Value ([string] $Values[$_.Value]) }
+}
+
 # 进度只写标准错误：标准输出留给结果 JSON。每步一行“[deploy] 时刻 序号/总数 步骤 说明”。
 function Write-CountdownDeployProgress {
     param(
@@ -663,10 +675,7 @@ function Invoke-CountdownDeployLayoutRollback {
     try {
         Write-CountdownDeployProgress -Step 'rollback' -Steps $steps -Message '经远端执行入口运行办公室备份里的回退脚本'
         [void] [System.IO.Directory]::CreateDirectory($workDirectory)
-        $text = $script:RemoteRollbackScript
-        foreach ($placeholder in @(@('__INSTALL_ROOT__', $RemoteInstallRoot), @('__TASK_NAME__', $TaskName))) {
-            $text = $text.Replace($placeholder[0], (ConvertTo-CountdownDeployLiteral -Value $placeholder[1]))
-        }
+        $text = Expand-CountdownDeployTemplate -Template $script:RemoteRollbackScript -Values ([ordered]@{ '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName })
         $scriptPath = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'rollback.ps1') -Text $text
         try { $envelope = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $scriptPath -WriteOperation $true -Name '远端回退' }
         catch {
@@ -896,12 +905,10 @@ function Invoke-CountdownDeployment {
 
             $step = 'install'
             Write-CountdownDeployProgress -Step 'install' -Message "经远端执行入口核对包哈希、解包并运行包内$(if ($LayoutSwitch) { '切换脚本：备份、经新安装器换布局、移除遗留' } else { '安装器' })"
-            $installText = $script:RemoteInstallScript
-            foreach ($placeholder in @(
-                    @('__STAGING__', $staging), @('__SHA256__', $package.Sha256), @('__ENTRY__', $entryName),
-                    @('__INSTALL_ROOT__', $RemoteInstallRoot), @('__TASK_NAME__', $TaskName))) {
-                $installText = $installText.Replace($placeholder[0], (ConvertTo-CountdownDeployLiteral -Value $placeholder[1]))
-            }
+            $installText = Expand-CountdownDeployTemplate -Template $script:RemoteInstallScript -Values ([ordered]@{
+                    '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__ENTRY__' = $entryName
+                    '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName
+                })
             $installScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'install.ps1') -Text $installText
             # 远端安装脚本总会输出一份信封；拿不到它（连接断开、入口失败、输出不全）就不知道安装进行到了哪一步。
             try { $envelope = Invoke-CountdownDeployRemoteScript -Port $Port -ScriptPath $installScript -WriteOperation $true -Name '远端安装' }

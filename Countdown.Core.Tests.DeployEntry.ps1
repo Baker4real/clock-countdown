@@ -564,6 +564,15 @@ try {
     Assert-Equal "$($deployRepo.Head)|True|7001" "$($deployAgain.Result.statusBefore.commit)|$($deployAgain.Result.statusBefore.running)|$(@($deployAgain.Result.statusBefore.processes | ForEach-Object { [int] $_.processId }) -join ',')" 'The report carries the status read that shows the commit running'
     Assert-Equal 'already-running' ([string] ([System.IO.File]::ReadAllText([string] $deployAgain.Result.recordPath) | ConvertFrom-Json).outcome) 'The deployment record says the commit was already running'
 
+    # 远端脚本的占位符一次替换（#259 评审）：暂存根与任务名里拼着别的占位符字样和单引号，远端脚本照原样用它们。
+    $deployCase = New-CountdownDeployTestCase -Name 'placeholders'
+    $deployCase.StagingRoot = Join-Path $deployCase.OfficeRoot 'deploy __TASK_NAME__ __SHA256__'
+    $deployCase.TaskName = "Minmin Countdown Deploy it's __STAGING__ __ENTRY__"
+    $deployPlaceholders = Invoke-CountdownDeployTest -Label 'staging root and task name that spell placeholders'
+    Assert-Equal 'deployed|True' "$($deployPlaceholders.Result.outcome)|$($deployPlaceholders.Result.succeeded)" "A staging root and a task name that spell other placeholders deploy as given: $($deployPlaceholders.Result.failedStep) $($deployPlaceholders.Result.error)"
+    Assert-Equal $true ([string] $deployPlaceholders.Result.remoteStagingDirectory).StartsWith("$($deployCase.StagingRoot)\") 'The package goes to the staging root as given'
+    Assert-Equal "$($deployCase.TaskName)=Running" (@($deployCase.Tasks.Keys | ForEach-Object { "$_=$($deployCase.Tasks[$_].State)" }) -join ',') 'The login task is registered under the task name as given'
+
     # 成功只看安装后的状态读取：安装器报告成功，但读状态时应用已经退出，部署不报告成功。
     $deployCase = New-CountdownDeployTestCase -Name 'exited'
     $deployCase.Responses['read2'] = { param($Run) $deployCase.Processes = @(); & $Run }

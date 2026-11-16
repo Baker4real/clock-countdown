@@ -188,7 +188,8 @@ $deployWindowsPorts = [pscustomobject]@{
     }
     StopProcess = {
         param([int] $ProcessId)
-        foreach ($process in @($deployCase.Processes | Where-Object { $_.ProcessId -eq $ProcessId -and $_.StartedByTask })) {
+        # 任务已被移除（回退先让启动路径失效）时进程照样能结束。
+        foreach ($process in @($deployCase.Processes | Where-Object { $_.ProcessId -eq $ProcessId -and $_.StartedByTask -and $deployCase.Tasks.ContainsKey($_.StartedByTask) })) {
             $deployCase.Tasks[$process.StartedByTask].State = 'Ready'
         }
         $deployCase.Processes = @($deployCase.Processes | Where-Object { $_.ProcessId -ne $ProcessId })

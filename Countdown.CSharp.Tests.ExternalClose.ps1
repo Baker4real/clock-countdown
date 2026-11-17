@@ -232,8 +232,9 @@ function Invoke-ExternalCloseOnlyTests {
 
     $application = Join-Path $RepositoryRoot 'app\MinminCountdown.exe'
     if (-not (Test-Path -LiteralPath $application -PathType Leaf)) { throw "未找到待验证的 C# 应用宿主：$application" }
+    $ephemeralCi = $env:GITHUB_ACTIONS -eq 'true'
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
-    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) { throw "未找到受管 C# 测试目录清理入口：$safeTreeDelete" }
+    if (-not $ephemeralCi -and -not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) { throw "未找到受管 C# 测试目录清理入口：$safeTreeDelete" }
     $capabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
     $testRoot = [System.IO.Path]::GetFullPath((Join-Path $capabilityRoot ('clock-countdown-external-close\' + [guid]::NewGuid().ToString('N'))))
     if (-not $testRoot.StartsWith($capabilityRoot.TrimEnd('\') + '\', [System.StringComparison]::OrdinalIgnoreCase)) { throw '拒绝在受管测试证据根外创建 ExternalClose 数据。' }
@@ -245,13 +246,17 @@ function Invoke-ExternalCloseOnlyTests {
     }
     catch { $originalError = $_; throw }
     finally {
-        try {
-            Invoke-ManagedTestRootPurge -SafeTreeDelete $safeTreeDelete -TestRoot $testRoot -CapabilityRoot $capabilityRoot `
-                -FailedMessage '受管 ExternalClose 测试目录清理失败' -IncompleteMessage '受管 ExternalClose 测试目录未完成清理'
-        }
-        catch {
-            if ($null -eq $originalError) { throw }
-            [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
+        # GitHub runner 是一次性 VM，测试根位于仓库外的 D:\agents\run-evidence；
+        # 本机仍必须走受管清理，不能用 CI 跳过反过来说明本机已清理。
+        if (-not $ephemeralCi) {
+            try {
+                Invoke-ManagedTestRootPurge -SafeTreeDelete $safeTreeDelete -TestRoot $testRoot -CapabilityRoot $capabilityRoot `
+                    -FailedMessage '受管 ExternalClose 测试目录清理失败' -IncompleteMessage '受管 ExternalClose 测试目录未完成清理'
+            }
+            catch {
+                if ($null -eq $originalError) { throw }
+                [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
+            }
         }
     }
 }

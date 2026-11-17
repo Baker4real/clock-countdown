@@ -101,13 +101,17 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 
 硬约束：本项目的 PowerShell adapter、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF adapter 入口仍必须使用 `-STA`。
 
-硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / SourceValidation / InstallValidate 五个阶段**仅启动器可跑**，禁止把内层命令当复制模板直跑。启动器默认把整棵进程树放到 BelowNormal，并把控制台与 WPF 窗口放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点）；用户 Default 桌面若出现敏敏子 / MinminCountdown 可见顶层窗即红。任一阶段红即停（参考基线待重拍除外，见下文），日志落在 `logs\suite-runs\`，内容是原始字节，编码由写入的进程决定：多数为 UTF-8，未自设编码的进程（如 InstallValidate 的安装器）按控制台代码页写出；中文 Windows 上按 UTF-8 读出乱码时改用 `Get-Content -Encoding 936`。CSharp / SourceValidation 若检测到自己不在 `MinminSuiteIso-*` 桌面会 fail-closed。关闭隔离必须显式 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。隔离桌面上没人能点掉崩溃对话框：套件进程树里有进程弹出“has stopped working / 已停止工作”对话框时，隔离启动器以退出码 126 结束该进程，并把对话框标题与正文写进该阶段的 err 日志。本机微信输入法会把 CrashRpt 注入 GUI 进程，它缺 CrashSender.exe，任何 GUI 进程崩溃都会弹 “Error launching CrashSender.exe”。
+硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / ExternalClose / SourceValidation / InstallValidate 六个阶段**仅启动器可跑**，禁止把内层命令当复制模板直跑。启动器默认把整棵进程树放到 BelowNormal，并把控制台与 WPF 窗口放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点）；用户 Default 桌面若出现敏敏子 / MinminCountdown 可见顶层窗即红。任一阶段红即停（参考基线待重拍除外，见下文），日志落在 `logs\suite-runs\`，内容是原始字节，编码由写入的进程决定：多数为 UTF-8，未自设编码的进程（如 InstallValidate 的安装器）按控制台代码页写出；中文 Windows 上按 UTF-8 读出乱码时改用 `Get-Content -Encoding 936`。CSharp / SourceValidation 若检测到自己不在 `MinminSuiteIso-*` 桌面会 fail-closed。关闭隔离必须显式 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。隔离桌面上没人能点掉崩溃对话框：套件进程树里有进程弹出“has stopped working / 已停止工作”对话框时，隔离启动器以退出码 126 结束该进程，并把对话框标题与正文写进该阶段的 err 日志。本机微信输入法会把 CrashRpt 注入 GUI 进程，它缺 CrashSender.exe，任何 GUI 进程崩溃都会弹 “Error launching CrashSender.exe”。
 
 截图留存：每次运行收口时按 `logs\suite-runs\*-run.json` 的 `StartedAtUtc` 排序（当前运行计入），只保留最近 30 次运行开始之后（含边界）的 `logs\ui-captures\` 时间戳截图目录；无法解析时间的目录保守保留。所有运行记录和 `*-summary.json` 摘要长期保留，部署记录引用的摘要也不会清理。实际目录树经 `Invoke-ManagedRecycle` 的 Check / Plan / Apply 移入回收站，不做永久 Purge。清理失败不改变既定阶段或整轮结果，并在 `run.json` 的 `ScreenshotRetention` 中记录 `Failed` 与 `Error`。新规则第一次在真实日志目录生效前，必须先列出精确删除目标和体积并取得用户当场确认：未确认时记录 `ConfirmationRequired` 且不执行 Apply；交互启动时显式加 `-ConfirmFirstScreenshotRetention`，收口会列出逐目录路径、字节数与计划 SHA-256，只有输入对应的 `RECYCLE <PlanSha256>` 且复核计划未变化才放行。首次确认及成功清理的回执写入本轮新 `run.json`，后续运行按常规留存自动清理，不改写历史运行。临时目录聚焦测试用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Test-SuiteScreenshotRetention.ps1`，不会触碰真实 `logs`。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,SourceValidation,InstallValidate
 ```
+
+只验证外部关闭悬浮窗、取消退出与第二实例激活时，使用 `-Stage ExternalClose`；它复用完整 CSharp 的同一组真实 EXE 断言，也作为 CI 的独立门禁，不替代正式完整 CSharp。
+
+无窗口 Core 红→绿内环使用 `pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownCoreSegment.ps1 -Segment <Installer|InstallStatus|LayoutSwitch|DeployEntry>`；只运行使用假端口和临时目录的对应段，断言失败或异常均非零退出，正式验收仍必须跑完整 Core。`Test-CountdownValidationDiagnostics.ps1` 需要单项复验时，用 `pwsh -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Check ValidationDiagnostics -Json`，不必重跑整套 Tooling。
 
 启动器的单实例锁按登录会话共享，别的 worktree 里的启动器也算在内。默认被占即拒绝，并列出疑似持有者 PID；加 `-WaitForLockSeconds <秒>` 则最多排队这么久。阶段失败时，启动器在结尾打印该阶段 err 日志的摘要：取最后一个 PowerShell 错误块，UTF-8 与 936 逐行解码。完整日志仍在 `logs\suite-runs\`。Build 的受管清理遇到删除门锁被别的会话占用（`deployment-mutex-acquire-timeout`，门每次等 2 分钟）时最多尝试 5 次；其余清理失败立即报错。含 Build、Tooling 以外阶段的运行，开跑前先采样三次后台负载：CPU 总占用不低于 80%，或 GPU 最忙的引擎类型不低于 50% 时，列出最忙的进程并拒绝开跑，因为挖矿或游戏吃满资源时参考帧 300ms 超时会被误报成回归。启动器只报告、不结束任何进程，CI 不做这项检查；确认要照跑时加 `-SkipLoadPreflight`。进程起落时（例如上一轮启动器的子进程刚退出），个别实例读不到只丢那几条；缺了 CPU 总量、GPU 引擎或进程整类计数器就隔一秒重取，同一次采样连取五次仍缺才跳过预检，并打印 `Get-Counter` 的错误原文。采样在 `tools/Countdown.SuiteBackgroundLoad.psm1`，启动器只决定哪些阶段要预检、阈值、跳过与报告；采样行为由 Tooling 跑的 `tools/Test-SuiteLoadPreflight.ps1` 守住：它正常导入这个 module，注入假计数器与假等待，不读真实计数器。
 

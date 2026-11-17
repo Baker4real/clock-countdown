@@ -7,6 +7,7 @@ param(
     [switch] $DesktopLauncherOnly,
     [switch] $AllowForegroundDesktopLauncher,
     [switch] $MigrationParityOnly,
+    [switch] $ExternalCloseOnly,
     [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
     [string] $InstanceActivationTestState = 'FloatingVisible',
     [ValidateSet('Normal', 'Timeout', 'ProtocolMismatch', 'Disconnect', 'CallbackFailureOnce')]
@@ -3320,7 +3321,18 @@ function Invoke-InstanceActivationMatrixTests {
     } | ConvertTo-Json
 }
 
+. (Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ExternalClose.ps1')
 Write-TestSegmentTiming -Name 'Setup'
+if ($ExternalCloseOnly) {
+    if ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix -or $MigrationParityOnly -or $AllowForegroundDesktopLauncher) {
+        throw '-ExternalCloseOnly 不能与其他测试范围或前台桌面开关组合。'
+    }
+    $externalCloseOnlyResult = Invoke-ExternalCloseOnlyTests -RepositoryRoot $PSScriptRoot
+    Write-TestSegmentTiming -Name 'ExternalCloseOnly'
+    Write-TestSegmentTotal
+    $externalCloseOnlyResult | ConvertTo-Json
+    exit 0
+}
 if ($DesktopLauncherOnly) {
     if ($InstanceActivationOnly -or $InstanceActivationMatrix) {
         throw '-DesktopLauncherOnly 不能与实例激活开关组合。'
@@ -4146,245 +4158,7 @@ exit 23
     }
     Write-TestSegmentTiming -Name 'DesktopShortcutLaunch'
 
-    # #295 外部关闭：任务计划停止任务时先向任务进程的窗口发 WM_CLOSE，进程不响应才在允许硬终止时结束它
-    # （ITaskSettings::AllowHardTerminate 文档）。悬浮窗 ShowInTaskbar="False"，WPF 为此给它挂了一个不可见的
-    # 所有者窗口；所有者收到 WM_CLOSE 按默认处理销毁自己，系统先销毁它拥有的悬浮窗，悬浮窗只收到 Closed，
-    # 不经 Closing 与关闭桥。#279 的真实任务探针在这里得到退出码 1 和 FatalUnhandledException。
-    # 本段对真实 EXE 复现这一步：首帧就绪后向悬浮窗的所有者投递 WM_CLOSE，再按 DESIGN.md「外部关闭」读退出码与诊断日志。
-    # 测试开关只为隔离桌面上的托盘替身；兜底自退远晚于等待期限，不会替外部关闭退出。
-    function Invoke-ExternalCloseProgramLaunch {
-        param(
-            [Parameter(Mandatory)] [string] $Application,
-            [Parameter(Mandatory)] [string] $InstallRoot,
-            [switch] $CancelOnManager
-        )
-
-        $refusingProxy = [System.Net.Sockets.Socket]::new(
-            [System.Net.Sockets.AddressFamily]::InterNetwork,
-            [System.Net.Sockets.SocketType]::Stream,
-            [System.Net.Sockets.ProtocolType]::Tcp)
-        $process = $null
-        $secondProcess = $null
-        try {
-            $refusingProxy.Bind([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Loopback, 0))
-            $startInfo = [System.Diagnostics.ProcessStartInfo]::new($Application)
-            $startInfo.WorkingDirectory = $InstallRoot
-            $startInfo.UseShellExecute = $false
-            $startInfo.CreateNoWindow = $true
-            $startInfo.RedirectStandardOutput = $true
-            $startInfo.RedirectStandardError = $true
-            $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
-            $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
-            foreach ($argument in @('--exit-after-ready-for-test', '--exit-after-ready-seconds', '300')) {
-                $startInfo.ArgumentList.Add($argument)
-            }
-            if ($CancelOnManager) {
-                foreach ($argument in @(
-                        '--instance-activation-test-state', 'MainVisible',
-                        '--settings-file', (Join-Path $InstallRoot 'settings.json'),
-                        '--diagnostic-log-path', (Join-Path $InstallRoot 'logs\application.jsonl'))) {
-                    $startInfo.ArgumentList.Add($argument)
-                }
-            }
-            foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
-                $startInfo.Environment[$proxyVariable] = "http://127.0.0.1:$($refusingProxy.LocalEndPoint.Port)"
-            }
-            [void] $startInfo.Environment.Remove('NO_PROXY')
-            $process = [System.Diagnostics.Process]::Start($startInfo)
-            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-            $stderrTask = $process.StandardError.ReadToEndAsync()
-
-            # 回执确认这次进程的悬浮窗首帧已渲染后再按标题找它；隔离桌面上不要求 Win32 可见枚举。
-            $receiptPath = Join-Path $InstallRoot 'runtime-status.json'
-            $readyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(90)
-            $floating = $null
-            while ($null -eq $floating -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $readyDeadline) {
-                $receipt = Read-DesktopLauncherRuntimeReceipt -Path $receiptPath
-                if ($null -ne $receipt -and
-                    [string] $receipt.stage -eq 'window-ready' -and
-                    [int] $receipt.processId -eq $process.Id) {
-                    $floating = @(
-                        Get-ProcessTopLevelWindows -ProcessId $process.Id |
-                            Where-Object Title -eq '敏敏子悬浮窗'
-                    ) | Select-Object -First 1
-                }
-                if ($null -eq $floating) {
-                    Start-Sleep -Milliseconds 50
-                }
-            }
-
-            $owner = $null
-            $ownerVisible = $null
-            $posted = $false
-            if ($null -ne $floating) {
-                $ownerHandle = [MinminCountdownActivationWindowProbe]::GetWindow([IntPtr]::new([long] $floating.Handle), 4)
-                $owner = @(
-                    Get-ProcessTopLevelWindows -ProcessId $process.Id |
-                        Where-Object Handle -eq $ownerHandle.ToInt64()
-                ) | Select-Object -First 1
-                if ($null -ne $owner) {
-                    $ownerVisible = [MinminCountdownActivationWindowProbe]::IsWindowVisible($ownerHandle)
-                    $posted = [MinminCountdownActivationWindowProbe]::PostMessage($ownerHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
-                }
-            }
-
-            $confirmation = $null
-            $cancelPosted = $false
-            $replacement = $null
-            $secondInstanceExited = $false
-            $secondInstanceExitCode = $null
-            $primaryAliveAfterActivation = $false
-            if ($posted -and $CancelOnManager) {
-                # 管理窗口仍可见时，外部关闭悬浮窗会转到管理窗口上的退出确认。WM_CLOSE 是确认框自己的取消入口。
-                $confirmationDeadline = [DateTimeOffset]::UtcNow.AddSeconds(20)
-                while ($null -eq $confirmation -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $confirmationDeadline) {
-                    $confirmation = @(
-                        Get-ProcessTopLevelWindows -ProcessId $process.Id |
-                            Where-Object Title -eq '退出敏敏子倒计时'
-                    ) | Select-Object -First 1
-                    if ($null -eq $confirmation) {
-                        Start-Sleep -Milliseconds 50
-                    }
-                }
-                if ($null -ne $confirmation) {
-                    $cancelPosted = [MinminCountdownActivationWindowProbe]::PostMessage(
-                        [IntPtr]::new([long] $confirmation.Handle), 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
-                }
-
-                if ($cancelPosted) {
-                    # 取消后必须得到一个新的悬浮窗实例；旧 HWND 已销毁，不能拿它冒充恢复成功。
-                    $replacementDeadline = [DateTimeOffset]::UtcNow.AddSeconds(20)
-                    while ($null -eq $replacement -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $replacementDeadline) {
-                        $replacement = @(
-                            Get-ProcessTopLevelWindows -ProcessId $process.Id |
-                                Where-Object { $_.Title -eq '敏敏子悬浮窗' -and $_.Handle -ne $floating.Handle }
-                        ) | Select-Object -First 1
-                        if ($null -eq $replacement) {
-                            Start-Sleep -Milliseconds 50
-                        }
-                    }
-
-                    # 不带参数的第二实例与快捷方式走同一条单实例激活路径，覆盖托盘控制器对已关闭窗口调用 Show() 的回归。
-                    $secondStart = [System.Diagnostics.ProcessStartInfo]::new($Application)
-                    $secondStart.WorkingDirectory = $InstallRoot
-                    $secondStart.UseShellExecute = $false
-                    $secondStart.CreateNoWindow = $true
-                    foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
-                        $secondStart.Environment[$proxyVariable] = "http://127.0.0.1:$($refusingProxy.LocalEndPoint.Port)"
-                    }
-                    [void] $secondStart.Environment.Remove('NO_PROXY')
-                    $secondProcess = [System.Diagnostics.Process]::Start($secondStart)
-                    $secondInstanceExited = $secondProcess.WaitForExit(30000)
-                    if ($secondInstanceExited) {
-                        $secondInstanceExitCode = $secondProcess.ExitCode
-                    }
-                    $process.Refresh()
-                    $primaryAliveAfterActivation = -not $process.HasExited
-                }
-            }
-            elseif ($posted) {
-                [void] $process.WaitForExit(30000)
-            }
-            $exitedOnItsOwn = $process.HasExited
-            if (-not $exitedOnItsOwn) {
-                $process.Kill()
-                [void] $process.WaitForExit(5000)
-            }
-            [void] $stdoutTask.GetAwaiter().GetResult()
-            [pscustomobject]@{
-                ProcessId = $process.Id
-                FloatingFound = $null -ne $floating
-                OwnerFound = $null -ne $owner
-                OwnerTitle = if ($null -ne $owner) { [string] $owner.Title } else { $null }
-                OwnerVisible = $ownerVisible
-                Posted = $posted
-                ExitedAfterClose = $posted -and -not $CancelOnManager -and $exitedOnItsOwn
-                ExitCode = if ($exitedOnItsOwn) { $process.ExitCode } else { $null }
-                ConfirmationFound = $null -ne $confirmation
-                CancelPosted = $cancelPosted
-                ReplacementFound = $null -ne $replacement
-                SecondInstanceProcessId = if ($null -ne $secondProcess) { $secondProcess.Id } else { $null }
-                SecondInstanceExited = $secondInstanceExited
-                SecondInstanceExitCode = $secondInstanceExitCode
-                PrimaryAliveAfterActivation = $primaryAliveAfterActivation
-                Stderr = $stderrTask.GetAwaiter().GetResult()
-            }
-        }
-        finally {
-            foreach ($externalProcess in @($secondProcess, $process)) {
-                if ($null -ne $externalProcess) {
-                    if (-not $externalProcess.HasExited) {
-                        $externalProcess.Kill()
-                        [void] $externalProcess.WaitForExit(5000)
-                    }
-                    $externalProcess.Dispose()
-                }
-            }
-            $refusingProxy.Dispose()
-        }
-    }
-
-    $externalCloseInstallRoot = Join-Path $testRoot 'external-close\install-root'
-    $externalCloseProgramDirectory = Join-Path $externalCloseInstallRoot 'app'
-    New-Item -ItemType Directory -Path $externalCloseInstallRoot | Out-Null
-    Copy-Item -LiteralPath (Split-Path -Parent $application) -Destination $externalCloseProgramDirectory -Recurse
-    $externalClose = Invoke-ExternalCloseProgramLaunch `
-        -Application (Join-Path $externalCloseProgramDirectory 'MinminCountdown.exe') `
-        -InstallRoot $externalCloseInstallRoot
-    $externalCloseEvents = @(
-        (Read-SharedTestEvidenceText -Path (Join-Path $externalCloseInstallRoot 'logs\application.jsonl')) -split "`r?`n" |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            ForEach-Object { $_ | ConvertFrom-Json } |
-            Where-Object { [int] $_.processId -eq $externalClose.ProcessId } |
-            ForEach-Object { [string] $_.event })
-    $externalCloseDetail = "exit=$($externalClose.ExitCode)；events=$($externalCloseEvents -join ',')；owner=$($externalClose.OwnerTitle) visible=$($externalClose.OwnerVisible)；stderr=$($externalClose.Stderr)"
-    Assert-Equal $true $externalClose.FloatingFound "外部关闭：悬浮窗首帧就绪；$externalCloseDetail"
-    Assert-Equal $true $externalClose.OwnerFound "外部关闭：悬浮窗归本进程的一个顶层所有者窗口；$externalCloseDetail"
-    Assert-Equal $false ([bool] $externalClose.OwnerVisible) "外部关闭：悬浮窗的所有者是 ShowInTaskbar=False 带来的不可见窗口；$externalCloseDetail"
-    Assert-Equal $true $externalClose.Posted "外部关闭：向悬浮窗的所有者投递 WM_CLOSE；$externalCloseDetail"
-    Assert-Equal $true $externalClose.ExitedAfterClose "外部关闭：所有者收到 WM_CLOSE 后应用在期限内自行结束；$externalCloseDetail"
-    Assert-Equal 0 $externalClose.ExitCode "外部关闭：应用正常结束，退出码 0；$externalCloseDetail"
-    Assert-Equal 0 @($externalCloseEvents | Where-Object { $_ -eq 'FatalUnhandledException' }).Count "外部关闭：不记 FatalUnhandledException；$externalCloseDetail"
-    Assert-Equal 0 @($externalCloseEvents | Where-Object { $_ -eq 'ExitConfirmationOffered' }).Count "外部关闭：不弹退出确认；$externalCloseDetail"
-    Assert-Equal 1 @($externalCloseEvents | Where-Object { $_ -eq 'ExitConfirmationSkippedExternalClose' }).Count "外部关闭：诊断日志记一条外部关闭、跳过确认事件；$externalCloseDetail"
-    Assert-Equal 1 @($externalCloseEvents | Where-Object { $_ -eq 'ProcessExited' }).Count "外部关闭：走完正常关停；$externalCloseDetail"
-
-    # #295 评审：管理窗口仍打开时，外部关闭悬浮窗不跳过退出确认。用户取消后应用继续运行，悬浮窗必须是可恢复的新实例；
-    # 再启动一个不带参数的实例，验证真实单实例激活不会再对已关闭窗口 Show()。
-    $externalCancelInstallRoot = Join-Path $testRoot 'external-close-cancel\install-root'
-    $externalCancelProgramDirectory = Join-Path $externalCancelInstallRoot 'app'
-    New-Item -ItemType Directory -Path $externalCancelInstallRoot | Out-Null
-    Copy-Item -LiteralPath (Split-Path -Parent $application) -Destination $externalCancelProgramDirectory -Recurse
-    $externalCancel = Invoke-ExternalCloseProgramLaunch `
-        -Application (Join-Path $externalCancelProgramDirectory 'MinminCountdown.exe') `
-        -InstallRoot $externalCancelInstallRoot `
-        -CancelOnManager
-    $externalCancelEntries = @(
-        (Read-SharedTestEvidenceText -Path (Join-Path $externalCancelInstallRoot 'logs\application.jsonl')) -split "`r?`n" |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            ForEach-Object { $_ | ConvertFrom-Json } |
-            Where-Object { [int] $_.processId -eq $externalCancel.ProcessId })
-    $externalCancelEvents = @($externalCancelEntries | ForEach-Object { [string] $_.event })
-    $externalCancelDetail = "secondExit=$($externalCancel.SecondInstanceExitCode)；events=$($externalCancelEvents -join ',')；stderr=$($externalCancel.Stderr)"
-    Assert-Equal $true $externalCancel.FloatingFound "外部关闭后取消：悬浮窗首帧就绪；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.Posted "外部关闭后取消：向悬浮窗所有者投递 WM_CLOSE；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.ConfirmationFound "外部关闭后取消：管理窗口上弹出退出确认；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.CancelPosted "外部关闭后取消：WM_CLOSE 取消退出确认；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.ReplacementFound "外部关闭后取消：应用创建新的悬浮窗，而不是留下已关闭实例；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.SecondInstanceExited "外部关闭后取消：第二个实例在期限内结束；$externalCancelDetail"
-    Assert-Equal 0 $externalCancel.SecondInstanceExitCode "外部关闭后取消：第二个实例收到激活确认后正常退出；$externalCancelDetail"
-    Assert-Equal $true $externalCancel.PrimaryAliveAfterActivation "外部关闭后取消：激活之后主实例仍运行；$externalCancelDetail"
-    Assert-Equal 1 @($externalCancelEvents | Where-Object { $_ -eq 'ExitConfirmationOffered' }).Count "外部关闭后取消：记录一次退出确认；$externalCancelDetail"
-    Assert-Equal 1 @($externalCancelEvents | Where-Object { $_ -eq 'ExitConfirmationCancelled' }).Count "外部关闭后取消：记录取消；$externalCancelDetail"
-    Assert-Equal 1 @($externalCancelEvents | Where-Object { $_ -eq 'FloatingWindowRecreatedAfterExternalClose' }).Count "外部关闭后取消：记录悬浮窗重建；$externalCancelDetail"
-    Assert-Equal 0 @($externalCancelEvents | Where-Object { $_ -eq 'ExitConfirmationSkippedExternalClose' }).Count "外部关闭后取消：管理窗口可用时不走无窗口外部关闭；$externalCancelDetail"
-    Assert-Equal 0 @($externalCancelEvents | Where-Object { $_ -eq 'FatalUnhandledException' }).Count "外部关闭后取消与激活：不记 FatalUnhandledException；$externalCancelDetail"
-    $externalCancelActivation = @($externalCancelEntries | Where-Object { $_.event -eq 'InstanceActivationHandled' })
-    Assert-Equal 1 $externalCancelActivation.Count "外部关闭后取消：主实例处理一次激活；$externalCancelDetail"
-    Assert-Equal 'Activated|VisibleNormal|1|True|True' `
-        "$($externalCancelActivation[0].activationResult)|$($externalCancelActivation[0].activationStateAfter)|$($externalCancelActivation[0].interactiveFloatingWindowCount)|$($externalCancelActivation[0].mainWindowVisibleAfter)|$($externalCancelActivation[0].managerStatePreserved)" `
-        "外部关闭后取消：激活恢复唯一悬浮窗并保留可见管理窗口的状态；$externalCancelDetail"
-    Write-TestSegmentTiming -Name 'ExternalClose'
+    Invoke-ExternalCloseProcessTests -Application $application -TestRoot $testRoot
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash

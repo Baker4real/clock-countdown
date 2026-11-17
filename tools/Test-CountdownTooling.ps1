@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [switch] $Json,
+    [ValidateSet('All', 'ValidationDiagnostics')] [string] $Check = 'All',
     [string] $BaseCommit = $env:COUNTDOWN_DIFF_BASE,
     [string] $CandidateCommit = $env:COUNTDOWN_DIFF_CANDIDATE,
     [ValidateSet('Index','Commit')][string] $EvidenceSource = $(if ($env:GITHUB_ACTIONS -eq 'true') { 'Commit' } else { 'Index' }),
@@ -37,6 +38,29 @@ function Add-ToolingCheck {
     if (-not $Passed) { $failures.Add("$Name：$Detail") }
 }
 
+function Invoke-ToolingValidationDiagnostics {
+    $output = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownValidationDiagnostics.ps1') -Json)
+    $exitCode = $LASTEXITCODE
+    $text = $output -join "`n"
+    $report = try { $text | ConvertFrom-Json -Depth 12 -ErrorAction Stop } catch { $null }
+    [pscustomobject]@{
+        Passed = $exitCode -eq 0 -and $null -ne $report -and [bool] $report.Valid
+        Detail = if ($null -ne $report) { $report | ConvertTo-Json -Compress -Depth 12 } else { $text -replace '\s+', ' ' }
+    }
+}
+
+if ($Check -eq 'ValidationDiagnostics') {
+    $selected = Invoke-ToolingValidationDiagnostics
+    $selectedResult = [pscustomobject]@{
+        Valid = $selected.Passed
+        Checks = @([pscustomobject]@{ Name = 'deployment:Test-CountdownValidationDiagnostics.ps1'; Status = if ($selected.Passed) { 'processed' } else { 'failed' }; Detail = $selected.Detail })
+        Failures = @(if ($selected.Passed) { } else { "deployment:Test-CountdownValidationDiagnostics.ps1：$($selected.Detail)" })
+    }
+    $selectedResult | ConvertTo-Json -Depth 10
+    if (-not $selected.Passed) { exit 1 }
+    exit 0
+}
+
 function Test-RequiredPath {
     param([Parameter(Mandatory)] [string] $RelativePath)
     $path = Join-Path $repoRoot $RelativePath
@@ -46,6 +70,7 @@ function Test-RequiredPath {
 }
 
 foreach ($requiredPath in @(
+        'Countdown.CSharp.Tests.ExternalClose.ps1',
         'global.json',
         'README.md',
         'docs/agents/issue-acceptance.json',
@@ -58,6 +83,8 @@ foreach ($requiredPath in @(
         'tools/Test-DesignTokenDrift.ps1',
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
+        'tools/Invoke-CountdownCoreSegment.ps1',
+        'tools/Test-CountdownCoreSegment.ps1',
         'tools/Countdown.SuiteRun.psm1',
         'tools/Countdown.SuiteStages.psm1',
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
@@ -78,9 +105,12 @@ $designTokenSelfTest = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Pat
 Add-ToolingCheck -Name 'design-token:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenSelfTest.Valid) -Detail ($designTokenSelfTest | ConvertTo-Json -Compress -Depth 10)
 $designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-DesignTokenDrift.ps1') -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
+$coreSegmentSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownCoreSegment.ps1') 2>&1 | ForEach-Object { "$_" })
+Add-ToolingCheck -Name 'core-segment:self-test' -Passed ($LASTEXITCODE -eq 0) -Detail (($coreSegmentSelfTest -join ' ') -replace '\s+', ' ')
 
-foreach ($test in @('Test-CountdownValidationDiagnostics.ps1',
-        'Test-CountdownWindowPreflightContract.ps1', 'Test-CountdownDeploymentState.ps1')) {
+$validationDiagnostics = Invoke-ToolingValidationDiagnostics
+Add-ToolingCheck -Name 'deployment:Test-CountdownValidationDiagnostics.ps1' -Passed $validationDiagnostics.Passed -Detail $validationDiagnostics.Detail
+foreach ($test in @('Test-CountdownWindowPreflightContract.ps1', 'Test-CountdownDeploymentState.ps1')) {
     $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot $test), '-Json')
     if ($test -eq 'Test-CountdownDeploymentState.ps1' -and $env:GITHUB_ACTIONS -eq 'true') {
         $arguments += '-SkipDiagnosticsWhenUnavailable'

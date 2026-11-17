@@ -89,11 +89,13 @@ if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Rel
 }
 $assertions++
 
-# 子脚本写小段日志后等待释放；在释放前读取文件可证明不是退出后才落盘。
+# 子脚本写小段日志与就绪握手后等待释放；在释放前读取文件可证明不是退出后才落盘。
 $release = Join-Path $root 'release'
+$ready = Join-Path $root 'ready'
 [IO.File]::WriteAllText($corePath, @"
 [Console]::Error.WriteLine('阶段已开始')
-`$deadline = [datetime]::UtcNow.AddSeconds(15)
+[IO.File]::WriteAllText('$ready', 'ready')
+`$deadline = [datetime]::UtcNow.AddSeconds(60)
 while (-not (Test-Path -LiteralPath '$release')) {
     if ([datetime]::UtcNow -gt `$deadline) { exit 99 }
     Start-Sleep -Milliseconds 50
@@ -117,7 +119,7 @@ $outTask = $process.StandardOutput.ReadToEndAsync()
 $errTask = $process.StandardError.ReadToEndAsync()
 $observed = $false
 try {
-    $deadline = [datetime]::UtcNow.AddSeconds(10)
+    $deadline = [datetime]::UtcNow.AddSeconds(30)
     do {
         $logs = @(Get-ChildItem -LiteralPath $liveRoot -Filter stderr.log -Recurse -ErrorAction SilentlyContinue)
         foreach ($log in $logs) {
@@ -128,10 +130,21 @@ try {
         }
         if (-not $observed) { Start-Sleep -Milliseconds 50 }
     } while (-not $observed -and [datetime]::UtcNow -lt $deadline -and -not $process.HasExited)
-    if (-not $observed) { throw '子进程运行期间必须可读取小段 UTF-8 阶段日志。' }
+    # 即使观察失败也先放行并收口子进程，再报告握手、驱动输出和当时已有的日志文件。
     [IO.File]::WriteAllText($release, '', $utf8)
-    if (-not $process.WaitForExit(5000) -or $process.ExitCode -ne 1) { throw '子进程非零必须传播。' }
-    [void]$outTask.GetAwaiter().GetResult(); [void]$errTask.GetAwaiter().GetResult()
+    $exited = $process.WaitForExit(5000)
+    if (-not $exited) { $process.Kill($true); [void]$process.WaitForExit(5000) }
+    $process.Refresh()
+    $driverOut = $outTask.GetAwaiter().GetResult()
+    $driverError = $errTask.GetAwaiter().GetResult()
+    if (-not $observed) {
+        $liveFiles = @(Get-ChildItem -LiteralPath $liveRoot -Recurse -File -ErrorAction SilentlyContinue |
+                ForEach-Object { "$($_.FullName)=$($_.Length)" })
+        throw ("子进程运行期间必须可读取小段 UTF-8 阶段日志。" +
+            " ready=$(Test-Path -LiteralPath $ready)；exited=$exited；exit=$($process.ExitCode)；" +
+            "files=$($liveFiles -join ',')；stdout=$driverOut；stderr=$driverError")
+    }
+    if (-not $exited -or $process.ExitCode -ne 1) { throw "子进程非零必须传播。exit=$($process.ExitCode)；stdout=$driverOut；stderr=$driverError" }
     $assertions++
 }
 finally {

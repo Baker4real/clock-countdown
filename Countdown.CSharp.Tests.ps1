@@ -3857,11 +3857,15 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273/#274：独立窗口验证项目是这三条空态事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    # #273/#274/#297：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
     $windowVerificationFacts = [ordered]@{
         MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
         MainListOverflowScrollsAndReachesActions = '两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）'
+        FloatingWindowRendersAndFindsManagerButton = '悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）'
+        ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
+        ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
+        ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -3871,7 +3875,7 @@ exit 23
     Assert-ExactReportFields `
         -Report $windowVerification `
         -ExpectedNames @($windowVerificationFacts.Keys) `
-        -Name '窗口验证只产出三条空态事实，不生成整份产品报告'
+        -Name '窗口验证只产出三条空态事实与四条窗口冒烟事实，不生成整份产品报告'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $true ([bool] $windowVerification.$factName) `
             "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"
@@ -5448,7 +5452,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $false ($factName -in @($adapterValidationPropertyNames)) `
-            "#273/#274 产品 validate-only 不再产出已迁入独立窗口项目的同名字段：$factName"
+            "#273/#274/#297 产品 validate-only 不再产出已迁入独立窗口项目的同名字段：$factName"
     }
     Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。

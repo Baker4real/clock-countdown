@@ -243,6 +243,7 @@ $script:buildScriptInputFiles = @(
     'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md',
     'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
     'src\MinminCountdown.WindowVerification\Program.cs',
+    'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',

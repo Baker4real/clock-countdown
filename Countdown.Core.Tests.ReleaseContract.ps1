@@ -64,8 +64,9 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
-    'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274 build identity contains the window verification input: $windowVerificationInput"
+    'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs',
+    'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297 build identity contains the window verification input: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
@@ -269,7 +270,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 114 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 115 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared helper and #297 smoke scenarios to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
     @($releaseContract.SourceBuildFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -and $_ -in @($releaseContract.InstalledFiles) }).Count `

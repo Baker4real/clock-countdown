@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "issue": 334,
+  "previewVersion": "v1",
+  "designOnly": true,
+  "visualBaseline": false,
+  "method": "Local Pillow raster composition over the committed WPF frame; no generative imagery",
+  "source": {
+    "commit": "73ad5f46440eb8b2bbe3118c141cf0e0792f8d29",
+    "baselineVersion": "2026-11-14-v79",
+    "captureId": "long-notes-day-top",
+    "manifestPath": "assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json",
+    "pngPath": "assets/ui-references/floating-window/520x390/2026-11-14-v79/long-notes-day-top.png",
+    "pngSha256": "39A148822F95D1FE53C2F0EEB59956BAB1B0ACE58BE330E1A789F4C61B3533B8",
+    "sourceBindingAggregateSha256": "0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283",
+    "sourceBindingFilesVerified": 28
+  },
+  "comparison": {
+    "boardWidth": 1112,
+    "boardHeight": 650,
+    "frameWidth": 520,
+    "frameHeight": 390,
+    "frameY": 100,
+    "currentFrameX": 24,
+    "candidateFrameX": 568,
+    "allowedCandidateDiffInFrame": [
+      60,
+      147,
+      379,
+      278
+    ],
+    "currentFrameMustEqualBaselinePixels": true
+  },
+  "estimateMethod": "Microsoft YaHei 13 px local font metrics; full-width character estimate is floor(usable DIP / 13); not a WPF runtime measurement",
+  "current": {
+    "bodyColumnWidth": 197,
+    "bodyTextWidth": 189,
+    "estimatedFullWidthChars": 14,
+    "estimatedFixtureLines": 7
+  },
+  "options": [
+    {
+      "id": "option-a-narrow-stamp",
+      "title": "方案 A：三行窄印记",
+      "subtitle": "48 -> 42 DIP；日期文字不变，印记左右内边距 4 -> 0",
+      "file": "v1-option-a-narrow-stamp.png",
+      "stampWidth": 42,
+      "bodyColumnWidth": 203,
+      "bodyTextWidth": 195,
+      "estimatedFullWidthChars": 15,
+      "mode": "narrow",
+      "geometry": "319 = 2 边 + 36 勾选 + 203 正文列 + 42 印记 + 36 ...",
+      "sha256": "038E78B629F1A5EACB9E7FD5576A1A450793C068B2D2D3F46B742ABEDA44AA1D",
+      "width": 1112,
+      "height": 650,
+      "estimatedFixtureLines": 7,
+      "estimatedFixtureCardHeightDelta": 0,
+      "bodyLinesPreview": [
+        "中段锚点6：这是一条没有手工换",
+        "行符的长便签正文，它必须依靠真",
+        "实 WPF TextWrapping 在固定纸",
+        "面宽度内自然折行，同时保持日期",
+        "印记、完成复选框、标签和相邻卡",
+        "片互不遮挡，编号 6 的末尾校验",
+        "文字，尾锚点。"
+      ]
+    },
+    {
+      "id": "option-b-top-date",
+      "title": "方案 B：上缘单行日期",
+      "subtitle": "释放完整 48 DIP 右列；日期改在正文上缘单行显示",
+      "file": "v1-option-b-top-date.png",
+      "stampWidth": 0,
+      "bodyColumnWidth": 245,
+      "bodyTextWidth": 237,
+      "estimatedFullWidthChars": 18,
+      "mode": "top",
+      "geometry": "319 = 2 边 + 36 勾选 + 245 正文列 + 36 ...",
+      "sha256": "A965DFD886072304196FDF2F2985F2462A5E158D1D3DB58CDB7F5C5B06F75B7F",
+      "width": 1112,
+      "height": 650,
+      "estimatedFixtureLines": 6,
+      "estimatedFixtureCardHeightDelta": 4,
+      "bodyLinesPreview": [
+        "中段锚点6：这是一条没有手工换行符的",
+        "长便签正文，它必须依靠真实 WPF",
+        "TextWrapping 在固定纸面宽度内自然折",
+        "行，同时保持日期印记、完成复选框、标",
+        "签和相邻卡片互不遮挡，编号 6 的末尾校",
+        "验文字，尾锚点。"
+      ]
+    }
+  ]
+}

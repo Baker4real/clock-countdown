@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 10,
+  "timeZoneId": "China Standard Time",
+  "displayPrecision": "Second",
+  "monthlySalary": 0,
+  "workStart": "09:00",
+  "workEnd": "18:00",
+  "themePreference": "Day",
+  "tags": [],
+  "countdowns": [],
+  "notes": [
+    {
+      "id": "idle-measurement-calendar-note",
+      "text": "Idle measurement calendar rule",
+      "date": "2032-01-01",
+      "isCompleted": false,
+      "tagIds": [],
+      "reminderRules": [
+        {
+          "id": "idle-measurement-calendar-daily",
+          "type": "calendar",
+          "frequency": "daily",
+          "interval": 999,
+          "startDate": "2032-01-01",
+          "localTime": "09:05"
+        }
+      ]
+    }
+  ],
+  "reminderStates": {}
+}

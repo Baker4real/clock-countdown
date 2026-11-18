@@ -88,6 +88,9 @@ foreach ($requiredPath in @(
         'tools/Countdown.SuiteRun.psm1',
         'tools/Countdown.SuiteStages.psm1',
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
+        'tools/Countdown.IdleProcessorMeasurement.psm1',
+        'tools/Measure-CountdownIdleProcessor.ps1',
+        'tools/Test-CountdownIdleProcessorMeasurement.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
         'tools/PopupValidationContract.cs'
@@ -107,6 +110,9 @@ $designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $
 Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
 $coreSegmentSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownCoreSegment.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'core-segment:self-test' -Passed ($LASTEXITCODE -eq 0) -Detail (($coreSegmentSelfTest -join ' ') -replace '\s+', ' ')
+$idleProcessorSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleProcessorMeasurement.ps1')) -join [Environment]::NewLine
+$idleProcessorReport = $idleProcessorSelfTest | ConvertFrom-Json -Depth 8
+Add-ToolingCheck -Name 'idle-processor:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $idleProcessorReport.Valid) -Detail (($idleProcessorReport.Failures -join '; '))
 
 $validationDiagnostics = Invoke-ToolingValidationDiagnostics
 Add-ToolingCheck -Name 'deployment:Test-CountdownValidationDiagnostics.ps1' -Passed $validationDiagnostics.Passed -Detail $validationDiagnostics.Detail

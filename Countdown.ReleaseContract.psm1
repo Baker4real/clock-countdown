@@ -171,6 +171,8 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\SettingsEquivalenceCommand.cs',
     'src\MinminCountdown\SettingsMigrationCommand.cs',
     'src\MinminCountdown\SettingsRecoveryWindow.cs',
+    'src\MinminCountdown\SharedMenuStyles.cs',
+    'src\MinminCountdown\SharedMenuStyles.xaml',
     'src\MinminCountdown\TrayIconHost.cs',
     'src\MinminCountdown\UiControls.cs',
     'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',

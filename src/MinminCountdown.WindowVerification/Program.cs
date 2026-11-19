@@ -11,6 +11,10 @@ internal static class Program
     internal const string ViewportFactName = "MainEmptyStatesFitListViewport";
     internal const string GuidanceFactName = "MainEmptyStatesGuideToSingleAddEntry";
     internal const string OverflowFactName = "MainListOverflowScrollsAndReachesActions";
+    internal const string FloatingSmokeFactName = "FloatingWindowRendersAndFindsManagerButton";
+    internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
+    internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
+    internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -20,6 +24,14 @@ internal static class Program
         "分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）";
     private const string OverflowFactMeaning =
         "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）";
+    private const string FloatingSmokeFactMeaning =
+        "悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）";
+    private const string ReminderCenterSmokeFactMeaning =
+        "提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）";
+    private const string ReminderRulesEditorSmokeFactMeaning =
+        "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
+    private const string ConfirmationDialogSmokeFactMeaning =
+        "确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）";
 
     [STAThread]
     private static int Main()
@@ -29,7 +41,11 @@ internal static class Program
         {
             [ViewportFactName] = false,
             [GuidanceFactName] = false,
-            [OverflowFactName] = false
+            [OverflowFactName] = false,
+            [FloatingSmokeFactName] = false,
+            [ReminderCenterSmokeFactName] = false,
+            [ReminderRulesEditorSmokeFactName] = false,
+            [ConfirmationDialogSmokeFactName] = false
         };
         var failures = new List<string>();
 
@@ -79,6 +95,26 @@ internal static class Program
             {
                 var probe = EmptyStateOverflowScenario.Run();
                 return (probe.AllPassed, probe.Explain(OverflowFactMeaning));
+            });
+            RunFact(FloatingSmokeFactName, FloatingSmokeFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunFloating();
+                return (true, FloatingSmokeFactMeaning);
+            });
+            RunFact(ReminderCenterSmokeFactName, ReminderCenterSmokeFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunReminderCenter();
+                return (true, ReminderCenterSmokeFactMeaning);
+            });
+            RunFact(ReminderRulesEditorSmokeFactName, ReminderRulesEditorSmokeFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunReminderRulesEditor();
+                return (true, ReminderRulesEditorSmokeFactMeaning);
+            });
+            RunFact(ConfirmationDialogSmokeFactName, ConfirmationDialogSmokeFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunConfirmationDialog();
+                return (true, ConfirmationDialogSmokeFactMeaning);
             });
         }
         catch (Exception exception)

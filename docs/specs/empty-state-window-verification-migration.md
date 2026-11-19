@@ -11,7 +11,7 @@ intent: 逐条记录 #248 空态区域验证事实、相邻断言与产品载体
 
 基线是 #273 已合入的 `integration/prd-258`；#273 的 `MainListOverflowScrollsAndReachesActions`、#271/#272/#265/#266 成果均保留。本票只处理管理窗口空态区域，不迁移其它区域，不改视觉基线，不新增产品验证专用 partial 或产品钩子。
 
-独立 `MinminCountdown.WindowVerification` runner 的 stdout 是三条空态事实的唯一产物；它只输出三个同名 bool，不生成整份产品报告。CSharp 同时钉住精确字段集、每条事实为真和进程退出码 0，缺字段、假事实与非零退出都使阶段失败。产品 `--validate-only` 必须不再含这三个字段。
+独立 `MinminCountdown.WindowVerification` runner 的 stdout 是三条空态事实的唯一产物；#297 扩展后还输出悬浮窗、提醒中心、规则编辑器和确认框四条同名冒烟 bool，不生成整份产品报告。CSharp 同时钉住精确字段集、每条事实为真和进程退出码 0，缺字段、假事实与非零退出都使阶段失败。产品 `--validate-only` 必须不再含这三个空态字段，也不含四条独立窗口冒烟字段。
 
 ## 每条验证事实的去向
 
@@ -35,6 +35,14 @@ intent: 逐条记录 #248 空态区域验证事实、相邻断言与产品载体
 | `FloatingEmptyStateTextIsolationBehavior`、`FloatingNoteSearch` 的空态子字段 | **保留** | 悬浮窗区域不在本票范围。 |
 | `CountdownEmptyStateContrastMeasurements`、`NoteEmptyStateContrastMeasurements` | **保留** | 对比度测量区域不在本票范围；这些是随测量输入记录状态的字段，不新增为验证事实。 |
 | 全局直播区源码 guard 中的空态控件名 | **保留** | 该 guard 守所有窗口的写路径，不属于已迁出的两个产品文件；行为播报由上述保留区域继续验证。 |
+
+## 后续窗口验证事实落点（#297）
+
+后续票把新的窗口行为场景放在 `src\MinminCountdown.WindowVerification\` 的独立 `<区域>Scenario.cs`；#297 的四类窗口创建、首帧与指定控件冒烟骨架在 `WindowSmokeScenario.cs`。在 `Program.cs` 为每条事实声明同名 bool、中文含义并接入 `RunFact`，同时在 `Countdown.CSharp.Tests.ps1` 的 `$windowVerificationFacts` 登记同一名称和中文含义，由现有精确字段集、逐条为真与退出码 0 断言验收。新增源码文件还须加入 `Countdown.ReleaseContract.psm1` 的 `BuildInputFiles` 及 `Countdown.Core.Tests.ReleaseContract.ps1` 的对应清单；不得加入产品 `SourceBuildFiles`、纯 C# `MinminCountdown.Verification` 或办公室载荷。
+
+控件访问从窗口公共视觉树开始：有显式标识的元素用 `AutomationProperties.GetAutomationId` 精确匹配；XAML `x:Name` 作为 WPF 自动化标识的元素（例如悬浮窗 `OpenManagerButton`）用公共 `UIElementAutomationPeer.CreatePeerForElement(...).GetAutomationId()` 读取并匹配。需要切换管理窗口工作区时继续走既有 `IMainWindowEmptyStateProbe` 窄探针，真实按钮调用与渲染等待复用 `WindowValidationInput`；不要为了取值给产品程序集新增验证 partial、字段或钩子。
+
+需要工作区或设置的场景使用自己的 `Path.GetTempPath()` 唯一设置路径并清理备份与诊断文件；其余场景不接触用户设置。窗口按现有离屏夹具设为不激活、不可见并移到工作区外。所有真实窗口运行只经 README「本机验证」的低影响隔离启动器，不能把独立 runner 当作前台调试入口。
 
 ## 产品删除位置
 

@@ -5233,8 +5233,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $mainWindowCodeSource -match 'NameControl\(ClearNoteDateFilter, "清除便签日期筛选"\);') '筛选「清除」的可访问名说明清除的是便签日期筛选（#156 源码契约）'
     $trayIconHostSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\TrayIconHost.cs') -Raw -Encoding UTF8
-    $sharedMenuStyleSource = Get-Content -LiteralPath (
-        Join-Path $PSScriptRoot 'src\MinminCountdown\SharedMenuStyles.xaml') -Raw -Encoding UTF8
     $trayProjectSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\MinminCountdown.csproj') -Raw -Encoding UTF8
     $floatingTraySource = Get-Content -LiteralPath (
@@ -5254,28 +5252,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $trayIconHostSource -match 'TrayLeftMouseUp' -and
         $trayIconHostSource -notmatch 'TrayLeftMouseDoubleClick' -and
         $trayIconHostSource -match '打开管理窗口' -and
-        $trayIconHostSource -match 'SharedMenuStyles\.Apply\(menu\)' -and
-        $trayIconHostSource -match 'menu\.Resources\["RadiusOverlay"\] = new CornerRadius\(0\)' -and
-        $trayIconHostSource -match 'menu\.Resources\["RadiusControl"\] = new CornerRadius\(0\)' -and
-        $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
-        $trayIconHostSource -notmatch 'CreateMenuItemTemplate') 'H.NotifyIcon 托盘单击恢复，四项菜单复用独立共享样式并保留现役直角实拍（#213/#309）'
-    Assert-Equal $true (
-        $sharedMenuStyleSource -match 'x:Key="SharedContextMenuStyle"' -and
-        $sharedMenuStyleSource -match 'x:Key="SharedMenuItemStyle"' -and
-        $sharedMenuStyleSource -match 'DynamicResource InkBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource CanvasBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource ControlBorderBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource MainActionBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource MainActionTextBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource UiFontFamily' -and
-        $sharedMenuStyleSource -match 'DynamicResource TypeBodyFontSize' -and
-        $sharedMenuStyleSource -match 'DynamicResource RadiusOverlay' -and
-        $sharedMenuStyleSource -match 'DynamicResource RadiusControl' -and
-        $sharedMenuStyleSource -match 'Property="IsKeyboardFocused"' -and
-        $sharedMenuStyleSource -match 'Property="IsEnabled"' -and
-        $sharedMenuStyleSource -match 'DynamicResource SystemContrastDisabledTextBrush' -and
-        $sharedMenuStyleSource -match 'DynamicResource SystemContrastControlBrush' -and
-        $sharedMenuStyleSource -notmatch '="#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?"') '共享 ContextMenu/MenuItem 的颜色、字号、焦点、禁用与系统对比度分支全部消费既有 token（#309）'
+        $trayIconHostSource -notmatch 'System\.Windows\.Forms') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口（#213/#232）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(

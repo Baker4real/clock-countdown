@@ -80,7 +80,7 @@ internal sealed record MainEmptyStateGeometry(
             $"({bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##}×{bounds.Height:0.##})");
 }
 
-// #248：空态当前显示的内容与动作。MessageWraps 承接原 CSharp 的 XAML 正则，改为真实控件行为。
+// #248/#304：空态当前显示的内容与动作。MessageWraps 承接原 CSharp 的 XAML 正则，改为真实控件行为。
 internal sealed record MainEmptyStateView(
     bool Visible,
     string? Message,
@@ -89,7 +89,7 @@ internal sealed record MainEmptyStateView(
     bool GuideVisible,
     string GuideLabel,
     string GuideName,
-    bool GuideRestsClear,
+    bool GuideHasClickableAffordance,
     bool ResetVisible,
     int AddLabeledButtons,
     bool FormAddEntryVisible,
@@ -104,9 +104,9 @@ internal sealed record MainEmptyStateView(
         GuideVisible &&
         !ResetVisible;
 
-    // 轻量引导：常态无底无边，可见文字与可访问名都不写「添加」，可访问名包含可见文字。
+    // 轻量引导（#304）：常态具备可辨认的暖粉淡底与 ≥3:1 边框（轻于表单唯一实心主行动），可见文字与可访问名都不写「添加」，可访问名包含可见文字。
     public bool GuideIsLightweight =>
-        GuideRestsClear &&
+        GuideHasClickableAffordance &&
         GuideLabel.Length > 0 &&
         !GuideLabel.Contains("添加", StringComparison.Ordinal) &&
         !GuideName.Contains("添加", StringComparison.Ordinal) &&
@@ -127,7 +127,7 @@ internal sealed record MainEmptyStateView(
 
     public string Describe() =>
         $"{(Visible ? "显示" : "隐藏")}，文案「{Message ?? "无"}」（换行 {MessageWraps}），说明「{Hint ?? "无"}」，角色{(MascotVisible ? "显示" : "隐藏")}，" +
-        $"引导{(GuideVisible ? "显示" : "隐藏")}「{GuideLabel}」（名「{GuideName}」，常态{(GuideRestsClear ? "无底无边" : "有底或有边")}），" +
+        $"引导{(GuideVisible ? "显示" : "隐藏")}「{GuideLabel}」（名「{GuideName}」，常态{(GuideHasClickableAffordance ? "可辨认可点" : "缺少可点线索")}），" +
         $"重置{(ResetVisible ? "显示" : "隐藏")}，空态里写着「添加」的按钮 {AddLabeledButtons} 个，" +
         $"表单添加入口{(FormAddEntryVisible ? "可用" : "不可用")}";
 }

@@ -252,6 +252,7 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\ReminderCenterSnoozeMenuScenario.cs',
     'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',
     'src\MinminCountdown.WindowVerification\InputFocusAndErrorScenario.cs',
+    'src\MinminCountdown.WindowVerification\MainWindowAlignmentAndPolishScenario.cs',
     'src\MinminCountdown.WindowVerification\SharedScrollBarScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',

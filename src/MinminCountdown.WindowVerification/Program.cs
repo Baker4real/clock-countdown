@@ -31,6 +31,8 @@ internal static class Program
     internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
     internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
+    internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
+    internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -85,6 +87,12 @@ internal static class Program
         "共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）";
     private const string SharedScrollBarMotionFactMeaning =
         "共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）";
+    private const string MainAlignmentAndNoteRowsFactMeaning =
+        "管理窗口命令栏三枚命令按钮等高居中并与数量文字共用垂直中线、右缘对齐内容区右缘且页签与选中指示条几何不变；" +
+        "切页前后主标题水平位置不变并保留两页标题装饰；便签新增与编辑态正文列吸收剩余宽度、行尾留白等于行首留白且取消内边距与次级按钮一致（#304）";
+    private const string MainEmptyAndHighContrastRibbonFactMeaning =
+        "管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；" +
+        "系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）";
 
     [STAThread]
     private static int Main()
@@ -114,7 +122,9 @@ internal static class Program
             [MainTagRenameSyncFactName] = false,
             [InputFocusAndErrorFactName] = false,
             [SharedScrollBarGeometryFactName] = false,
-            [SharedScrollBarMotionFactName] = false
+            [SharedScrollBarMotionFactName] = false,
+            [MainAlignmentAndNoteRowsFactName] = false,
+            [MainEmptyAndHighContrastRibbonFactName] = false
         };
         var failures = new List<string>();
 
@@ -266,6 +276,17 @@ internal static class Program
                 () => SharedScrollBarScenario.RunMotionAndInteractions(
                     theme,
                     SharedScrollBarMotionFactMeaning));
+            RunFact(
+                MainAlignmentAndNoteRowsFactName,
+                MainAlignmentAndNoteRowsFactMeaning,
+                () => MainWindowAlignmentAndPolishScenario.RunCommandBarHeaderAndNoteRows(
+                    MainAlignmentAndNoteRowsFactMeaning));
+            RunFact(
+                MainEmptyAndHighContrastRibbonFactName,
+                MainEmptyAndHighContrastRibbonFactMeaning,
+                () => MainWindowAlignmentAndPolishScenario.RunEmptyStateAndHighContrastRibbon(
+                    theme,
+                    MainEmptyAndHighContrastRibbonFactMeaning));
         }
         catch (Exception exception)
         {

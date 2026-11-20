@@ -12,6 +12,12 @@ namespace MinminCountdown;
 
 internal sealed class ReminderRulesEditorWindow : Window
 {
+    private const double InitialWindowWidth = 640;
+    private const double MaximumInitialWindowHeight = 790;
+    private const double RuleListMaxContentHeight = 288;
+    private const double WorkAreaMargin = 18;
+    private const double OuterChromeVerticalInset = 42;
+
     private readonly ReminderRulesEditorViewModel _viewModel;
     private readonly BooleanToVisibilityConverter _visibilityConverter = new();
     private readonly StackPanel _rulesHost = new();
@@ -70,12 +76,15 @@ internal sealed class ReminderRulesEditorWindow : Window
             countdownTargetUtc);
 
         Title = "提醒规则";
-        Width = 640;
-        Height = 790;
+        Width = InitialWindowWidth;
         MinWidth = 560;
-        MinHeight = 560;
+        MinHeight = 300;
+        MaxHeight = MaximumInitialWindowHeight;
+        SizeToContent = SizeToContent.Height;
         ShowInTaskbar = false;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        // #322：SizeToContent.Height 下由 ReapplyPlacement 统一按多屏工作区居中于所有者并夹取，
+        // 避免 WPF 延迟 CenterOwner 把副屏负坐标夹回系统主屏。
+        WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Brushes.Transparent;
         AllowsTransparency = true;
         WindowStyle = WindowStyle.None;
@@ -106,8 +115,70 @@ internal sealed class ReminderRulesEditorWindow : Window
     {
         var monitor = MonitorWorkAreaResolver.ResolveForWindow(
             !_placementInitialized && Owner is { } owner ? owner : this);
-        WindowWorkAreaGeometry.Fit(this, monitor.WorkAreaDip, 18,
-            centerOnOwner: !_placementInitialized && !_hasManualWindowPlacement);
+        var usable = Rect.Inflate(monitor.WorkAreaDip, -WorkAreaMargin, -WorkAreaMargin);
+        if (usable.IsEmpty || usable.Width <= 0 || usable.Height <= 0)
+        {
+            return;
+        }
+
+        MaxWidth = Math.Max(MinWidth, usable.Width);
+        MaxHeight = Math.Max(MinHeight, usable.Height);
+        var targetWidth = double.IsNaN(Width) ? ActualWidth : Width;
+        if (targetWidth > 0)
+        {
+            Width = Math.Clamp(targetWidth, MinWidth, MaxWidth);
+        }
+
+        if (SizeToContent == SizeToContent.Height)
+        {
+            InvalidateMeasure();
+            UpdateLayout();
+        }
+        else
+        {
+            var targetHeight = double.IsNaN(Height) ? ActualHeight : Height;
+            if (targetHeight > 0)
+            {
+                Height = Math.Clamp(targetHeight, MinHeight, MaxHeight);
+            }
+        }
+
+        var currentWidth = Math.Clamp(
+            ActualWidth > 0 ? ActualWidth : (double.IsNaN(Width) ? MinWidth : Width),
+            MinWidth,
+            MaxWidth);
+        var currentHeight = Math.Clamp(
+            ActualHeight > 0 ? ActualHeight : (double.IsNaN(Height) ? MinHeight : Height),
+            MinHeight,
+            MaxHeight);
+
+        if (!_placementInitialized && !_hasManualWindowPlacement)
+        {
+            if (Owner is { } ownerWindow)
+            {
+                Left = ownerWindow.Left + (ownerWindow.ActualWidth - currentWidth) / 2;
+                Top = ownerWindow.Top + (ownerWindow.ActualHeight - currentHeight) / 2;
+            }
+            else
+            {
+                if (double.IsNaN(Left))
+                {
+                    Left = usable.Left + Math.Max(0, (usable.Width - currentWidth) / 2);
+                }
+
+                if (double.IsNaN(Top))
+                {
+                    Top = usable.Top + Math.Max(0, (usable.Height - currentHeight) / 2);
+                }
+            }
+        }
+
+        Left = double.IsNaN(Left)
+            ? usable.Left + Math.Max(0, (usable.Width - currentWidth) / 2)
+            : Math.Clamp(Left, usable.Left, Math.Max(usable.Left, usable.Right - currentWidth));
+        Top = double.IsNaN(Top)
+            ? usable.Top + Math.Max(0, (usable.Height - currentHeight) / 2)
+            : Math.Clamp(Top, usable.Top, Math.Max(usable.Top, usable.Bottom - currentHeight));
         _placementInitialized = true;
     }
 
@@ -286,17 +357,18 @@ internal sealed class ReminderRulesEditorWindow : Window
         AutomationProperties.SetAutomationId(_dragHeader, "ReminderRulesEditorDragHeader");
         _dragHeader.MouseLeftButtonDown += OnHeaderMouseLeftButtonDown;
 
+        var blockGap = ReadSpacing("SpacingBlockGap", 12);
         var scroller = new ScrollViewer
         {
             Content = _rulesHost,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Margin = new Thickness(0, 14, 0, 0)
+            Margin = new Thickness(0, blockGap, 0, 0)
         };
         AutomationProperties.SetName(scroller, "已配置提醒规则");
         scroller.SetResourceReference(FocusVisualStyleProperty, "MainKeyboardFocusVisual");
 
-        var form = new Grid { Margin = new Thickness(0, 14, 0, 0) };
+        var form = new Grid { Margin = new Thickness(0, blockGap, 0, 0) };
         form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
         form.ColumnDefinitions.Add(new ColumnDefinition());
         AddFormRow(form, 0, "规则类型", _mode, _modeError);
@@ -313,16 +385,26 @@ internal sealed class ReminderRulesEditorWindow : Window
         AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError,
             nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible));
 
-        _saveRuleButton.SetResourceReference(StyleProperty, "PrimaryButton");
+        // #322：窗口级「完成」为唯一实心主行动，表单提交改为次级按钮样式。
+        _saveRuleButton.SetResourceReference(StyleProperty, "SecondaryButton");
         _cancelRuleEditButton.SetResourceReference(StyleProperty, "SecondaryButton");
         var ruleActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0)
+            HorizontalAlignment = HorizontalAlignment.Right
         };
         ruleActions.Children.Add(_saveRuleButton);
         ruleActions.Children.Add(_cancelRuleEditButton);
+        var ruleActionsRow = new Grid { Margin = new Thickness(0, blockGap, 0, 0) };
+        ruleActionsRow.ColumnDefinitions.Add(new ColumnDefinition());
+        ruleActionsRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _collectionError.HorizontalAlignment = HorizontalAlignment.Left;
+        _collectionError.VerticalAlignment = VerticalAlignment.Center;
+        _collectionError.Margin = new Thickness(0, 0, blockGap, 0);
+        Grid.SetColumn(_collectionError, 0);
+        Grid.SetColumn(ruleActions, 1);
+        ruleActionsRow.Children.Add(_collectionError);
+        ruleActionsRow.Children.Add(ruleActions);
 
         var accept = new Button { Content = "完成", MinWidth = 96, IsDefault = true };
         accept.SetResourceReference(StyleProperty, "PrimaryButton");
@@ -349,27 +431,20 @@ internal sealed class ReminderRulesEditorWindow : Window
         dialogActions.Children.Add(accept);
         dialogActions.Children.Add(cancel);
 
-        var layout = new Grid { Margin = new Thickness(20) };
+        var layout = new RuleEditorLayoutPanel(
+            _dragHeader,
+            scroller,
+            form,
+            ruleActionsRow,
+            dialogActions,
+            () => SizeToContent == SizeToContent.Height,
+            RuleListMaxContentHeight + blockGap,
+            MaximumInitialWindowHeight - OuterChromeVerticalInset)
+        {
+            Margin = new Thickness(20)
+        };
         layout.SetResourceReference(TextElement.FontSizeProperty, "SecondaryWindowBodyFontSize");
         AutomationProperties.SetAutomationId(layout, "ReminderRulesEditorContentRoot");
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition());
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(scroller, 1);
-        Grid.SetRow(form, 2);
-        Grid.SetRow(ruleActions, 3);
-        Grid.SetRow(dialogActions, 4);
-        layout.Children.Add(_dragHeader);
-        layout.Children.Add(scroller);
-        layout.Children.Add(form);
-        layout.Children.Add(ruleActions);
-        layout.Children.Add(_collectionError);
-        Grid.SetRow(_collectionError, 3);
-        _collectionError.HorizontalAlignment = HorizontalAlignment.Left;
-        _collectionError.VerticalAlignment = VerticalAlignment.Center;
-        layout.Children.Add(dialogActions);
 
         var surface = new Border
         {
@@ -491,6 +566,7 @@ internal sealed class ReminderRulesEditorWindow : Window
                 args.Handled = true;
             }
         };
+        SizeChanged += (_, _) => ClampToCurrentWorkArea();
         Loaded += (_, _) =>
         {
             ReapplyPlacement();
@@ -503,6 +579,35 @@ internal sealed class ReminderRulesEditorWindow : Window
                 _mode.Focus();
             }
         };
+    }
+
+    private void ClampToCurrentWorkArea()
+    {
+        if (!_placementInitialized || !IsVisible)
+        {
+            return;
+        }
+
+        var monitor = MonitorWorkAreaResolver.ResolveForWindow(this);
+        var usable = Rect.Inflate(monitor.WorkAreaDip, -WorkAreaMargin, -WorkAreaMargin);
+        if (usable.IsEmpty || usable.Width <= 0 || usable.Height <= 0)
+        {
+            return;
+        }
+
+        var width = Math.Clamp(ActualWidth > 0 ? ActualWidth : Width, MinWidth, MaxWidth);
+        var height = Math.Clamp(ActualHeight > 0 ? ActualHeight : Height, MinHeight, MaxHeight);
+        var clampedLeft = Math.Clamp(Left, usable.Left, Math.Max(usable.Left, usable.Right - width));
+        var clampedTop = Math.Clamp(Top, usable.Top, Math.Max(usable.Top, usable.Bottom - height));
+        if (Math.Abs(clampedLeft - Left) > 0.5)
+        {
+            Left = clampedLeft;
+        }
+
+        if (Math.Abs(clampedTop - Top) > 0.5)
+        {
+            Top = clampedTop;
+        }
     }
 
     private void OnValidationErrorRaised(object? sender, ReminderRuleEditorErrorEventArgs args)
@@ -552,8 +657,11 @@ internal sealed class ReminderRulesEditorWindow : Window
             return;
         }
 
-        foreach (var item in _viewModel.RuleItems)
+        var itemSpacing = ReadSpacing("SpacingUnit", 8);
+        var itemCount = _viewModel.RuleItems.Count;
+        for (var index = 0; index < itemCount; index++)
         {
+            var item = _viewModel.RuleItems[index];
             var summary = new TextBlock
             {
                 TextWrapping = TextWrapping.Wrap,
@@ -590,7 +698,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             {
                 Child = row,
                 Padding = new Thickness(12),
-                Margin = new Thickness(0, 0, 0, 8),
+                Margin = new Thickness(0, 0, 0, index == itemCount - 1 ? 0 : itemSpacing),
                 BorderThickness = new Thickness(1)
             };
             surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
@@ -651,6 +759,133 @@ internal sealed class ReminderRulesEditorWindow : Window
         return text;
     }
 
+    private double ReadSpacing(string resourceKey, double fallback) =>
+        TryFindResource(resourceKey) is double value ? value : fallback;
+
     private static void NameControl(DependencyObject target, string name) =>
         AutomationProperties.SetName(target, name);
+
+    // #322：规则列表按内容取高，超上限或窗口受工作区约束时在列表内滚动，表单紧随其后不拉大空白，
+    // 且固定区块与底部动作始终保持可见。
+    private sealed class RuleEditorLayoutPanel : Panel
+    {
+        private readonly UIElement _header;
+        private readonly UIElement _ruleList;
+        private readonly UIElement _form;
+        private readonly UIElement _ruleActionsRow;
+        private readonly UIElement _dialogActions;
+        private readonly Func<bool> _isAutoSizing;
+        private readonly double _autoListSlotMaxHeight;
+        private readonly double _autoContentMaxHeight;
+
+        internal RuleEditorLayoutPanel(
+            UIElement header,
+            UIElement ruleList,
+            UIElement form,
+            UIElement ruleActionsRow,
+            UIElement dialogActions,
+            Func<bool> isAutoSizing,
+            double autoListSlotMaxHeight,
+            double autoContentMaxHeight)
+        {
+            _header = header;
+            _ruleList = ruleList;
+            _form = form;
+            _ruleActionsRow = ruleActionsRow;
+            _dialogActions = dialogActions;
+            _isAutoSizing = isAutoSizing;
+            _autoListSlotMaxHeight = autoListSlotMaxHeight;
+            _autoContentMaxHeight = autoContentMaxHeight;
+
+            Children.Add(header);
+            Children.Add(ruleList);
+            Children.Add(form);
+            Children.Add(ruleActionsRow);
+            Children.Add(dialogActions);
+        }
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            var infiniteHeight = new Size(availableSize.Width, double.PositiveInfinity);
+            _header.Measure(infiniteHeight);
+            _form.Measure(infiniteHeight);
+            _ruleActionsRow.Measure(infiniteHeight);
+            _dialogActions.Measure(infiniteHeight);
+
+            var fixedHeight =
+                _header.DesiredSize.Height +
+                _form.DesiredSize.Height +
+                _ruleActionsRow.DesiredSize.Height +
+                _dialogActions.DesiredSize.Height;
+
+            var autoSizing = _isAutoSizing();
+            var effectiveHeightLimit = availableSize.Height;
+            if (autoSizing)
+            {
+                effectiveHeightLimit = Math.Min(effectiveHeightLimit, _autoContentMaxHeight);
+            }
+
+            var listBudget = autoSizing ? _autoListSlotMaxHeight : double.PositiveInfinity;
+            if (!double.IsInfinity(effectiveHeightLimit))
+            {
+                listBudget = Math.Min(listBudget, Math.Max(0, effectiveHeightLimit - fixedHeight));
+            }
+
+            _ruleList.Measure(new Size(availableSize.Width, listBudget));
+
+            var desiredWidth = Math.Max(
+                double.IsInfinity(availableSize.Width) ? 0 : availableSize.Width,
+                Math.Max(
+                    Math.Max(_header.DesiredSize.Width, _ruleList.DesiredSize.Width),
+                    Math.Max(
+                        _form.DesiredSize.Width,
+                        Math.Max(_ruleActionsRow.DesiredSize.Width, _dialogActions.DesiredSize.Width))));
+            var desiredHeight = fixedHeight + _ruleList.DesiredSize.Height;
+            if (autoSizing)
+            {
+                // 把自动取高后的整窗高度向上对齐到 4 DIP 整数倍，避免 125%/150%/175% 缩放下
+                // 分数 DIP 导致窗口右下角 ResizeGrip 与 RenderSize 产生亚像素浮点偏差。
+                var snappedOuterHeight = Math.Ceiling((desiredHeight + OuterChromeVerticalInset) / 4.0) * 4.0;
+                desiredHeight = Math.Max(desiredHeight, snappedOuterHeight - OuterChromeVerticalInset);
+            }
+            if (!double.IsInfinity(effectiveHeightLimit))
+            {
+                desiredHeight = Math.Min(effectiveHeightLimit, desiredHeight);
+            }
+
+            return new Size(
+                double.IsInfinity(availableSize.Width) ? desiredWidth : availableSize.Width,
+                desiredHeight);
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            var width = finalSize.Width;
+            var fixedHeight =
+                _header.DesiredSize.Height +
+                _form.DesiredSize.Height +
+                _ruleActionsRow.DesiredSize.Height +
+                _dialogActions.DesiredSize.Height;
+            var remainingForList = Math.Max(0, finalSize.Height - fixedHeight);
+            var listHeight = Math.Min(_ruleList.DesiredSize.Height, remainingForList);
+
+            var y = 0.0;
+            _header.Arrange(new Rect(0, y, width, _header.DesiredSize.Height));
+            y += _header.DesiredSize.Height;
+
+            _ruleList.Arrange(new Rect(0, y, width, listHeight));
+            y += listHeight;
+
+            _form.Arrange(new Rect(0, y, width, _form.DesiredSize.Height));
+            y += _form.DesiredSize.Height;
+
+            _ruleActionsRow.Arrange(new Rect(0, y, width, _ruleActionsRow.DesiredSize.Height));
+            y += _ruleActionsRow.DesiredSize.Height;
+
+            var dialogY = Math.Max(y, finalSize.Height - _dialogActions.DesiredSize.Height);
+            _dialogActions.Arrange(new Rect(0, dialogY, width, _dialogActions.DesiredSize.Height));
+
+            return finalSize;
+        }
+    }
 }

@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -171,6 +171,8 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\SettingsEquivalenceCommand.cs',
     'src\MinminCountdown\SettingsMigrationCommand.cs',
     'src\MinminCountdown\SettingsRecoveryWindow.cs',
+    'src\MinminCountdown\SharedMenuStyles.cs',
+    'src\MinminCountdown\SharedMenuStyles.xaml',
     'src\MinminCountdown\TrayIconHost.cs',
     'src\MinminCountdown\UiControls.cs',
     'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',
@@ -241,6 +243,7 @@ $script:buildScriptInputFiles = @(
     'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md',
     'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
     'src\MinminCountdown.WindowVerification\Program.cs',
+    'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
     'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
     'src\MinminCountdown.WindowVerification\FloatingNoteSearchScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',

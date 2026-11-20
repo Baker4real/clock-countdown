@@ -22,6 +22,8 @@ param(
     [string] $TauriEvidenceDirectory,
     [string] $AppPath,
     [string] $ExpectedDllSha256,
+    [string] $MeasurementEvidenceRoot,
+    [ValidateRange(60, 570)] [int] $MeasurementSecondsPerTier = 60,
     # 正式收尾必须前置检查清理能力，并以当前必过阶段和实际Clean/R2R回执计算完成状态。
     [switch] $Closeout,
     # 首次自动截图清理只在当场核对精确计划后放行；默认闭锁且不影响阶段结果。
@@ -32,7 +34,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteStages.psm1') -Force
 
-$allowedStages = @('Build', 'IncrementalBuild', 'GeometryPreflight', 'Core', 'CSharp', 'ExternalClose', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'TauriGate')
+$allowedStages = @('Build', 'IncrementalBuild', 'GeometryPreflight', 'Core', 'CSharp', 'ExternalClose', 'SourceValidation', 'InstallValidate', 'ValidationHarness', 'Tooling', 'BaselineGenerate', 'IdleProcessorMeasurement', 'TauriGate')
 $Stage = @($Stage | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
 $invalid = @($Stage | Where-Object { $_ -notin $allowedStages })
 if ($Stage.Count -eq 0 -or $invalid.Count -gt 0) {
@@ -45,6 +47,13 @@ if ('GeometryPreflight' -in $Stage) {
     if (-not $AppPath -or -not $ExpectedDllSha256) { throw 'GeometryPreflight 必须显式指定 -AppPath 和 -ExpectedDllSha256。' }
     if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) { throw 'GeometryPreflight 必须单独运行并保留隔离桌面。' }
 } elseif ($AppPath -or $ExpectedDllSha256) { throw '候选 DLL 参数只能用于 GeometryPreflight。' }
+if ('IdleProcessorMeasurement' -in $Stage) {
+    if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) {
+        throw 'IdleProcessorMeasurement 必须单独运行并保留隔离桌面；它是非门禁测量。'
+    }
+} elseif ($PSBoundParameters.ContainsKey('MeasurementEvidenceRoot') -or $PSBoundParameters.ContainsKey('MeasurementSecondsPerTier')) {
+    throw '测量参数只能用于 IdleProcessorMeasurement 阶段。'
+}
 if ('TauriGate' -in $Stage) {
     if ($Stage.Count -ne 1 -or $AllowUnisolatedDesktop) {
         throw 'TauriGate 必须单独运行并保留隔离桌面。'
@@ -145,6 +154,7 @@ try {
         ValidationHarness = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'Test-PopupValidationContract.ps1'))
         Tooling = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownTooling.ps1'))
         BaselineGenerate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-STA', '-File', (Join-Path $PSScriptRoot 'New-CountdownVisualBaseline.ps1'))
+        IdleProcessorMeasurement = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Measure-CountdownIdleProcessor.ps1'), '-SecondsPerTier', ([string] $MeasurementSecondsPerTier))
         TauriGate = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownTauriGate.ps1'), '-CandidateExecutable', $TauriExecutable, '-EvidenceDirectory', $TauriEvidenceDirectory)
     }
     $specs = @($allowedStages | Where-Object { $_ -in $Stage } | ForEach-Object {
@@ -152,6 +162,9 @@ try {
         if ($_ -in @('Build','IncrementalBuild')) {
             $spec.PreflightScript = Join-Path $PSScriptRoot 'Test-CountdownBuildPreflight.ps1'
             $spec.BuildMode = if ($_ -eq 'Build') { 'CleanR2R' } else { 'Incremental' }
+        }
+        if ($_ -eq 'IdleProcessorMeasurement' -and -not [string]::IsNullOrWhiteSpace($MeasurementEvidenceRoot)) {
+            $spec.ArgumentList = @($spec.ArgumentList) + @('-EvidenceRoot', $MeasurementEvidenceRoot)
         }
         $spec
     })

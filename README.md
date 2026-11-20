@@ -135,6 +135,22 @@ $dllHash = (Get-FileHash (Join-Path $appPath 'MinminCountdown.dll') -Algorithm S
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage GeometryPreflight -AppPath $appPath -ExpectedDllSha256 $dllHash -StageTimeoutSeconds 90
 ```
 
+空闲处理器基线测量（#301）使用同一低影响启动器的独立 `IdleProcessorMeasurement` 阶段。它不属于 `Countdown.SuiteStages.psm1` 的必过阶段，也不会进入 `-Closeout`；必须已用官方 Build 或 IncrementalBuild 生成当前 `app`。测量命令：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IdleProcessorMeasurement -MeasurementEvidenceRoot D:/agents/run-evidence/clock-countdown-implement-spec/prd-296-20261118/issue-301 -WaitForLockSeconds 1800
+```
+
+每轮顺序测量五种状态：悬浮窗与管理窗口都隐藏、仅悬浮窗可见、仅管理窗口可见、两者都可见、仅悬浮窗可见且有一条尚未到期的日历规则。前四种使用 [baseline.settings.json](docs/evidence/clock-countdown-issue-301/fixtures/baseline.settings.json)，日历档使用 [calendar.settings.json](docs/evidence/clock-countdown-issue-301/fixtures/calendar.settings.json)；应用只读取复制到本轮证据目录的临时副本。`main-only` 先经现有 `MainVisible` 测试状态创建真实管理窗口，再对本进程悬浮窗句柄调用 `ShowWindow(SW_HIDE)`，其余状态使用现有启动参数。
+
+每档先预热 5 秒，再用 `\Process(*)\ID Process` 将 owned PID 唯一解析到一个计数器实例，随后以 1 秒间隔只取该实例的 63 组 `\Process(<绑定实例>)\% Processor Time`；丢弃首组后必须仍有至少 60 个样本且首末样本相隔至少 60 秒，应用中途退出也使该档失败，避免接受实例复用。处理器时间占单核比例直接使用匹配实例的 `% Processor Time`：100 表示占满一个逻辑处理器，不除以逻辑处理器数。原始样本、汇总、环境、源码与构建哈希、临时设置前后哈希、owner token 的 SHA-256、wrapper 与应用的 PID/启动时刻/EXE 路径和哈希、父子关系、readiness、可见状态及收尾记录写入证据根的 `run-*` 目录。工具侧 managed wrapper 实际计算并回报 token 哈希，协调器独立核验；失败时先由 wrapper 做有界 graceful stop，再复核身份后升级。所有进程由隔离桌面的 owned Job 包含，BelowNormal，使用拒绝联网的 loopback 代理和测试自动退出；不按进程名启动或结束任何既有进程。构建 manifest 基点与当前 HEAD 不一致时拒绝测量，避免使用陈旧构建。
+
+`-MeasurementSecondsPerTier <60..570>` 可延长每档窗口。无窗口的采样汇总与反例自测：
+
+```powershell
+pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownIdleProcessorMeasurement.ps1
+```
+
 构建前先做只读环境预检和工具自检（不在用户桌面开窗）；`-RequireClean` 只在当前 safe-tree-delete policy 登记了该 checkout 的正式清理路径时使用：
 
 ```powershell

@@ -118,6 +118,8 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     private bool _isFailureVisible;
     private bool _isCustomErrorVisible;
     private bool _isRendered;
+    private bool _isTitleOverflowing;
+    private bool _isTitleExpanded;
     private string _errorMessage = string.Empty;
     private string _customErrorMessage = string.Empty;
     private ReminderSnoozeOption _selectedSnoozeOption = ReminderSnoozeOption.TenMinutes;
@@ -139,6 +141,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
             () => IsCompleteEnabled);
         OpenSourceCommand = new RelayCommand(
             () => OpenSourceRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)));
+        ToggleTitleExpandedCommand = new RelayCommand(ToggleTitleExpanded);
     }
 
     public ReminderCenterItem Item { get; }
@@ -221,6 +224,45 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         private set => SetProperty(ref _isRendered, value);
     }
 
+    public bool IsTitleOverflowing
+    {
+        get => _isTitleOverflowing;
+        private set
+        {
+            if (!SetProperty(ref _isTitleOverflowing, value))
+            {
+                return;
+            }
+
+            if (!value && _isTitleExpanded)
+            {
+                _isTitleExpanded = false;
+                OnPropertyChanged(nameof(IsTitleExpanded));
+                NotifyTitleDisclosureChanged();
+            }
+        }
+    }
+
+    public bool IsTitleExpanded
+    {
+        get => _isTitleExpanded;
+        private set
+        {
+            if (SetProperty(ref _isTitleExpanded, value))
+            {
+                NotifyTitleDisclosureChanged();
+            }
+        }
+    }
+
+    public string TitleDisclosureText => IsTitleExpanded ? "收起" : "展开全文";
+
+    public string TitleDisclosureStateText => IsTitleExpanded ? "当前展开" : "当前收起";
+
+    public string TitleDisclosureAccessibleName => IsTitleExpanded
+        ? $"收起标题（当前展开）：{Item.Source.DisplayText}"
+        : $"展开标题（当前收起）：{Item.Source.DisplayText}";
+
     public string ErrorMessage
     {
         get => _errorMessage;
@@ -277,6 +319,8 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
 
     public RelayCommand OpenSourceCommand { get; }
 
+    public RelayCommand ToggleTitleExpandedCommand { get; }
+
     internal event EventHandler<ReminderCenterEntryEventArgs>? AcknowledgeRequested;
 
     internal event EventHandler<ReminderCenterSnoozeEventArgs>? SnoozeRequested;
@@ -313,6 +357,25 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     }
 
     internal void MarkRendered() => IsRendered = true;
+
+    internal void SetTitleOverflowing(bool overflowing) => IsTitleOverflowing = overflowing;
+
+    private void ToggleTitleExpanded()
+    {
+        if (!IsTitleOverflowing)
+        {
+            return;
+        }
+
+        IsTitleExpanded = !IsTitleExpanded;
+    }
+
+    private void NotifyTitleDisclosureChanged()
+    {
+        OnPropertyChanged(nameof(TitleDisclosureText));
+        OnPropertyChanged(nameof(TitleDisclosureStateText));
+        OnPropertyChanged(nameof(TitleDisclosureAccessibleName));
+    }
 
     private void RequestSnooze()
     {

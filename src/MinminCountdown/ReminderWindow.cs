@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -17,6 +18,9 @@ namespace MinminCountdown;
 
 internal sealed class ReminderCenterWindow : Window
 {
+    private const double CollapsedTitleLineHeight = 28;
+    private const int CollapsedTitleMaxLines = 2;
+    private const double CollapsedTitleMaxHeight = CollapsedTitleLineHeight * CollapsedTitleMaxLines;
     private readonly StackPanel _itemsHost;
     private readonly TextBlock _countText;
     private readonly Button _acknowledgeAll;
@@ -197,6 +201,13 @@ internal sealed class ReminderCenterWindow : Window
             () => _hasManualWindowPlacement = true);
         // #215：初始焦点只在用户真正激活窗口后落下，出现时不得抢焦点。
         Activated += (_, _) => EnsureInitialFocus();
+        DpiChanged += (_, _) =>
+        {
+            foreach (var entry in _entries.Values)
+            {
+                entry.RefreshTitleOverflow();
+            }
+        };
     }
 
     internal bool HasManualWindowPlacement => _hasManualWindowPlacement;
@@ -362,10 +373,103 @@ internal sealed class ReminderCenterWindow : Window
             Text = item.Source.DisplayText,
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 7, 0, 0),
-            TextWrapping = TextWrapping.Wrap
+            LineHeight = CollapsedTitleLineHeight,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            MaxHeight = CollapsedTitleMaxHeight,
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         body.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
         body.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        // #321：超过两行的标题以两行省略号收起，并仅在真实溢出时挂载可键盘到达的展开/收起按钮。
+        var titleDisclosure = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(0, 6, 0, 0),
+            MinWidth = 0,
+            MinHeight = 30,
+            Padding = new Thickness(10, 0, 10, 0),
+            Style = (Style)FindResource("SecondaryButton")
+        };
+        titleDisclosure.SetResourceReference(Control.FontSizeProperty, "SecondaryWindowMinorFontSize");
+        AutomationProperties.SetAutomationId(titleDisclosure, "ReminderEntryTitleDisclosure");
+        BindEntry(
+            titleDisclosure,
+            ContentControl.ContentProperty,
+            nameof(ReminderCenterEntryViewModel.TitleDisclosureText),
+            viewModel);
+        BindEntry(
+            titleDisclosure,
+            AutomationProperties.NameProperty,
+            nameof(ReminderCenterEntryViewModel.TitleDisclosureAccessibleName),
+            viewModel);
+        BindEntry(
+            titleDisclosure,
+            AutomationProperties.HelpTextProperty,
+            nameof(ReminderCenterEntryViewModel.TitleDisclosureStateText),
+            viewModel);
+        BindEntry(
+            titleDisclosure,
+            ButtonBase.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.ToggleTitleExpandedCommand),
+            viewModel);
+        KeyboardFocusPolicy.Apply(titleDisclosure);
+        var titleDisclosureSlot = new Border();
+        void ApplyTitlePresentation()
+        {
+            var clamped = viewModel.IsTitleOverflowing && !viewModel.IsTitleExpanded;
+            body.MaxHeight = clamped ? CollapsedTitleMaxHeight : double.PositiveInfinity;
+            body.TextTrimming = clamped ? TextTrimming.CharacterEllipsis : TextTrimming.None;
+            if (viewModel.IsTitleOverflowing)
+            {
+                if (!ReferenceEquals(titleDisclosureSlot.Child, titleDisclosure))
+                {
+                    titleDisclosureSlot.Child = titleDisclosure;
+                }
+            }
+            else if (titleDisclosureSlot.Child is not null)
+            {
+                titleDisclosureSlot.Child = null;
+            }
+        }
+
+        var lastMeasuredTitleWidth = -1d;
+        void RefreshTitleOverflow(bool force)
+        {
+            var width = body.ActualWidth;
+            if (width <= 0)
+            {
+                return;
+            }
+
+            if (!force && Math.Abs(width - lastMeasuredTitleWidth) <= 0.5)
+            {
+                return;
+            }
+
+            lastMeasuredTitleWidth = width;
+            var overflows = MeasureUnwrappedTitleHeight(body, width) > CollapsedTitleMaxHeight + 0.5;
+            viewModel.SetTitleOverflowing(overflows);
+            ApplyTitlePresentation();
+        }
+
+        PropertyChangedEventHandler titlePropertyChanged = (_, args) =>
+        {
+            if (args.PropertyName is nameof(ReminderCenterEntryViewModel.IsTitleExpanded) or
+                nameof(ReminderCenterEntryViewModel.IsTitleOverflowing))
+            {
+                ApplyTitlePresentation();
+            }
+        };
+        viewModel.PropertyChanged += titlePropertyChanged;
+        body.Loaded += (_, _) => RefreshTitleOverflow(force: true);
+        body.SizeChanged += (_, args) =>
+        {
+            if (args.WidthChanged || lastMeasuredTitleWidth <= 0)
+            {
+                RefreshTitleOverflow(force: false);
+            }
+        };
         // #253：完整时区标记整体换到下一行，保留原文案，避免在卡片右缘把「（北京时间）」逐字拆开。
         // 仍受卡片内容宽度约束；时钟对齐首行：16px 正文行高约 21，13px 图标顶部留 4。
         var scheduled = new TextBlock
@@ -635,6 +739,7 @@ internal sealed class ReminderCenterWindow : Window
         Grid.SetColumn(content, 1);
         content.Children.Add(sourceRow);
         content.Children.Add(body);
+        content.Children.Add(titleDisclosureSlot);
         content.Children.Add(scheduledRow);
         content.Children.Add(error);
         content.Children.Add(divider);
@@ -677,7 +782,9 @@ internal sealed class ReminderCenterWindow : Window
             customMinute,
             customError,
             openSource,
-            error);
+            error,
+            titlePropertyChanged,
+            () => RefreshTitleOverflow(force: true));
         BindEntry(
             openSource,
             Button.CommandProperty,
@@ -725,6 +832,7 @@ internal sealed class ReminderCenterWindow : Window
         entry.ViewModel.SnoozeRequested -= OnViewModelSnoozeRequested;
         entry.ViewModel.CompleteRequested -= OnViewModelCompleteRequested;
         entry.ViewModel.OpenSourceRequested -= OnViewModelOpenSourceRequested;
+        entry.ViewModel.PropertyChanged -= entry.TitlePropertyChanged;
         _viewModel.Remove(key);
         _itemsHost.Children.Remove(entry.Row);
         UpdateTitle();
@@ -1168,6 +1276,28 @@ internal sealed class ReminderCenterWindow : Window
         return path;
     }
 
+    private static double MeasureUnwrappedTitleHeight(TextBlock body, double width)
+    {
+        var probe = new TextBlock
+        {
+            Text = body.Text,
+            FontFamily = body.FontFamily,
+            FontSize = body.FontSize,
+            FontWeight = body.FontWeight,
+            FontStyle = body.FontStyle,
+            FontStretch = body.FontStretch,
+            LineHeight = body.LineHeight,
+            LineStackingStrategy = body.LineStackingStrategy,
+            TextWrapping = body.TextWrapping,
+            TextTrimming = TextTrimming.None,
+            FlowDirection = body.FlowDirection
+        };
+        TextOptions.SetTextFormattingMode(probe, TextOptions.GetTextFormattingMode(body));
+        TextOptions.SetTextRenderingMode(probe, TextOptions.GetTextRenderingMode(body));
+        probe.Measure(new Size(width, double.PositiveInfinity));
+        return probe.DesiredSize.Height;
+    }
+
     private static int CompareItems(ReminderCenterItem left, ReminderCenterItem right)
     {
         var result = left.Key.ScheduledUtc.CompareTo(right.Key.ScheduledUtc);
@@ -1202,7 +1332,9 @@ internal sealed class ReminderCenterWindow : Window
         ComboBox customMinute,
         TextBlock customError,
         Button openSource,
-        TextBlock error)
+        TextBlock error,
+        PropertyChangedEventHandler titlePropertyChanged,
+        Action refreshTitleOverflow)
     {
         public ReminderCenterItem Item { get; } = item;
 
@@ -1231,6 +1363,10 @@ internal sealed class ReminderCenterWindow : Window
         public Button OpenSource { get; } = openSource;
 
         public TextBlock Error { get; } = error;
+
+        public PropertyChangedEventHandler TitlePropertyChanged { get; } = titlePropertyChanged;
+
+        public Action RefreshTitleOverflow { get; } = refreshTitleOverflow;
 
         public bool RenderProbeScheduled { get; set; }
 

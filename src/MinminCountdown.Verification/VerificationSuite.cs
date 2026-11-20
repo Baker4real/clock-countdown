@@ -96,6 +96,8 @@ internal static class VerificationSuite
         Run(results, "desktop-workspace-undo-hold-pauses-only-offering-surface", VerifyDesktopWorkspaceUndoHoldPausesOnlyOfferingSurface);
         Run(results, "desktop-workspace-undo-failures-keep-offer-and-timing", VerifyDesktopWorkspaceUndoFailuresKeepOfferAndTiming);
         Run(results, "desktop-workspace-batch-undo-restores-order-and-states", VerifyDesktopWorkspaceBatchUndoRestoresOrderAndStates);
+        Run(results, "desktop-workspace-snapshot-caches-time-independent-projections-and-invalidates-on-mutations", VerifyDesktopWorkspaceSnapshotTimeIndependentCaching);
+        Run(results, "desktop-workspace-snapshot-cache-matches-uncached-oracle-across-mutations-filters-and-expiry", VerifyDesktopWorkspaceSnapshotEquivalenceAndExpiryInvalidation);
         Run(results, "floating-countdown-projection-rows-and-primary", VerifyFloatingCountdownProjectionRowsAndPrimary);
         Run(results, "floating-countdown-projection-filter-scopes", VerifyFloatingCountdownProjectionFilterScopes);
         Run(results, "floating-countdown-projection-keys-and-signature", VerifyFloatingCountdownProjectionKeysAndSignature);
@@ -3009,6 +3011,625 @@ internal static class VerificationSuite
         });
     }
 
+    private static void VerifyDesktopWorkspaceSnapshotTimeIndependentCaching()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            File.WriteAllText(settingsPath, SettingsFixtures.VersionNine, new UTF8Encoding(false));
+            var baseUtc = new DateTimeOffset(2034, 5, 6, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableCountingClock(baseUtc);
+            var store = new SettingsStore(clock: clock);
+            var workspace = DesktopWorkspace.Load(settingsPath, store, migrationUtc: baseUtc);
+
+            var migratedBeforePersist = workspace.Snapshot;
+            Equal(true, migratedBeforePersist.SettingsWereMigrated, "迁移启动后的迁移标志");
+            workspace.PersistMigrationIfNeeded();
+            var afterPersist = workspace.Snapshot;
+            Equal(false, afterPersist.SettingsWereMigrated, "持久化迁移后的迁移标志");
+            Equal(false, ReferenceEquals(migratedBeforePersist.Settings, afterPersist.Settings), "持久化迁移推进状态版本");
+
+            var tagWork = Applied(workspace, new CreateTagChange("工作", "#FF8A70"), "创建工作标签").CreatedTag!;
+            var tagLife = Applied(workspace, new CreateTagChange("生活", "#FFD36B"), "创建生活标签").CreatedTag!;
+            var weeklyRule = new CalendarReminderRule(
+                "cache-weekly-rule",
+                CalendarFrequency.Weekly,
+                1,
+                new DateOnly(2034, 5, 6),
+                new TimeOnly(10, 30),
+                new WeeklyCalendarSelector([DayOfWeek.Monday, DayOfWeek.Wednesday]));
+            var onceRule = new AbsoluteOnceReminderRule("cache-once-rule", baseUtc.AddMinutes(5));
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    null,
+                    "周提醒便签",
+                    new DateTime(2034, 5, 6),
+                    false,
+                    [tagWork.Id],
+                    [weeklyRule, onceRule]),
+                "保存带周日历规则和一次性规则的便签");
+            Applied(
+                workspace,
+                new SaveCountdownChange(null, "未来倒计时", baseUtc.AddHours(2), [tagWork.Id]),
+                "保存未来倒计时");
+
+            var readsBeforeFirst = clock.ReadCount;
+            var first = workspace.Snapshot;
+            Equal(1, clock.ReadCount - readsBeforeFirst, "首次缓存读取时钟次数");
+
+            clock.UtcNow = baseUtc.AddSeconds(1);
+            var readsBeforeSecond = clock.ReadCount;
+            var second = workspace.Snapshot;
+            Equal(1, clock.ReadCount - readsBeforeSecond, "命中缓存时仍只读取一次业务时钟");
+            Equal(baseUtc.AddSeconds(1), second.UtcNow, "命中缓存时返回最新 UTC 时刻");
+            Equal(ChinaStandardTime.ToBeijingTime(baseUtc.AddSeconds(1)), second.BeijingNow, "命中缓存时返回最新北京时间");
+            Equal(true, ReferenceEquals(first.Settings, second.Settings), "未变更时复用冻结 Settings");
+            Equal(true, ReferenceEquals(first.AllNotes, second.AllNotes), "未变更时复用 AllNotes");
+            Equal(true, ReferenceEquals(first.VisibleNotes, second.VisibleNotes), "未变更时复用 VisibleNotes");
+            Equal(true, ReferenceEquals(first.VisibleActiveNotes, second.VisibleActiveNotes), "未变更时复用 VisibleActiveNotes");
+            Equal(true, ReferenceEquals(first.Filter, second.Filter), "未变更时复用 Filter");
+
+            // 缓存对象在跨调用复用期间必须深度只读，不能被调用方通过接口强转污染。
+            RejectsWrite(
+                () => ((IDictionary<string, ReminderRuleState>)second.Settings.ReminderStates).Clear(),
+                "缓存快照 ReminderStates 字典");
+            var frozenWeekly = second.Settings.Notes
+                .SelectMany(static note => note.ReminderRules)
+                .OfType<CalendarReminderRule>()
+                .Single(rule => rule.Id == weeklyRule.Id);
+            RejectsWrite(
+                () => ((IList<DayOfWeek>)((WeeklyCalendarSelector)frozenWeekly.Selector).Weekdays)[0] = DayOfWeek.Sunday,
+                "缓存快照 WeeklyCalendarSelector.Weekdays");
+            RejectsWrite(
+                () => ((IList<NoteRecord>)second.AllNotes).Clear(),
+                "缓存快照 AllNotes");
+            RejectsWrite(
+                () => ((IList<NoteRecord>)second.VisibleNotes).Clear(),
+                "缓存快照 VisibleNotes");
+            RejectsWrite(
+                () => ((IList<NoteRecord>)second.VisibleActiveNotes).Clear(),
+                "缓存快照 VisibleActiveNotes");
+
+            // 只改筛选不改状态：Settings 和 AllNotes 复用，VisibleNotes/VisibleActiveNotes 立即更新。
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with
+            {
+                SelectedTagIds = [tagWork.Id, tagLife.Id]
+            });
+            var afterFilter = workspace.Snapshot;
+            Equal(true, ReferenceEquals(second.Settings, afterFilter.Settings), "仅变更筛选时复用 Settings");
+            Equal(true, ReferenceEquals(second.AllNotes, afterFilter.AllNotes), "仅变更筛选时复用 AllNotes");
+            Equal(false, ReferenceEquals(second.VisibleNotes, afterFilter.VisibleNotes), "变更筛选后重建 VisibleNotes");
+            SequenceEqual(new[] { tagWork.Id, tagLife.Id }, afterFilter.Filter.SelectedTagIds, "筛选标签已更新");
+
+            // StateChanged 回调内读取快照不应让 DeleteTagChange 后续清理 _filter 的结果陈旧。
+            DesktopWorkspaceSnapshot? snapshotInsideStateChanged = null;
+            workspace.StateChanged += (_, _) => snapshotInsideStateChanged = workspace.Snapshot;
+            Applied(workspace, new DeleteTagChange(tagWork.Id), "删除筛选中的工作标签");
+            Equal(true, snapshotInsideStateChanged is not null, "StateChanged 内读取到快照");
+            Equal(
+                false,
+                snapshotInsideStateChanged!.Settings.Tags.Any(tag => tag.Id == tagWork.Id),
+                "StateChanged 内看到已提交的新标签集");
+            var afterDeleteTag = workspace.Snapshot;
+            SequenceEqual(new[] { tagLife.Id }, afterDeleteTag.Filter.SelectedTagIds, "删除标签后筛选中已剔除被删标签");
+            Equal(0, afterDeleteTag.VisibleNotes.Count, "剔除工作标签后只剩生活标签筛选的可见便签");
+
+            // 失败提交不推进版本、不污染缓存。
+            var beforeFailedCommit = workspace.Snapshot;
+            var failed = workspace.Apply(new SaveNoteChange(null, "   ", null, false, [], Array.Empty<ReminderRule>()));
+            Equal(false, failed.Succeeded, "空正文便签提交失败");
+            var afterFailedCommit = workspace.Snapshot;
+            Equal(true, ReferenceEquals(beforeFailedCommit.Settings, afterFailedCommit.Settings), "失败提交保持 Settings 缓存不变");
+            Equal(true, ReferenceEquals(beforeFailedCommit.VisibleNotes, afterFailedCommit.VisibleNotes), "失败提交保持 VisibleNotes 缓存不变");
+
+            // 提醒送达、稍后、知道了与撤销都使状态缓存立即失效。
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+            var noteId = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "周提醒便签").Id;
+            clock.UtcNow = onceRule.ScheduledUtc;
+            var beforeDelivery = workspace.Snapshot;
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, noteId, onceRule.Id, onceRule.ScheduledUtc).Succeeded,
+                "送达一次性提醒");
+            var afterDelivery = workspace.Snapshot;
+            Equal(false, ReferenceEquals(beforeDelivery.Settings, afterDelivery.Settings), "提醒送达使 Settings 缓存失效");
+            Equal(true, afterDelivery.Settings.ReminderStates.ContainsKey(onceRule.Id), "送达后立即读取到提醒状态");
+
+            Equal(
+                true,
+                workspace.SnoozeReminder(ReminderSourceKind.Note, noteId, onceRule.Id, onceRule.ScheduledUtc, ReminderSnoozeOption.TenMinutes, null).Succeeded,
+                "稍后提醒");
+            var afterSnooze = workspace.Snapshot;
+            Equal(false, ReferenceEquals(afterDelivery.Settings, afterSnooze.Settings), "稍后提醒使 Settings 缓存失效");
+            Equal(true, afterSnooze.Settings.ReminderStates[onceRule.Id].ActiveSnooze is not null, "稍后后立即读取到活动稍后");
+
+            Equal(
+                true,
+                workspace.AcknowledgeReminder(ReminderSourceKind.Note, noteId, onceRule.Id, onceRule.ScheduledUtc).Succeeded,
+                "知道了提醒");
+            var afterAck = workspace.Snapshot;
+            Equal(false, ReferenceEquals(afterSnooze.Settings, afterAck.Settings), "知道了使 Settings 缓存失效");
+            Equal(true, afterAck.Settings.ReminderStates[onceRule.Id].LastDispositionOccurrenceKey is not null, "知道了后立即读取到处置键");
+
+            Equal(true, workspace.ApplyWithUndo(new DeleteNoteChange(noteId), WorkspaceUndoSurface.Main).Succeeded, "带撤销删除便签");
+            var afterDelete = workspace.Snapshot;
+            Equal(false, afterDelete.Settings.Notes.Any(note => note.Id == noteId), "删除后立即不可见");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销删除便签");
+            var afterUndo = workspace.Snapshot;
+            Equal(true, afterUndo.Settings.Notes.Any(note => note.Id == noteId), "撤销后立即恢复可见");
+        });
+    }
+
+    private static void VerifyDesktopWorkspaceSnapshotEquivalenceAndExpiryInvalidation()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            File.WriteAllText(settingsPath, SettingsFixtures.VersionNine, new UTF8Encoding(false));
+            var baseUtc = new DateTimeOffset(2034, 5, 6, 1, 0, 0, TimeSpan.Zero);
+            var clock = new SettableClock(baseUtc);
+            var store = new SettingsStore(clock: clock);
+            var workspace = DesktopWorkspace.Load(settingsPath, store, migrationUtc: baseUtc);
+
+            void AssertMatchesOracle(string step)
+            {
+                var actual = workspace.Snapshot;
+                var expected = BuildUncachedReferenceSnapshot(
+                    settingsPath,
+                    actual.Filter,
+                    clock.UtcNow,
+                    migrationUtc: baseUtc);
+                AssertSnapshotsFieldEqual(expected, actual, step);
+            }
+
+            AssertMatchesOracle("初始迁移加载");
+            Equal(true, workspace.Snapshot.SettingsWereMigrated, "迁移持久化前标志为真");
+            workspace.PersistMigrationIfNeeded();
+            AssertMatchesOracle("持久化迁移后");
+            Equal(false, workspace.Snapshot.SettingsWereMigrated, "迁移持久化后标志为假");
+
+            // 清理 v9 夹具里原有记录，构造边界清晰的倒计时、便签、标签与规则组合。
+            foreach (var existingCountdown in workspace.Snapshot.Settings.Countdowns.ToArray())
+            {
+                Applied(workspace, new DeleteCountdownChange(existingCountdown.Id), "清理迁移倒计时");
+            }
+
+            foreach (var existingNote in workspace.Snapshot.Settings.Notes.ToArray())
+            {
+                Applied(workspace, new DeleteNoteChange(existingNote.Id), "清理迁移便签");
+            }
+
+            AssertMatchesOracle("清空迁移夹具后");
+
+            var tagAlpha = Applied(workspace, new CreateTagChange("阿尔法", "#FF8A70"), "创建标签阿尔法").CreatedTag!;
+            var tagBeta = Applied(workspace, new CreateTagChange("贝塔", "#FFD36B"), "创建标签贝塔").CreatedTag!;
+            Applied(
+                workspace,
+                new SavePreferencesChange("Minute", 18000.50m, TimeSpan.FromHours(8.5), TimeSpan.FromHours(17.5)),
+                "更新偏好设置");
+            AssertMatchesOracle("创建标签并更新偏好后");
+
+            var relativeRule = new CountdownRelativeReminderRule("eq-countdown-relative", 0);
+            Applied(workspace, new SaveCountdownChange(null, "already-expired", baseUtc.AddMinutes(-5), [tagAlpha.Id]), "保存已到期倒计时");
+            Applied(workspace, new SaveCountdownChange(null, "soon-active", baseUtc.AddSeconds(30), [tagAlpha.Id]), "保存即将到期倒计时");
+            Applied(workspace, new SaveCountdownChange(null, "tie-first", baseUtc.AddSeconds(60), [tagAlpha.Id, tagBeta.Id]), "保存同刻倒计时一");
+            Applied(
+                workspace,
+                new SaveCountdownChange(null, "tie-second", baseUtc.AddSeconds(60), [], [relativeRule]),
+                "保存同刻倒计时二");
+            Applied(workspace, new SaveCountdownChange(null, "later-active", baseUtc.AddSeconds(120), [tagBeta.Id]), "保存较晚倒计时");
+            AssertMatchesOracle("保存五条倒计时后");
+
+            var noteOnceRule = new AbsoluteOnceReminderRule("eq-note-once", baseUtc.AddSeconds(10));
+            var noteCalendarRule = new CalendarReminderRule(
+                "eq-note-calendar",
+                CalendarFrequency.Weekly,
+                1,
+                new DateOnly(2034, 5, 6),
+                new TimeOnly(9, 15),
+                new WeeklyCalendarSelector([DayOfWeek.Tuesday, DayOfWeek.Thursday]));
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "同日先添便签", new DateTime(2034, 5, 6), false, [tagAlpha.Id], [noteOnceRule]),
+                "保存同日先添便签");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "同日后添便签", new DateTime(2034, 5, 6), false, [tagAlpha.Id, tagBeta.Id], [noteCalendarRule]),
+                "保存同日后添便签");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "已完成便签", new DateTime(2034, 5, 5), true, [tagBeta.Id], Array.Empty<ReminderRule>()),
+                "保存已完成便签");
+            Applied(
+                workspace,
+                new SaveNoteChange(null, "无日期无标签便签", null, false, [], Array.Empty<ReminderRule>()),
+                "保存无日期便签");
+            AssertMatchesOracle("保存四条便签后");
+
+            // 筛选组合逐项核对逐字段等价。
+            var filterSequence = new[]
+            {
+                ("只看未到期与阿尔法", DesktopWorkspaceFilter.Empty with
+                {
+                    SelectedTagIds = [tagAlpha.Id],
+                    CountdownStatus = CountdownStatusFilter.Active,
+                    NoteStatus = NoteStatusFilter.Active
+                }),
+                ("只看已到期", DesktopWorkspaceFilter.Empty with { CountdownStatus = CountdownStatusFilter.Expired }),
+                ("只看无标签", DesktopWorkspaceFilter.Empty with { UntaggedOnly = true }),
+                ("双标签全部匹配", DesktopWorkspaceFilter.Empty with
+                {
+                    SelectedTagIds = [tagAlpha.Id, tagBeta.Id],
+                    MatchMode = TagMatchMode.All
+                }),
+                ("双标签任一匹配加搜索与日期", DesktopWorkspaceFilter.Empty with
+                {
+                    SelectedTagIds = [tagAlpha.Id, tagBeta.Id],
+                    MatchMode = TagMatchMode.Any,
+                    NoteSearch = "后添",
+                    NoteDate = "2034-05-06"
+                }),
+                ("只看无日期便签", DesktopWorkspaceFilter.Empty with
+                {
+                    NoteDate = "2034-05-06",
+                    UndatedNotesOnly = true
+                }),
+                ("只看进行中倒计时", DesktopWorkspaceFilter.Empty with
+                {
+                    CountdownStatus = CountdownStatusFilter.Active
+                })
+            };
+            foreach (var (label, filter) in filterSequence)
+            {
+                workspace.ApplyFilter(filter);
+                AssertMatchesOracle($"筛选变化：{label}");
+            }
+
+            // 在最近到期前推进时间：倒计时投影命中缓存，且逐字段等价。
+            var beforeTick = workspace.Snapshot;
+            SequenceEqual(
+                new[] { "soon-active", "tie-first", "tie-second", "later-active", "already-expired" },
+                beforeTick.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "到期前全部倒计时顺序");
+            SequenceEqual(
+                new[] { "soon-active", "tie-first", "tie-second", "later-active" },
+                beforeTick.VisibleCountdowns.Select(static record => record.Name).ToArray(),
+                "到期前进行中筛选倒计时");
+
+            clock.UtcNow = baseUtc.AddMilliseconds(250);
+            var quarterSecondLater = workspace.Snapshot;
+            Equal(true, ReferenceEquals(beforeTick.AllCountdowns, quarterSecondLater.AllCountdowns), "250ms 推进未跨到期复用 AllCountdowns");
+            Equal(true, ReferenceEquals(beforeTick.VisibleCountdowns, quarterSecondLater.VisibleCountdowns), "250ms 推进未跨到期复用 VisibleCountdowns");
+            AssertMatchesOracle("推进 250ms 未跨到期");
+
+            clock.UtcNow = baseUtc.AddSeconds(30).AddTicks(-1);
+            var oneTickBeforeExpiry = workspace.Snapshot;
+            Equal(true, ReferenceEquals(beforeTick.AllCountdowns, oneTickBeforeExpiry.AllCountdowns), "到期前 1 tick 仍复用 AllCountdowns");
+            Equal(true, ReferenceEquals(beforeTick.VisibleCountdowns, oneTickBeforeExpiry.VisibleCountdowns), "到期前 1 tick 仍复用 VisibleCountdowns");
+            AssertMatchesOracle("推进到最早到期前 1 tick");
+
+            // 恰好到达 soon-active 到期时刻：倒计时投影立即失效并重排，无关时间的投影继续复用。
+            clock.UtcNow = baseUtc.AddSeconds(30);
+            var atFirstExpiry = workspace.Snapshot;
+            Equal(false, ReferenceEquals(oneTickBeforeExpiry.AllCountdowns, atFirstExpiry.AllCountdowns), "跨过最早到期瞬间使 AllCountdowns 失效");
+            Equal(false, ReferenceEquals(oneTickBeforeExpiry.VisibleCountdowns, atFirstExpiry.VisibleCountdowns), "跨过最早到期瞬间使 VisibleCountdowns 失效");
+            Equal(true, ReferenceEquals(oneTickBeforeExpiry.Settings, atFirstExpiry.Settings), "仅跨到期时复用 Settings");
+            Equal(true, ReferenceEquals(oneTickBeforeExpiry.AllNotes, atFirstExpiry.AllNotes), "仅跨到期时复用 AllNotes");
+            Equal(true, ReferenceEquals(oneTickBeforeExpiry.VisibleNotes, atFirstExpiry.VisibleNotes), "仅跨到期时复用 VisibleNotes");
+            Equal(true, ReferenceEquals(oneTickBeforeExpiry.VisibleActiveNotes, atFirstExpiry.VisibleActiveNotes), "仅跨到期时复用 VisibleActiveNotes");
+            SequenceEqual(
+                new[] { "tie-first", "tie-second", "later-active", "already-expired", "soon-active" },
+                atFirstExpiry.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "首个到期瞬间全部倒计时顺序");
+            SequenceEqual(
+                new[] { "tie-first", "tie-second", "later-active" },
+                atFirstExpiry.VisibleCountdowns.Select(static record => record.Name).ToArray(),
+                "首个到期瞬间进行中倒计时");
+            AssertMatchesOracle("恰好到达首个倒计时到期时刻");
+
+            // 同刻双到期边界：tie-first 与 tie-second 同时到期并保持稳定原序。
+            clock.UtcNow = baseUtc.AddSeconds(60).AddTicks(-1);
+            var beforeTieExpiry = workspace.Snapshot;
+            Equal(true, ReferenceEquals(atFirstExpiry.AllCountdowns, beforeTieExpiry.AllCountdowns), "同刻到期前 1 tick 复用 AllCountdowns");
+            AssertMatchesOracle("同刻到期前 1 tick");
+
+            clock.UtcNow = baseUtc.AddSeconds(60);
+            var atTieExpiry = workspace.Snapshot;
+            Equal(false, ReferenceEquals(beforeTieExpiry.AllCountdowns, atTieExpiry.AllCountdowns), "同刻到期瞬间使 AllCountdowns 失效");
+            SequenceEqual(
+                new[] { "later-active", "already-expired", "soon-active", "tie-first", "tie-second" },
+                atTieExpiry.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "同刻到期后保持稳定顺序");
+            SequenceEqual(
+                new[] { "later-active" },
+                atTieExpiry.VisibleCountdowns.Select(static record => record.Name).ToArray(),
+                "同刻到期后剩余进行中倒计时");
+            AssertMatchesOracle("同时到达两条倒计时到期时刻");
+
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { CountdownStatus = CountdownStatusFilter.Expired });
+            SequenceEqual(
+                new[] { "already-expired", "soon-active", "tie-first", "tie-second" },
+                workspace.Snapshot.VisibleCountdowns.Select(static record => record.Name).ToArray(),
+                "切到已到期筛选后的列表");
+            AssertMatchesOracle("同刻到期后切到已到期筛选");
+
+            // 全部到期后无剩余未到期倒计时，继续推进时间稳定命中缓存。
+            clock.UtcNow = baseUtc.AddSeconds(120);
+            var atLastExpiry = workspace.Snapshot;
+            SequenceEqual(
+                new[] { "already-expired", "soon-active", "tie-first", "tie-second", "later-active" },
+                atLastExpiry.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "全部到期后的顺序");
+            AssertMatchesOracle("最后一条倒计时到期时刻");
+
+            clock.UtcNow = baseUtc.AddHours(1);
+            var longAfterLastExpiry = workspace.Snapshot;
+            Equal(true, ReferenceEquals(atLastExpiry.AllCountdowns, longAfterLastExpiry.AllCountdowns), "全部到期后继续推进复用 AllCountdowns");
+            Equal(true, ReferenceEquals(atLastExpiry.VisibleCountdowns, longAfterLastExpiry.VisibleCountdowns), "全部到期后继续推进复用 VisibleCountdowns");
+            AssertMatchesOracle("全部到期一小时后");
+
+            // 系统时钟回拨：跨过已到期截止点时必须失效并恢复为未到期。
+            clock.UtcNow = baseUtc.AddSeconds(45);
+            var jumpedBackTo45 = workspace.Snapshot;
+            Equal(false, ReferenceEquals(longAfterLastExpiry.AllCountdowns, jumpedBackTo45.AllCountdowns), "时钟回拨跨到期边界使缓存失效");
+            SequenceEqual(
+                new[] { "tie-first", "tie-second", "later-active", "already-expired", "soon-active" },
+                jumpedBackTo45.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "回拨到 +45s 后的倒计时顺序");
+            SequenceEqual(
+                new[] { "already-expired", "soon-active" },
+                jumpedBackTo45.VisibleCountdowns.Select(static record => record.Name).ToArray(),
+                "回拨到 +45s 后的已到期筛选");
+            AssertMatchesOracle("时钟回拨至 +45s");
+
+            // 回拨到 +30s（恰好等于 soon-active，仍处于已到期）：命中同一有效区间缓存。
+            clock.UtcNow = baseUtc.AddSeconds(30);
+            var jumpedBackToExactBoundary = workspace.Snapshot;
+            Equal(true, ReferenceEquals(jumpedBackTo45.AllCountdowns, jumpedBackToExactBoundary.AllCountdowns), "回拨至已到期精确边界仍复用缓存");
+            AssertMatchesOracle("时钟回拨至 +30s 边界");
+
+            // 再回拨 1 tick 至 +30s - 1 tick：soon-active 恢复未到期，缓存失效。
+            clock.UtcNow = baseUtc.AddSeconds(30).AddTicks(-1);
+            var jumpedBackBeforeSoon = workspace.Snapshot;
+            Equal(false, ReferenceEquals(jumpedBackToExactBoundary.AllCountdowns, jumpedBackBeforeSoon.AllCountdowns), "回拨跨过已到期边界 1 tick 使缓存失效");
+            SequenceEqual(
+                new[] { "soon-active", "tie-first", "tie-second", "later-active", "already-expired" },
+                jumpedBackBeforeSoon.AllCountdowns.Select(static record => record.Name).ToArray(),
+                "回拨至 +30s-1tick 后的顺序");
+            AssertMatchesOracle("时钟回拨至 +30s-1tick");
+
+            // 提醒送达、稍后、单条与批量知道了、撤销（单条/批量删除与完成）、改名与删除标签全程核对等价。
+            workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [tagAlpha.Id] });
+            AssertMatchesOracle("切回阿尔法标签筛选");
+
+            var note1Id = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "同日先添便签").Id;
+            var note2Id = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "同日后添便签").Id;
+            var countdownTie2Id = workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == "tie-second").Id;
+            var countdownTie2Target = workspace.Snapshot.Settings.Countdowns.Single(record => record.Id == countdownTie2Id).TargetUtc;
+
+            clock.UtcNow = baseUtc.AddSeconds(65);
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, note1Id, noteOnceRule.Id, noteOnceRule.ScheduledUtc).Succeeded,
+                "送达便签提醒");
+            AssertMatchesOracle("送达便签提醒后");
+            Equal(
+                true,
+                workspace.ConfirmReminderDisplayed(ReminderSourceKind.Countdown, countdownTie2Id, relativeRule.Id, countdownTie2Target).Succeeded,
+                "送达倒计时相对提醒");
+            AssertMatchesOracle("送达倒计时相对提醒后");
+            Equal(
+                true,
+                workspace.SnoozeReminder(ReminderSourceKind.Note, note1Id, noteOnceRule.Id, noteOnceRule.ScheduledUtc, ReminderSnoozeOption.ThirtyMinutes, null).Succeeded,
+                "稍后便签提醒");
+            AssertMatchesOracle("稍后便签提醒后");
+            Equal(
+                true,
+                workspace.AcknowledgeReminders(
+                    [
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Note, note1Id, noteOnceRule.Id, noteOnceRule.ScheduledUtc),
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Countdown, countdownTie2Id, relativeRule.Id, countdownTie2Target)
+                    ]).Succeeded,
+                "批量知道了两条提醒");
+            AssertMatchesOracle("批量知道了两条提醒后");
+
+            Equal(true, workspace.ApplyWithUndo(new DeleteCountdownChange(countdownTie2Id), WorkspaceUndoSurface.Main).Succeeded, "带撤销删除倒计时");
+            AssertMatchesOracle("带撤销删除倒计时后");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销删除倒计时");
+            AssertMatchesOracle("撤销删除倒计时后");
+
+            Equal(true, workspace.ApplyWithUndo(new SetNoteCompletionChange(note1Id, true), WorkspaceUndoSurface.Floating).Succeeded, "带撤销完成便签");
+            AssertMatchesOracle("带撤销完成便签后");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "撤销完成便签");
+            AssertMatchesOracle("撤销完成便签后");
+
+            Equal(true, workspace.ApplyWithUndo(new DeleteNotesChange([note1Id, note2Id]), WorkspaceUndoSurface.Main).Succeeded, "带撤销批量删除便签");
+            AssertMatchesOracle("带撤销批量删除便签后");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销批量删除便签");
+            AssertMatchesOracle("撤销批量删除便签后");
+
+            Equal(true, workspace.ApplyWithUndo(new SetNotesCompletionChange([note1Id, note2Id], true), WorkspaceUndoSurface.Main).Succeeded, "带撤销批量完成便签");
+            AssertMatchesOracle("带撤销批量完成便签后");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销批量完成便签");
+            AssertMatchesOracle("撤销批量完成便签后");
+
+            Applied(workspace, new RenameTagChange(tagAlpha.Id, "阿尔法重命名", "#FFA48C"), "重命名标签");
+            AssertMatchesOracle("重命名标签后");
+            Applied(workspace, new DeleteTagChange(tagAlpha.Id), "删除当前筛选标签");
+            AssertMatchesOracle("删除当前筛选标签后");
+
+            // 直接读 workspace.Clock.UtcNow 与快照时刻一致，不依赖快照生成。
+            clock.UtcNow = baseUtc.AddMinutes(5);
+            Equal(baseUtc.AddMinutes(5), workspace.Clock.UtcNow, "直接读取工作区时钟");
+        });
+    }
+
+    private static DesktopWorkspaceSnapshot BuildUncachedReferenceSnapshot(
+        string settingsPath,
+        DesktopWorkspaceFilter filter,
+        DateTimeOffset nowUtc,
+        DateTimeOffset migrationUtc)
+    {
+        var loaded = new SettingsStore(clock: new FixedClock(nowUtc)).Load(settingsPath, migrationUtc);
+        var normalizedFilter = filter with
+        {
+            SelectedTagIds = Array.AsReadOnly(filter.SelectedTagIds
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()),
+            NoteDate = filter.UndatedNotesOnly ? null : filter.NoteDate
+        };
+        var allCountdowns = loaded.Settings.Countdowns
+            .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
+            .ThenBy(record => record.TargetUtc)
+            .ToArray();
+        var visibleCountdowns = loaded.Settings.Countdowns
+            .Where(record => normalizedFilter.Matches(record, nowUtc))
+            .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
+            .ThenBy(record => record.TargetUtc)
+            .ToArray();
+        var allNotes = NoteOrdering.Sort(loaded.Settings.Notes).ToArray();
+        var visibleNotes = allNotes.Where(note => normalizedFilter.Matches(note)).ToArray();
+        var visibleActiveNotes = visibleNotes.Where(static note => !note.IsCompleted).ToArray();
+        return new DesktopWorkspaceSnapshot(
+            loaded.Settings,
+            Path.GetFullPath(settingsPath),
+            loaded.Migrated,
+            nowUtc,
+            ChinaStandardTime.ToBeijingTime(nowUtc),
+            normalizedFilter,
+            visibleCountdowns,
+            allCountdowns,
+            visibleNotes,
+            allNotes,
+            visibleActiveNotes);
+    }
+
+    private static void AssertSnapshotsFieldEqual(
+        DesktopWorkspaceSnapshot expected,
+        DesktopWorkspaceSnapshot actual,
+        string step)
+    {
+        Equal(expected.SettingsPath, actual.SettingsPath, $"{step} - SettingsPath");
+        Equal(expected.SettingsWereMigrated, actual.SettingsWereMigrated, $"{step} - SettingsWereMigrated");
+        Equal(expected.UtcNow, actual.UtcNow, $"{step} - UtcNow");
+        Equal(expected.BeijingNow, actual.BeijingNow, $"{step} - BeijingNow");
+        Equal(expected.BeijingNow.Offset, actual.BeijingNow.Offset, $"{step} - BeijingNow.Offset");
+        Equal(expected.HasFilterConstraints, actual.HasFilterConstraints, $"{step} - HasFilterConstraints");
+        Equal(expected.AppliedFilterCount, actual.AppliedFilterCount, $"{step} - AppliedFilterCount");
+
+        SequenceEqual(expected.Filter.SelectedTagIds, actual.Filter.SelectedTagIds, $"{step} - Filter.SelectedTagIds");
+        Equal(expected.Filter.MatchMode, actual.Filter.MatchMode, $"{step} - Filter.MatchMode");
+        Equal(expected.Filter.UntaggedOnly, actual.Filter.UntaggedOnly, $"{step} - Filter.UntaggedOnly");
+        Equal(expected.Filter.CountdownStatus, actual.Filter.CountdownStatus, $"{step} - Filter.CountdownStatus");
+        Equal(expected.Filter.NoteStatus, actual.Filter.NoteStatus, $"{step} - Filter.NoteStatus");
+        Equal(expected.Filter.NoteSearch, actual.Filter.NoteSearch, $"{step} - Filter.NoteSearch");
+        Equal(expected.Filter.NoteDate, actual.Filter.NoteDate, $"{step} - Filter.NoteDate");
+        Equal(expected.Filter.UndatedNotesOnly, actual.Filter.UndatedNotesOnly, $"{step} - Filter.UndatedNotesOnly");
+        Equal(expected.Filter, actual.Filter, $"{step} - Filter");
+
+        Equal(
+            SettingsContract.SerializeCanonical(expected.Settings),
+            SettingsContract.SerializeCanonical(actual.Settings),
+            $"{step} - Settings 规范 JSON");
+        Equal(expected.Settings.Preferences, actual.Settings.Preferences, $"{step} - Settings.Preferences");
+        SequenceEqual(expected.Settings.Tags, actual.Settings.Tags, $"{step} - Settings.Tags");
+        AssertReminderStatesEqual(expected.Settings.ReminderStates, actual.Settings.ReminderStates, $"{step} - Settings.ReminderStates");
+        AssertCountdownsEqual(expected.Settings.Countdowns, actual.Settings.Countdowns, $"{step} - Settings.Countdowns");
+        AssertNotesEqual(expected.Settings.Notes, actual.Settings.Notes, $"{step} - Settings.Notes");
+
+        AssertCountdownsEqual(expected.VisibleCountdowns, actual.VisibleCountdowns, $"{step} - VisibleCountdowns");
+        AssertCountdownsEqual(expected.AllCountdowns, actual.AllCountdowns, $"{step} - AllCountdowns");
+        AssertNotesEqual(expected.VisibleNotes, actual.VisibleNotes, $"{step} - VisibleNotes");
+        AssertNotesEqual(expected.AllNotes, actual.AllNotes, $"{step} - AllNotes");
+        AssertNotesEqual(expected.VisibleActiveNotes, actual.VisibleActiveNotes, $"{step} - VisibleActiveNotes");
+    }
+
+    private static void AssertReminderStatesEqual(
+        IReadOnlyDictionary<string, ReminderRuleState> expected,
+        IReadOnlyDictionary<string, ReminderRuleState> actual,
+        string subject)
+    {
+        Equal(expected.Count, actual.Count, $"{subject} 数量");
+        foreach (var pair in expected)
+        {
+            Equal(true, actual.TryGetValue(pair.Key, out var actualState), $"{subject}[{pair.Key}] 存在");
+            Equal(pair.Value, actualState, $"{subject}[{pair.Key}]");
+        }
+    }
+
+    private static void AssertCountdownsEqual(
+        IReadOnlyList<CountdownRecord> expected,
+        IReadOnlyList<CountdownRecord> actual,
+        string subject)
+    {
+        Equal(expected.Count, actual.Count, $"{subject} 数量");
+        for (var index = 0; index < expected.Count; index++)
+        {
+            var e = expected[index];
+            var a = actual[index];
+            Equal(e.Id, a.Id, $"{subject}[{index}].Id");
+            Equal(e.Name, a.Name, $"{subject}[{index}].Name");
+            Equal(e.TargetUtc, a.TargetUtc, $"{subject}[{index}].TargetUtc");
+            SequenceEqual(e.TagIds, a.TagIds, $"{subject}[{index}].TagIds");
+            AssertReminderRulesEqual(e.ReminderRules, a.ReminderRules, $"{subject}[{index}].ReminderRules");
+        }
+    }
+
+    private static void AssertNotesEqual(
+        IReadOnlyList<NoteRecord> expected,
+        IReadOnlyList<NoteRecord> actual,
+        string subject)
+    {
+        Equal(expected.Count, actual.Count, $"{subject} 数量");
+        for (var index = 0; index < expected.Count; index++)
+        {
+            var e = expected[index];
+            var a = actual[index];
+            Equal(e.Id, a.Id, $"{subject}[{index}].Id");
+            Equal(e.Text, a.Text, $"{subject}[{index}].Text");
+            Equal(e.Date, a.Date, $"{subject}[{index}].Date");
+            Equal(e.IsCompleted, a.IsCompleted, $"{subject}[{index}].IsCompleted");
+            SequenceEqual(e.TagIds, a.TagIds, $"{subject}[{index}].TagIds");
+            AssertReminderRulesEqual(e.ReminderRules, a.ReminderRules, $"{subject}[{index}].ReminderRules");
+        }
+    }
+
+    private static void AssertReminderRulesEqual(
+        IReadOnlyList<ReminderRule> expected,
+        IReadOnlyList<ReminderRule> actual,
+        string subject)
+    {
+        Equal(expected.Count, actual.Count, $"{subject} 数量");
+        for (var index = 0; index < expected.Count; index++)
+        {
+            var e = expected[index];
+            var a = actual[index];
+            Equal(e.GetType(), a.GetType(), $"{subject}[{index}].Type");
+            Equal(e.Id, a.Id, $"{subject}[{index}].Id");
+            if (e is CalendarReminderRule ec && a is CalendarReminderRule ac)
+            {
+                Equal(ec.Frequency, ac.Frequency, $"{subject}[{index}].Frequency");
+                Equal(ec.Interval, ac.Interval, $"{subject}[{index}].Interval");
+                Equal(ec.StartDate, ac.StartDate, $"{subject}[{index}].StartDate");
+                Equal(ec.LocalTime, ac.LocalTime, $"{subject}[{index}].LocalTime");
+                Equal(ec.Selector.GetType(), ac.Selector.GetType(), $"{subject}[{index}].Selector.Type");
+                if (ec.Selector is WeeklyCalendarSelector ew && ac.Selector is WeeklyCalendarSelector aw)
+                {
+                    SequenceEqual(ew.Weekdays, aw.Weekdays, $"{subject}[{index}].Selector.Weekdays");
+                }
+                else
+                {
+                    Equal(ec.Selector, ac.Selector, $"{subject}[{index}].Selector");
+                }
+            }
+            else
+            {
+                Equal(e, a, $"{subject}[{index}]");
+            }
+        }
+    }
+
     // 北京时间 2034-05-06 09:30 保存三条倒计时；投影时刻取 11:30，此时「一小时后」已到期。
     private static DesktopWorkspace FloatingProjectionWorkspace(string directory, DateTimeOffset savedUtc)
     {
@@ -3395,6 +4016,28 @@ internal sealed class SettableClock : IClock
     }
 
     public DateTimeOffset UtcNow { get; set; }
+}
+
+internal sealed class SettableCountingClock : IClock
+{
+    private DateTimeOffset _utcNow;
+
+    public SettableCountingClock(DateTimeOffset utcNow)
+    {
+        _utcNow = utcNow;
+    }
+
+    public int ReadCount { get; private set; }
+
+    public DateTimeOffset UtcNow
+    {
+        get
+        {
+            ReadCount++;
+            return _utcNow;
+        }
+        set => _utcNow = value;
+    }
 }
 
 internal sealed class ReadbackFailingSettingsFileOperations : ISettingsFileOperations

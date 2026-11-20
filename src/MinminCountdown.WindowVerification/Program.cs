@@ -27,6 +27,7 @@ internal static class Program
     internal const string SecondaryDwmFallbackFactName = "SecondaryWindowsFallbackSquareChromeWhenDwmUnsupported";
     internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
     internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
+    internal const string MainTagRenameSyncFactName = "MainTagRenameSyncsAcrossAllSurfaces";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -72,6 +73,8 @@ internal static class Program
         "确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）";
     private const string ConfirmationDialogResourcesFactMeaning =
         "连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）";
+    private const string MainTagRenameSyncFactMeaning =
+        "标签管理改名后，管理窗口倒计时行、便签卡、筛选标签与标签选择器立即显示新名称，倒计时行同步更新标签名称与颜色且行的其他内容、键盘焦点和滚动位置不变（#298）";
 
     [STAThread]
     private static int Main()
@@ -97,7 +100,8 @@ internal static class Program
             [SecondaryDwmSupportedFactName] = false,
             [SecondaryDwmFallbackFactName] = false,
             [ConfirmationDialogTitleFactName] = false,
-            [ConfirmationDialogResourcesFactName] = false
+            [ConfirmationDialogResourcesFactName] = false,
+            [MainTagRenameSyncFactName] = false
         };
         var failures = new List<string>();
 
@@ -228,6 +232,10 @@ internal static class Program
                 WindowSmokeScenario.RunConfirmationDialogResources();
                 return (true, ConfirmationDialogResourcesFactMeaning);
             });
+            RunFact(
+                MainTagRenameSyncFactName,
+                MainTagRenameSyncFactMeaning,
+                () => TagRenameSyncScenario.Run(MainTagRenameSyncFactMeaning));
         }
         catch (Exception exception)
         {

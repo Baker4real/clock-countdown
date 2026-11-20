@@ -1,4 +1,4 @@
-# Countdown.Core.Tests.ps1 的 ReleaseContract 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
+﻿# Countdown.Core.Tests.ps1 的 ReleaseContract 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
 $releaseContract = Get-CountdownReleaseContract
 $expectedBuildAssets = @(
@@ -65,8 +65,9 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs',
-    'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297 build identity contains the window verification input: $windowVerificationInput"
+    'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
+    'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#322 build identity contains the window verification input: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
@@ -270,7 +271,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 117 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources and #297 smoke scenarios to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 118 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios and #322 rule editor scenario to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `

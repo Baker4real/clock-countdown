@@ -3866,6 +3866,8 @@ exit 23
         ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
         ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
         ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
+        ConfirmationDialogTitleAppearsOnce = '确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）'
+        ConfirmationDialogReusesLocalWpfUiResources = '连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -3875,7 +3877,7 @@ exit 23
     Assert-ExactReportFields `
         -Report $windowVerification `
         -ExpectedNames @($windowVerificationFacts.Keys) `
-        -Name '窗口验证只产出三条空态事实与四条窗口冒烟事实，不生成整份产品报告'
+        -Name '窗口验证只产出声明的事实，不生成整份产品报告'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $true ([bool] $windowVerification.$factName) `
             "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"

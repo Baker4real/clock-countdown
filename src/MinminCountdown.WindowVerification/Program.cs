@@ -15,6 +15,8 @@ internal static class Program
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
     internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
+    internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
+    internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -32,6 +34,10 @@ internal static class Program
         "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
     private const string ConfirmationDialogSmokeFactMeaning =
         "确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）";
+    private const string ConfirmationDialogTitleFactMeaning =
+        "确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）";
+    private const string ConfirmationDialogResourcesFactMeaning =
+        "连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）";
 
     [STAThread]
     private static int Main()
@@ -45,7 +51,9 @@ internal static class Program
             [FloatingSmokeFactName] = false,
             [ReminderCenterSmokeFactName] = false,
             [ReminderRulesEditorSmokeFactName] = false,
-            [ConfirmationDialogSmokeFactName] = false
+            [ConfirmationDialogSmokeFactName] = false,
+            [ConfirmationDialogTitleFactName] = false,
+            [ConfirmationDialogResourcesFactName] = false
         };
         var failures = new List<string>();
 
@@ -115,6 +123,16 @@ internal static class Program
             {
                 WindowSmokeScenario.RunConfirmationDialog();
                 return (true, ConfirmationDialogSmokeFactMeaning);
+            });
+            RunFact(ConfirmationDialogTitleFactName, ConfirmationDialogTitleFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunConfirmationDialogTitle();
+                return (true, ConfirmationDialogTitleFactMeaning);
+            });
+            RunFact(ConfirmationDialogResourcesFactName, ConfirmationDialogResourcesFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunConfirmationDialogResources();
+                return (true, ConfirmationDialogResourcesFactMeaning);
             });
         }
         catch (Exception exception)

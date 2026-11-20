@@ -246,7 +246,7 @@ internal static partial class ValidationReport
             !string.IsNullOrWhiteSpace(ReminderCenter.AutomationName);
 
         public bool ReminderCenterComboBoxesUseThemedDropDowns =>
-            ReminderCenterComboBoxCount == 3 &&
+            ReminderCenterComboBoxCount == 2 &&
             ReminderCenterComboBoxThemedCount == ReminderCenterComboBoxCount;
 
         public bool AllAttached =>

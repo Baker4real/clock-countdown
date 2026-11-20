@@ -14,6 +14,8 @@ internal static class Program
     internal const string FloatingSmokeFactName = "FloatingWindowRendersAndFindsManagerButton";
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
     internal const string ReminderCenterLongTitleFactName = "ReminderCenterLongTitleDisclosure";
+    internal const string ReminderCenterTwoRowLayoutFactName = "ReminderCenterTwoRowLayoutAndLazyCustomSnooze";
+    internal const string ReminderCenterSnoozeMenuFactName = "ReminderCenterSnoozeMenuBehaviorAndDomainSemantics";
     internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
     internal const string RuleEditorPrimaryAndDirtyFactName = "ReminderRulesEditorSinglePrimaryActionAndDirtyAccept";
@@ -36,6 +38,12 @@ internal static class Program
     private const string ReminderCenterLongTitleFactMeaning =
         "长标题在真实提醒中心收起为两行省略，键盘展开/收起显示全文并同步可访问名，整行保留完整正文；" +
         "相对时间原位更新不改展开状态、焦点或滚动（#321）";
+    private const string ReminderCenterTwoRowLayoutFactMeaning =
+        "提醒中心在默认 460 与最小 400 DIP 宽度下动作区恰为两行、互不重叠不裁切且第二行居中不拉伸；" +
+        "条目不预创建自定义稍后控件，首次选「自定义」才创建并展开日期、时分与确认按钮，无效自定义时间错误紧邻其下（#320）";
+    private const string ReminderCenterSnoozeMenuFactMeaning =
+        "提醒中心稍后提醒菜单应用共享暖粉样式、五项齐全且角色为 Menu/MenuItem，支持方向键/Enter/Esc 与 Esc 回焦菜单按钮，" +
+        "选预设一次完成稍后；送达前禁用、失败保留重试、打开来源可用、不抢焦点与有条目拒绝关闭不变（#320）";
     private const string ReminderRulesEditorSmokeFactMeaning =
         "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
     private const string ConfirmationDialogSmokeFactMeaning =
@@ -61,6 +69,8 @@ internal static class Program
             [FloatingSmokeFactName] = false,
             [ReminderCenterSmokeFactName] = false,
             [ReminderCenterLongTitleFactName] = false,
+            [ReminderCenterTwoRowLayoutFactName] = false,
+            [ReminderCenterSnoozeMenuFactName] = false,
             [ReminderRulesEditorSmokeFactName] = false,
             [ConfirmationDialogSmokeFactName] = false,
             [RuleEditorPrimaryAndDirtyFactName] = false,
@@ -131,6 +141,16 @@ internal static class Program
             {
                 ReminderCenterLongTitleScenario.Run();
                 return (true, ReminderCenterLongTitleFactMeaning);
+            });
+            RunFact(ReminderCenterTwoRowLayoutFactName, ReminderCenterTwoRowLayoutFactMeaning, () =>
+            {
+                ReminderCenterSnoozeMenuScenario.RunTwoRowLayoutAndLazyCustomSnooze();
+                return (true, ReminderCenterTwoRowLayoutFactMeaning);
+            });
+            RunFact(ReminderCenterSnoozeMenuFactName, ReminderCenterSnoozeMenuFactMeaning, () =>
+            {
+                ReminderCenterSnoozeMenuScenario.RunSnoozeMenuBehaviorAndDomainSemantics();
+                return (true, ReminderCenterSnoozeMenuFactMeaning);
             });
             RunFact(ReminderRulesEditorSmokeFactName, ReminderRulesEditorSmokeFactMeaning, () =>
             {

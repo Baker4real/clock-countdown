@@ -13,6 +13,8 @@ namespace MinminCountdown;
 /// </summary>
 internal sealed class ReminderRulesEditorViewModel : ObservableObject
 {
+    internal const string IncompleteRulePreviewText = "请完善上方设置以生成预览";
+
     private const int CalendarModeIndexWithoutCountdown = 2;
     private const int CalendarModeIndexWithCountdown = 3;
 
@@ -279,7 +281,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     public bool IsCalendarIntervalVisible => IsCalendarMode;
 
-    public bool IsCalendarSelectorVisible => IsCalendarMode;
+    public bool IsCalendarSelectorControlsVisible =>
+        IsCalendarWeekdaysVisible || IsCalendarDateSelectorVisible;
+
+    public bool IsCalendarSelectorVisible => IsCalendarMode &&
+        (IsCalendarSelectorControlsVisible || IsCalendarSelectorErrorVisible);
 
     public bool IsCalendarWeekdaysVisible => IsCalendarMode && SelectedCalendarFrequency == CalendarFrequency.Weekly;
 
@@ -291,6 +297,12 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public bool IsCalendarDayVisible => !CalendarLastDay;
 
     public bool IsCustomIntervalVisible => IsRepeatingMode && IntervalIndex == 3;
+
+    public bool IsRulePreviewValid => TryBuildPreviewRule(out _);
+
+    public string RulePreviewText => TryBuildPreviewRule(out var previewRule)
+        ? Describe(previewRule!)
+        : IncompleteRulePreviewText;
 
     public string SaveRuleButtonText
     {
@@ -372,6 +384,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             if (SetProperty(ref _calendarSelectorError, value))
             {
                 OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));
+                OnPropertyChanged(nameof(IsCalendarSelectorVisible));
             }
         }
     }
@@ -584,36 +597,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private void SaveDraftRule()
     {
         ClearErrors();
-        var result = _editor.SaveRule(_rules, new ReminderRuleEditingRequest(
-            _editingRuleId,
-            ModeIndex switch
-            {
-                0 => ReminderEditingMode.Once,
-                1 => ReminderEditingMode.Repeating,
-                2 when _countdownTargetUtc is not null => ReminderEditingMode.CountdownRelative,
-                var index when index == CalendarModeIndex => ReminderEditingMode.Calendar,
-                _ => (ReminderEditingMode)(-1)
-            },
-            FirstDueDate,
-            FirstDueHourIndex,
-            FirstDueMinuteIndex,
-            SelectedInterval,
-            CustomIntervalMinutes,
-            _clock.UtcNow,
-            _countdownTargetUtc,
-            RelativeOffsetMinutes,
-            SelectedCalendarFrequency,
-            CalendarInterval,
-            Weekdays.Where(static weekday => weekday.IsSelected)
-                .Select(static weekday => weekday.Day)
-                .ToArray(),
-            CalendarDayIndex >= 0
-                ? (CalendarDayIndex + 1).ToString(CultureInfo.InvariantCulture)
-                : string.Empty,
-            CalendarMonthIndex >= 0
-                ? (CalendarMonthIndex + 1).ToString(CultureInfo.InvariantCulture)
-                : string.Empty,
-            CalendarLastDay));
+        var result = _editor.SaveRule(_rules, BuildEditingRequest());
         if (!result.Succeeded)
         {
             ShowError(result.ErrorTarget, result.Error);
@@ -624,6 +608,40 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         ReplaceRules(_rules);
         BeginAddRule();
     }
+
+    private ReminderRuleEditingRequest BuildEditingRequest() => new(
+        _editingRuleId,
+        ModeIndex switch
+        {
+            0 => ReminderEditingMode.Once,
+            1 => ReminderEditingMode.Repeating,
+            2 when _countdownTargetUtc is not null => ReminderEditingMode.CountdownRelative,
+            var index when index == CalendarModeIndex => ReminderEditingMode.Calendar,
+            _ => (ReminderEditingMode)(-1)
+        },
+        FirstDueDate,
+        FirstDueHourIndex,
+        FirstDueMinuteIndex,
+        SelectedInterval,
+        CustomIntervalMinutes,
+        _clock.UtcNow,
+        _countdownTargetUtc,
+        RelativeOffsetMinutes,
+        SelectedCalendarFrequency,
+        CalendarInterval,
+        Weekdays.Where(static weekday => weekday.IsSelected)
+            .Select(static weekday => weekday.Day)
+            .ToArray(),
+        CalendarDayIndex >= 0
+            ? (CalendarDayIndex + 1).ToString(CultureInfo.InvariantCulture)
+            : string.Empty,
+        CalendarMonthIndex >= 0
+            ? (CalendarMonthIndex + 1).ToString(CultureInfo.InvariantCulture)
+            : string.Empty,
+        CalendarLastDay);
+
+    private bool TryBuildPreviewRule(out ReminderRule? rule) =>
+        ReminderRuleEditing.TryBuildPreviewRule(BuildEditingRequest(), out rule);
 
     private void DeleteRule(string ruleId)
     {
@@ -699,12 +717,20 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRelativeVisible));
         OnPropertyChanged(nameof(IsCalendarFrequencyVisible));
         OnPropertyChanged(nameof(IsCalendarIntervalVisible));
+        OnPropertyChanged(nameof(IsCalendarSelectorControlsVisible));
         OnPropertyChanged(nameof(IsCalendarSelectorVisible));
         OnPropertyChanged(nameof(IsCalendarWeekdaysVisible));
         OnPropertyChanged(nameof(IsCalendarDateSelectorVisible));
         OnPropertyChanged(nameof(IsCalendarMonthVisible));
         OnPropertyChanged(nameof(IsCalendarDayVisible));
         OnPropertyChanged(nameof(IsCustomIntervalVisible));
+        NotifyPreviewChanged();
+    }
+
+    private void NotifyPreviewChanged()
+    {
+        OnPropertyChanged(nameof(RulePreviewText));
+        OnPropertyChanged(nameof(IsRulePreviewValid));
     }
 
     private bool SetFormProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
@@ -727,6 +753,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         if (!_updatingForm)
         {
             SetFormDirty(true);
+            NotifyPreviewChanged();
         }
 
         ClearErrors();
@@ -837,6 +864,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRelativeOffsetErrorVisible));
         OnPropertyChanged(nameof(IsCalendarIntervalErrorVisible));
         OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));
+        OnPropertyChanged(nameof(IsCalendarSelectorVisible));
         OnPropertyChanged(nameof(IsCollectionErrorVisible));
     }
 

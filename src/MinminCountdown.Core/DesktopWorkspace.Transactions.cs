@@ -5,18 +5,6 @@ namespace MinminCountdown.Core;
 // 工作区的提交事务：候选设置先经规范化与原子落盘，成功后才替换内存状态并同步提醒 cursor。
 public sealed partial class DesktopWorkspace
 {
-    private IReadOnlyList<CountdownRecord> GetSortedCountdowns(DateTimeOffset nowUtc, bool applyFilter) =>
-        _current.Countdowns
-            .Where(record => !applyFilter || _filter.Matches(record, nowUtc))
-            .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
-            .ThenBy(record => record.TargetUtc)
-            .ToArray();
-
-    private IReadOnlyList<NoteRecord> GetSortedNotes(bool applyFilter) =>
-        NoteOrdering.Sort(_current.Notes)
-            .Where(note => !applyFilter || _filter.Matches(note))
-            .ToArray();
-
     private bool TrySaveCountdown(
         string? existingId,
         string name,
@@ -708,6 +696,7 @@ public sealed partial class DesktopWorkspace
                 .Where(tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase))
                 .ToArray())
         };
+        _filterVersion++;
         return true;
     }
 
@@ -866,6 +855,7 @@ public sealed partial class DesktopWorkspace
         }
 
         _current = canonical;
+        _stateVersion++;
         _reminders.Synchronize(previous, canonical, commitNow ?? _store.Clock.UtcNow);
         error = string.Empty;
         StateChanged?.Invoke(this, EventArgs.Empty);

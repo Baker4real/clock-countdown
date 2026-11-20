@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace MinminCountdown.Core;
 
 // 桌面工作区：管理窗口与悬浮窗共用的一个 module。调用方只读不可变快照、提交变更、换筛选值、处置提醒；
@@ -10,6 +12,11 @@ public sealed partial class DesktopWorkspace
     private CountdownSettings _current;
     private DesktopWorkspaceFilter _filter = DesktopWorkspaceFilter.Empty;
     private bool _settingsWereMigrated;
+    private long _stateVersion = 1;
+    private long _filterVersion = 1;
+    private CachedStateProjection? _cachedState;
+    private CachedFilterProjection? _cachedFilter;
+    private CachedCountdownProjection? _cachedCountdowns;
     private readonly HashSet<WorkspaceUndoSurface> _undoHovered = new();
     private readonly HashSet<WorkspaceUndoSurface> _undoFocused = new();
     private WorkspaceUndoOffer? _undoOffer;
@@ -70,18 +77,21 @@ public sealed partial class DesktopWorkspace
         get
         {
             var nowUtc = _store.Clock.UtcNow;
+            var state = GetStateProjection();
+            var filterProjection = GetFilterProjection(state);
+            var countdownProjection = GetCountdownProjection(state, filterProjection, nowUtc);
             return new DesktopWorkspaceSnapshot(
-                FreezeSettings(_current),
+                state.Settings,
                 _settingsPath,
-                _settingsWereMigrated,
+                state.SettingsWereMigrated,
                 nowUtc,
                 ChinaStandardTime.ToBeijingTime(nowUtc),
-                _filter,
-                FreezeCountdowns(GetSortedCountdowns(nowUtc, applyFilter: true)),
-                FreezeCountdowns(GetSortedCountdowns(nowUtc, applyFilter: false)),
-                FreezeNotes(GetSortedNotes(applyFilter: true)),
-                FreezeNotes(GetSortedNotes(applyFilter: false)),
-                FreezeNotes(GetSortedNotes(applyFilter: true).Where(note => !note.IsCompleted)));
+                filterProjection.Filter,
+                countdownProjection.VisibleCountdowns,
+                countdownProjection.AllCountdowns,
+                filterProjection.VisibleNotes,
+                state.AllNotes,
+                filterProjection.VisibleActiveNotes);
         }
     }
 
@@ -273,6 +283,7 @@ public sealed partial class DesktopWorkspace
 
         _store.Save(_settingsPath, _current);
         _settingsWereMigrated = false;
+        _stateVersion++;
     }
 
     // 筛选只存一个不可变值：标签 ID 按序号忽略大小写去重并保留首次出现的顺序，只看无日期时清掉具体日期。
@@ -285,6 +296,7 @@ public sealed partial class DesktopWorkspace
                 .ToArray()),
             NoteDate = filter.UndatedNotesOnly ? null : filter.NoteDate
         };
+        _filterVersion++;
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -517,16 +529,106 @@ public sealed partial class DesktopWorkspace
         ReminderSnoozeErrorCode snoozeErrorCode) =>
         new(succeeded, error, SnoozeErrorCode: snoozeErrorCode);
 
+    private CachedStateProjection GetStateProjection()
+    {
+        if (_cachedState is { } cached && cached.StateVersion == _stateVersion)
+        {
+            return cached;
+        }
+
+        var settings = FreezeSettings(_current);
+        var allNotes = Array.AsReadOnly(NoteOrdering.Sort(settings.Notes).ToArray());
+        var created = new CachedStateProjection(
+            _stateVersion,
+            settings,
+            _settingsWereMigrated,
+            allNotes);
+        _cachedState = created;
+        return created;
+    }
+
+    private CachedFilterProjection GetFilterProjection(CachedStateProjection state)
+    {
+        if (_cachedFilter is { } cached &&
+            cached.StateVersion == state.StateVersion &&
+            cached.FilterVersion == _filterVersion)
+        {
+            return cached;
+        }
+
+        var filter = _filter;
+        var visibleNotes = Array.AsReadOnly(state.AllNotes
+            .Where(note => filter.Matches(note))
+            .ToArray());
+        var visibleActiveNotes = Array.AsReadOnly(visibleNotes
+            .Where(static note => !note.IsCompleted)
+            .ToArray());
+        var created = new CachedFilterProjection(
+            state.StateVersion,
+            _filterVersion,
+            filter,
+            visibleNotes,
+            visibleActiveNotes);
+        _cachedFilter = created;
+        return created;
+    }
+
+    private CachedCountdownProjection GetCountdownProjection(
+        CachedStateProjection state,
+        CachedFilterProjection filterProjection,
+        DateTimeOffset nowUtc)
+    {
+        if (_cachedCountdowns is { } cached &&
+            cached.IsValidAt(state.StateVersion, filterProjection.FilterVersion, nowUtc))
+        {
+            return cached;
+        }
+
+        DateTimeOffset? validFromInclusiveUtc = null;
+        DateTimeOffset? invalidAtUtc = null;
+        foreach (var record in state.Settings.Countdowns)
+        {
+            if (record.TargetUtc > nowUtc)
+            {
+                if (invalidAtUtc is null || record.TargetUtc < invalidAtUtc.Value)
+                {
+                    invalidAtUtc = record.TargetUtc;
+                }
+            }
+            else if (validFromInclusiveUtc is null || record.TargetUtc > validFromInclusiveUtc.Value)
+            {
+                validFromInclusiveUtc = record.TargetUtc;
+            }
+        }
+
+        var allCountdowns = Array.AsReadOnly(state.Settings.Countdowns
+            .OrderBy(record => record.TargetUtc > nowUtc ? 0 : 1)
+            .ThenBy(record => record.TargetUtc)
+            .ToArray());
+        var visibleCountdowns = Array.AsReadOnly(allCountdowns
+            .Where(record => filterProjection.Filter.Matches(record, nowUtc))
+            .ToArray());
+        var created = new CachedCountdownProjection(
+            state.StateVersion,
+            filterProjection.FilterVersion,
+            validFromInclusiveUtc,
+            invalidAtUtc,
+            visibleCountdowns,
+            allCountdowns);
+        _cachedCountdowns = created;
+        return created;
+    }
+
     private static CountdownSettings FreezeSettings(CountdownSettings settings) =>
         new(
             FreezeCountdowns(settings.Countdowns),
             FreezeNotes(settings.Notes),
             FreezeTags(settings.Tags),
             settings.Preferences with { },
-            settings.ReminderStates.ToDictionary(
+            new ReadOnlyDictionary<string, ReminderRuleState>(settings.ReminderStates.ToDictionary(
                 static pair => pair.Key,
                 static pair => pair.Value with { },
-                StringComparer.OrdinalIgnoreCase));
+                StringComparer.OrdinalIgnoreCase)));
 
     private static IReadOnlyList<CountdownRecord> FreezeCountdowns(
         IEnumerable<CountdownRecord> records) =>
@@ -572,7 +674,7 @@ public sealed partial class DesktopWorkspace
                 {
                     DailyCalendarSelector => new DailyCalendarSelector(),
                     WeeklyCalendarSelector weekly =>
-                        new WeeklyCalendarSelector(weekly.Weekdays.ToArray()),
+                        new WeeklyCalendarSelector(Array.AsReadOnly(weekly.Weekdays.ToArray())),
                     MonthlyCalendarSelector monthly => monthly with { },
                     YearlyCalendarSelector yearly => yearly with { },
                     _ => throw new ArgumentOutOfRangeException(nameof(rule))
@@ -587,6 +689,34 @@ public sealed partial class DesktopWorkspace
         NoteReminderSource note => new NoteReminderSource(FreezeNote(note.Note)),
         _ => throw new ArgumentOutOfRangeException(nameof(source))
     };
+
+    private sealed record CachedStateProjection(
+        long StateVersion,
+        CountdownSettings Settings,
+        bool SettingsWereMigrated,
+        IReadOnlyList<NoteRecord> AllNotes);
+
+    private sealed record CachedFilterProjection(
+        long StateVersion,
+        long FilterVersion,
+        DesktopWorkspaceFilter Filter,
+        IReadOnlyList<NoteRecord> VisibleNotes,
+        IReadOnlyList<NoteRecord> VisibleActiveNotes);
+
+    private sealed record CachedCountdownProjection(
+        long StateVersion,
+        long FilterVersion,
+        DateTimeOffset? ValidFromInclusiveUtc,
+        DateTimeOffset? InvalidAtUtc,
+        IReadOnlyList<CountdownRecord> VisibleCountdowns,
+        IReadOnlyList<CountdownRecord> AllCountdowns)
+    {
+        public bool IsValidAt(long stateVersion, long filterVersion, DateTimeOffset nowUtc) =>
+            StateVersion == stateVersion &&
+            FilterVersion == filterVersion &&
+            (ValidFromInclusiveUtc is null || nowUtc >= ValidFromInclusiveUtc.Value) &&
+            (InvalidAtUtc is null || nowUtc < InvalidAtUtc.Value);
+    }
 }
 
 public abstract record DesktopWorkspaceChange;

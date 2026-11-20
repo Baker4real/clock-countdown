@@ -49,8 +49,8 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `MutedBrush` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
 | `PeachLineBrush` | 1px 结构边界、区块分隔线 |
 | `ControlBorderBrush` | 控件常态边界（#217）；复选框、单选圈、输入控件、滚动条和次级按钮消费，对 Background、Canvas、Card、Note、NoteWhite 均达到 3:1；次级按钮常态底为 CardAlt |
-| `ActiveBrush` | 悬停与按压反馈、键盘焦点边界、复选与单选的选中图形 |
-| `ActiveHoverBrush` | 未选中控件悬停时替换桃色结构线的更深暖边（§4「基础控件状态契约」） |
+| `ActiveBrush` | 悬停与按压反馈、非输入控件的键盘焦点边界、复选与单选的选中图形 |
+| `ActiveHoverBrush` | 未选中控件及文本框、下拉框、日期框悬停时替换桃色结构线的更深暖边（§4「基础控件状态契约」） |
 | `SelectionBrush` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
 | `WorkspacePanelBrush` | 主窗口装饰带以外的透明面板底（不遮挡装饰图） |
 | `WorkspacePanelLineBrush` | 同上，透明面板边界 |
@@ -63,7 +63,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `MainActionHoverBrush` | 主行动按钮悬停 |
 | `MainActionPressedBrush` | 主行动按钮按压 |
 | `MainActionTextBrush` | 主行动按钮文字与图标 |
-| `MainActionFocusBrush` | 主操作按钮与置顶开关的暖金焦点环，全应用唯一焦点例外（§6） |
+| `MainActionFocusBrush` | 文本框、下拉框、日期框的非红色键盘焦点边，以及主操作按钮、浮窗选中胶囊与已勾选置顶的暖金焦点环（#303 扩大既有角色，不新增色值） |
 | `CoralActionBrush` | 历史语义色；#217 次级按钮改用 `CardAltBrush` + `ControlBorderBrush`，仅保留兼容 token |
 | `PinkAccentStrongBrush` | 悬浮窗粉色实心主按钮（“＋ 添加便签”）与悬浮窗激活分段胶囊；与 `MainActionBrush` 共用玫粉主行动底 |
 | `IconAccentBrush` | 区块标题图标、粉色圆形加号、日历/标签/时钟等字段图标（装饰类，§13.5） |
@@ -90,7 +90,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `NoteWhiteBrush` | 白纸便签卡（无需强调的条目），边界用 `PeachLineBrush` |
 | `NoteTimelineBrush` | 便签日期轨道的 1px 暖色线 |
 | `NoteActiveRailBrush` / `NoteCompletedRailBrush` | 日期轨道上未完成 / 已完成便签的轨道标记 |
-| `DangerBrush` | 删除文字与图标、字段错误文字；砖红仅保留给危险操作，与玫粉主行动区分 |
+| `DangerBrush` | 删除文字与图标、字段错误文字与出错字段边框（#303）；砖红仅保留给危险操作与错误提示，与玫粉主行动和暖金焦点区分 |
 | `SuccessBrush` | 完成/成功语义 |
 | `ExpiredBrush` | 已到期倒计时弱化底 |
 | `TagBrush` | 默认标签芯片底（无持久化颜色时） |
@@ -278,11 +278,11 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - **脏退出确认**（#213）：悬浮退出、托盘退出、悬浮窗关闭与 Alt+F4 每次都先弹出「退出敏敏子倒计时」确认框，正文包含「退出后不再提醒」。有未保存内容时额外列出——显示设置脏（沿用 `HasUnsavedSettingsEdits` 语义）、倒计时/便签编辑器脏、悬浮快速新增正文非空。确认按钮「退出」配 `DangerButton`，取消为安全默认。取消则留在应用，悬浮窗与提醒派发继续运行，不残留没有窗口的进程。管理窗口关闭/隐藏继续只 `Hide` 并保留草稿，不经过该确认。管理窗口「最小化」与 `Ctrl+M` 只收起管理窗口，悬浮窗保持可见。应用运行期间托盘图标常驻；单击恢复悬浮窗；菜单为「打开管理窗口 / 打开悬浮窗 / 复位窗口位置 / 退出」；「打开管理窗口」恢复管理窗口并保留草稿与筛选。
 - **外部关闭**（#295）：退出不是由应用自己的界面发起，而且已经没有仍打开、可见的窗口能做退出确认框的所有者，就是外部关闭，典型是任务计划程序停止任务。这时不弹确认：应用直接正常结束，退出码 0；诊断日志先记一条 `ExitConfirmationSkippedExternalClose`（外部关闭、跳过确认），再照常记 `ProcessExited`，不记 `ExitConfirmationOffered` 与 `FatalUnhandledException`。未保存的编辑器草稿、显示设置和快速新增正文按进程被结束处理，不额外保存，与被 `Stop-Process` 结束时一致。悬浮窗被外部关掉时管理窗口仍打开且可见，不算外部关闭，照上一条在管理窗口上确认。退出确认框只挂在仍打开的窗口上，不以已关闭的窗口作所有者。机制：任务计划停止任务时先向任务进程的窗口发 `WM_CLOSE`，进程不响应才在允许硬终止时结束它（`ITaskSettings::AllowHardTerminate`）；悬浮窗 `ShowInTaskbar="False"`，WPF 为此给它挂了一个不可见的所有者窗口（标题 `Hidden Window`），所有者收到 `WM_CLOSE` 就销毁自己，系统随之销毁悬浮窗，悬浮窗只收到 `Closed`，不经 `Closing` 与关闭桥。.NET 认不出这个进程的主窗口，`Process.CloseMainWindow()` 与不带 `/F` 的 `taskkill` 关不掉应用（[#279 实测](docs/evidence/clock-countdown-issue-279/README.md)）。回归检查在 CSharp 阶段的 `ExternalClose` 段：真实 EXE 首帧就绪后，向悬浮窗的所有者投递 `WM_CLOSE`。任务的上次结果判断不了外部关闭是否正常：任务计划停止任务后，`LastTaskResult` 一律记 `0x00041306`（被用户终止），与进程退出码无关，修复前崩溃退出码 1（[#279 实测](docs/evidence/clock-countdown-issue-279/README.md)）与修复后正常退出码 0（[#288 实测](docs/evidence/clock-countdown-issue-288/README.md)）都是这个值。判据是应用自己的退出码 0，加上诊断日志里的 `ProcessExited`（之前一条 `ExitConfirmationSkippedExternalClose`）。管理窗口仍打开时，用户取消确认后应用新建一个悬浮窗实例并重建托盘控制器，诊断日志记 `FloatingWindowRecreatedAfterExternalClose`；托盘恢复、单实例激活、复位窗口位置与提醒派发都使用新实例，不再对已销毁窗口调用 `Show()`。新实例按默认位置显示，被销毁窗口的快速新增草稿不保留，管理窗口的草稿与筛选保持原状；确认框打开期间暂停旧悬浮窗的时钟更新与提醒派发，取消后恢复。
 
-### WPF-UI 局部主题边界（#205）
+### WPF-UI 局部主题边界（#205 / #314）
 
-`ConfirmationDialog` 以 `Wpf.Ui.Controls.MessageBox` 承载确认框，但 WPF-UI 只在该窗口的 `Window.Resources` 中合并 `ThemesDictionary`（固定 `Light`）和 `ControlsDictionary`。WPF-UI 的 `Application.Current.Resources` 不得被修改，也不得把其隐式样式提升到主窗口、悬浮窗或其他次级窗口。
+`ConfirmationDialog` 以 `Wpf.Ui.Controls.MessageBox` 承载确认框，但 WPF-UI 只在确认框窗口级 `Window.Resources` 中合并 `ThemesDictionary`（固定 `Light`）和 `ControlsDictionary`。该局部资源字典在进程内只构建一次并由各确认框实例共享，配色变化（含运行中切换系统对比度主题）时通过既有的 `ApplicationTheme.PaletteChanged` 通知刷新映射；WPF-UI 的 `Application.Current.Resources` 不得被修改，也不得把其隐式样式提升到主窗口、悬浮窗或其他次级窗口。
 
-确认框在窗口资源作用域内把 WPF-UI 的 MessageBox、按钮和危险色资源键映射回本设计系统的暖粉 token（`BackgroundBrush`、`InkBrush`、`CardBrush`、`PeachLineBrush`、`MainAction*`、`DangerColor` 等），因此不会引入默认 WPF 蓝色或独立色板。WPF-UI 的 Primary 按钮承载「取消」，并在真实模板加载后设置 `IsDefault` + `IsCancel`；Secondary 按钮承载参数化的确认文案。`ConfirmationCancelButton`、`ConfirmationConfirmButton`、正文和滚动容器的自动化 ID 保持既有契约，调用方继续使用同步 `Show` / `ShowDialog` / `Close` seam。
+确认框在窗口资源作用域内把 WPF-UI 的 MessageBox、按钮和危险色资源键映射回本设计系统的暖粉 token（`BackgroundBrush`、`InkBrush`、`CardBrush`、`PeachLineBrush`、`MainAction*`、`DangerColor` 等），因此不会引入默认 WPF 蓝色或独立色板。标题栏不再重复显示标题文字，正文里的 `ConfirmationHeading` 是可见树里唯一的标题，而窗口 `Title` 与窗口可访问名保持原标题；WPF-UI 的 Primary 按钮承载「取消」，并在真实模板加载后设置 `IsDefault` + `IsCancel`；Secondary 按钮承载参数化的确认文案。`ConfirmationCancelButton`、`ConfirmationConfirmButton`、正文和滚动容器的自动化 ID 保持既有契约，调用方继续使用同步 `Show` / `ShowDialog` / `Close` seam。
 
 ### 辅助技术与快捷键（#156）
 
@@ -328,11 +328,11 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 主窗口倒计时编辑区与设置区的文本框、日期框和下拉框统一为 `41 DIP` 高（#237 由 `56` 等比收缩），字段标签消费 `TypeCaptionFontSize`（13px SemiBold），输入内容消费 `TypeBodyFontSize`（16px），内部横向留白 `12 DIP`（由 `16` 等比收缩；名称与日期的前导图标位由 `48` 收为 `36`）。名称和日期继续按内容职责分配宽度，时、分、秒保持可并排比较；相邻的标签选择器、保存与取消动作与输入行同高，不制造额外视觉台阶。日期框宽度是等比收缩的例外：共享日期模板的 `38 DIP` 下拉列不随管理窗口收缩，16px 正文下「2031 年 12 月 31 日」连同 `36/12` 留白约需 `237 DIP`，因此倒计时截止日期框与便签日期框统一 `242 DIP`、筛选弹层日期框（默认 `11` 留白）`216 DIP`，名称列与便签内容列让出宽度；这几处都由 CSharp 套件的日期框裁切几何断言守住（#190 / #237）。
 
-输入控件只使用 §2 的角色：`PanelBrush` 作为表面（#151 收口：主窗倒计时页紧凑输入面由画布奶油色改为白纸面板色，与页面画布分开）、`PeachLineBrush` 作为常态边界、`InkBrush` 作为文字、`MutedBrush` 作为图标与占位文。悬停与按压反馈使用 `ActiveBrush`；键盘焦点使用 `ActiveBrush` 边界，不依赖默认系统蓝。时、分、秒下拉点击文字区域即可打开，命中规则与日期选择器一致。编辑区顶部到列表底部使用连续的不透明 `BackgroundBrush` 底层，编辑区与设置 Popup 各有边界，保证真实 WPF 控件及区块间距都不依赖装饰 raster 中历史控件位置；这层底层的顶边落在倒计时顶部装饰带下沿（`tools/MainDecorationSceneBands.psd1` 的 `TopBandEnd` 按画布高换算，约 `292.6 DIP`）之下，与便签页一样不盖住装饰带里的三只玩偶，由 `DecorationBandCharactersUnobstructed` 探针钉住；不得引入默认系统蓝、独立灰阶或新的输入框专属色板。
+输入控件只使用 §2 的角色：`PanelBrush` 作为表面（#151 收口：主窗倒计时页紧凑输入面由画布奶油色改为白纸面板色，与页面画布分开）、`PeachLineBrush` 作为常态边界、`InkBrush` 作为文字、`MutedBrush` 作为图标与占位文。悬停边界使用 `ActiveHoverBrush`；#303 起文本框、下拉框、日期框的有效键盘焦点统一使用 2 DIP `MainActionFocusBrush` 暖金边界，不再与红色错误共享 `ActiveBrush`，也不依赖默认系统蓝。其他非输入控件的焦点色不在本票扩改。时、分、秒下拉点击文字区域即可打开，命中规则与日期选择器一致。编辑区顶部到列表底部使用连续的不透明 `BackgroundBrush` 底层，编辑区与设置 Popup 各有边界，保证真实 WPF 控件及区块间距都不依赖装饰 raster 中历史控件位置；这层底层的顶边落在倒计时顶部装饰带下沿（`tools/MainDecorationSceneBands.psd1` 的 `TopBandEnd` 按画布高换算，约 `292.6 DIP`）之下，与便签页一样不盖住装饰带里的三只玩偶，由 `DecorationBandCharactersUnobstructed` 探针钉住；不得引入默认系统蓝、独立灰阶或新的输入框专属色板。
 
 ### 倒计时编辑错误反馈与主次行动（#151）
 
-- 字段级校验按字段拆开：名称、截止日期（含时/分/秒不完整）的校验错误以独立错误行出现在对应字段下方，文字 `DangerBrush`、字号消费 `TypeCaptionFontSize`（13px，管理窗口降档后）、可换行、不裁切；提交失败聚焦第一个无效控件；字段值修正后对应错误立即清除。错误行的名称与帮助文本携带完整消息，来源控件帮助文本同步，错误行以礼貌直播区播报（与悬浮窗快速新增同一套语义）。
+- 字段级校验按字段拆开：名称、截止日期（含时/分/秒不完整）的校验错误以独立错误行出现在对应字段下方，文字 `DangerBrush`、字号消费 `TypeCaptionFontSize`（13px，管理窗口降档后）、可换行、不裁切；提交失败聚焦第一个无效控件；字段值修正后对应错误立即清除。#303 给来源输入增加自己的错误边界：有效且有焦点为 2 DIP `MainActionFocusBrush`，出错无焦点为 1 DIP `DangerBrush`，出错有焦点为 2 DIP `DangerBrush`；三种边界共用既有输入槽，状态切换不改变控件或兄弟元素几何。系统对比度下暖金焦点映射 `Highlight`、错误映射 `WindowText`，并继续以边厚及可见错误行提供非颜色线索。错误行的名称与帮助文本携带完整消息，来源控件帮助文本同步，错误行以礼貌直播区播报（与悬浮窗快速新增同一套语义）。
 - 唯一错误行（保存失败等工作区级错误）不设固定高度、不使用省略号，长错误完整换行可见；错误出现时同步在唯一错误行镜像首个字段错误消息。
 - 偏好（月薪、上下班时间）格式错误出现在对应字段下方，并同时镜像到底部状态栏；不再只出现在窗口底栏。错误同样在字段修正后清除。
 - 每页一枚实心主行动：倒计时页是「＋ 添加倒计时」（`MainActionBrush` 实心 + 白字）；设置 Popup 中的「保存设置」是次级 `CardAltBrush` 表面 + `ControlBorderBrush` 边；便签页「＋ 添加」仍是该页唯一实心主按钮（`MainActionBrush`）。
@@ -364,16 +364,16 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 | 常态 | 表面按控件既有角色（`CanvasBrush` / 透明 / 分段选中态） | 1px `PeachLineBrush` 边或无边 |
 | 悬停 | 常规按钮表面换 `CardAltBrush`，桃色结构线换更深的 `ActiveHoverBrush`；主行动使用同族 hover 底 | 亮度差 ≥ 4%，`MotionHoverDuration` 120ms ease-out |
 | 按压 | 常驻 `FocusBorderThickness`（2px）透明环换 `ActiveBrush`，内容以 `RenderTransform` 缩至 0.97 | `MotionPressDuration` 100ms ease-out；外边界与兄弟元素位置不变，不改边厚 |
-| 键盘焦点 | 仅键盘导航设置自定义 `FocusVisualState.IsKeyboardFocusVisible` 后显示 `ActiveBrush` 边；主操作按钮与置顶开关用 `MainActionFocusBrush`（§6 唯一焦点例外） | 鼠标点击取得焦点不残留环 |
+| 键盘焦点 | 仅键盘导航设置自定义 `FocusVisualState.IsKeyboardFocusVisible` 后显示焦点边；文本框、下拉框、日期框用 `MainActionFocusBrush`，其余常规控件用 `ActiveBrush`；主操作按钮、浮窗选中胶囊与已勾选置顶沿用 `MainActionFocusBrush` | 鼠标点击取得焦点不残留环 |
 | 禁用 | 整体 `Opacity` 0.45 | 全控件统一取值 |
 
-- 覆盖范围：`Button`（含 Primary/Secondary/FloatingAccent/Danger/IconButton/CalendarNavigationButton）、`ToggleButton`（SegmentButton 族、FloatingHeaderSegmentButton、FilterOptionButton、TagToggleButton）、`CheckBox`、`RadioButton`（#133 新增隐式样式，视觉语言按 §4 提醒规则单选组；未显式套样的单选钮不再落系统默认外观）、`ComboBox`（展开态边 `ActiveBrush`）、`DatePicker`（悬停/展开/键盘焦点/禁用态；焦点环用 `FocusBorderThickness`）、`TextBox`、`ToolTip`（非交互控件，只承担主题化常态，无悬停/按压/焦点/禁用态）。Calendar 系列维持既有 token 化状态。
+- 覆盖范围：`Button`（含 Primary/Secondary/FloatingAccent/Danger/IconButton/CalendarNavigationButton）、`ToggleButton`（SegmentButton 族、FloatingHeaderSegmentButton、FilterOptionButton、TagToggleButton）、`CheckBox`、`RadioButton`（#133 新增隐式样式，视觉语言按 §4 提醒规则单选组；未显式套样的单选钮不再落系统默认外观）、`ComboBox`（悬停边 `ActiveHoverBrush`，展开态与键盘焦点边 `MainActionFocusBrush`，出错边 `DangerBrush`）、`DatePicker`（悬停 `ActiveHoverBrush` / 展开与键盘焦点 `MainActionFocusBrush` / 出错 `DangerBrush` / 禁用态；焦点环用 `FocusBorderThickness`）、`TextBox`（同上三类状态边界）、`ToolTip`（非交互控件，只承担主题化常态，无悬停/按压/焦点/禁用态）。Calendar 系列维持既有 token 化状态。
 - 反馈节奏：hover 颜色使用 `MotionHoverDuration`（120ms）ease-out，按压缩放使用 `MotionPressDuration`（100ms）ease-out；焦点反馈仍即时生效。所有过渡只作用于颜色、透明度或 `RenderTransform`，不改布局属性。颜色对比与状态几何由 `MainHoverStateContrastIsPerceivable`、`MainPressedStateGeometryStable`、`MainMouseClickDoesNotLeaveFocusRing`、`MainKeyboardFocusRingShowsOnTab` 和 `MainSelectedTabWeightDominates` 五项验证字段钉住。
 - 分段控件选中或取消选中时，前景与底色在同一帧切换到目标色，避免白字先出现于尚未变深的底色、深字先出现于尚未退去的深粉底。此规则不改变悬停与按压过渡；主窗口的选中指示条继续按 §9 滑动。
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
 - #217 选中态：筛选芯片常态用 `CardAltBrush` + `ControlBorderBrush`；选中后用 `PeachTintBrush` + `PeachRailBrush`，左侧出现同色矢量勾号。勾号槽位常驻，不因切换挤动文字；非文本差异以选中后新增勾号对浅底 ≥3:1 验收，不把两种浅底本身的微小色差当作唯一信号。主窗与浮窗完成勾选用 `SuccessBrush` 底及白色勾号，悬停、按压和键盘焦点仍用 `ActiveBrush` 边；普通标签复选不使用成功色。
-- #217 滚动条：共享滚动条常态使用 `ControlBorderBrush`；浮窗 4px thumb 使用不透明的 1px `ControlBorderBrush` 边，内部填充保留 normal/hover/drag 的 0.52/0.78/0.96 透明度，10px 命中轨与内容安全区保持原合同。运行态按实际 `TaskCard` 外侧邻色测量 alpha 合成后边界 ≥3:1。
+- #217/#306 滚动条：共享滚动条（`App.xaml` 隐式 `ScrollBar` 样式，覆盖管理窗口的两个列表与窗口级滚动、提醒中心、规则编辑器及弹层内滚动）通过 `SharedScrollBarHitRail` 保持 `10 DIP` 命中轨（纵向右缘对齐、横向底缘对齐，与浮窗 #157 同样以模板轨隔离系统滚动条列宽）。静止时 `ThumbSurface` 通过 `ScaleTransform` 呈 `4 DIP` 可见宽度，指针进入命中轨或拖动滑块时展开至 `10 DIP`（拖动中指针离轨仍保持 `10 DIP`）；颜色角色与对比度不变——静止与悬停均为不透明 `ControlBorderBrush`（对 Background/Canvas/Card/Panel/CardAlt/Note/NoteWhite/ReminderPage 对比度 `3.38–3.76 ≥ 3:1`），拖动为不透明 `ActiveBrush`（`3.27–3.63 ≥ 3:1`），系统高对比度下自动随语义画刷映射。展开与收起由 `ScrollBarMotionBehavior` 仅驱动 `ScaleTransform`、消费 `MotionHoverDuration`（120ms）与 `MotionEaseOut` 并以 `SnapshotAndReplace` 支持中途反向，系统关闭客户区动画时直接到位；滚轮、拖动滑块、键盘翻页和点击轨道翻页（含横向左右翻页）照常可用。由独立窗口验证项目 `SharedScrollBarRestingThinAndExpandBehavior` 与 `SharedScrollBarMotionAndInteractionsWork` 两项验证事实守住。悬浮窗既有局部 4px thumb 滚动条不变：继续使用不透明的 1px `ControlBorderBrush` 边、内部填充 normal/hover/drag 的 0.52/0.78/0.96 透明度与 10px 命中轨及内容安全区，运行态按实际 `TaskCard` 外侧邻色测量 alpha 合成后边界 ≥3:1。
 
 ### 日期与下拉接入（#206）
 
@@ -381,7 +381,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 主窗可操作性与紧凑命中（#152）
 
-- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。#217 主按钮（`＋ 添加倒计时`/`＋ 添加`）与已勾选的 `窗口置顶` 使用调深的 `MainActionFocusBrush` 暖金；未勾选置顶使用常规 `ActiveBrush`。模板自己画键盘焦点的控件不得再套 `FocusVisualStyle` 第二套描边，包括：模板自带常驻 `FocusRing` 的控件（含上列样式，以及共享隐式 Button 模板的 `MainSecondaryButton`、`MainIconButton` 与标签选择触发按钮）；获焦时由模板把输入面边界换成 2px `ActiveBrush` 的文本框、下拉框与日期框。WPF 会在 Alt、Tab、方向键时绕过 `FocusVisualState` 单独点亮装饰层，鼠标点过的控件按 Alt 也会亮。装饰层画在实际获焦的元素上：日期框的 Tab 焦点落在模板里的打开日历按钮（`PART_Button`），整框边界由日期框模板的 `IsKeyboardFocusWithin` 触发器画，所以这枚按钮同样不带 `FocusVisualStyle`。只有模板不画焦点的键盘停靠点消费 2px 暖边 `MainKeyboardFocusVisual`：主窗的列表区与状态行，悬浮窗列表 `FloatingBodyScroller`，标签选择器弹层、提醒中心与提醒规则编辑器里的滚动列表。这层装饰定义在 `App.xaml`，各窗口共用。`MainPrimaryAndPinSingleFocusStroke` 遍历键盘路径守住这一条。规则落在样式上：`App.xaml` 与 `MainWindow.xaml` 中模板自己画焦点的样式都把 `FocusVisualStyle` 设为 `{x:Null}`；点亮焦点环的 `FocusVisualState.IsKeyboardFocusVisible` 只保留为模板状态，由 `KeyboardFocusPolicy` 在 `App` 静态构造注册的类处理器统一维护，指针在控件上按下随后获焦不点亮，Tab、方向键与程序移交的获焦一律点亮。任何窗口与弹层里 XAML 声明或代码新建的控件因此都不需要逐个接线。打开日历按钮的模板里也有常驻焦点环，日期框模板给它标 `FocusVisualState.HostDrawsFocus`，类处理器不点亮它，整框只剩日期框画的一道边界。#255 将输入来源、模板/宿主绘制归属、装饰层资格与单层描边判定统一收进 `KeyboardFocusPolicy`；金额文字沿用同步指针获焦与键盘激活语义，也由该策略维护焦点状态。窗口只应用策略，验证器与焦点实拍查询同一接口；`KeyboardFocusPolicyBehavior` 的直接 WPF 夹具补充规则反例，不替代真实 Tab 遍历与裁图。焦点可见判定统一为 `KeyboardFocusPolicy.KeyboardFocusDrawnOnce`，读实际获焦的元素：装饰层只认 `MainKeyboardFocusVisual`，而且只给模板不画焦点的停靠点；其余停靠点要模板焦点已点亮，日期框的打开日历按钮自己的环不得点亮。主窗 Tab 路径用这条判定；悬浮窗两个工作区（含便签「…」菜单与标签选择器弹层）以及提醒中心、提醒规则编辑器、设置恢复与激活失败窗，由 `FloatingKeyboardFocusDrawnOnce` 与 `SecondaryWindowKeyboardFocusDrawnOnce` 沿 Tab 顺序走一圈用它核对。
+- **常驻焦点环**：主窗口本地控件（`MainPrimaryButton`、`MainSecondarySolidButton`、`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderHelpButton`、`MainReminderModeRadio`、`MainNoteDateDisclosureButton`）的键盘焦点一律使用常驻 `FocusBorderThickness`（2px）透明环变色实现，悬停/按压/焦点均不得改写 `BorderThickness` 挤压布局。#217 主按钮（`＋ 添加倒计时`/`＋ 添加`）与已勾选的 `窗口置顶` 使用调深的 `MainActionFocusBrush` 暖金；未勾选置顶使用常规 `ActiveBrush`。模板自己画键盘焦点的控件不得再套 `FocusVisualStyle` 第二套描边，包括：模板自带常驻 `FocusRing` 的控件（含上列样式，以及共享隐式 Button 模板的 `MainSecondaryButton`、`MainIconButton` 与标签选择触发按钮）；获焦时由模板把输入面边界换成 2px `MainActionFocusBrush`（出错时为 `DangerBrush`）的文本框、下拉框与日期框。WPF 会在 Alt、Tab、方向键时绕过 `FocusVisualState` 单独点亮装饰层，鼠标点过的控件按 Alt 也会亮。装饰层画在实际获焦的元素上：日期框的 Tab 焦点落在模板里的打开日历按钮（`PART_Button`），整框边界由日期框模板的 `IsKeyboardFocusWithin` 触发器画，所以这枚按钮同样不带 `FocusVisualStyle`。只有模板不画焦点的键盘停靠点消费 2px 暖边 `MainKeyboardFocusVisual`：主窗的列表区与状态行，悬浮窗列表 `FloatingBodyScroller`，标签选择器弹层、提醒中心与提醒规则编辑器里的滚动列表。这层装饰定义在 `App.xaml`，各窗口共用。`MainPrimaryAndPinSingleFocusStroke` 遍历键盘路径守住这一条。规则落在样式上：`App.xaml` 与 `MainWindow.xaml` 中模板自己画焦点的样式都把 `FocusVisualStyle` 设为 `{x:Null}`；点亮焦点环的 `FocusVisualState.IsKeyboardFocusVisible` 只保留为模板状态，由 `KeyboardFocusPolicy` 在 `App` 静态构造注册的类处理器统一维护，指针在控件上按下随后获焦不点亮，Tab、方向键与程序移交的获焦一律点亮。任何窗口与弹层里 XAML 声明或代码新建的控件因此都不需要逐个接线。打开日历按钮的模板里也有常驻焦点环，日期框模板给它标 `FocusVisualState.HostDrawsFocus`，类处理器不点亮它，整框只剩日期框画的一道边界。#255 将输入来源、模板/宿主绘制归属、装饰层资格与单层描边判定统一收进 `KeyboardFocusPolicy`；金额文字沿用同步指针获焦与键盘激活语义，也由该策略维护焦点状态。窗口只应用策略，验证器与焦点实拍查询同一接口；`KeyboardFocusPolicyBehavior` 的直接 WPF 夹具补充规则反例，不替代真实 Tab 遍历与裁图。焦点可见判定统一为 `KeyboardFocusPolicy.KeyboardFocusDrawnOnce`，读实际获焦的元素：装饰层只认 `MainKeyboardFocusVisual`，而且只给模板不画焦点的停靠点；其余停靠点要模板焦点已点亮，日期框的打开日历按钮自己的环不得点亮。主窗 Tab 路径用这条判定；悬浮窗两个工作区（含便签「…」菜单与标签选择器弹层）以及提醒中心、提醒规则编辑器、设置恢复与激活失败窗，由 `FloatingKeyboardFocusDrawnOnce` 与 `SecondaryWindowKeyboardFocusDrawnOnce` 沿 Tab 顺序走一圈用它核对。
 - **选中粉底/实心粉邻色**：选中页签（`PinkTintBrush`）的焦点环与粉底之间常驻 1px 间隙（Surface 外缩 3），环的实际邻色是容器 `CardAltBrush`（实测 3.50 ≥ 3:1）。#217 悬浮窗选中实心粉工作区胶囊仍用暖金外环，但按外侧 `FloatingHeaderSurface` 的实际背景量度（3.75 ≥3:1），不能以内侧深粉填充冒充外侧邻色。键盘焦点环按上下文钉唯一期望 token，不存在仅匹配 token 就放过对比度的分支。
 - **悬停区分**：未选中页签悬停使用 `CardAltBrush` + `ActiveHoverBrush`，不得复用选中实心底；选中页签统一使用 `PinkTintBrush` 底和 `SemiBold` 字重，悬停不得反转层级。
 - **帮助聚焦**：提醒规则 `?` 帮助在键盘聚焦时即时打开与悬停相同的 ToolTip 说明，并以 `AutomationProperties.HelpText` 提供同一份帮助文本。
@@ -439,7 +439,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 6. 深度层级
 
-页面画布为 Level 0；内容区块为 Level 1（`CardBrush` 表面 + 1px `PeachLineBrush`）；便签卡与提醒条目卡为 Level 2（棕黄或白纸底 + 1px 边界）。不使用外发光、霓虹阴影或浮动大卡片。常规焦点使用 `ActiveBrush` 边界，不能依赖默认系统蓝。#217 主操作按钮、浮窗选中胶囊与已勾选置顶共用 `MainActionFocusBrush` 暖金焦点资源（调深为 `#A87324`）；未勾选置顶使用常规 `ActiveBrush`。所有焦点环按外侧可见邻色 ≥3:1 验收，暖金对六种浅色面的最低值为 Background 上的 3.65:1；保留暖金角色，不保留旧浅金数值。按压与悬停仍使用既有 `ActiveBrush` 语义。焦点只改变常驻 2px 边框颜色，不加厚、不挤布局、不叠第二套描边。
+页面画布为 Level 0；内容区块为 Level 1（`CardBrush` 表面 + 1px `PeachLineBrush`）；便签卡与提醒条目卡为 Level 2（棕黄或白纸底 + 1px 边界）。不使用外发光、霓虹阴影或浮动大卡片。#303 起文本框、下拉框、日期框的键盘焦点使用非红色的 `MainActionFocusBrush` 暖金边界；其余常规非输入控件继续使用 `ActiveBrush`，本票不统一扩改。主操作按钮、浮窗选中胶囊与已勾选置顶也沿用 `MainActionFocusBrush`；未勾选置顶使用 `ActiveBrush`。因此“主操作按钮与置顶开关是唯一焦点例外”的旧条款废止，暖金成为输入焦点与既有强调停靠点的共享角色，而不是新增色值。所有焦点环按外侧可见邻色 ≥3:1 验收，暖金对 §13.4 所列输入表面的最低值为 Background 上的 3.65:1；保留暖金角色，不保留旧浅金数值。按压使用既有 `ActiveBrush`，输入悬停边使用 `ActiveHoverBrush`。焦点不叠第二套描边；输入有效焦点、错误无焦点与错误有焦点按 §4 的 2/1/2 DIP 规则切换，控件及兄弟元素几何不变。
 
 ## 7. Do's / Don'ts
 
@@ -483,7 +483,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 | 资源 token | 开启动效时长 | 缓动 | 使用落点 |
 | --- | ---: | --- | --- |
-| `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色 |
+| `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色；共享滚动条悬停/拖动展开与收起（#306） |
 | `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放；展开/收起箭头旋转 |
 | `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
@@ -750,15 +750,15 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | `RadiusThumb` | 4 | 滚动条 thumb |
 | `FocusBorderThickness` | 2 | 键盘焦点/按压边粗细（`Thickness` 资源，可直接绑定 `BorderThickness`） |
 
-间距 token 以 `sys:Double` 网格值提供（可绑定 `FontSize`/`Height` 或在代码中组装）；XAML 中直接用于 `Margin` 时需由消费方包装为 `Thickness`。焦点语义沿用 §6：常规键盘焦点用 `ActiveBrush` 边界；主操作按钮与置顶开关用 `MainActionFocusBrush`，是全应用唯一焦点例外；不得引入默认系统蓝。圆角与焦点资源主要由 App.xaml 的控件模板消费；主窗口日期章节与卡片在代码中消费 `SpacingBlockGap`、`SpacingUnit`、`SpacingCardPadding`，其他固定布局尺寸仍按对应章节定义，不宣称所有几何均已 token 化（#232）。
+间距 token 以 `sys:Double` 网格值提供（可绑定 `FontSize`/`Height` 或在代码中组装）；XAML 中直接用于 `Margin` 时需由消费方包装为 `Thickness`。焦点语义沿用 §6：文本框、下拉框、日期框的键盘焦点用 `MainActionFocusBrush`；其他常规非输入控件用 `ActiveBrush`，主操作按钮、浮窗选中胶囊与已勾选置顶继续用 `MainActionFocusBrush`；不得引入默认系统蓝。圆角与焦点资源主要由 App.xaml 的控件模板消费；主窗口日期章节与卡片在代码中消费 `SpacingBlockGap`、`SpacingUnit`、`SpacingCardPadding`，其他固定布局尺寸仍按对应章节定义，不宣称所有几何均已 token 化（#232）。
 
 #250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉箭头区 `0,9,9,0`；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8；提醒中心与规则编辑器外壳自 #324 起改为不透明无边框窗口并交由 DWM 绘制系统圆角与投影，内容根 `Border` 保持直角 0 以避免回退时出现死角。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片、次级窗口外壳（0）、控件、芯片核对，任一样本不在对应口径上即报出元素名与实际值。
 
-#232/#309/#320：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；提醒中心「稍后提醒」菜单（#320）直接消费该共享默认圆角与样式。悬浮窗快速新增局部背景仍使用浮窗色板，焦点与按压使用应用 `ActiveBrush` / `ActiveHoverBrush`，危险操作独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
+#232/#303/#309/#320：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；提醒中心「稍后提醒」菜单（#320）直接消费该共享默认圆角与样式。悬浮窗快速新增局部背景仍使用浮窗色板，输入焦点使用应用 `MainActionFocusBrush`、非输入焦点与按压使用 `ActiveBrush`、悬停使用 `ActiveHoverBrush`，危险操作与出错字段独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
 
 ### 13.3.1 动效 token 与系统开关
 
-动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放、共享滚动条展开/收起（`ScrollBarMotionBehavior`，#306）和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放、滚动条展开/收起与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压、滚动条和弹层的连续反转从当前值继续。
 
 ### 13.4 对比度基线
 
@@ -798,7 +798,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | `ActiveColor` | `#E05A4A` | `PanelBrush` | 3.61 | 3.0 | graphic | PASS | 焦点边/复选图形；`PrimaryButton` 底已改绑 `MainActionBrush`（3.61→4.95） |
 | `ActiveColor` | `#E05A4A` | `BackgroundBrush` | 3.27 | 3.0 | graphic | PASS | 提醒规则选中圆点/描边（#151 换绑；`IconAccentBrush` 2.13 属装饰不承载选中态） |
 | `ActiveColor` | `#E05A4A` | `CardAltBrush` | 3.50 | 3.0 | graphic | PASS | 选中粉底页签焦点环实际邻色（#152；环与粉底间常驻 1px 间隙，`PinkTintBrush` 直贴 2.90 不达标被间隙规避） |
-| `MainActionFocusColor` | `#A87324` | `BackgroundBrush` | 3.65 | 3.0 | graphic | PASS | #217 暖金焦点对外侧浅底；Canvas 3.73、Card 3.99、Note 3.75、NoteWhite 4.02、CardAlt 3.90 |
+| `MainActionFocusColor` | `#A87324` | `BackgroundBrush` | 3.65 | 3.0 | graphic | PASS | #303 选定非红色输入焦点（在 `MainActionFocusColor` 暖金与 `InkColor` 主文字色中选暖金：两者在各表面均 ≥3:1，暖金既保留既有焦点语义、色相与砖红 `DangerColor` 明显不同，又在系统对比度映射 `Highlight` 区别于 `DangerColor`/`InkColor` 的 `WindowText`）；逐表面复算：Canvas 3.73、Background 3.65、Card 3.99、Panel 4.03、CardAlt 3.91、StatusBar 3.93、Note 3.75、NoteWhite 4.02、ReminderCard 3.88、ReminderPage 4.05、CharacterPanel 3.83 |
 | `PeachRailColor` | `#CD623E` | `PeachTintBrush` | 3.44 | 3.0 | graphic | PASS | #217 筛选芯片选中矢量勾号；常态无勾号，选中后以形状及描边双重标记 |
 | `DecoTextColor` | `#D9B7B1` | `CanvasBrush` | 1.69 | 豁免 | decorative | 记录 | 手写装饰 |
 | `DecoTextSoftColor` | `#E5AE9C` | `BackgroundBrush` | 1.73 | 豁免 | decorative | 记录 | 悬浮手写装饰 |

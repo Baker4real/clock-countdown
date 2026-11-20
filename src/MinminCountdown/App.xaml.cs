@@ -192,7 +192,6 @@ public sealed partial class App : Application
                 recoveryAllowed: _startupProtocol.RecoveryWritesAllowed,
                 migrationUtc: _startupProtocol.Request.MigrationUtc);
             var desktopWorkspace = _desktopWorkspace;
-            var initialSnapshot = desktopWorkspace.Snapshot;
             _theme = new ApplicationTheme(Resources);
             _theme.Apply();
             // #275：随包资源（节假日数据、图标、图片资产）都从程序目录读取，用户数据留在应用根目录。
@@ -550,7 +549,7 @@ public sealed partial class App : Application
             _testExitTimer.Start();
         }
 
-        _ = RefreshHolidayCalendarAsync(_desktopWorkspace.Snapshot.UtcNow);
+        _ = RefreshHolidayCalendarAsync(_desktopWorkspace.Clock.UtcNow);
     }
 
     private void ApplyInstanceActivationTestState()
@@ -639,7 +638,7 @@ public sealed partial class App : Application
         }
 
         AdvanceAcceptanceState();
-        var nowUtc = _desktopWorkspace.Snapshot.UtcNow;
+        var nowUtc = _desktopWorkspace.Clock.UtcNow;
         if (_runtimeReceiptWritten)
         {
             _ = RefreshHolidayCalendarAsync(nowUtc);

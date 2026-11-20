@@ -189,6 +189,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TextBlock> _countdownRemainingTexts =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, WrapPanel> _countdownTagChips =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _countdownActiveStates =
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Button> _countdownSourceFocusTargets =
@@ -226,6 +228,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _reminderSourceCountdownId;
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
+    private string? _countdownTagRenderSignature;
     private NoteCompletionExit? _noteCompletionExit;
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
@@ -1643,6 +1646,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             "|",
             records.Select(record =>
                 $"{record.Id}:{record.Name}:{record.TargetUtc.UtcTicks}:{string.Join(',', record.TagIds)}:{record.TargetUtc > effectiveNowUtc}:{snapshot.Settings.Preferences.DisplayPrecision}"));
+        var tagSignature = BuildTagRenderSignature(snapshot.Settings.Tags);
         var shouldRebuild = !string.Equals(
             signature,
             _countdownRenderSignature,
@@ -1658,9 +1662,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 _countdownSourceRows.Clear();
                 _countdownSourceFocusTargets.Clear();
                 _countdownRemainingTexts.Clear();
+                _countdownTagChips.Clear();
                 _countdownActiveStates.Clear();
             }
 
+            _countdownTagRenderSignature = tagSignature;
             var hasSavedCountdowns = snapshot.Settings.Countdowns.Count > 0;
             var emptyState = CountdownEmptyStatePresentation(hasSavedCountdowns);
             var isFirstUse = !hasSavedCountdowns;
@@ -1689,6 +1695,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
         if (!shouldRebuild)
         {
+            var refreshTags = !string.Equals(
+                tagSignature,
+                _countdownTagRenderSignature,
+                StringComparison.Ordinal);
+            if (refreshTags)
+            {
+                _countdownTagRenderSignature = tagSignature;
+            }
+
             foreach (var record in records)
             {
                 if (_countdownRemainingTexts.TryGetValue(record.Id, out var remaining))
@@ -1697,6 +1712,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                         record.TargetUtc,
                         effectiveNowUtc,
                         snapshot.Settings.Preferences.DisplayPrecision));
+                }
+
+                if (refreshTags && _countdownTagChips.TryGetValue(record.Id, out var tagChips))
+                {
+                    PopulateTagChips(tagChips, record.TagIds);
                 }
             }
 
@@ -1712,10 +1732,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownRowsWereRebuiltForValidation = true;
         CountdownRowRebuildGenerationForValidation++;
         _countdownRenderSignature = signature;
+        _countdownTagRenderSignature = tagSignature;
         CountdownRows.Children.Clear();
         _countdownSourceRows.Clear();
         _countdownSourceFocusTargets.Clear();
         _countdownRemainingTexts.Clear();
+        _countdownTagChips.Clear();
         _countdownActiveStates.Clear();
         CountdownEmptyStateContent.Visibility = Visibility.Collapsed;
         CountdownEmptyMascot.Visibility = Visibility.Collapsed;
@@ -1854,6 +1876,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _countdownSourceRows[record.Id] = card;
             _countdownSourceFocusTargets[record.Id] = edit;
             _countdownRemainingTexts[record.Id] = remaining;
+            _countdownTagChips[record.Id] = tagChips;
             _countdownActiveStates[record.Id] = active;
             if (string.Equals(
                     record.Id,
@@ -3705,10 +3728,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _settingDefaultDate = false;
     }
 
+    private static string BuildTagRenderSignature(IReadOnlyList<TagRecord> tags) =>
+        string.Create(CultureInfo.InvariantCulture, $"{tags.Count}|") +
+        string.Join(
+            "|",
+            tags.Select(static tag => string.Create(
+                CultureInfo.InvariantCulture,
+                $"{tag.Id.Length}:{tag.Id}/{tag.Name.Length}:{tag.Name}/{tag.Color?.Length ?? -1}:{tag.Color}")));
+
     // 调用方自定外边距与对齐；rowGap 给折行后的芯片行之间留出间距（#249 便签卡传入，倒计时辅助带保持 0）。
     private WrapPanel CreateTagChips(IReadOnlyList<string> tagIds, bool hashPrefix = false, double rowGap = 0)
     {
         var panel = new WrapPanel();
+        PopulateTagChips(panel, tagIds, hashPrefix, rowGap);
+        return panel;
+    }
+
+    private void PopulateTagChips(WrapPanel panel, IReadOnlyList<string> tagIds, bool hashPrefix = false, double rowGap = 0)
+    {
+        panel.Children.Clear();
         foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags.Where(tag => tagIds.Contains(
                      tag.Id,
                      StringComparer.OrdinalIgnoreCase)))
@@ -3746,8 +3784,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             }
             panel.Children.Add(chip);
         }
-
-        return panel;
     }
 
     private static Brush? ParseBrush(string? color)

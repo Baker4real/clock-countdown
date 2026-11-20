@@ -1668,3 +1668,366 @@ internal static class PopupMotionBehavior
             _exiting is not null && _exiting.TryGetTarget(out var exiting) ? exiting : null;
     }
 }
+
+// #306：共享滚动条静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP。
+// 仅对 ThumbSurface 的 ScaleTransform 消费 MotionHoverDuration 与 MotionEaseOut，
+// 不改布局宽度与 10 DIP 命中轨；快速反向从当前呈现值续接，系统关闭动画时直接到位。
+internal static class ScrollBarMotionBehavior
+{
+    private const double RestingScale = 0.4;
+    private const double ExpandedScale = 1.0;
+
+    public static readonly DependencyProperty IsEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsEnabled",
+            typeof(bool),
+            typeof(ScrollBarMotionBehavior),
+            new PropertyMetadata(false, OnIsEnabledChanged));
+
+    private static readonly DependencyProperty ControllerProperty =
+        DependencyProperty.RegisterAttached(
+            "Controller",
+            typeof(ScrollBarMotionController),
+            typeof(ScrollBarMotionBehavior),
+            new PropertyMetadata(null));
+
+    public static void SetIsEnabled(DependencyObject element, bool value) =>
+        element.SetValue(IsEnabledProperty, value);
+
+    public static bool GetIsEnabled(DependencyObject element) =>
+        (bool)element.GetValue(IsEnabledProperty);
+
+    private static void OnIsEnabledChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs args)
+    {
+        if (dependencyObject is not FrameworkElement host)
+        {
+            return;
+        }
+
+        if (args.NewValue is true)
+        {
+            var controller = new ScrollBarMotionController(host);
+            host.SetValue(ControllerProperty, controller);
+            controller.Attach();
+        }
+        else if (host.ReadLocalValue(ControllerProperty) is ScrollBarMotionController controller)
+        {
+            controller.Detach();
+            host.ClearValue(ControllerProperty);
+        }
+    }
+
+    private sealed class ScrollBarMotionController(FrameworkElement host)
+    {
+        private ScrollBar? _scrollBar;
+        private Thumb? _thumb;
+        private Border? _thumbSurface;
+        private DependencyPropertyDescriptor? _draggingDescriptor;
+        private DependencyPropertyDescriptor? _orientationDescriptor;
+        private DoubleAnimation? _activeAnimation;
+        private bool _attached;
+        private bool _isPointerOver;
+        private bool _isDragging;
+
+        public void Attach()
+        {
+            host.Loaded += OnLoaded;
+            host.Unloaded += OnUnloaded;
+            if (host.IsLoaded)
+            {
+                ResolveAndApply();
+            }
+        }
+
+        public void Detach()
+        {
+            host.Loaded -= OnLoaded;
+            host.Unloaded -= OnUnloaded;
+            DetachFromControl();
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs args) => ResolveAndApply();
+
+        private void OnUnloaded(object sender, RoutedEventArgs args) => DetachFromControl();
+
+        private void ResolveAndApply()
+        {
+            if (_attached)
+            {
+                return;
+            }
+
+            if (host.TemplatedParent is not ScrollBar scrollBar ||
+                scrollBar.Template is not { } template ||
+                template.FindName("PART_Track", scrollBar) is not Track { Thumb: { } thumb })
+            {
+                return;
+            }
+
+            _scrollBar = scrollBar;
+            _thumb = thumb;
+            _draggingDescriptor = DependencyPropertyDescriptor.FromProperty(
+                Thumb.IsDraggingProperty,
+                typeof(Thumb));
+            _orientationDescriptor = DependencyPropertyDescriptor.FromProperty(
+                ScrollBar.OrientationProperty,
+                typeof(ScrollBar));
+
+            host.MouseEnter += OnMouseEnter;
+            host.MouseLeave += OnMouseLeave;
+            scrollBar.MouseEnter += OnMouseEnter;
+            scrollBar.MouseLeave += OnMouseLeave;
+            scrollBar.IsVisibleChanged += OnVisibleOrEnabledChanged;
+            scrollBar.IsEnabledChanged += OnVisibleOrEnabledChanged;
+            thumb.Loaded += OnThumbLoaded;
+            thumb.DragStarted += OnDragStarted;
+            thumb.DragCompleted += OnDragCompleted;
+            _draggingDescriptor?.AddValueChanged(thumb, OnIsDraggingChanged);
+            _orientationDescriptor?.AddValueChanged(scrollBar, OnOrientationChanged);
+
+            _isPointerOver = scrollBar.IsMouseOver || host.IsMouseOver;
+            _isDragging = thumb.IsDragging;
+            _attached = true;
+            ApplyState(animate: false);
+        }
+
+        private void DetachFromControl()
+        {
+            if (_thumbSurface?.RenderTransform is ScaleTransform scale)
+            {
+                StopActiveAnimation(scale);
+            }
+            else
+            {
+                ClearActiveAnimationSubscription();
+            }
+
+            host.MouseEnter -= OnMouseEnter;
+            host.MouseLeave -= OnMouseLeave;
+            if (_scrollBar is not null)
+            {
+                _scrollBar.MouseEnter -= OnMouseEnter;
+                _scrollBar.MouseLeave -= OnMouseLeave;
+                _scrollBar.IsVisibleChanged -= OnVisibleOrEnabledChanged;
+                _scrollBar.IsEnabledChanged -= OnVisibleOrEnabledChanged;
+                _orientationDescriptor?.RemoveValueChanged(_scrollBar, OnOrientationChanged);
+            }
+
+            if (_thumb is not null)
+            {
+                _thumb.Loaded -= OnThumbLoaded;
+                _thumb.DragStarted -= OnDragStarted;
+                _thumb.DragCompleted -= OnDragCompleted;
+                _draggingDescriptor?.RemoveValueChanged(_thumb, OnIsDraggingChanged);
+            }
+
+            _draggingDescriptor = null;
+            _orientationDescriptor = null;
+            _thumbSurface = null;
+            _thumb = null;
+            _scrollBar = null;
+            _isPointerOver = false;
+            _isDragging = false;
+            _attached = false;
+        }
+
+        private void OnThumbLoaded(object sender, RoutedEventArgs args) => ApplyState(animate: false);
+
+        private void OnOrientationChanged(object? sender, EventArgs args) => ApplyState(animate: false);
+
+        private void OnVisibleOrEnabledChanged(object sender, DependencyPropertyChangedEventArgs args)
+        {
+            if (_scrollBar is null || !_scrollBar.IsVisible || !_scrollBar.IsEnabled)
+            {
+                _isPointerOver = false;
+                _isDragging = false;
+                ApplyState(animate: false);
+            }
+        }
+
+        private void OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs args)
+        {
+            if (_isPointerOver)
+            {
+                return;
+            }
+
+            _isPointerOver = true;
+            ApplyState(animate: true);
+        }
+
+        private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs args)
+        {
+            if (!_isPointerOver)
+            {
+                return;
+            }
+
+            _isPointerOver = false;
+            ApplyState(animate: true);
+        }
+
+        private void OnDragStarted(object sender, DragStartedEventArgs args)
+        {
+            if (_isDragging)
+            {
+                return;
+            }
+
+            _isDragging = true;
+            ApplyState(animate: true);
+        }
+
+        private void OnDragCompleted(object sender, DragCompletedEventArgs args)
+        {
+            if (!_isDragging)
+            {
+                return;
+            }
+
+            _isDragging = false;
+            ApplyState(animate: true);
+        }
+
+        private void OnIsDraggingChanged(object? sender, EventArgs args)
+        {
+            var dragging = _thumb?.IsDragging == true;
+            if (dragging == _isDragging)
+            {
+                return;
+            }
+
+            _isDragging = dragging;
+            ApplyState(animate: true);
+        }
+
+        private void OnPaletteChanged(object? sender, EventArgs args)
+        {
+            if (!ApplicationTheme.ClientAreaAnimationEnabled &&
+                _thumbSurface?.RenderTransform is ScaleTransform scale)
+            {
+                StopActiveAnimation(scale);
+            }
+        }
+
+        private void OnAnimationCompleted(object? sender, EventArgs args)
+        {
+            if (ReferenceEquals(sender, _activeAnimation))
+            {
+                ClearActiveAnimationSubscription();
+            }
+        }
+
+        private Border? ResolveThumbSurface(bool isHorizontal)
+        {
+            if (_thumbSurface is not null)
+            {
+                return _thumbSurface;
+            }
+
+            if (_thumb is null)
+            {
+                return null;
+            }
+
+            _thumb.ApplyTemplate();
+            var surface = _thumb.Template?.FindName("ThumbSurface", _thumb) as Border;
+            if (surface is null)
+            {
+                return null;
+            }
+
+            _thumbSurface = surface;
+            surface.RenderTransformOrigin = isHorizontal ? new Point(0.5, 1) : new Point(1, 0.5);
+            var scale = EnsureScaleTransform(surface);
+            scale.ScaleX = isHorizontal ? ExpandedScale : RestingScale;
+            scale.ScaleY = isHorizontal ? RestingScale : ExpandedScale;
+            return surface;
+        }
+
+        private void ApplyState(bool animate)
+        {
+            if (_scrollBar is null)
+            {
+                return;
+            }
+
+            var isHorizontal = _scrollBar.Orientation == Orientation.Horizontal;
+            var surface = ResolveThumbSurface(isHorizontal);
+            if (surface is null)
+            {
+                return;
+            }
+
+            surface.RenderTransformOrigin = isHorizontal ? new Point(0.5, 1) : new Point(1, 0.5);
+            var scale = EnsureScaleTransform(surface);
+            var targetExpanded = _scrollBar.IsEnabled && (_isPointerOver || _isDragging);
+            var targetCrossScale = targetExpanded ? ExpandedScale : RestingScale;
+            var crossProperty = isHorizontal ? ScaleTransform.ScaleYProperty : ScaleTransform.ScaleXProperty;
+            var fixedProperty = isHorizontal ? ScaleTransform.ScaleXProperty : ScaleTransform.ScaleYProperty;
+
+            // 先读当前呈现比例，再取消旧时钟并写入基础终值；快速反向不会跳回起点。
+            var currentCrossScale = isHorizontal ? scale.ScaleY : scale.ScaleX;
+            StopActiveAnimation(scale);
+            scale.SetValue(fixedProperty, ExpandedScale);
+            scale.SetValue(crossProperty, targetCrossScale);
+
+            var configured = _scrollBar.TryFindResource("MotionHoverDuration") is Duration duration && duration.HasTimeSpan
+                ? duration.TimeSpan
+                : MotionTokens.HoverDuration;
+            var effective = animate && _scrollBar.IsLoaded && _scrollBar.IsVisible
+                ? ApplicationTheme.GetEffectiveMotionDuration(configured)
+                : TimeSpan.Zero;
+            if (effective <= TimeSpan.Zero || Math.Abs(currentCrossScale - targetCrossScale) <= 0.0001)
+            {
+                return;
+            }
+
+            var animation = new DoubleAnimation
+            {
+                From = currentCrossScale,
+                To = targetCrossScale,
+                Duration = new Duration(effective),
+                EasingFunction = _scrollBar.TryFindResource("MotionEaseOut") as IEasingFunction
+                    ?? MotionTokens.CreateEaseOut(),
+                FillBehavior = FillBehavior.Stop
+            };
+            _activeAnimation = animation;
+            animation.Completed += OnAnimationCompleted;
+            ApplicationTheme.PaletteChanged += OnPaletteChanged;
+            scale.BeginAnimation(crossProperty, animation, HandoffBehavior.SnapshotAndReplace);
+        }
+
+        private void StopActiveAnimation(ScaleTransform scale)
+        {
+            ClearActiveAnimationSubscription();
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        }
+
+        private void ClearActiveAnimationSubscription()
+        {
+            if (_activeAnimation is not null)
+            {
+                _activeAnimation.Completed -= OnAnimationCompleted;
+                _activeAnimation = null;
+            }
+
+            ApplicationTheme.PaletteChanged -= OnPaletteChanged;
+        }
+
+        private static ScaleTransform EnsureScaleTransform(Border surface)
+        {
+            if (surface.RenderTransform is ScaleTransform scale && !scale.IsFrozen)
+            {
+                return scale;
+            }
+
+            var clone = surface.RenderTransform is ScaleTransform existing
+                ? existing.Clone()
+                : new ScaleTransform(RestingScale, ExpandedScale);
+            surface.RenderTransform = clone;
+            return clone;
+        }
+    }
+}

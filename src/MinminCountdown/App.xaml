@@ -1381,14 +1381,22 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ScrollBar}">
-            <Grid x:Name="Root">
+            <!-- #306：共享滚动条保留 10 DIP 命中轨（与浮窗 #157 同样以模板轨隔离系统滚动条列宽），
+                 静止时 ThumbSurface 以 ScaleTransform 缩为 4 DIP，悬停命中轨或拖动时平滑展开至 10 DIP。 -->
+            <Grid x:Name="SharedScrollBarHitRail"
+                  Width="10"
+                  HorizontalAlignment="Right"
+                  Background="Transparent"
+                  focus:ScrollBarMotionBehavior.IsEnabled="True">
               <Track x:Name="PART_Track"
                      Orientation="{TemplateBinding Orientation}"
                      IsDirectionReversed="True">
                 <Track.DecreaseRepeatButton>
-                  <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                  <RepeatButton x:Name="PART_DecreaseRepeatButton"
+                                Command="{x:Static ScrollBar.PageUpCommand}"
                                 CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                 Focusable="False"
+                                IsTabStop="False"
                                 Background="Transparent"
                                 BorderThickness="0">
                     <RepeatButton.Template>
@@ -1399,16 +1407,21 @@
                   </RepeatButton>
                 </Track.DecreaseRepeatButton>
                 <Track.Thumb>
-                  <Thumb Background="{TemplateBinding Foreground}" Margin="2">
+                  <Thumb Background="{TemplateBinding Foreground}"
+                         Focusable="False">
                     <Thumb.Template>
                       <ControlTemplate TargetType="{x:Type Thumb}">
-                        <Border x:Name="ThumbSurface"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="{DynamicResource RadiusThumb}" />
+                        <Grid Background="Transparent">
+                          <Border x:Name="ThumbSurface"
+                                  Background="{TemplateBinding Background}"
+                                  CornerRadius="{DynamicResource RadiusThumb}"
+                                  RenderTransformOrigin="1,0.5">
+                            <Border.RenderTransform>
+                              <ScaleTransform ScaleX="0.4" ScaleY="1" />
+                            </Border.RenderTransform>
+                          </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
-                          <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="ThumbSurface" Property="Opacity" Value="0.72" />
-                          </Trigger>
                           <Trigger Property="IsDragging" Value="True">
                             <Setter TargetName="ThumbSurface" Property="Background" Value="{DynamicResource ActiveBrush}" />
                           </Trigger>
@@ -1418,9 +1431,11 @@
                   </Thumb>
                 </Track.Thumb>
                 <Track.IncreaseRepeatButton>
-                  <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                  <RepeatButton x:Name="PART_IncreaseRepeatButton"
+                                Command="{x:Static ScrollBar.PageDownCommand}"
                                 CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                 Focusable="False"
+                                IsTabStop="False"
                                 Background="Transparent"
                                 BorderThickness="0">
                     <RepeatButton.Template>
@@ -1432,6 +1447,17 @@
                 </Track.IncreaseRepeatButton>
               </Track>
             </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="Orientation" Value="Horizontal">
+                <Setter TargetName="SharedScrollBarHitRail" Property="Width" Value="Auto" />
+                <Setter TargetName="SharedScrollBarHitRail" Property="Height" Value="10" />
+                <Setter TargetName="SharedScrollBarHitRail" Property="HorizontalAlignment" Value="Stretch" />
+                <Setter TargetName="SharedScrollBarHitRail" Property="VerticalAlignment" Value="Bottom" />
+                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                <Setter TargetName="PART_DecreaseRepeatButton" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}" />
+                <Setter TargetName="PART_IncreaseRepeatButton" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>

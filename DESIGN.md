@@ -373,7 +373,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 - MainWindow 本地样式（`MainSegmentButton`、`MainNotesSegmentButton`、`MainReminderModeRadio`、`MainTopmostCheck`、`MainNoteCompletionCheck`、`MainReminderHelpButton`、`MainNoteDateDisclosureButton`）沿用窗口内模板：#133 仅对其中两处激活页签文字执行 §13.4 换绑。#152 已补齐遗留缺口：`MainSegmentButton`/`MainNotesSegmentButton`/`MainReminderHelpButton`/`MainReminderModeRadio`/`MainNoteDateDisclosureButton` 具备按压（环换 `ActiveBrush`，与键盘焦点同语言）与禁用（整体 `Opacity` 0.45）外观；`MainPrimaryButton`/`MainSecondarySolidButton`/`MainTopmostCheck`/`MainNoteCompletionCheck` 的焦点/按压改为常驻环变色（见下方「主窗可操作性」）。
 - 图标按钮必须具备 `AutomationProperties.Name`；动态列表行、标签芯片与分段按钮通过既有 `UiAccessibility`/`NameControl` 命名并经 `ToggleButton`/`CheckBox` 的 Toggle 语义暴露选中状态（MainWindow.xaml.cs / FloatingWindow*.cs 既有接线，#133 复核无缺口）。
 - #217 选中态：筛选芯片常态用 `CardAltBrush` + `ControlBorderBrush`；选中后用 `PeachTintBrush` + `PeachRailBrush`，左侧出现同色矢量勾号。勾号槽位常驻，不因切换挤动文字；非文本差异以选中后新增勾号对浅底 ≥3:1 验收，不把两种浅底本身的微小色差当作唯一信号。主窗与浮窗完成勾选用 `SuccessBrush` 底及白色勾号，悬停、按压和键盘焦点仍用 `ActiveBrush` 边；普通标签复选不使用成功色。
-- #217 滚动条：共享滚动条常态使用 `ControlBorderBrush`；浮窗 4px thumb 使用不透明的 1px `ControlBorderBrush` 边，内部填充保留 normal/hover/drag 的 0.52/0.78/0.96 透明度，10px 命中轨与内容安全区保持原合同。运行态按实际 `TaskCard` 外侧邻色测量 alpha 合成后边界 ≥3:1。
+- #217/#306 滚动条：共享滚动条（`App.xaml` 隐式 `ScrollBar` 样式，覆盖管理窗口的两个列表与窗口级滚动、提醒中心、规则编辑器及弹层内滚动）通过 `SharedScrollBarHitRail` 保持 `10 DIP` 命中轨（纵向右缘对齐、横向底缘对齐，与浮窗 #157 同样以模板轨隔离系统滚动条列宽）。静止时 `ThumbSurface` 通过 `ScaleTransform` 呈 `4 DIP` 可见宽度，指针进入命中轨或拖动滑块时展开至 `10 DIP`（拖动中指针离轨仍保持 `10 DIP`）；颜色角色与对比度不变——静止与悬停均为不透明 `ControlBorderBrush`（对 Background/Canvas/Card/Panel/CardAlt/Note/NoteWhite/ReminderPage 对比度 `3.38–3.76 ≥ 3:1`），拖动为不透明 `ActiveBrush`（`3.27–3.63 ≥ 3:1`），系统高对比度下自动随语义画刷映射。展开与收起由 `ScrollBarMotionBehavior` 仅驱动 `ScaleTransform`、消费 `MotionHoverDuration`（120ms）与 `MotionEaseOut` 并以 `SnapshotAndReplace` 支持中途反向，系统关闭客户区动画时直接到位；滚轮、拖动滑块、键盘翻页和点击轨道翻页（含横向左右翻页）照常可用。由独立窗口验证项目 `SharedScrollBarRestingThinAndExpandBehavior` 与 `SharedScrollBarMotionAndInteractionsWork` 两项验证事实守住。悬浮窗既有局部 4px thumb 滚动条不变：继续使用不透明的 1px `ControlBorderBrush` 边、内部填充 normal/hover/drag 的 0.52/0.78/0.96 透明度与 10px 命中轨及内容安全区，运行态按实际 `TaskCard` 外侧邻色测量 alpha 合成后边界 ≥3:1。
 
 ### 日期与下拉接入（#206）
 
@@ -483,7 +483,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 | 资源 token | 开启动效时长 | 缓动 | 使用落点 |
 | --- | ---: | --- | --- |
-| `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色 |
+| `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色；共享滚动条悬停/拖动展开与收起（#306） |
 | `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放；展开/收起箭头旋转 |
 | `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
 | `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
@@ -758,7 +758,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 ### 13.3.1 动效 token 与系统开关
 
-动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压和弹层的连续反转从当前值继续。
+动效 token 与控件状态共享应用级资源字典。`ApplicationTheme.Apply` 在系统 `SystemParameters.ClientAreaAnimation` 开启时写入 §9 的六个时长（#239 删除秒位 token）；关闭时写入 `0ms`，并保持相同的目标状态。悬停颜色、按下缩放、共享滚动条展开/收起（`ScrollBarMotionBehavior`，#306）和 `PopupMotionBehavior` 的透明度/位移都通过动画时钟执行，按压缩放、滚动条展开/收起与弹层位移只改 `RenderTransform`，不改 `Width`、`Height`、`Margin` 或边框厚度。每次状态变化都取消旧时钟、读取当前呈现值，再以 `SnapshotAndReplace` 启动新时钟，因此 hover、按压、滚动条和弹层的连续反转从当前值继续。
 
 ### 13.4 对比度基线
 

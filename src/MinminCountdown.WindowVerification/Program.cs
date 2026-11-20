@@ -29,6 +29,8 @@ internal static class Program
     internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
     internal const string MainTagRenameSyncFactName = "MainTagRenameSyncsAcrossAllSurfaces";
     internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
+    internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
+    internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -79,6 +81,10 @@ internal static class Program
     private const string InputFocusAndErrorFactMeaning =
         "文本框、下拉框与日期框使用非红色焦点和更深暖色悬停边；倒计时编辑器的有效焦点、错误无焦点与错误有焦点" +
         "分别为 2/1/2 DIP 且不挤布局，首错聚焦、修正即清、帮助文本与礼貌播报保持，系统对比度映射不同系统角色（#303）";
+    private const string SharedScrollBarGeometryFactMeaning =
+        "共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）";
+    private const string SharedScrollBarMotionFactMeaning =
+        "共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）";
 
     [STAThread]
     private static int Main()
@@ -106,7 +112,9 @@ internal static class Program
             [ConfirmationDialogTitleFactName] = false,
             [ConfirmationDialogResourcesFactName] = false,
             [MainTagRenameSyncFactName] = false,
-            [InputFocusAndErrorFactName] = false
+            [InputFocusAndErrorFactName] = false,
+            [SharedScrollBarGeometryFactName] = false,
+            [SharedScrollBarMotionFactName] = false
         };
         var failures = new List<string>();
 
@@ -246,6 +254,18 @@ internal static class Program
                 InputFocusAndErrorScenario.Run();
                 return (true, InputFocusAndErrorFactMeaning);
             });
+            RunFact(
+                SharedScrollBarGeometryFactName,
+                SharedScrollBarGeometryFactMeaning,
+                () => SharedScrollBarScenario.RunRestingThinAndExpandBehavior(
+                    theme,
+                    SharedScrollBarGeometryFactMeaning));
+            RunFact(
+                SharedScrollBarMotionFactName,
+                SharedScrollBarMotionFactMeaning,
+                () => SharedScrollBarScenario.RunMotionAndInteractions(
+                    theme,
+                    SharedScrollBarMotionFactMeaning));
         }
         catch (Exception exception)
         {

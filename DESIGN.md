@@ -703,7 +703,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 - 控件不得新增同义色值：新视觉需求先找既有 Semantic 角色；确需新角色时在配色表加一行（同时得到原色与语义画刷，并写明系统对比度角色）。
 - 允许存在的值级重复只有以下 alias（同一原色值挂多个语义角色），不得扩充：`#3B190D` → `Ink` / `TagChipText` / `SegmentSelectedForeground`；`#C23E68` → `MainAction` / `PinkAccentStrong`（#199 统一主行动家族）；`#CD623E` → `NoteActiveRail` / `PeachRail`；`#F6DFD3` → `NoteTimeline` / `PeachLine`；`#FEEFE1` → `SegmentSelected` / `PeachTint`；`#FFF7E8` → `Tag` / `CharacterPanel`；`#FFFDFC` → `Panel` / `MainActionText`。Tooling 的 design-token 漂移检查双向核对本清单与配色表；#232 删除两项无生产消费者的旧强调文字 token。
 - 配色表允许 6 位与 8 位十六进制写法并存（如 `#FEE0E4` 与 `#FFFEE0E4`），漂移检查按解析后 ARGB 相等判断，不强制统一记法。
-- 启动入口在任何窗口之前用配色表写入日间色板（等同原先 App.xaml 声明的默认值），随后 `ApplicationTheme.Apply` 按系统对比度开关写入原色、冻结的 `SolidColorBrush` 与组件别名。配色变化（含系统对比度开关与换色）时整枚替换资源条目，不就地改色：就地改色会让渲染线程遍历共享画刷的监听者，曾以 0xC0000409 崩溃。代码引用主题画刷一律用 `DynamicResource` / `SetResourceReference`，不缓存画刷实例；复制了画刷实例的局部字典（悬浮窗、确认框）与窗口树外的托盘菜单，由各自登记的 `PaletteChanged` 处理按应用资源重取：主窗口、悬浮窗与确认框在构造时登记、关闭时注销，托盘菜单在打开期间登记，主题 module 不枚举具体窗口。
+- 启动入口在任何窗口之前用配色表写入日间色板（等同原先 App.xaml 声明的默认值），随后 `ApplicationTheme.Apply` 按系统对比度开关写入原色、冻结的 `SolidColorBrush` 与组件别名。配色变化（含系统对比度开关与换色）时整枚替换资源条目，不就地改色：就地改色会让渲染线程遍历共享画刷的监听者，曾以 0xC0000409 崩溃。代码引用主题画刷一律用 `DynamicResource` / `SetResourceReference`，不缓存画刷实例；复制了画刷实例的局部字典（悬浮窗、确认框）与窗口树外的托盘菜单，由各自登记的 `PaletteChanged` 处理按应用资源重取：主窗口、悬浮窗与确认框在构造时登记、关闭时注销；原生菜单由 `SharedMenuStyles.Apply` 在打开期间登记、关闭时注销，主题 module 不枚举具体窗口。
 
 ### 13.2 排版层级 token
 
@@ -739,7 +739,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 #250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉箭头区 `0,9,9,0`；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片与窗口外壳、控件、芯片四类取样核对，任一样本不在对应 token 上即报出元素名与实际值。
 
-#232：托盘菜单的背景、边界、文字与高亮消费应用主题 token，正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，运行中跟随系统对比度配色。悬浮窗快速新增局部背景仍使用浮窗色板，输入焦点使用应用 `MainActionFocusBrush`、非输入焦点与按压使用 `ActiveBrush`、悬停使用 `ActiveHoverBrush`，危险操作与出错字段独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
+#232/#309：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；共享默认圆角仍供后续 #319/#320 直接消费。本票不接产品菜单。悬浮窗快速新增局部背景仍使用浮窗色板，输入焦点使用应用 `MainActionFocusBrush`、非输入焦点与按压使用 `ActiveBrush`、悬停使用 `ActiveHoverBrush`，危险操作与出错字段独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
 
 ### 13.3.1 动效 token 与系统开关
 

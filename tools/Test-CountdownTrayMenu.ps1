@@ -158,6 +158,9 @@ public sealed class TrayMenuVerificationEvidence
     public bool SettingsAccessPerformed { get; } = false;
     public string CaptureScope { get; } = "WPF ContextMenu client visual; native Shell opening and system shadow are not covered";
     public bool KeyboardHighlightReached { get; set; }
+    public bool SharedContextMenuStyleApplied { get; set; }
+    public bool SharedMenuItemStyleApplied { get; set; }
+    public bool DisabledDayUsesSharedOpacity { get; set; }
     public TrayMenuSourceActivationEvidence SourceActivation { get; set; }
     public List<TrayMenuFocusEvidence> KeyboardFocusSteps { get; } = new List<TrayMenuFocusEvidence>();
     public List<TrayMenuCaptureEvidence> Captures { get; } = new List<TrayMenuCaptureEvidence>();
@@ -217,6 +220,7 @@ public static class CountdownTrayMenuHarness
             if (menu.Items.Count != 4 || !items.Select(item => item.Header as string).SequenceEqual(expectedHeaders) ||
                 !menu.Items.Cast<object>().SequenceEqual(items.Cast<object>()))
                 throw new InvalidOperationException("生产菜单必须按顺序包含打开管理窗口、打开悬浮窗、复位窗口位置、退出四个真实菜单项。");
+            result.SharedContextMenuStyleApplied = menu.Style != null && menu.Style.TargetType == typeof(ContextMenu);
 
             owner = new Window
             {
@@ -237,6 +241,17 @@ public static class CountdownTrayMenuHarness
             menu.VerticalOffset = 110;
 
             Open(menu, pump);
+            result.SharedMenuItemStyleApplied = menu.ItemContainerStyle != null && menu.ItemContainerStyle.TargetType == typeof(MenuItem) &&
+                items.All(item => ReferenceEquals(item.Style, menu.ItemContainerStyle));
+            if (!result.SharedContextMenuStyleApplied || !result.SharedMenuItemStyleApplied)
+                result.Failures.Add("#309 托盘必须显式复用共享 ContextMenu / MenuItem 样式，而不是工厂私有模板。");
+            items[1].IsEnabled = false;
+            Pump(pump, menu.Dispatcher);
+            result.DisabledDayUsesSharedOpacity = items[1].Opacity == 0.45;
+            items[1].IsEnabled = true;
+            Pump(pump, menu.Dispatcher);
+            if (!result.DisabledDayUsesSharedOpacity)
+                result.Failures.Add("#309 共享菜单项的普通禁用态未复用 0.45 透明度。");
             TryCapture("tray-menu-open", menu, items, capture, writePng, evidenceDirectory, result);
             result.KeyboardFocusSteps.Add(ReadFocusState("after-open", owner, menu, items[0]));
             var captureBefore = MenuNativeInput.GetCapture();
@@ -621,6 +636,9 @@ $report = [pscustomobject]@{
     InputPath = $measured.InputPath
     HighlightInputPath = $measured.HighlightInputPath
     KeyboardHighlightReached = $measured.KeyboardHighlightReached
+    SharedContextMenuStyleApplied = $measured.SharedContextMenuStyleApplied
+    SharedMenuItemStyleApplied = $measured.SharedMenuItemStyleApplied
+    DisabledDayUsesSharedOpacity = $measured.DisabledDayUsesSharedOpacity
     SourceActivation = $measured.SourceActivation
     KeyboardFocusSteps = @($measured.KeyboardFocusSteps)
     Captures = @($measured.Captures)

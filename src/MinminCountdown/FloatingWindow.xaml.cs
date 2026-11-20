@@ -594,10 +594,16 @@ public sealed partial class FloatingWindow : Window
     {
         var opening = expanded && !_quickAddExpanded;
         _quickAddExpanded = expanded;
-        FloatingNoteEntry.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        var entryVisibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        FloatingNoteEntry.Visibility = entryVisibility;
+        FloatingNoteActionRow.Visibility = entryVisibility;
         // The command bar remains reachable while the in-place editor is open;
         // the search action is part of the notes workspace contract.
         FloatingNotesCommandBar.Visibility = Visibility.Visible;
+        FloatingNotesCommandBar.Margin = expanded
+            ? new Thickness(9, 3, 0, 2)
+            : new Thickness(9, 4, 0, 6);
+        FloatingNotesDecoRow.Visibility = expanded ? Visibility.Collapsed : Visibility.Visible;
         // #149：展开后切换钮降级为次级「收起」，表单「添加」是该状态唯一实心粉钮。
         ApplyQuickAddTogglePresentation(expanded);
         if (!expanded)
@@ -846,6 +852,8 @@ public sealed partial class FloatingWindow : Window
         SetRasterTranslation(FloatingEncouragement, 2, 3);
         FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
         FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
+        FloatingNoteActionRow.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
+        FloatingNoteActionRow.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
         // 局部 BodyBrush 指向悬浮窗弱化色；恢复提示沿用应用正文色。
         SettingsRecoveryCompletedStatus.Foreground = ApplicationThemeBrush("BodyBrush");
         RefreshCalendarIndexRuleBrushes();
@@ -919,6 +927,7 @@ public sealed partial class FloatingWindow : Window
         yield return FloatingBodyScroller.Resources;
         yield return FloatingNoteSearchSlot.Resources;
         yield return FloatingNoteEntry.Resources;
+        yield return FloatingNoteActionRow.Resources;
         yield return FloatingNoteDate.Resources;
         yield return FloatingTags.Resources;
         if (PickerTemplateParts.GetCalendar(FloatingNoteDate) is { } calendar)
@@ -2570,7 +2579,10 @@ public sealed partial class FloatingWindow : Window
     }
 
     private void SetNoteMessage(string text) =>
-        UiAccessibility.Announce(FloatingNoteMessage, text);
+        UiAccessibility.Announce(FloatingNoteMessage, text, block =>
+            block.Visibility = string.IsNullOrWhiteSpace(text)
+                ? Visibility.Collapsed
+                : Visibility.Visible);
 
     private void ClearNoteFieldErrors()
     {
@@ -2606,7 +2618,26 @@ public sealed partial class FloatingWindow : Window
         SetNoteFieldError(field, message);
         SetNoteMessage(message);
         AutomationProperties.SetHelpText(focusTarget, message);
+        FloatingNotesCommandScroller.UpdateLayout();
         focusTarget.Focus();
+        BringQuickAddFieldAndErrorIntoView(focusTarget, field);
+    }
+
+    private void BringQuickAddFieldAndErrorIntoView(FrameworkElement focusTarget, FrameworkElement errorField)
+    {
+        if (!FloatingNoteEntry.IsVisible || !errorField.IsVisible)
+        {
+            return;
+        }
+
+        FloatingNotesCommandScroller.UpdateLayout();
+        var targetRect = focusTarget
+            .TransformToAncestor(FloatingNoteEntry)
+            .TransformBounds(new Rect(new Point(0, 0), focusTarget.RenderSize));
+        var errorRect = errorField
+            .TransformToAncestor(FloatingNoteEntry)
+            .TransformBounds(new Rect(new Point(0, 0), errorField.RenderSize));
+        FloatingNoteEntry.BringIntoView(Rect.Union(targetRect, errorRect));
     }
 
     private static void SetNoteFieldError(TextBlock field, string message)

@@ -23,6 +23,7 @@ internal static class Program
     internal const string RuleEditorLayoutAndReachabilityFactName = "ReminderRulesEditorContentSizedListAndReachableActions";
     internal const string RuleEditorPlainLabelsFactName = "ReminderRulesEditorPlainLanguageLabelsAndAccessibility";
     internal const string RuleEditorLivePreviewFactName = "ReminderRulesEditorLivePreviewMatchesSavedSummary";
+    internal const string FloatingQuickAddErrorLayoutFactName = "FloatingQuickAddActionPinnedInErrorState";
     internal const string SecondaryDwmSupportedFactName = "SecondaryWindowsUseDwmRoundedChromeAndBorderColor";
     internal const string SecondaryDwmFallbackFactName = "SecondaryWindowsFallbackSquareChromeWhenDwmUnsupported";
     internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
@@ -69,6 +70,8 @@ internal static class Program
         "规则编辑器表单不再出现“日历频率 / 重复间隔 / 日历选择”等实现用语，改用最终日常词表；字段可访问名与可见标签一致且 LabeledBy 关系保持完整；四个规则类型名、类型化领域记录、规则 ID 与持久化 JSON 不变（#323）";
     private const string RuleEditorLivePreviewFactMeaning =
         "规则编辑器表单中的一句话预览随所有输入实时更新，在四类规则与各日历周期下均与保存后规则行摘要完全一致，并在输入未补全或越界时给出清晰提示、适配系统高对比度（#323）";
+    private const string FloatingQuickAddErrorLayoutFactMeaning =
+        "悬浮窗快速新增便签的字段区在命令区限高内滚动，“添加”动作行固定在命令区底部不随字段滚动；正文留空或日期留空出错时“添加”完整位于视口内且可点击、错误文案可见，展开回顶、收起态几何与命中高度及 Tab 顺序均保持不变（#318）";
     private const string SecondaryDwmSupportedFactMeaning =
         "提醒中心与规则编辑器改为不透明无边框窗口，支持系统窗铬时请求系统圆角、投影与 1 DIP 暖色边框并随系统对比度切换同步更新；提醒中心不抢焦点/不置顶/头部拖动/右上首次放置保留手动位置，规则编辑器居中/夹取/高度与缩放手柄可达均保持不变（#324）";
     private const string SecondaryDwmFallbackFactMeaning =
@@ -111,6 +114,7 @@ internal static class Program
             [RuleEditorLayoutAndReachabilityFactName] = false,
             [RuleEditorPlainLabelsFactName] = false,
             [RuleEditorLivePreviewFactName] = false,
+            [FloatingQuickAddErrorLayoutFactName] = false,
             [SecondaryDwmSupportedFactName] = false,
             [SecondaryDwmFallbackFactName] = false,
             [ConfirmationDialogTitleFactName] = false,
@@ -230,6 +234,11 @@ internal static class Program
                 RuleEditorLivePreviewFactMeaning,
                 () => ReminderRulesEditorCopyAndPreviewScenario.RunLivePreviewMatchesSavedSummary(
                     RuleEditorLivePreviewFactMeaning));
+            RunFact(
+                FloatingQuickAddErrorLayoutFactName,
+                FloatingQuickAddErrorLayoutFactMeaning,
+                () => FloatingQuickAddErrorLayoutScenario.Run(
+                    FloatingQuickAddErrorLayoutFactMeaning));
             RunFact(
                 SecondaryDwmSupportedFactName,
                 SecondaryDwmSupportedFactMeaning,

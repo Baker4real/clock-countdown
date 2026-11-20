@@ -6,6 +6,11 @@ namespace MinminCountdown.Core;
 // 提交事务、规则提醒状态与重复提醒 cursor 是它的 implementation（DesktopWorkspace.Transactions.cs）。
 public sealed partial class DesktopWorkspace
 {
+    private static readonly IReadOnlyList<NoteRecord> EmptyNotes =
+        Array.AsReadOnly(Array.Empty<NoteRecord>());
+    private static readonly IReadOnlyList<DueReminderOccurrence> EmptyDueOccurrences =
+        Array.AsReadOnly(Array.Empty<DueReminderOccurrence>());
+
     private readonly SettingsStore _store;
     private readonly string _settingsPath;
     private readonly ReminderScheduler _reminders = new();
@@ -17,6 +22,7 @@ public sealed partial class DesktopWorkspace
     private CachedStateProjection? _cachedState;
     private CachedFilterProjection? _cachedFilter;
     private CachedCountdownProjection? _cachedCountdowns;
+    private CachedDueOccurrences? _cachedDueOccurrences;
     private readonly HashSet<WorkspaceUndoSurface> _undoHovered = new();
     private readonly HashSet<WorkspaceUndoSurface> _undoFocused = new();
     private WorkspaceUndoOffer? _undoOffer;
@@ -136,16 +142,36 @@ public sealed partial class DesktopWorkspace
         _ => throw new ArgumentOutOfRangeException(nameof(change))
     };
 
-    public IReadOnlyList<NoteRecord> GetDueReminders(DateTimeOffset nowUtc) =>
-        FreezeNotes(_reminders.GetDue(_current, nowUtc));
+    public IReadOnlyList<NoteRecord> GetDueReminders(DateTimeOffset nowUtc)
+    {
+        var due = _reminders.GetDue(_current, nowUtc);
+        return due.Count == 0 ? EmptyNotes : FreezeNotes(due);
+    }
 
-    public IReadOnlyList<DueReminderOccurrence> GetDueReminderOccurrences(DateTimeOffset nowUtc) =>
-        Array.AsReadOnly(_reminders.GetDueOccurrences(_current, nowUtc)
+    public IReadOnlyList<DueReminderOccurrence> GetDueReminderOccurrences(DateTimeOffset nowUtc)
+    {
+        var due = _reminders.GetDueOccurrences(_current, nowUtc);
+        if (due.Count == 0)
+        {
+            return EmptyDueOccurrences;
+        }
+
+        if (_cachedDueOccurrences is { } cached &&
+            cached.StateVersion == _stateVersion &&
+            ReferenceEquals(cached.RawDue, due))
+        {
+            return cached.Frozen;
+        }
+
+        var frozen = Array.AsReadOnly(due
             .Select(occurrence => new DueReminderOccurrence(
                 FreezeReminderSource(occurrence.Source),
                 FreezeRule(occurrence.Rule),
                 occurrence.ScheduledUtc))
             .ToArray());
+        _cachedDueOccurrences = new CachedDueOccurrences(_stateVersion, due, frozen);
+        return frozen;
+    }
 
     public DesktopWorkspaceChangeResult ConfirmReminderDisplayed(
         NoteRecord note,
@@ -717,6 +743,11 @@ public sealed partial class DesktopWorkspace
             (ValidFromInclusiveUtc is null || nowUtc >= ValidFromInclusiveUtc.Value) &&
             (InvalidAtUtc is null || nowUtc < InvalidAtUtc.Value);
     }
+
+    private sealed record CachedDueOccurrences(
+        long StateVersion,
+        IReadOnlyList<DueReminderOccurrence> RawDue,
+        IReadOnlyList<DueReminderOccurrence> Frozen);
 }
 
 public abstract record DesktopWorkspaceChange;

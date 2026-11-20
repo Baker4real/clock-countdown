@@ -33,6 +33,7 @@ internal static class Program
     internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
     internal const string FloatingBottomStatusAutomationFactName = "FloatingBottomStatusPublicAutomationTree";
+    internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -92,6 +93,9 @@ internal static class Program
     private const string FloatingBottomStatusAutomationFactMeaning =
         "悬浮窗底部状态以互斥的鼓励语无 peer 元素与可朗读/可调用状态元素进出自动化树；鼓励语不在树中，金额与日历状态名称同步，" +
         "遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）";
+    private const string FloatingWorkdayCompletionFactMeaning =
+        "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
+        "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
 
     [STAThread]
     private static int Main()
@@ -123,7 +127,8 @@ internal static class Program
             [InputFocusAndErrorFactName] = false,
             [SharedScrollBarGeometryFactName] = false,
             [SharedScrollBarMotionFactName] = false,
-            [FloatingBottomStatusAutomationFactName] = false
+            [FloatingBottomStatusAutomationFactName] = false,
+            [FloatingWorkdayCompletionFactName] = false
         };
         var failures = new List<string>();
 
@@ -284,6 +289,11 @@ internal static class Program
             {
                 FloatingBottomStatusAutomationScenario.Run();
                 return (true, FloatingBottomStatusAutomationFactMeaning);
+            });
+            RunFact(FloatingWorkdayCompletionFactName, FloatingWorkdayCompletionFactMeaning, () =>
+            {
+                FloatingWorkdayCompletionScenario.Run();
+                return (true, FloatingWorkdayCompletionFactMeaning);
             });
         }
         catch (Exception exception)

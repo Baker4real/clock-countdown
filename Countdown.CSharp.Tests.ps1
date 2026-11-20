@@ -3857,7 +3857,7 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273/#274/#297/#315/#322：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    # #273/#274/#297/#315/#321/#322：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
     $windowVerificationFacts = [ordered]@{
         MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
@@ -3865,6 +3865,7 @@ exit 23
         FloatingWindowRendersAndFindsManagerButton = '悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）'
         FloatingNoteSearchExpandsAndFocusesWithoutReentry = '悬浮窗从 Ctrl+F、搜索按钮和提示条词钮展开搜索都在布局后聚焦输入框，连续触发不在入口返回前重入；共享搜索词、Esc 清空收起和提示条三态保持不变（#315）'
         ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
+        ReminderCenterLongTitleDisclosure = '长标题在真实提醒中心收起为两行省略，键盘展开/收起显示全文并同步可访问名，整行保留完整正文；相对时间原位更新不改展开状态、焦点或滚动（#321）'
         ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
         ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
         ReminderRulesEditorSinglePrimaryActionAndDirtyAccept = '规则编辑器仅窗口级「完成」使用实心主行动，表单提交为次级按钮；有未提交输入时点「完成」自动提交有效输入、拦住无效输入并保留草稿，不悄悄丢弃（#322）'

@@ -1645,25 +1645,368 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         ?? throw new InvalidOperationException($"缺少确认框主题资源：{key}");
 }
 
-// #155：进程退出（悬浮退出、托盘退出）在显示设置或编辑器脏时的确认入口。
-// reasons 为空表示没有未保存内容，直接放行；确认框以取消为安全默认，
-// 确认按钮为危险色「退出」，管理窗口关闭/隐藏不经过本入口（继续只 Hide 并保留草稿）。
-internal static class ExitConfirmation
+// #310：全应用控件禁用态的唯一实现。普通主题将禁用目标降至 0.45 不透明度，
+// 系统对比度下恢复不透明并映射到系统禁用文字与控件面画刷；只接管未写本地值的属性，恢复时仅清理自身写入项。
+internal static class DisabledStateBehavior
 {
-    public static bool Confirm(Window? owner, IReadOnlyList<string> reasons)
+    internal const double DisabledOpacity = 0.45;
+
+    public static readonly DependencyProperty IsEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsEnabled",
+            typeof(bool),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(false, OnConfigurationChanged));
+
+    public static readonly DependencyProperty OpacityTargetNamesProperty =
+        DependencyProperty.RegisterAttached(
+            "OpacityTargetNames",
+            typeof(string),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(null, OnConfigurationChanged));
+
+    public static readonly DependencyProperty ContrastBorderTargetNamesProperty =
+        DependencyProperty.RegisterAttached(
+            "ContrastBorderTargetNames",
+            typeof(string),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(null, OnConfigurationChanged));
+
+    public static readonly DependencyProperty ApplyContrastBorderBrushProperty =
+        DependencyProperty.RegisterAttached(
+            "ApplyContrastBorderBrush",
+            typeof(bool),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(true, OnConfigurationChanged));
+
+    private static readonly DependencyProperty ControllerProperty =
+        DependencyProperty.RegisterAttached(
+            "Controller",
+            typeof(DisabledStateController),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(null));
+
+    private static readonly DependencyProperty ControlControllerProperty =
+        DependencyProperty.RegisterAttached(
+            "ControlController",
+            typeof(DisabledStateController),
+            typeof(DisabledStateBehavior),
+            new PropertyMetadata(null));
+
+    public static void SetIsEnabled(DependencyObject element, bool value) =>
+        element.SetValue(IsEnabledProperty, value);
+
+    public static bool GetIsEnabled(DependencyObject element) =>
+        (bool)element.GetValue(IsEnabledProperty);
+
+    public static void SetOpacityTargetNames(DependencyObject element, string? value) =>
+        element.SetValue(OpacityTargetNamesProperty, value);
+
+    public static string? GetOpacityTargetNames(DependencyObject element) =>
+        (string?)element.GetValue(OpacityTargetNamesProperty);
+
+    public static void SetContrastBorderTargetNames(DependencyObject element, string? value) =>
+        element.SetValue(ContrastBorderTargetNamesProperty, value);
+
+    public static string? GetContrastBorderTargetNames(DependencyObject element) =>
+        (string?)element.GetValue(ContrastBorderTargetNamesProperty);
+
+    public static void SetApplyContrastBorderBrush(DependencyObject element, bool value) =>
+        element.SetValue(ApplyContrastBorderBrushProperty, value);
+
+    public static bool GetApplyContrastBorderBrush(DependencyObject element) =>
+        (bool)element.GetValue(ApplyContrastBorderBrushProperty);
+
+    internal static void OnSystemContrastChanged(DependencyObject target)
     {
-        if (reasons.Count == 0)
+        var hostController = target.ReadLocalValue(ControllerProperty) as DisabledStateController;
+        hostController?.Apply();
+        if (target.ReadLocalValue(ControlControllerProperty) is DisabledStateController controlController &&
+            !ReferenceEquals(controlController, hostController))
         {
-            return true;
+            controlController.Apply();
+        }
+    }
+
+    private static void OnConfigurationChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs args)
+    {
+        if (dependencyObject is not FrameworkElement host)
+        {
+            return;
         }
 
-        var message =
-            $"{string.Join(string.Empty, reasons)}退出后这些未保存内容将丢失。确定退出吗？";
-        return new ConfirmationDialog(
-            owner!,
-            "退出敏敏子倒计时",
-            message,
-            confirmText: "退出",
-            confirmStyleKey: "DangerButton").ShowDialog() == true;
+        if (GetIsEnabled(host))
+        {
+            if (host.ReadLocalValue(ControllerProperty) is DisabledStateController existing)
+            {
+                existing.RefreshConfiguration();
+            }
+            else
+            {
+                var controller = new DisabledStateController(host);
+                host.SetValue(ControllerProperty, controller);
+                controller.Attach();
+            }
+        }
+        else if (host.ReadLocalValue(ControllerProperty) is DisabledStateController existing)
+        {
+            existing.Detach();
+            host.ClearValue(ControllerProperty);
+        }
+    }
+
+    private sealed class DisabledStateController(FrameworkElement host)
+    {
+        private readonly FrameworkElement _host = host;
+        private readonly List<FrameworkElement> _appliedOpacityTargets = [];
+        private readonly List<(FrameworkElement Target, DependencyProperty Property, object Token)> _appliedContrastBrushes = [];
+        private Control? _control;
+
+        internal void Attach()
+        {
+            _host.Initialized += OnHostReady;
+            _host.Loaded += OnHostReady;
+            _host.Unloaded += OnHostUnloaded;
+            if (_host.IsInitialized || _host.IsLoaded)
+            {
+                ResolveAndApply();
+            }
+        }
+
+        internal void Detach()
+        {
+            _host.Initialized -= OnHostReady;
+            _host.Loaded -= OnHostReady;
+            _host.Unloaded -= OnHostUnloaded;
+            RestoreAll();
+            if (_control is not null)
+            {
+                _control.IsEnabledChanged -= OnControlEnabledChanged;
+                if (ReferenceEquals(_control.ReadLocalValue(ControlControllerProperty), this))
+                {
+                    _control.ClearValue(ControlControllerProperty);
+                }
+
+                _control = null;
+            }
+        }
+
+        internal void RefreshConfiguration()
+        {
+            if (_control is null)
+            {
+                if (_host.IsInitialized || _host.IsLoaded)
+                {
+                    ResolveAndApply();
+                }
+
+                return;
+            }
+
+            RestoreAll();
+            Apply();
+        }
+
+        private void OnHostReady(object? sender, EventArgs args) => ResolveAndApply();
+
+        private void OnHostUnloaded(object sender, RoutedEventArgs args) => RestoreAll();
+
+        private void OnControlEnabledChanged(object sender, DependencyPropertyChangedEventArgs args) => Apply();
+
+        private void ResolveAndApply()
+        {
+            var resolved = _host.TemplatedParent as Control ?? _host as Control;
+            if (resolved is null)
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(_control, resolved))
+            {
+                if (_control is not null)
+                {
+                    RestoreAll();
+                    _control.IsEnabledChanged -= OnControlEnabledChanged;
+                    if (ReferenceEquals(_control.ReadLocalValue(ControlControllerProperty), this))
+                    {
+                        _control.ClearValue(ControlControllerProperty);
+                    }
+                }
+
+                _control = resolved;
+                if (_control.ReadLocalValue(ControlControllerProperty) is DisabledStateController previous &&
+                    !ReferenceEquals(previous, this))
+                {
+                    previous.RestoreAll();
+                }
+
+                _control.SetValue(ControlControllerProperty, this);
+                _control.IsEnabledChanged += OnControlEnabledChanged;
+            }
+
+            Apply();
+        }
+
+        internal void Apply()
+        {
+            if (_control is null)
+            {
+                return;
+            }
+
+            if (_control.IsEnabled)
+            {
+                RestoreAll();
+                return;
+            }
+
+            if (ApplicationTheme.GetIsSystemContrast(_control))
+            {
+                RestoreOpacity();
+                ApplyContrastBrushes();
+            }
+            else
+            {
+                RestoreContrastBrushes();
+                ApplyDisabledOpacity();
+            }
+        }
+
+        private void ApplyDisabledOpacity()
+        {
+            foreach (var target in ResolveTargets(GetOpacityTargetNames(_host), fallbackToHost: true))
+            {
+                if (_appliedOpacityTargets.Contains(target))
+                {
+                    continue;
+                }
+
+                if (target.ReadLocalValue(UIElement.OpacityProperty) != DependencyProperty.UnsetValue)
+                {
+                    continue;
+                }
+
+                target.SetValue(UIElement.OpacityProperty, DisabledOpacity);
+                _appliedOpacityTargets.Add(target);
+            }
+        }
+
+        private void ApplyContrastBrushes()
+        {
+            if (_control is null)
+            {
+                return;
+            }
+
+            EnsureContrastBrush(_control, Control.ForegroundProperty, "SystemContrastDisabledTextBrush");
+            EnsureContrastBrush(_control, Control.BackgroundProperty, "SystemContrastControlBrush");
+            if (GetApplyContrastBorderBrush(_host))
+            {
+                EnsureContrastBrush(_control, Control.BorderBrushProperty, "SystemContrastDisabledTextBrush");
+            }
+
+            foreach (var target in ResolveTargets(GetContrastBorderTargetNames(_host), fallbackToHost: false))
+            {
+                var borderProperty = target switch
+                {
+                    Border => Border.BorderBrushProperty,
+                    Control => Control.BorderBrushProperty,
+                    _ => null
+                };
+                if (borderProperty is not null)
+                {
+                    EnsureContrastBrush(target, borderProperty, "SystemContrastDisabledTextBrush");
+                }
+            }
+        }
+
+        private void EnsureContrastBrush(
+            FrameworkElement target,
+            DependencyProperty property,
+            string resourceKey)
+        {
+            foreach (var entry in _appliedContrastBrushes)
+            {
+                if (ReferenceEquals(entry.Target, target) && ReferenceEquals(entry.Property, property))
+                {
+                    return;
+                }
+            }
+
+            if (target.ReadLocalValue(property) != DependencyProperty.UnsetValue)
+            {
+                return;
+            }
+
+            target.SetResourceReference(property, resourceKey);
+            var token = target.ReadLocalValue(property);
+            if (token != DependencyProperty.UnsetValue)
+            {
+                _appliedContrastBrushes.Add((target, property, token));
+            }
+        }
+
+        private IEnumerable<FrameworkElement> ResolveTargets(string? names, bool fallbackToHost)
+        {
+            if (string.IsNullOrWhiteSpace(names))
+            {
+                if (fallbackToHost)
+                {
+                    yield return _host;
+                }
+
+                yield break;
+            }
+
+            if (_control?.Template is not { } template)
+            {
+                yield break;
+            }
+
+            foreach (var rawName in names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (template.FindName(rawName, _control) is FrameworkElement element)
+                {
+                    yield return element;
+                }
+            }
+        }
+
+        private void RestoreAll()
+        {
+            RestoreOpacity();
+            RestoreContrastBrushes();
+        }
+
+        private void RestoreOpacity()
+        {
+            for (var index = _appliedOpacityTargets.Count - 1; index >= 0; index--)
+            {
+                var target = _appliedOpacityTargets[index];
+                if (target.ReadLocalValue(UIElement.OpacityProperty) is double opacity &&
+                    Math.Abs(opacity - DisabledOpacity) < 0.0001)
+                {
+                    target.ClearValue(UIElement.OpacityProperty);
+                }
+            }
+
+            _appliedOpacityTargets.Clear();
+        }
+
+        private void RestoreContrastBrushes()
+        {
+            for (var index = _appliedContrastBrushes.Count - 1; index >= 0; index--)
+            {
+                var (target, property, token) = _appliedContrastBrushes[index];
+                if (ReferenceEquals(target.ReadLocalValue(property), token))
+                {
+                    target.ClearValue(property);
+                }
+            }
+
+            _appliedContrastBrushes.Clear();
+        }
     }
 }

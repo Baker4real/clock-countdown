@@ -98,7 +98,8 @@
           <ControlTemplate TargetType="{x:Type Button}">
             <Grid x:Name="InteractionSurface"
                   Background="Transparent"
-                  focus:MotionBehavior.IsEnabled="True">
+                  focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -131,19 +132,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -163,6 +151,7 @@
             <Grid x:Name="InteractionSurface"
                   Background="Transparent"
                   focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True"
                   focus:MotionBehavior.HoverBackgroundResourceKey="MainActionHoverBrush"
                   focus:MotionBehavior.HoverBorderBrushResourceKey="MainActionHoverBrush"
                   focus:MotionBehavior.PressedBackgroundResourceKey="MainActionPressedBrush">
@@ -198,19 +187,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -238,6 +214,7 @@
             <Grid x:Name="InteractionSurface"
                   Background="Transparent"
                   focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True"
                   focus:MotionBehavior.HoverBackgroundResourceKey="PinkAccentStrongBrush"
                   focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
               <Border x:Name="FocusRing"
@@ -273,19 +250,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -310,75 +274,13 @@
       <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
     </Style>
 
+    <!-- #310：仅保留被衍生筛选/标签样式实际继承的属性设置，移除无使用者的旧模板。 -->
     <Style x:Key="SegmentButton" TargetType="{x:Type ToggleButton}">
       <Setter Property="Foreground" Value="{DynamicResource BodyBrush}" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderBrush" Value="Transparent" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="11,0" />
-      <Setter Property="Height" Value="34" />
       <Setter Property="Cursor" Value="Hand" />
       <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="{x:Type ToggleButton}">
-            <Grid x:Name="InteractionSurface"
-                  Background="Transparent"
-                  focus:MotionBehavior.IsEnabled="True"
-                  focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
-                  focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
-                  focus:MotionBehavior.CheckedBackgroundResourceKey="SegmentSelectedBrush"
-                  focus:MotionBehavior.CheckedBorderBrushResourceKey="PeachLineBrush">
-              <Border x:Name="FocusRing"
-                      Background="Transparent"
-                      BorderBrush="Transparent"
-                      BorderThickness="{DynamicResource FocusBorderThickness}"
-                      CornerRadius="{DynamicResource RadiusControl}" />
-              <Border x:Name="Surface"
-                      Margin="{DynamicResource FocusBorderThickness}"
-                      Background="{TemplateBinding Background}"
-                      BorderBrush="{TemplateBinding BorderBrush}"
-                      BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="{DynamicResource RadiusControl}"
-                      Padding="{TemplateBinding Padding}"
-                      RenderTransformOrigin="0.5,0.5">
-                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-              </Border>
-            </Grid>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <!-- #194：分段悬停色由 MotionBehavior 以 MotionHoverDuration 插值。 -->
-              </Trigger>
-              <Trigger Property="IsChecked" Value="True">
-                <Setter Property="Foreground" Value="{DynamicResource SegmentSelectedForegroundBrush}" />
-              </Trigger>
-              <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsKeyboardFocused" Value="True" />
-                  <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-              </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
-            </ControlTemplate.Triggers>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
     </Style>
 
     <Style x:Key="FloatingHeaderIconButton" TargetType="{x:Type Button}">
@@ -399,6 +301,7 @@
             <Grid x:Name="InteractionSurface"
                   Background="Transparent"
                   focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True"
                   focus:MotionBehavior.HoverBackgroundResourceKey="FloatingHeaderHoverBrush"
                   focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
               <Border x:Name="FocusRing"
@@ -433,19 +336,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -468,6 +358,7 @@
             <Grid x:Name="InteractionSurface"
                   Background="Transparent"
                   focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True"
                   focus:MotionBehavior.HoverBackgroundResourceKey="FloatingHeaderHoverBrush"
                   focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                   focus:MotionBehavior.CheckedBackgroundResourceKey="PinkAccentStrongBrush"
@@ -515,19 +406,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -546,6 +424,7 @@
           <ControlTemplate TargetType="{x:Type ToggleButton}">
             <Grid x:Name="InteractionSurface" Background="Transparent"
                   focus:MotionBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.IsEnabled="True"
                   focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                   focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                   focus:MotionBehavior.CheckedBackgroundResourceKey="PeachTintBrush"
@@ -581,19 +460,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -620,7 +486,10 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type TextBox}">
-            <Grid x:Name="Root">
+            <Grid x:Name="Root"
+                  focus:DisabledStateBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.OpacityTargetNames="Surface,ContentSlot"
+                  focus:DisabledStateBehavior.ContrastBorderTargetNames="Surface">
               <Border x:Name="Surface"
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
@@ -653,22 +522,6 @@
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                <Setter TargetName="ContentSlot" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="Opacity" Value="1" />
-                <Setter TargetName="ContentSlot" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -692,7 +545,8 @@
           <ControlTemplate TargetType="{x:Type CheckBox}">
             <Grid x:Name="Surface"
                   Background="Transparent"
-                  RenderTransformOrigin="0.5,0.5">
+                  RenderTransformOrigin="0.5,0.5"
+                  focus:DisabledStateBehavior.IsEnabled="True">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
@@ -743,19 +597,6 @@
                 </MultiTrigger.Conditions>
                 <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -780,7 +621,8 @@
           <ControlTemplate TargetType="{x:Type RadioButton}">
             <Grid x:Name="Surface"
                   Background="{TemplateBinding Background}"
-                  RenderTransformOrigin="0.5,0.5">
+                  RenderTransformOrigin="0.5,0.5"
+                  focus:DisabledStateBehavior.IsEnabled="True">
               <Border x:Name="FocusRing"
                       Background="Transparent"
                       BorderBrush="Transparent"
@@ -828,19 +670,6 @@
                   <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
                 </MultiTrigger.Conditions>
                 <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-              </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -891,7 +720,10 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ComboBox}">
-            <Grid x:Name="Root">
+            <Grid x:Name="Root"
+                  focus:DisabledStateBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.OpacityTargetNames="Surface,ContentSlot"
+                  focus:DisabledStateBehavior.ContrastBorderTargetNames="Surface">
               <Border x:Name="Surface"
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
@@ -992,22 +824,6 @@
                 <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                <Setter TargetName="ContentSlot" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="Surface" Property="Opacity" Value="1" />
-                <Setter TargetName="ContentSlot" Property="Opacity" Value="1" />
-              </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
@@ -1037,7 +853,9 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type DatePicker}">
-            <Grid x:Name="PART_Root">
+            <Grid x:Name="PART_Root"
+                  focus:DisabledStateBehavior.IsEnabled="True"
+                  focus:DisabledStateBehavior.ContrastBorderTargetNames="PART_TextBox,PART_Button">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="38" />
@@ -1121,21 +939,6 @@
                 <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
                 <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                 <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
-              </MultiTrigger>
-              <Trigger Property="IsEnabled" Value="False">
-                <Setter TargetName="PART_Root" Property="Opacity" Value="0.45" />
-              </Trigger>
-              <MultiTrigger>
-                <MultiTrigger.Conditions>
-                  <Condition Property="IsEnabled" Value="False" />
-                  <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                </MultiTrigger.Conditions>
-                <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                <Setter TargetName="PART_Root" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

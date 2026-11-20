@@ -8,6 +8,8 @@
     <Setter Property="Padding" Value="16,9" />
     <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
     <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+    <Setter Property="focus:DisabledStateBehavior.IsEnabled" Value="True" />
+    <Setter Property="focus:DisabledStateBehavior.ApplyContrastBorderBrush" Value="False" />
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="{x:Type MenuItem}">
@@ -35,18 +37,6 @@
         <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
       </Trigger>
-      <Trigger Property="IsEnabled" Value="False">
-        <Setter Property="Opacity" Value="0.45" />
-      </Trigger>
-      <MultiTrigger>
-        <MultiTrigger.Conditions>
-          <Condition Property="IsEnabled" Value="False" />
-          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-        </MultiTrigger.Conditions>
-        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-        <Setter Property="Opacity" Value="1" />
-      </MultiTrigger>
     </Style.Triggers>
   </Style>
 

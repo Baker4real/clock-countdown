@@ -33,6 +33,7 @@ internal static class Program
     internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
     internal const string FloatingBottomStatusAutomationFactName = "FloatingBottomStatusPublicAutomationTree";
+    internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -92,6 +93,8 @@ internal static class Program
     private const string FloatingBottomStatusAutomationFactMeaning =
         "悬浮窗底部状态以互斥的鼓励语无 peer 元素与可朗读/可调用状态元素进出自动化树；鼓励语不在树中，金额与日历状态名称同步，" +
         "遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）";
+    private const string DisabledStateUnifiedFactMeaning =
+        "全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）";
 
     [STAThread]
     private static int Main()
@@ -123,7 +126,8 @@ internal static class Program
             [InputFocusAndErrorFactName] = false,
             [SharedScrollBarGeometryFactName] = false,
             [SharedScrollBarMotionFactName] = false,
-            [FloatingBottomStatusAutomationFactName] = false
+            [FloatingBottomStatusAutomationFactName] = false,
+            [DisabledStateUnifiedFactName] = false
         };
         var failures = new List<string>();
 
@@ -285,6 +289,12 @@ internal static class Program
                 FloatingBottomStatusAutomationScenario.Run();
                 return (true, FloatingBottomStatusAutomationFactMeaning);
             });
+            RunFact(
+                DisabledStateUnifiedFactName,
+                DisabledStateUnifiedFactMeaning,
+                () => DisabledStateScenario.Run(
+                    theme,
+                    DisabledStateUnifiedFactMeaning));
         }
         catch (Exception exception)
         {

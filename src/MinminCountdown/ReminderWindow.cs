@@ -39,7 +39,10 @@ internal sealed class ReminderCenterWindow : Window
     private int _nativeWindowDragCompletionCount;
     private int _taskbarFlashRequestCount;
 
-    public ReminderCenterWindow(Window? placementSource = null)
+    public ReminderCenterWindow(
+        Window? placementSource = null,
+        DiagnosticLogger? logger = null,
+        IDwmWindowChromeHost? dwmChromeHost = null)
     {
         _placementSource = placementSource;
         _viewModel = new ReminderCenterViewModel();
@@ -50,14 +53,14 @@ internal sealed class ReminderCenterWindow : Window
         Height = 520;
         MinWidth = 400;
         MinHeight = 360;
-        WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResizeWithGrip;
         // #215：出现时不激活、不抢焦点、不置顶；显示在任务栏且标题带条目数。
         ShowInTaskbar = true;
         ShowActivated = false;
         Topmost = false;
-        Background = Brushes.Transparent;
-        AllowsTransparency = true;
+        // #324：改为不透明无边框窗口，向 DWM 请求系统圆角、投影与 1 DIP 暖边。
+        SetResourceReference(BackgroundProperty, "ReminderPageBrush");
+        DwmWindowChrome.ConfigureOpaqueBorderlessChrome(this);
         DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒中心");
 
@@ -160,13 +163,18 @@ internal sealed class ReminderCenterWindow : Window
 
         var surface = new Border
         {
-            Child = layout,
-            BorderThickness = new Thickness(1)
+            Child = layout
         };
-        // #250：次级窗口外壳与条目卡同用 §13.3 RadiusCard。
-        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BackgroundProperty, "ReminderPageBrush");
-        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        // #324：由 DWM 承担系统圆角/投影与 1 DIP 暖色边框；不支持时自动回退为直角并由内容边界承担 1 DIP 暖边。
+        DwmWindowChrome.AttachSecondaryWindow(
+            this,
+            surface,
+            "PeachLineColor",
+            "PeachLineBrush",
+            DwmWindowChrome.ReminderCenterEvents,
+            logger,
+            dwmChromeHost);
         Content = surface;
 
         ContentRendered += (_, _) =>
@@ -206,6 +214,16 @@ internal sealed class ReminderCenterWindow : Window
             foreach (var entry in _entries.Values)
             {
                 entry.RefreshTitleOverflow();
+            }
+        };
+        Closed += (_, _) =>
+        {
+            foreach (var entry in _entries.Values)
+            {
+                if (entry.SnoozeMenu.IsOpen)
+                {
+                    entry.SnoozeMenu.IsOpen = false;
+                }
             }
         };
     }
@@ -523,7 +541,7 @@ internal sealed class ReminderCenterWindow : Window
             {
                 Content = CreateIconTextContent(CreateCheckCircleIcon("MainActionTextBrush"), "知道了"),
                 MinWidth = 82,
-                Margin = new Thickness(0, 0, 7, 0),
+                Margin = new Thickness(0, 0, 8, 0),
                 Padding = new Thickness(8, 0, 8, 0),
                 Style = (Style)FindResource("PrimaryButton")
             },
@@ -538,156 +556,23 @@ internal sealed class ReminderCenterWindow : Window
             Button.CommandProperty,
             nameof(ReminderCenterEntryViewModel.AcknowledgeCommand),
             viewModel);
-        var snoozeChoice = UiAccessibility.Name(
-            new ComboBox
-            {
-                MinWidth = 132,
-                Padding = new Thickness(28, 0, 0, 0),
-                SelectedValuePath = "Tag"
-            },
-            $"稍后提醒时间：{item.Source.DisplayText}");
-        snoozeChoice.SetResourceReference(Control.BackgroundProperty, "PanelBrush");
-        foreach (var choice in new[]
-                 {
-                     (Text: "10 分钟后", Option: ReminderSnoozeOption.TenMinutes),
-                     (Text: "30 分钟后", Option: ReminderSnoozeOption.ThirtyMinutes),
-                     (Text: "1 小时后", Option: ReminderSnoozeOption.SixtyMinutes),
-                     (Text: "明天 09:00", Option: ReminderSnoozeOption.TomorrowAtNine),
-                     (Text: "自定义", Option: ReminderSnoozeOption.Custom)
-                 })
-        {
-            snoozeChoice.Items.Add(new ComboBoxItem
-            {
-                Content = choice.Text,
-                Tag = choice.Option
-            });
-        }
-
-        BindEntry(
-            snoozeChoice,
-            Selector.SelectedValueProperty,
-            nameof(ReminderCenterEntryViewModel.SelectedSnoozeOption),
-            viewModel,
-            mode: BindingMode.TwoWay);
-        var snoozeFrame = new Grid
-        {
-            Margin = new Thickness(0, 0, 7, 0)
-        };
-        AutomationProperties.SetAutomationId(snoozeFrame, "ReminderEntrySnoozeChoiceFrame");
-        var snoozeClock = CreateClockIcon("InkBrush", 15);
-        snoozeClock.IsHitTestVisible = false;
-        snoozeClock.HorizontalAlignment = HorizontalAlignment.Left;
-        snoozeClock.VerticalAlignment = VerticalAlignment.Center;
-        snoozeClock.Margin = new Thickness(10, 0, 0, 0);
-        snoozeFrame.Children.Add(snoozeChoice);
-        snoozeFrame.Children.Add(snoozeClock);
-        var customDate = UiAccessibility.Name(
-            new WpfUiDatePicker
-            {
-                Width = 216,
-                Margin = new Thickness(0, 8, 8, 0)
-            },
-            $"自定义稍后日期：{item.Source.DisplayText}");
-        BindEntry(
-            customDate,
-            DatePicker.SelectedDateProperty,
-            nameof(ReminderCenterEntryViewModel.CustomDate),
-            viewModel,
-            mode: BindingMode.TwoWay);
-        BindEntry(
-            customDate,
-            DatePicker.VisibilityProperty,
-            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
-            viewModel,
-            _visibilityConverter);
-        var customHour = UiAccessibility.Name(
-            new ComboBox
-            {
-                Width = 68,
-                Margin = new Thickness(0, 8, 6, 0),
-                ItemsSource = Enumerable.Range(0, 24).Select(static value => value.ToString("00")).ToArray()
-            },
-            $"自定义稍后小时：{item.Source.DisplayText}");
-        BindEntry(
-            customHour,
-            Selector.SelectedIndexProperty,
-            nameof(ReminderCenterEntryViewModel.CustomHourIndex),
-            viewModel,
-            mode: BindingMode.TwoWay);
-        BindEntry(
-            customHour,
-            ComboBox.VisibilityProperty,
-            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
-            viewModel,
-            _visibilityConverter);
-        var customMinute = UiAccessibility.Name(
-            new ComboBox
-            {
-                Width = 68,
-                Margin = new Thickness(0, 8, 0, 0),
-                ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray()
-            },
-            $"自定义稍后分钟：{item.Source.DisplayText}");
-        BindEntry(
-            customMinute,
-            Selector.SelectedIndexProperty,
-            nameof(ReminderCenterEntryViewModel.CustomMinuteIndex),
-            viewModel,
-            mode: BindingMode.TwoWay);
-        BindEntry(
-            customMinute,
-            ComboBox.VisibilityProperty,
-            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
-            viewModel,
-            _visibilityConverter);
-        var customFields = new WrapPanel();
-        BindEntry(
-            customFields,
-            WrapPanel.VisibilityProperty,
-            nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible),
-            viewModel,
-            _visibilityConverter);
-        customFields.Children.Add(customDate);
-        customFields.Children.Add(customHour);
-        customFields.Children.Add(customMinute);
-        var customError = new TextBlock
-        {
-            Margin = new Thickness(0, 6, 0, 0),
-            TextWrapping = TextWrapping.Wrap,
-            FontWeight = FontWeights.SemiBold
-        };
-        customError.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
-        AutomationProperties.SetLiveSetting(customError, AutomationLiveSetting.Assertive);
-        AutomationProperties.SetAutomationId(customError, "ReminderEntryCustomError");
-        UiAccessibility.BindAnnouncedText(
-            customError,
-            viewModel,
-            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
-            () => viewModel.CustomErrorMessage);
-        BindEntry(
-            customError,
-            TextBlock.VisibilityProperty,
-            nameof(ReminderCenterEntryViewModel.IsCustomErrorVisible),
-            viewModel,
-            _visibilityConverter);
+        // #320：时长选择与「稍后提醒」合并为单一菜单按钮，套用共享暖粉菜单样式，
+        // 预设档位一次选择即稍后；自定义输入在首次选择「自定义」时才懒创建。
         var snooze = UiAccessibility.Name(
             new Button
             {
-                Content = CreateIconTextContent(CreateBellIcon("InkBrush"), "稍后提醒"),
-                MinWidth = 96,
-                Padding = new Thickness(8, 0, 8, 0)
+                Content = CreateMenuButtonContent(CreateBellIcon("InkBrush"), "稍后提醒"),
+                MinWidth = 108,
+                Padding = new Thickness(10, 0, 10, 0)
             },
             $"稍后提醒：{item.Source.DisplayText}");
+        AutomationProperties.SetAutomationId(snooze, "ReminderEntrySnoozeButton");
         BindEntry(
             snooze,
             Button.IsEnabledProperty,
             nameof(ReminderCenterEntryViewModel.IsSnoozeEnabled),
             viewModel);
-        BindEntry(
-            snooze,
-            Button.CommandProperty,
-            nameof(ReminderCenterEntryViewModel.SnoozeCommand),
-            viewModel);
+        var customSnoozeSlot = new Border();
         var complete = UiAccessibility.Name(
             new Button
             {
@@ -720,7 +605,6 @@ internal sealed class ReminderCenterWindow : Window
         };
         AutomationProperties.SetAutomationId(primaryActions, "ReminderEntryActionsPrimaryRow");
         primaryActions.Children.Add(acknowledge);
-        primaryActions.Children.Add(snoozeFrame);
         primaryActions.Children.Add(snooze);
         var secondaryActions = new WrapPanel
         {
@@ -745,8 +629,7 @@ internal sealed class ReminderCenterWindow : Window
         content.Children.Add(divider);
         content.Children.Add(primaryActions);
         content.Children.Add(secondaryActions);
-        content.Children.Add(customFields);
-        content.Children.Add(customError);
+        content.Children.Add(customSnoozeSlot);
         var cardGrid = new Grid();
         cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         cardGrid.ColumnDefinitions.Add(new ColumnDefinition());
@@ -768,22 +651,43 @@ internal sealed class ReminderCenterWindow : Window
             row,
             $"{(item.Source.Kind == ReminderSourceKind.Countdown ? "倒计时" : "便签")}提醒：{item.Source.DisplayText}；计划 {DateDisplay.FullMoment(item.Key.ScheduledUtc)} 北京时间");
 
-        var entry = new ReminderCenterEntry(
+        ReminderCenterEntry? entry = null;
+        var snoozeMenu = CreateSnoozeContextMenu(item, viewModel, snooze, () => entry);
+        snooze.ContextMenu = snoozeMenu;
+
+        PropertyChangedEventHandler customSnoozePropertyChanged = (_, args) =>
+        {
+            if (entry is null)
+            {
+                return;
+            }
+
+            if (args.PropertyName == nameof(ReminderCenterEntryViewModel.IsCustomSnoozeVisible))
+            {
+                ApplyCustomSnoozePresentation(entry);
+            }
+            else if (args.PropertyName == nameof(ReminderCenterEntryViewModel.IsSnoozeEnabled) &&
+                     !viewModel.IsSnoozeEnabled &&
+                     entry.SnoozeMenu.IsOpen)
+            {
+                entry.SnoozeMenu.IsOpen = false;
+            }
+        };
+        viewModel.PropertyChanged += customSnoozePropertyChanged;
+
+        entry = new ReminderCenterEntry(
             item,
             viewModel,
             row,
             acknowledge,
             snooze,
+            snoozeMenu,
             complete,
-            snoozeChoice,
-            customFields,
-            customDate,
-            customHour,
-            customMinute,
-            customError,
+            customSnoozeSlot,
             openSource,
             error,
             titlePropertyChanged,
+            customSnoozePropertyChanged,
             () => RefreshTitleOverflow(force: true));
         BindEntry(
             openSource,
@@ -828,11 +732,16 @@ internal sealed class ReminderCenterWindow : Window
             return;
         }
 
+        if (entry.SnoozeMenu.IsOpen)
+        {
+            entry.SnoozeMenu.IsOpen = false;
+        }
         entry.ViewModel.AcknowledgeRequested -= OnViewModelAcknowledgeRequested;
         entry.ViewModel.SnoozeRequested -= OnViewModelSnoozeRequested;
         entry.ViewModel.CompleteRequested -= OnViewModelCompleteRequested;
         entry.ViewModel.OpenSourceRequested -= OnViewModelOpenSourceRequested;
         entry.ViewModel.PropertyChanged -= entry.TitlePropertyChanged;
+        entry.ViewModel.PropertyChanged -= entry.CustomSnoozePropertyChanged;
         _viewModel.Remove(key);
         _itemsHost.Children.Remove(entry.Row);
         UpdateTitle();
@@ -945,16 +854,22 @@ internal sealed class ReminderCenterWindow : Window
             return false;
         }
 
-        entry.ViewModel.SelectedSnoozeOption = option;
-        if (option == ReminderSnoozeOption.Custom && customBeijing is { } custom)
+        if (option == ReminderSnoozeOption.Custom)
         {
-            var beijing = ChinaStandardTime.ToBeijingTime(custom);
-            entry.ViewModel.CustomDate = beijing.Date;
-            entry.ViewModel.CustomHourIndex = beijing.Hour;
-            entry.ViewModel.CustomMinuteIndex = beijing.Minute;
+            entry.ViewModel.BeginCustomSnooze();
+            if (customBeijing is { } custom)
+            {
+                var beijing = ChinaStandardTime.ToBeijingTime(custom);
+                entry.ViewModel.CustomDate = beijing.Date;
+                entry.ViewModel.CustomHourIndex = beijing.Hour;
+                entry.ViewModel.CustomMinuteIndex = beijing.Minute;
+            }
+
+            entry.ViewModel.ConfirmCustomSnoozeCommand.Execute(null);
+            return true;
         }
 
-        entry.ViewModel.SnoozeCommand.Execute(null);
+        entry.ViewModel.SelectSnoozePresetCommand.Execute(option);
         return true;
     }
 
@@ -1142,6 +1057,337 @@ internal sealed class ReminderCenterWindow : Window
                 Converter = converter
             });
 
+    private ContextMenu CreateSnoozeContextMenu(
+        ReminderCenterItem item,
+        ReminderCenterEntryViewModel viewModel,
+        Button snooze,
+        Func<ReminderCenterEntry?> getEntry)
+    {
+        var menu = new ContextMenu
+        {
+            PlacementTarget = snooze,
+            Placement = PlacementMode.Bottom,
+            VerticalOffset = 4
+        };
+        SharedMenuStyles.Apply(menu);
+        AutomationProperties.SetAutomationId(menu, "ReminderEntrySnoozeMenu");
+        AutomationProperties.SetName(menu, $"稍后提醒选项：{item.Source.DisplayText}");
+
+        var pointerOpeningMenu = false;
+        var suppressNextClickReopen = false;
+        var escapeClosePending = false;
+        var focusRestoredForCurrentOpen = false;
+
+        void OpenMenu()
+        {
+            if (!IsActive)
+            {
+                Activate();
+            }
+
+            menu.PlacementTarget = snooze;
+            menu.Placement = PlacementMode.Bottom;
+            menu.VerticalOffset = 4;
+            menu.IsOpen = true;
+        }
+
+        void RestoreFocusToSnoozeAfterEscape()
+        {
+            if (focusRestoredForCurrentOpen)
+            {
+                return;
+            }
+
+            focusRestoredForCurrentOpen = true;
+            escapeClosePending = false;
+            if (snooze.IsEnabled && snooze.IsVisible && IsVisible)
+            {
+                Keyboard.Focus(snooze);
+                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                {
+                    if (!menu.IsOpen &&
+                        IsActive &&
+                        snooze.IsEnabled &&
+                        snooze.IsVisible &&
+                        Keyboard.FocusedElement is null)
+                    {
+                        Keyboard.Focus(snooze);
+                    }
+                }));
+            }
+        }
+
+        foreach (var (text, option, automationId) in new[]
+                 {
+                     ("10 分钟后", ReminderSnoozeOption.TenMinutes, "ReminderEntrySnoozeTenMinutes"),
+                     ("30 分钟后", ReminderSnoozeOption.ThirtyMinutes, "ReminderEntrySnoozeThirtyMinutes"),
+                     ("1 小时后", ReminderSnoozeOption.SixtyMinutes, "ReminderEntrySnoozeSixtyMinutes"),
+                     ("明天 09:00", ReminderSnoozeOption.TomorrowAtNine, "ReminderEntrySnoozeTomorrowAtNine"),
+                     ("自定义", ReminderSnoozeOption.Custom, "ReminderEntrySnoozeCustom")
+                 })
+        {
+            var menuItem = new MenuItem
+            {
+                Header = text,
+                Tag = option
+            };
+            AutomationProperties.SetAutomationId(menuItem, automationId);
+            if (option == ReminderSnoozeOption.Custom)
+            {
+                menuItem.Click += (_, _) =>
+                {
+                    if (menu.IsOpen)
+                    {
+                        menu.IsOpen = false;
+                    }
+
+                    viewModel.BeginCustomSnooze();
+                    if (IsActive && getEntry()?.CustomDate is { IsVisible: true, IsEnabled: true } customDate)
+                    {
+                        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                        {
+                            if (IsActive && viewModel.IsCustomSnoozeVisible && customDate.IsVisible && customDate.IsEnabled)
+                            {
+                                Keyboard.Focus(customDate);
+                            }
+                        }));
+                    }
+                };
+            }
+            else
+            {
+                var presetOption = option;
+                menuItem.Click += (_, _) =>
+                {
+                    if (menu.IsOpen)
+                    {
+                        menu.IsOpen = false;
+                    }
+
+                    viewModel.SelectSnoozePreset(presetOption);
+                };
+            }
+
+            menu.Items.Add(menuItem);
+        }
+
+        snooze.PreviewMouseLeftButtonDown += (_, _) =>
+        {
+            pointerOpeningMenu = true;
+            suppressNextClickReopen = menu.IsOpen;
+        };
+        snooze.PreviewKeyDown += (_, _) =>
+        {
+            pointerOpeningMenu = false;
+            suppressNextClickReopen = false;
+        };
+        snooze.LostKeyboardFocus += (_, _) => pointerOpeningMenu = false;
+        snooze.KeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Down && viewModel.IsSnoozeEnabled && !menu.IsOpen)
+            {
+                pointerOpeningMenu = false;
+                suppressNextClickReopen = false;
+                args.Handled = true;
+                OpenMenu();
+            }
+        };
+        snooze.Click += (_, _) =>
+        {
+            if (suppressNextClickReopen)
+            {
+                suppressNextClickReopen = false;
+                return;
+            }
+
+            if (!viewModel.IsSnoozeEnabled)
+            {
+                return;
+            }
+
+            if (menu.IsOpen)
+            {
+                menu.IsOpen = false;
+                return;
+            }
+
+            OpenMenu();
+        };
+        menu.Opened += (_, _) =>
+        {
+            escapeClosePending = false;
+            focusRestoredForCurrentOpen = false;
+            var openedByPointer = pointerOpeningMenu;
+            pointerOpeningMenu = false;
+            if (!openedByPointer && menu.Items.Count > 0 && menu.Items[0] is MenuItem firstItem)
+            {
+                Keyboard.Focus(firstItem);
+            }
+            else
+            {
+                Keyboard.Focus(menu);
+            }
+        };
+        menu.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Escape)
+            {
+                escapeClosePending = true;
+            }
+        };
+        menu.AddHandler(
+            Keyboard.KeyDownEvent,
+            new KeyEventHandler((_, args) =>
+            {
+                if (args.Key != Key.Escape)
+                {
+                    return;
+                }
+
+                if (menu.IsOpen)
+                {
+                    escapeClosePending = true;
+                    menu.IsOpen = false;
+                    args.Handled = true;
+                }
+                else
+                {
+                    RestoreFocusToSnoozeAfterEscape();
+                }
+            }),
+            handledEventsToo: true);
+        menu.Closed += (_, _) =>
+        {
+            if (escapeClosePending)
+            {
+                RestoreFocusToSnoozeAfterEscape();
+            }
+        };
+        return menu;
+    }
+
+    private void ApplyCustomSnoozePresentation(ReminderCenterEntry entry)
+    {
+        if (entry.ViewModel.IsCustomSnoozeVisible)
+        {
+            EnsureCustomSnoozeControls(entry);
+            entry.CustomPanel!.Visibility = Visibility.Visible;
+        }
+        else if (entry.CustomPanel is not null)
+        {
+            entry.CustomPanel.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void EnsureCustomSnoozeControls(ReminderCenterEntry entry)
+    {
+        if (entry.CustomPanel is not null)
+        {
+            return;
+        }
+
+        var item = entry.Item;
+        var viewModel = entry.ViewModel;
+        var customDate = UiAccessibility.Name(
+            new WpfUiDatePicker
+            {
+                Width = 216,
+                HorizontalAlignment = HorizontalAlignment.Left
+            },
+            $"自定义稍后日期：{item.Source.DisplayText}");
+        BindEntry(
+            customDate,
+            DatePicker.SelectedDateProperty,
+            nameof(ReminderCenterEntryViewModel.CustomDate),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        var customHour = UiAccessibility.Name(
+            new ComboBox
+            {
+                Width = 68,
+                Margin = new Thickness(0, 0, 6, 0),
+                ItemsSource = Enumerable.Range(0, 24).Select(static value => value.ToString("00")).ToArray()
+            },
+            $"自定义稍后小时：{item.Source.DisplayText}");
+        BindEntry(
+            customHour,
+            Selector.SelectedIndexProperty,
+            nameof(ReminderCenterEntryViewModel.CustomHourIndex),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        var customMinute = UiAccessibility.Name(
+            new ComboBox
+            {
+                Width = 68,
+                Margin = new Thickness(0, 0, 8, 0),
+                ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray()
+            },
+            $"自定义稍后分钟：{item.Source.DisplayText}");
+        BindEntry(
+            customMinute,
+            Selector.SelectedIndexProperty,
+            nameof(ReminderCenterEntryViewModel.CustomMinuteIndex),
+            viewModel,
+            mode: BindingMode.TwoWay);
+        var customConfirm = UiAccessibility.Name(
+            new Button
+            {
+                Content = "确认稍后",
+                MinWidth = 88,
+                Padding = new Thickness(10, 0, 10, 0)
+            },
+            $"确认自定义稍后：{item.Source.DisplayText}");
+        AutomationProperties.SetAutomationId(customConfirm, "ReminderEntryCustomSnoozeConfirm");
+        BindEntry(
+            customConfirm,
+            Button.IsEnabledProperty,
+            nameof(ReminderCenterEntryViewModel.IsSnoozeEnabled),
+            viewModel);
+        BindEntry(
+            customConfirm,
+            Button.CommandProperty,
+            nameof(ReminderCenterEntryViewModel.ConfirmCustomSnoozeCommand),
+            viewModel);
+        var customTimeRow = new WrapPanel
+        {
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(customTimeRow, "ReminderEntryCustomSnoozeTimeRow");
+        customTimeRow.Children.Add(customHour);
+        customTimeRow.Children.Add(customMinute);
+        customTimeRow.Children.Add(customConfirm);
+        var customError = new TextBlock
+        {
+            Margin = new Thickness(0, 6, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            FontWeight = FontWeights.SemiBold
+        };
+        customError.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
+        AutomationProperties.SetLiveSetting(customError, AutomationLiveSetting.Assertive);
+        AutomationProperties.SetAutomationId(customError, "ReminderEntryCustomError");
+        UiAccessibility.BindAnnouncedText(
+            customError,
+            viewModel,
+            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            () => viewModel.CustomErrorMessage);
+        BindEntry(
+            customError,
+            TextBlock.VisibilityProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomErrorVisible),
+            viewModel,
+            _visibilityConverter);
+        var customPanel = new StackPanel
+        {
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        AutomationProperties.SetAutomationId(customPanel, "ReminderEntryCustomSnoozePanel");
+        customPanel.Children.Add(customDate);
+        customPanel.Children.Add(customTimeRow);
+        customPanel.Children.Add(customError);
+        entry.AttachCustomControls(customPanel, customDate, customHour, customMinute, customConfirm, customError);
+        entry.CustomSnoozeSlot.Child = customPanel;
+    }
+
     private static StackPanel CreateIconTextContent(
         FrameworkElement icon,
         string text,
@@ -1157,6 +1403,33 @@ internal sealed class ReminderCenterWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         });
         return panel;
+    }
+
+    private static StackPanel CreateMenuButtonContent(FrameworkElement icon, string text)
+    {
+        var panel = CreateIconTextContent(icon, text);
+        panel.Children.Add(CreateDropdownChevronIcon("InkBrush"));
+        return panel;
+    }
+
+    private static FrameworkElement CreateDropdownChevronIcon(string strokeKey)
+    {
+        var path = new Path
+        {
+            Width = 9,
+            Height = 6,
+            Stretch = Stretch.Uniform,
+            Margin = new Thickness(6, 1, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Data = Geometry.Parse("M 1,1.5 L 4.5,5 L 8,1.5"),
+            StrokeThickness = 1.6,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round
+        };
+        path.SetResourceReference(Shape.StrokeProperty, strokeKey);
+        return path;
     }
 
     private static FrameworkElement CreateCheckCircleIcon(string strokeKey)
@@ -1324,16 +1597,13 @@ internal sealed class ReminderCenterWindow : Window
         Border row,
         Button acknowledge,
         Button snooze,
+        ContextMenu snoozeMenu,
         Button complete,
-        ComboBox snoozeChoice,
-        WrapPanel customFields,
-        DatePicker customDate,
-        ComboBox customHour,
-        ComboBox customMinute,
-        TextBlock customError,
+        Border customSnoozeSlot,
         Button openSource,
         TextBlock error,
         PropertyChangedEventHandler titlePropertyChanged,
+        PropertyChangedEventHandler customSnoozePropertyChanged,
         Action refreshTitleOverflow)
     {
         public ReminderCenterItem Item { get; } = item;
@@ -1346,19 +1616,23 @@ internal sealed class ReminderCenterWindow : Window
 
         public Button Snooze { get; } = snooze;
 
+        public ContextMenu SnoozeMenu { get; } = snoozeMenu;
+
         public Button Complete { get; } = complete;
 
-        public ComboBox SnoozeChoice { get; } = snoozeChoice;
+        public Border CustomSnoozeSlot { get; } = customSnoozeSlot;
 
-        public WrapPanel CustomFields { get; } = customFields;
+        public StackPanel? CustomPanel { get; private set; }
 
-        public DatePicker CustomDate { get; } = customDate;
+        public DatePicker? CustomDate { get; private set; }
 
-        public ComboBox CustomHour { get; } = customHour;
+        public ComboBox? CustomHour { get; private set; }
 
-        public ComboBox CustomMinute { get; } = customMinute;
+        public ComboBox? CustomMinute { get; private set; }
 
-        public TextBlock CustomError { get; } = customError;
+        public Button? CustomConfirm { get; private set; }
+
+        public TextBlock? CustomError { get; private set; }
 
         public Button OpenSource { get; } = openSource;
 
@@ -1366,11 +1640,29 @@ internal sealed class ReminderCenterWindow : Window
 
         public PropertyChangedEventHandler TitlePropertyChanged { get; } = titlePropertyChanged;
 
+        public PropertyChangedEventHandler CustomSnoozePropertyChanged { get; } = customSnoozePropertyChanged;
+
         public Action RefreshTitleOverflow { get; } = refreshTitleOverflow;
 
         public bool RenderProbeScheduled { get; set; }
 
         public bool RenderedRaised { get; set; }
+
+        public void AttachCustomControls(
+            StackPanel customPanel,
+            DatePicker customDate,
+            ComboBox customHour,
+            ComboBox customMinute,
+            Button customConfirm,
+            TextBlock customError)
+        {
+            CustomPanel = customPanel;
+            CustomDate = customDate;
+            CustomHour = customHour;
+            CustomMinute = customMinute;
+            CustomConfirm = customConfirm;
+            CustomError = customError;
+        }
     }
 
     private const uint FLASHW_TRAY = 0x2;

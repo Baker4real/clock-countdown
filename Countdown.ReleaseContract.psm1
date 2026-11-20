@@ -248,6 +248,8 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
     'src\MinminCountdown.WindowVerification\FloatingQuickAddErrorLayoutScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterLongTitleScenario.cs',
+    'src\MinminCountdown.WindowVerification\ReminderCenterSnoozeMenuScenario.cs',
+    'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
     'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',

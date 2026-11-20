@@ -207,13 +207,14 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ### 提醒中心两行按钮布局
 
-提醒中心每条目的操作区固定为两行：
+提醒中心每条目的操作区固定为两行（#320：默认宽度 `460 DIP` 与最小宽度 `400 DIP` 下均恰为两行，互不重叠、不被裁切）：
 
-- 第一行：`知道了`（主行动，实心 `MainActionBrush` 底、白字、左侧白圈对勾图标）、`稍后提醒` 时间选择（次要按钮，`PanelBrush` 底、`PeachLineBrush` 边、左侧时钟图标、右侧下拉箭头，显示当前选定档位文本，例如 `10 分钟后`）、`稍后提醒`（次要按钮，左侧铃铛图标）。
+- 第一行：`知道了`（主行动，实心 `MainActionBrush` 底、白字、左侧白圈对勾图标）、`稍后提醒`（次要菜单按钮，左侧铃铛图标、右侧矢量下拉箭头）。
 - 第二行：`完成便签`（仅便签来源，左侧圆圈对勾图标）、`打开来源`（左侧外链图标）。
 - 第二行整行居中且不拉伸（#150）：按钮行在条目卡内容区内水平居中，行宽等于子项期望宽之和，不吸满整行；只有 `打开来源` 的倒计时来源同样居中、不拉伸填满整行。
 - 两行只包含该来源实际存在的动作；所有按钮图标化：图标在左、文字在右，图标与文字间距约 `8 DIP`。
-- 稍后提醒档位选项保持 10、30、60 分钟、明天 09:00 与自定义；仅自定义模式展开日期、小时和分钟控件。
+- `稍后提醒` 菜单按钮挂载原生 `ContextMenu`，经 `SharedMenuStyles.Apply`（#309）套用共享暖粉菜单样式（`RadiusOverlay` 表面与 `RadiusControl` 项高亮，支持打开期间跟随系统对比度切换），自动化角色为 `Menu` 与 `MenuItem`；菜单固定五项：`10 分钟后`、`30 分钟后`、`1 小时后`、`明天 09:00` 与 `自定义`。方向键、Enter、Esc 可用，按 Esc 关闭菜单并把焦点归还 `稍后提醒` 菜单按钮。
+- 选前四项预设档位只需一次选择即立即按该档位稍后；条目初始不预先创建自定义时间输入控件，首次选择 `自定义` 时才懒创建并展开日期、小时、分钟与次级「确认稍后」按钮，再次选择复用同一批控件；无效自定义时间的错误紧邻自定义输入下方显示。送达确认前与失败重试期间禁用处置（含 `稍后提醒` 菜单按钮与自定义确认），`打开来源` 始终可用。由独立窗口验证项目产出 `ReminderCenterTwoRowLayoutAndLazyCustomSnooze` 与 `ReminderCenterSnoozeMenuBehaviorAndDomainSemantics` 验证事实（#320）。
 - 头部右上为 `全部知道了` 与 `收起` 两个次要按钮（`收起` 在最右端）：`全部知道了` 左侧铃铛图标，语义是对当前全部条目批量执行 `知道了`（见 §5）；`收起` 左侧横线图标，点击把窗口最小化到任务栏，有条目时仍拒绝直接关闭（#215）。
 - 提醒中心出现时不激活、不抢焦点、不持续置顶；窗口显示在任务栏，窗口标题随条目数显示为 `提醒中心（N 条）`；窗口可见但未激活时新提醒到达会闪烁任务栏按钮（#215）。
 - 条目正文（便签正文或倒计时名称）作为 H2 标题，消费 `SecondaryWindowSectionFontSize`（20）与 SemiBold、`LineHeight = 28`（`BlockLineHeight`）；来源类别降为 `SecondaryWindowMinorFontSize`（13）与 Regular，整行可访问名继续包含来源类别与完整正文（#223、#321）。
@@ -259,7 +260,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 
 ### 提醒中心的条目与处置
 
-提醒中心是单一滚动列表，不再嵌套外层卡片。每项稳定显示“便签”或“倒计时”来源、来源正文/名称和原计划北京时间（#253：完整日期时间之后换行，「（北京时间）」整体位于下一行、不拆字、不改文案；列表出现纵向滚动条时也不被卡片右缘裁掉，`ReminderCenterEntryVisualIdentity` 以两位月日的最宽日期与完整时区标记的行宽守住）；两类都提供“知道了 / 稍后提醒 / 打开来源”，只有便签提供“完成便签”，**任何条目都不提供删除**。稍后提醒使用选项菜单承载 10、30、60 分钟、明天 09:00 和自定义模式；仅自定义模式展开日期、小时和分钟控件，无效未来时间的错误紧邻这些来源控件。真实渲染和送达写盘完成前禁用处置，失败信息在条目内可见，但**打开来源始终可用**；Tab 导航必须覆盖该来源实际存在的动作和自定义控件，不能因失败态或长正文跳出当前条目。正文与来源标签均使用主文字 token（`InkBrush`），正文为 H2 半粗标题，来源为 caption 常规标签（#223）。提醒中心与规则编辑器可从窗口头部拖动；提醒中心首次显示贴齐工作区右上，之后保留手动位置。
+提醒中心是单一滚动列表，不再嵌套外层卡片。每项稳定显示“便签”或“倒计时”来源、来源正文/名称和原计划北京时间（#253：完整日期时间之后换行，「（北京时间）」整体位于下一行、不拆字、不改文案；列表出现纵向滚动条时也不被卡片右缘裁掉，`ReminderCenterEntryVisualIdentity` 以两位月日的最宽日期与完整时区标记的行宽守住）；两类都提供“知道了 / 稍后提醒 / 打开来源”，只有便签提供“完成便签”，**任何条目都不提供删除**。稍后提醒由第一行的“稍后提醒”菜单按钮承载共享暖粉原生菜单（10、30、60 分钟、明天 09:00 与自定义），选预设档位一次选择即完成稍后；仅首次选择“自定义”时懒创建并展开日期、小时、分钟控件与确认按钮，无效未来时间的错误紧邻这些输入控件下方。真实渲染和送达写盘完成前禁用处置，失败信息在条目内可见，但**打开来源始终可用**；Tab 导航必须覆盖该来源实际存在的动作和自定义控件，不能因失败态或长正文跳出当前条目。正文与来源标签均使用主文字 token（`InkBrush`），正文为 H2 半粗标题，来源为 caption 常规标签（#223）。提醒中心与规则编辑器可从窗口头部拖动；提醒中心首次显示贴齐工作区右上，之后保留手动位置。
 
 “全部知道了”以单次事务批量写入处置 key，领域语义与逐条“知道了”一致：任一条失败则整体保留原条目，按既有退避节奏继续用单次事务重试原批次中仍活动的发生项；后续新到达的提醒不进入原失败批次，已失效的发生项不复活，不新增持久化状态字段（#223）。
 
@@ -391,7 +392,8 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ### 视觉铬与窗铬合同（#154）
 
-- **管理窗口原生 DWM 圆角与系统阴影**：管理窗口继续使用不透明的无边框 OS 窗（`WindowStyle=None`），`WindowChrome` 保持 `CornerRadius=0`、`GlassFrameThickness=0`，根元素不开 `AllowsTransparency`、不为此打开整窗透明。首个 HWND 创建后，主窗口通过 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)` 请求 Windows 11 DWM 绘制系统圆角与投影；DWM 不可用、系统低于 Windows 11 或隔离桌面不支持时保持现有窗铬，写入 `MainWindowDwmRoundedCornersFallback` 诊断事件且不抛异常。装饰 raster（`MainReferenceDecorationLayer`）只承载内容、仍 `IsHitTestVisible=False`，不模拟窗体外壳圆角。兼容字段 `MainWindowSquareChromeNoTransparency` 现用于钉住上述无透明窗铬、DWM 请求或安全降级状态。
+- **管理窗口原生 DWM 圆角与系统阴影**：管理窗口继续使用不透明的无边框 OS 窗（`WindowStyle=None`），`WindowChrome` 保持 `CornerRadius=0`、`GlassFrameThickness=0`，根元素不开 `AllowsTransparency`、不为此打开整窗透明。首个 HWND 创建后，主窗口通过 `DwmSetWindowAttribute(DWMWA_NCRENDERING_POLICY, DWMNCRP_ENABLED)` 与 `DwmSetWindowAttribute(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)` 请求 Windows 11 DWM 绘制系统圆角与投影；DWM 不可用、系统低于 Windows 11 或隔离桌面不支持时保持现有窗铬，写入 `MainWindowDwmShadowFallback` / `MainWindowDwmRoundedCornersFallback` 诊断事件且不抛异常。装饰 raster（`MainReferenceDecorationLayer`）只承载内容、仍 `IsHitTestVisible=False`，不模拟窗体外壳圆角。兼容字段 `MainWindowSquareChromeNoTransparency` 现用于钉住上述无透明窗铬、DWM 请求或安全降级状态。
+- **提醒中心与规则编辑器原生 DWM 圆角、投影与 1 DIP 暖边（#324）**：提醒中心（`ReminderCenterWindow`）与提醒规则编辑器（`ReminderRulesEditorWindow`）改为不透明无边框 OS 窗（`AllowsTransparency=false`、`WindowStyle=None`，窗口底分别绑定 `ReminderPageBrush` / `CanvasBrush`），挂载与管理窗口一致的 `WindowChrome`（`CaptionHeight=0`、`ResizeBorderThickness=6`、`CornerRadius=0`、`GlassFrameThickness=0`、`UseAeroCaptionButtons=false`），不再使用分层透明窗口（无 `WS_EX_LAYERED`）。首个 HWND 创建后经共享 `DwmWindowChrome` 请求 `DWMWA_NCRENDERING_POLICY=DWMNCRP_ENABLED`、`DWMWA_WINDOW_CORNER_PREFERENCE=DWMWCP_ROUND`，并在 Windows 11（>= Build 22000）上进一步通过 `DWMWA_BORDER_COLOR`（属性 34，Win32 `COLORREF`，只写）将系统 1 DIP 边框设为当前 `PeachLineColor`（日间 `#FFF6DFD3`，系统对比度下随 `ApplicationTheme.PaletteChanged` 实时更新，窗口关闭注销监听）；系统成功接管 1 DIP 边框时内容根 `Border` 保持直角 `CornerRadius=0`、`BorderThickness=0`、`Padding=1` 以避免叠出双边与位移。系统不支持（较旧 Windows、非合成/隔离桌面、DWM 返回非 0 或抛异常）时窗口照常显示并可操作，回退为直角，由内容根 `Border`（`CornerRadius=0`、`BorderThickness=1`、`Padding=0`、`BorderBrush=PeachLineBrush`）承担 1 DIP 暖边，并写出与管理窗口同类的回退诊断事件（`ReminderCenterWindowDwm*Fallback` / `ReminderRulesEditorWindowDwm*Fallback`）；仅 `DWMWA_BORDER_COLOR` 失败时保留系统圆角/投影并切回内容 1 DIP 暖边。提醒中心不抢焦点/不持续置顶/头部拖动/首次贴齐悬浮窗所在屏右上并保留手动位置，规则编辑器居中/夹取/`SizeToContent.Height`/高度上限与 `ResizeGrip` 可达性均不变；设置恢复与激活失败两个主题前静态系统对话框不纳入本条。由独立窗口验证项目分别产出支持环境与不支持环境两条验证事实：`SecondaryWindowsUseDwmRoundedChromeAndBorderColor` 与 `SecondaryWindowsFallbackSquareChromeWhenDwmUnsupported`。
 - **页签在装饰带之上（#135 工作台骨架裁决）**：倒计时方向稿中「装饰带在页签之上」的构图不作为实现目标；实现保持 §5 工作台骨架——命令栏（倒计时/便签页签、筛选、标签、数量）位于内容投影层（`MainContentProjection`，ZIndex 2），装饰 raster 层（`MainReferenceDecorationLayer`，ZIndex 1）在其下且不可命中。运行态由 `TabsRenderAboveDecorationBand` 探针钉住。
 - **矢量窗铬**：管理窗口最小化/关闭按钮与悬浮窗头部命令使用同一套矢量路径语言（12x12 坐标系、2px 圆头描边、描边绑定按钮前景——关闭为 `DangerBrush`）：最小化 `M 2,10 L 12,10`，关闭 `M 2,2 L 12,12 M 12,2 L 2,12`；不再是 `−`/`×` 文本字形。运行态由 `MainWindowChromeButtonsUseVectorPaths` 探针钉住。
 - **矢量命令图标**：命令栏设置齿轮（`PreferencesButton`）与折叠新增行展开入口（`CountdownEditorExpandButton`）同样使用矢量路径，填充或描边绑定按钮前景。齿轮与悬浮窗「设置」同为 6 齿，18x18 坐标系实心齿轮加同心孔——纯图标按钮需要比悬浮窗 1.1px 描边更重的分量，也与相邻的实心筛选漏斗一致；展开入口沿用便签日期分组箭头的 V 形（`M 3,5.5 L 8,10.5 L 13,5.5`，2px 圆头描边），收起态朝下、展开态转 180°。两个按钮内边距归零：共享按钮左右 13 的内边距会把 41/36 宽按钮的内容区挤到 9/4 DIP，比图标还窄，图标会被布局裁切。不再用 `⚙`/`⌄`/`⌃` 文本字形——v52–v57 参考帧里它们正是这样被裁得只剩一截或一个点。运行态由 `MainCommandIconsUseVectorPaths` 探针钉住（比较按钮留给内容的布局槽与图标尺寸）。
@@ -743,16 +745,16 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | `RadiusPill` | 19 | 全圆角胶囊（短边 38 的一半） |
 | `RadiusOverlay` | 12 | 区块表面（管理窗口编辑区、列表区、状态栏）与 Popup / 下拉 / 日历浮层、悬浮便签 `…` 菜单 |
 | `RadiusControl` | 9 | 按钮及其焦点环、输入框、分段控件、页签与状态分段容器、单选焦点环 |
-| `RadiusCard` | 8 | 卡片圆角（§5 卡片刻度）：倒计时与便签条目卡、悬浮倒计时行底、提醒卡、规则行，及提醒中心、规则编辑器、确认框的窗口外壳 |
+| `RadiusCard` | 8 | 卡片圆角（§5 卡片刻度）：倒计时与便签条目卡、悬浮倒计时行底、提醒卡、规则行，及确认框的窗口外壳（提醒中心与规则编辑器外壳自 #324 起改由 DWM 原生圆角承担，内容根 Border 保持直角 0） |
 | `RadiusChip` | 5 | 复选框（含置顶开关与便签完成勾选）、标签芯片、日历日、小芯片、ToolTip |
 | `RadiusThumb` | 4 | 滚动条 thumb |
 | `FocusBorderThickness` | 2 | 键盘焦点/按压边粗细（`Thickness` 资源，可直接绑定 `BorderThickness`） |
 
 间距 token 以 `sys:Double` 网格值提供（可绑定 `FontSize`/`Height` 或在代码中组装）；XAML 中直接用于 `Margin` 时需由消费方包装为 `Thickness`。焦点语义沿用 §6：常规键盘焦点用 `ActiveBrush` 边界；主操作按钮与置顶开关用 `MainActionFocusBrush`，是全应用唯一焦点例外；不得引入默认系统蓝。圆角与焦点资源主要由 App.xaml 的控件模板消费；主窗口日期章节与卡片在代码中消费 `SpacingBlockGap`、`SpacingUnit`、`SpacingCardPadding`，其他固定布局尺寸仍按对应章节定义，不宣称所有几何均已 token 化（#232）。
 
-#250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉箭头区 `0,9,9,0`；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片与窗口外壳、控件、芯片四类取样核对，任一样本不在对应 token 上即报出元素名与实际值。
+#250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉箭头区 `0,9,9,0`；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8；提醒中心与规则编辑器外壳自 #324 起改为不透明无边框窗口并交由 DWM 绘制系统圆角与投影，内容根 `Border` 保持直角 0 以避免回退时出现死角。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片、次级窗口外壳（0）、控件、芯片核对，任一样本不在对应口径上即报出元素名与实际值。
 
-#232/#309：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；共享默认圆角仍供后续 #319/#320 直接消费。本票不接产品菜单。悬浮窗快速新增局部背景仍使用浮窗色板，焦点与按压使用应用 `ActiveBrush` / `ActiveHoverBrush`，危险操作独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
+#232/#309/#320：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；提醒中心「稍后提醒」菜单（#320）直接消费该共享默认圆角与样式。悬浮窗快速新增局部背景仍使用浮窗色板，焦点与按压使用应用 `ActiveBrush` / `ActiveHoverBrush`，危险操作独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
 
 ### 13.3.1 动效 token 与系统开关
 

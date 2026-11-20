@@ -515,9 +515,13 @@ internal static partial class ValidationExercises
                         AutomationProperties.GetAutomationId(panel),
                         "ReminderEntryActionsSecondaryRow",
                         StringComparison.Ordinal));
-                var customRow = VisualDescendants<WrapPanel>(row).SingleOrDefault(panel =>
-                    VisualDescendants<DatePicker>(panel).Any());
-                if (primaryRow is null || secondaryRow is null || customRow is null)
+                if (primaryRow is null || secondaryRow is null)
+                {
+                    return false;
+                }
+
+                // #320：不再预创建自定义稍后输入，也不存在独立的「稍后提醒时间」下拉。
+                if (VisualDescendants<DatePicker>(row).Any() || VisualDescendants<ComboBox>(row).Any())
                 {
                     return false;
                 }
@@ -527,13 +531,12 @@ internal static partial class ValidationExercises
                 var openSource = FindEntryButton(row, "打开");
                 var complete = VisualDescendants<Button>(row).SingleOrDefault(button =>
                     AutomationProperties.GetName(button).StartsWith("完成便签：", StringComparison.Ordinal));
-                var snoozeChoice = VisualDescendants<ComboBox>(row).Single(comboBox =>
-                    AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
                 if (acknowledge is null ||
                     snooze is null ||
                     openSource is null ||
                     !ButtonHasIconAndText(acknowledge, "知道了") ||
-                    !ButtonHasIconAndText(snooze, "稍后提醒") ||
+                    !ButtonHasIconTextAndChevron(snooze, "稍后提醒") ||
+                    snooze.ContextMenu is not { Items.Count: 5 } ||
                     !ButtonHasIconAndText(openSource, "打开来源") ||
                     expectComplete != (complete is not null))
                 {
@@ -547,29 +550,22 @@ internal static partial class ValidationExercises
 
                 var primaryChildren = primaryRow.Children.Cast<UIElement>().ToArray();
                 var secondaryChildren = secondaryRow.Children.Cast<UIElement>().ToArray();
-                var snoozeFrame = primaryChildren.Length == 3
-                    ? primaryChildren[1] as Grid
-                    : null;
                 var primaryOrderMatches =
-                    primaryChildren.Length == 3 &&
+                    primaryChildren.Length == 2 &&
                     ReferenceEquals(primaryChildren[0], acknowledge) &&
-                    snoozeFrame is not null &&
-                    string.Equals(
-                        AutomationProperties.GetAutomationId(snoozeFrame),
-                        "ReminderEntrySnoozeChoiceFrame",
-                        StringComparison.Ordinal) &&
-                    snoozeFrame.Children.Contains(snoozeChoice) &&
-                    snoozeFrame.Children.OfType<Grid>().Any(icon =>
-                        !icon.IsHitTestVisible &&
-                        VisualDescendants<System.Windows.Shapes.Ellipse>(icon).Any()) &&
-                    ReferenceEquals(primaryChildren[2], snooze);
+                    ReferenceEquals(primaryChildren[1], snooze);
                 var secondaryOrderMatches = expectComplete
                     ? secondaryChildren.Length == 2 &&
                       ReferenceEquals(secondaryChildren[0], complete) &&
                       ReferenceEquals(secondaryChildren[1], openSource)
                     : secondaryChildren.Length == 1 &&
                       ReferenceEquals(secondaryChildren[0], openSource);
-                // #150：第二行按钮居中且不拉伸——行宽等于子项期望宽之和，且不得吸满整张卡。
+                // #150/#320：第一行不折行、第二行居中且不拉伸——行宽等于子项期望宽之和，且不得吸满整张卡。
+                var acknowledgeTop = acknowledge.TranslatePoint(new Point(0, 0), primaryRow).Y;
+                var snoozeTop = snooze.TranslatePoint(new Point(0, 0), primaryRow).Y;
+                var primarySingleLine = Math.Abs(acknowledgeTop - snoozeTop) <= 1.0 &&
+                    acknowledge.TranslatePoint(new Point(acknowledge.ActualWidth, 0), primaryRow).X <=
+                    snooze.TranslatePoint(new Point(0, 0), primaryRow).X + 0.5;
                 var secondaryExpectedWidth =
                     (expectComplete && complete is { } completeButton
                         ? completeButton.ActualWidth + 8
@@ -580,19 +576,17 @@ internal static partial class ValidationExercises
                     secondaryRow.ActualWidth > 0 &&
                     secondaryRow.ActualWidth < row.ActualWidth;
                 if (!primaryOrderMatches ||
+                    !primarySingleLine ||
                     !secondaryOrderMatches ||
                     secondaryRow.HorizontalAlignment != HorizontalAlignment.Center ||
-                    !secondaryNotStretched ||
-                    ReferenceEquals(customRow.Parent, primaryRow) ||
-                    ReferenceEquals(customRow.Parent, secondaryRow))
+                    !secondaryNotStretched)
                 {
                     return false;
                 }
 
                 if (primaryRow.Parent is not Panel content ||
                     content.Children.IndexOf(primaryRow) < 0 ||
-                    content.Children.IndexOf(secondaryRow) <= content.Children.IndexOf(primaryRow) ||
-                    content.Children.IndexOf(customRow) <= content.Children.IndexOf(secondaryRow))
+                    content.Children.IndexOf(secondaryRow) <= content.Children.IndexOf(primaryRow))
                 {
                     return false;
                 }
@@ -651,7 +645,6 @@ internal static partial class ValidationExercises
             var reminderPage = Application.Current.FindResource("ReminderPageBrush");
             var sourceNoteIcon = Application.Current.FindResource("SourceNoteIconBrush");
             var pinkTintSoft = Application.Current.FindResource("PinkTintSoftBrush");
-            var panelBrush = Application.Current.FindResource("PanelBrush");
             var inkBrush = Application.Current.FindResource("InkBrush");
             if (window.Content is not Border surface ||
                 !ReferenceEquals(surface.Background, reminderPage))
@@ -736,23 +729,21 @@ internal static partial class ValidationExercises
                 var divider = VisualDescendants<Border>(row).Any(border =>
                     border.Child is null &&
                     Math.Abs(border.Height - 1) < 0.01);
-                var snoozeFrame = VisualDescendants<Grid>(row).SingleOrDefault(grid =>
+                var legacySnoozeFrame = VisualDescendants<Grid>(row).SingleOrDefault(grid =>
                     string.Equals(
                         AutomationProperties.GetAutomationId(grid),
                         "ReminderEntrySnoozeChoiceFrame",
                         StringComparison.Ordinal));
-                var snoozeChoice = VisualDescendants<ComboBox>(row).Single(comboBox =>
-                    AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
-                var snoozeChoiceFrameMatches =
-                    snoozeFrame is not null &&
-                    !snoozeFrame.Focusable &&
-                    snoozeFrame.Children.Contains(snoozeChoice) &&
-                    ReferenceEquals(snoozeChoice.Background, panelBrush) &&
-                    snoozeFrame.Children.OfType<Grid>().Any(icon =>
-                        !icon.IsHitTestVisible &&
-                        VisualDescendants<System.Windows.Shapes.Ellipse>(icon).Any(ring =>
-                            ReferenceEquals(ring.Stroke, inkBrush)));
-                if (!scheduledClock || !scheduledFitsCard || !divider || !snoozeChoiceFrameMatches)
+                var snoozeButton = FindEntryButton(row, "稍后提醒：");
+                var snoozeMenuButtonMatches =
+                    legacySnoozeFrame is null &&
+                    snoozeButton is not null &&
+                    ButtonHasIconTextAndChevron(snoozeButton, "稍后提醒") &&
+                    snoozeButton.Content is StackPanel snoozeContent &&
+                    snoozeContent.Children[2] is System.Windows.Shapes.Path chevron &&
+                    ReferenceEquals(chevron.Stroke, inkBrush) &&
+                    snoozeButton.ContextMenu is { Items.Count: 5 };
+                if (!scheduledClock || !scheduledFitsCard || !divider || !snoozeMenuButtonMatches)
                 {
                     return false;
                 }
@@ -832,6 +823,16 @@ internal static partial class ValidationExercises
         icon is not TextBlock &&
         panel.Children[1] is TextBlock label &&
         string.Equals(label.Text, text, StringComparison.Ordinal);
+
+    private static bool ButtonHasIconTextAndChevron(Button button, string text) =>
+        button.Content is StackPanel panel &&
+        panel.Children.Count == 3 &&
+        panel.Children[0] is FrameworkElement icon &&
+        icon is not TextBlock &&
+        panel.Children[1] is TextBlock label &&
+        string.Equals(label.Text, text, StringComparison.Ordinal) &&
+        panel.Children[2] is System.Windows.Shapes.Path chevron &&
+        !chevron.IsHitTestVisible;
 
     public static bool ProbeFivePopupsUseInstantAnimation(MainWindow main)
     {
@@ -1826,17 +1827,18 @@ internal static partial class ValidationExercises
             new Rect(0, 0, element.ActualWidth, element.ActualHeight));
     }
 
-    // #250：区块表面、条目卡、输入与按钮、芯片的圆角归并到 DESIGN.md §13.3 的既有 token。期望值抄自 §13.3 的表：
-    // 区块表面与弹层 RadiusOverlay 12，条目卡与次级窗口外壳 RadiusCard 8，按钮、输入与分段 RadiusControl 9，
-    // 芯片与复选框 RadiusChip 5。在管理窗口、悬浮窗、提醒中心与规则编辑器的真实视觉树上逐个取样，每类都要取到样本；
-    // 胶囊、数字色块、指示条、强调轨、徽章与装饰按各自章节派生，不在取样范围。违反项汇总后一次报出。
+    // #250/#324：区块表面、条目卡、输入与按钮、芯片的圆角归并到 DESIGN.md §13.3 的既有 token。期望值抄自 §13.3 的表：
+    // 区块表面与弹层 RadiusOverlay 12，条目卡 RadiusCard 8，按钮、输入与分段 RadiusControl 9，
+    // 芯片与复选框 RadiusChip 5；提醒中心与规则编辑器外壳（#324）改为不透明无边框窗口并交由 DWM 绘制系统圆角，
+    // 内容根 Border 保持直角 0 以免回退直角窗时露出死角。在管理窗口、悬浮窗、提醒中心与规则编辑器的真实视觉树上逐个取样，
+    // 每类都要取到样本；胶囊、数字色块、指示条、强调轨、徽章与装饰按各自章节派生，不在取样范围。违反项汇总后一次报出。
     public static bool RunSharedSurfaceRadiusBehavior()
     {
         var expected = new Dictionary<string, double>(StringComparer.Ordinal)
         {
             ["Section"] = 12,
             ["Card"] = 8,
-            ["WindowShell"] = 8,
+            ["WindowShell"] = 0,
             ["Control"] = 9,
             ["Chip"] = 5
         };

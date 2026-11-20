@@ -130,6 +130,7 @@ internal static partial class ValidationExercises
             // #215：窗口级不再拦截 Enter——焦点在条目按钮上时，按在窗口上的 Enter 不处置任何条目。
             var snoozeBeta = FindReminderEntryButton(center, keyBeta, "稍后提醒：");
             center.Activate();
+            SetActiveWindow(new WindowInteropHelper(center).Handle);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Keyboard.Focus(snoozeBeta);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
@@ -153,21 +154,53 @@ internal static partial class ValidationExercises
                 workspace.Snapshot.Settings.ReminderStates[ruleBeta.Id].ActiveSnooze is null,
                 "焦点离开条目后 Enter 不应处置任何条目。");
 
-            // 按钮键盘激活交给控件原生行为：按在聚焦按钮自身的 Enter 触发该按钮命令。
+            // 按钮键盘激活交给控件原生行为：#320 起按在聚焦稍后菜单按钮自身的 Enter 原生打开菜单，
+            // 再对首项「10 分钟后」按 Enter 完成单次选择立即稍后。
             Keyboard.Focus(snoozeBeta);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 ReferenceEquals(Keyboard.FocusedElement, snoozeBeta),
                 "Enter 前键盘焦点未落回条目乙的稍后提醒按钮。");
+            var snoozeBetaMenu = snoozeBeta.ContextMenu
+                ?? throw new InvalidOperationException("条目乙稍后提醒按钮缺少稍后菜单。");
             WindowValidationInput.RaiseKey(snoozeBeta, Key.Enter);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            Must(
+                snoozeBetaMenu.IsOpen &&
+                coordinator.ActiveEntryCount == 2 &&
+                workspace.Snapshot.Settings.ReminderStates[ruleBeta.Id].ActiveSnooze is null,
+                "聚焦稍后菜单按钮上的 Enter 应打开稍后菜单而不是跳过选项直接稍后。");
+            IDisposable? menuInput = null;
+            try
+            {
+                menuInput = WindowValidationInput.AcquireContextMenuInputForValidation(snoozeBetaMenu);
+                var tenMinutesItem = snoozeBetaMenu.Items.OfType<MenuItem>().First();
+                if (!tenMinutesItem.IsKeyboardFocused)
+                {
+                    Keyboard.Focus(snoozeBetaMenu);
+                    WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                    WindowValidationInput.RaiseKey(snoozeBetaMenu, Key.Down);
+                    WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                }
+                WindowValidationInput.RaiseKey(tenMinutesItem, Key.Enter);
+                WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            }
+            finally
+            {
+                if (snoozeBetaMenu.IsOpen)
+                {
+                    snoozeBetaMenu.IsOpen = false;
+                    WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+                }
+                menuInput?.Dispose();
+            }
             var stateBeta = workspace.Snapshot.Settings.ReminderStates[ruleBeta.Id];
             Must(
                 coordinator.ActiveEntryCount == 1 &&
                 stateBeta.ActiveSnooze?.OccurrenceKey ==
                     ReminderOccurrenceKey.Create(ruleBeta, dueUtc).ToString() &&
                 stateBeta.ActiveSnooze.SnoozeUntilUtc == dueUtc.AddMinutes(10),
-                "聚焦按钮上的 Enter 没有原生触发该条目的 10 分钟稍后提醒。");
+                "稍后菜单「10 分钟后」上的 Enter 没有原生触发该条目的 10 分钟稍后提醒。");
             Must(
                 workspace.Snapshot.Settings.ReminderStates[ruleAlpha.Id].ActiveSnooze is null &&
                 center.IsAcknowledgeEnabled(keyAlpha),
@@ -649,60 +682,64 @@ internal static partial class ValidationExercises
         try
         {
             window.Show();
+            window.SetDeliveryReady(key);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            var snoozeChoice = FindReminderEntryControl<ComboBox>(window, key, "稍后提醒时间：");
+            var snoozeButton = FindReminderEntryButton(window, key, "稍后提醒：");
+            var snoozeMenu = snoozeButton.ContextMenu
+                ?? throw new InvalidOperationException("稍后提醒按钮缺少稍后菜单。");
+            // #320：条目不再预先创建自定义时间输入控件，直到首次选「自定义」才创建。
+            Must(
+                !VisualDescendants<DatePicker>(window).Any() &&
+                !VisualDescendants<ComboBox>(window).Any() &&
+                !VisualDescendants<Button>(window).Any(button =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(button),
+                        "ReminderEntryCustomSnoozeConfirm",
+                        StringComparison.Ordinal)),
+                "初始状态下不得预先创建自定义稍后的日期、时间下拉或确认按钮。");
+
+            SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.Custom);
+            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
             var customHour = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后小时：");
             var customMinute = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后分钟：");
-            var customFields = customDate.Parent as WrapPanel
-                ?? throw new InvalidOperationException("自定义稍后日期不在自定义稍后控件容器内。");
+            var customConfirm = FindReminderEntryButton(window, key, "确认自定义稍后：");
+            var customPanel = customDate.Parent as StackPanel
+                ?? throw new InvalidOperationException("自定义稍后日期不在自定义稍后容器内。");
+            var customTimeRow = customHour.Parent as WrapPanel
+                ?? throw new InvalidOperationException("自定义稍后小时不在自定义稍后时间行内。");
             Must(
-                ReferenceEquals(customHour.Parent, customFields) &&
-                ReferenceEquals(customMinute.Parent, customFields),
-                "自定义稍后小时和分钟必须与日期共用同一容器。");
+                ReferenceEquals(customMinute.Parent, customTimeRow) &&
+                ReferenceEquals(customConfirm.Parent, customTimeRow) &&
+                ReferenceEquals(customTimeRow.Parent, customPanel),
+                "自定义稍后小时、分钟与确认按钮必须与日期共用同一自定义稍后容器。");
             Must(
-                customFields.Visibility == Visibility.Collapsed &&
-                customDate.Visibility == Visibility.Collapsed &&
-                customHour.Visibility == Visibility.Collapsed &&
-                customMinute.Visibility == Visibility.Collapsed &&
-                !customDate.IsVisible &&
-                !customHour.IsVisible &&
-                !customMinute.IsVisible,
-                "初始预设项下自定义稍后容器与三个子控件必须全部折叠。");
-
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
-            WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            Must(
-                customFields.Visibility == Visibility.Visible &&
-                customDate.Visibility == Visibility.Visible &&
-                customHour.Visibility == Visibility.Visible &&
-                customMinute.Visibility == Visibility.Visible &&
+                customPanel.Visibility == Visibility.Visible &&
                 customDate.IsVisible &&
                 customHour.IsVisible &&
-                customMinute.IsVisible,
-                "选择「自定义」后自定义稍后三个子控件必须随容器真实展开。");
+                customMinute.IsVisible &&
+                customConfirm.IsVisible,
+                "选择「自定义」后自定义稍后日期、小时、分钟与确认按钮必须懒创建并真实展开。");
 
-            snoozeChoice.SelectedIndex = 0;
+            SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.TenMinutes);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
-                customFields.Visibility == Visibility.Collapsed &&
-                customDate.Visibility == Visibility.Collapsed &&
-                customHour.Visibility == Visibility.Collapsed &&
-                customMinute.Visibility == Visibility.Collapsed &&
+                customPanel.Visibility == Visibility.Collapsed &&
                 !customDate.IsVisible &&
                 !customHour.IsVisible &&
-                !customMinute.IsVisible,
-                "切回预设项后自定义稍后三个子控件必须随容器恢复折叠。");
+                !customMinute.IsVisible &&
+                !customConfirm.IsVisible,
+                "选回预设档位后自定义稍后控件必须随容器收起。");
 
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.Custom);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
-                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible,
-                "再次选择「自定义」后三个子控件必须重新可见。");
+                customDate.IsVisible &&
+                customHour.IsVisible &&
+                customMinute.IsVisible &&
+                customConfirm.IsVisible &&
+                ReferenceEquals(customDate, FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：")),
+                "再次选择「自定义」后必须复用同一批控件并重新可见。");
             return true;
         }
         finally
@@ -735,14 +772,15 @@ internal static partial class ValidationExercises
         try
         {
             window.Show();
+            window.SetDeliveryReady(key);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
-            var snoozeChoice = FindReminderEntryControl<ComboBox>(window, key, "稍后提醒时间：");
-            var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            var snoozeButton = FindReminderEntryButton(window, key, "稍后提醒：");
+            var snoozeMenu = snoozeButton.ContextMenu
+                ?? throw new InvalidOperationException("稍后提醒按钮缺少稍后菜单。");
+            SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.Custom);
             window.UpdateLayout();
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
+            var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
             Must(
                 customDate.Visibility == Visibility.Visible && customDate.IsVisible,
                 "自定义稍后日历未处于真实可见状态，挂接断言无效。");
@@ -1061,6 +1099,29 @@ internal static partial class ValidationExercises
         }
 
         throw new InvalidOperationException($"提醒中心缺少条目 {key.RuleId} 的 {automationNamePrefix} 控件。");
+    }
+
+    internal static void SelectReminderSnoozeMenuItem(
+        Window window,
+        Button snoozeButton,
+        ContextMenu snoozeMenu,
+        ReminderSnoozeOption option)
+    {
+        window.Activate();
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            SetActiveWindow(handle);
+        }
+        WindowValidationInput.Pump(window.Dispatcher);
+        Must(WindowValidationInput.InvokeButton(snoozeButton), "无法激活稍后提醒菜单按钮。");
+        WindowValidationInput.Pump(window.Dispatcher);
+        Must(snoozeMenu.IsOpen, "激活稍后提醒菜单按钮后稍后菜单未打开。");
+        var item = snoozeMenu.Items
+            .OfType<MenuItem>()
+            .Single(candidate => Equals(candidate.Tag, option));
+        item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        WindowValidationInput.Pump(window.Dispatcher);
     }
 
     private static Button FindNoteDateDisclosure(

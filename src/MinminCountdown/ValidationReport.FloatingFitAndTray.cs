@@ -1235,14 +1235,19 @@ internal static partial class ValidationReport
                 0,
                 0));
             reminderCenter.Show();
+            reminderCenter.SetDeliveryReady(reminderKey);
             PumpDispatcher();
-            var snoozeChoice = Descendants<ComboBox>(reminderCenter).Single(comboBox =>
-                AutomationProperties.GetName(comboBox).StartsWith(
-                    "稍后提醒时间：",
+            var snoozeButton = Descendants<Button>(reminderCenter).Single(button =>
+                AutomationProperties.GetName(button).StartsWith(
+                    "稍后提醒：",
                     StringComparison.Ordinal));
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            var snoozeMenu = snoozeButton.ContextMenu
+                ?? throw new InvalidOperationException("提醒中心稍后提醒按钮缺少稍后菜单。");
+            ValidationExercises.SelectReminderSnoozeMenuItem(
+                reminderCenter,
+                snoozeButton,
+                snoozeMenu,
+                ReminderSnoozeOption.Custom);
             PumpDispatcher();
             var reminderCenterMeasurement = MeasureDatePicker(
                 "ReminderCenter.CustomSnoozeDate",

@@ -122,7 +122,6 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     private bool _isTitleExpanded;
     private string _errorMessage = string.Empty;
     private string _customErrorMessage = string.Empty;
-    private ReminderSnoozeOption _selectedSnoozeOption = ReminderSnoozeOption.TenMinutes;
     private DateTime? _customDate;
     private string _relativeTimeText = "刚刚";
     private int _customHourIndex = -1;
@@ -135,7 +134,11 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         AcknowledgeCommand = new RelayCommand(
             () => AcknowledgeRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)),
             () => IsAcknowledgeEnabled);
-        SnoozeCommand = new RelayCommand(RequestSnooze, () => IsSnoozeEnabled);
+        SelectSnoozePresetCommand = new RelayCommand<ReminderSnoozeOption>(
+            SelectSnoozePreset,
+            option => IsSnoozeEnabled && option != ReminderSnoozeOption.Custom);
+        OpenCustomSnoozeCommand = new RelayCommand(BeginCustomSnooze, () => IsSnoozeEnabled);
+        ConfirmCustomSnoozeCommand = new RelayCommand(ConfirmCustomSnooze, () => IsSnoozeEnabled);
         CompleteCommand = new RelayCommand(
             () => CompleteRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)),
             () => IsCompleteEnabled);
@@ -183,7 +186,9 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         {
             if (SetProperty(ref _isSnoozeEnabled, value))
             {
-                SnoozeCommand.NotifyCanExecuteChanged();
+                SelectSnoozePresetCommand.NotifyCanExecuteChanged();
+                OpenCustomSnoozeCommand.NotifyCanExecuteChanged();
+                ConfirmCustomSnoozeCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -275,24 +280,6 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         private set => SetProperty(ref _customErrorMessage, value);
     }
 
-    public ReminderSnoozeOption SelectedSnoozeOption
-    {
-        get => _selectedSnoozeOption;
-        set
-        {
-            if (!SetProperty(ref _selectedSnoozeOption, value))
-            {
-                return;
-            }
-
-            IsCustomSnoozeVisible = value == ReminderSnoozeOption.Custom;
-            if (!IsCustomSnoozeVisible)
-            {
-                ClearCustomError();
-            }
-        }
-    }
-
     public DateTime? CustomDate
     {
         get => _customDate;
@@ -313,7 +300,11 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
 
     public RelayCommand AcknowledgeCommand { get; }
 
-    public RelayCommand SnoozeCommand { get; }
+    public RelayCommand<ReminderSnoozeOption> SelectSnoozePresetCommand { get; }
+
+    public RelayCommand OpenCustomSnoozeCommand { get; }
+
+    public RelayCommand ConfirmCustomSnoozeCommand { get; }
 
     public RelayCommand CompleteCommand { get; }
 
@@ -349,6 +340,8 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     internal void ShowCustomSnoozeError(string message)
     {
         ClearFailure();
+        // 先确保自定义输入区域已按需创建并可见，再写错误文案以便错误贴在输入旁并正确播报。
+        IsCustomSnoozeVisible = true;
         CustomErrorMessage = message;
         IsCustomErrorVisible = true;
         IsAcknowledgeEnabled = true;
@@ -359,6 +352,30 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     internal void MarkRendered() => IsRendered = true;
 
     internal void SetTitleOverflowing(bool overflowing) => IsTitleOverflowing = overflowing;
+
+    internal void BeginCustomSnooze()
+    {
+        if (!IsSnoozeEnabled)
+        {
+            return;
+        }
+
+        IsCustomSnoozeVisible = true;
+    }
+
+    internal void SelectSnoozePreset(ReminderSnoozeOption option)
+    {
+        if (!IsSnoozeEnabled || option == ReminderSnoozeOption.Custom)
+        {
+            return;
+        }
+
+        IsCustomSnoozeVisible = false;
+        ClearCustomError();
+        SnoozeRequested?.Invoke(
+            this,
+            new ReminderCenterSnoozeEventArgs(Item.Key, option, null));
+    }
 
     private void ToggleTitleExpanded()
     {
@@ -377,30 +394,26 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         OnPropertyChanged(nameof(TitleDisclosureAccessibleName));
     }
 
-    private void RequestSnooze()
+    private void ConfirmCustomSnooze()
     {
         if (!IsSnoozeEnabled)
         {
             return;
         }
 
-        DateTimeOffset? customBeijing = null;
-        if (SelectedSnoozeOption == ReminderSnoozeOption.Custom)
+        IsCustomSnoozeVisible = true;
+        if (CustomDate is not { } date || CustomHourIndex < 0 || CustomMinuteIndex < 0)
         {
-            if (CustomDate is not { } date || CustomHourIndex < 0 || CustomMinuteIndex < 0)
-            {
-                ShowCustomSnoozeError("请选择完整的自定义稍后日期和时间。");
-                return;
-            }
-
-            customBeijing = ChinaStandardTime.ToBeijingTime(
-                CountdownFormatting.ToUtc(date, CustomHourIndex, CustomMinuteIndex, 0));
+            ShowCustomSnoozeError("请选择完整的自定义稍后日期和时间。");
+            return;
         }
 
+        var customBeijing = ChinaStandardTime.ToBeijingTime(
+            CountdownFormatting.ToUtc(date, CustomHourIndex, CustomMinuteIndex, 0));
         ClearCustomError();
         SnoozeRequested?.Invoke(
             this,
-            new ReminderCenterSnoozeEventArgs(Item.Key, SelectedSnoozeOption, customBeijing));
+            new ReminderCenterSnoozeEventArgs(Item.Key, ReminderSnoozeOption.Custom, customBeijing));
     }
 
     private void ClearFailure()

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Automation;
@@ -112,7 +111,7 @@ internal static class UiAccessibility
             return;
         }
 
-        if (!HasAutomationProvider(peer) && Window.GetWindow(target) is Window owner)
+        if (!HasAutomationProvider(target, peer) && Window.GetWindow(target) is Window owner)
         {
             owner.UpdateLayout();
             var windowPeer = UIElementAutomationPeer.FromElement(owner)
@@ -128,25 +127,14 @@ internal static class UiAccessibility
         peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    private static bool HasAutomationProvider(AutomationPeer peer)
-    {
-        var method = typeof(AutomationPeer).GetMethod(
-            "ProviderFromPeer",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        if (method is null)
-        {
-            return false;
-        }
+    // #316：通过受保护的公开框架 API AutomationPeer.ProviderFromPeer 探测 provider，不再反射非公开成员。
+    private static bool HasAutomationProvider(UIElement target, AutomationPeer peer) =>
+        new AutomationProviderProbePeer(target).HasProvider(peer);
 
-        try
-        {
-            var arguments = method.GetParameters().Length == 0 ? null : new object[] { peer };
-            return method.Invoke(peer, arguments) is not null;
-        }
-        catch (TargetInvocationException)
-        {
-            return false;
-        }
+    private sealed class AutomationProviderProbePeer(UIElement owner) : UIElementAutomationPeer(owner)
+    {
+        internal bool HasProvider(AutomationPeer target) =>
+            ProviderFromPeer(target.EventsSource ?? target) is not null;
     }
 
     public static void BindAnnouncedText(
@@ -349,29 +337,11 @@ internal sealed class SilentTextBlock : TextBlock
 }
 
 /// <summary>
-/// #216：同一底部文案在鼓励语模式下退出自动化树，金额与日历状态模式保留可朗读的 peer。
-/// WPF 会缓存已创建的 peer，且没有公开 API 能卸下它，因此模式切换时清掉内部缓存并让祖先重列子节点。
+/// #316：悬浮窗底部状态中可朗读、并在金额模式下可调用的文本元素。
+/// 鼓励语由独立的 <see cref="SilentTextBlock"/> 互斥承载，不再反射或清除 WPF 内部 AutomationPeer 缓存。
 /// </summary>
-internal sealed class AutomationOptionalTextBlock : TextBlock
+internal sealed class InteractiveStatusTextBlock : TextBlock
 {
-    private static readonly FieldInfo AutomationPeerField = typeof(UIElement).GetField(
-        "AutomationPeerField",
-        BindingFlags.NonPublic | BindingFlags.Static)
-        ?? throw new InvalidOperationException("WPF 未公开 AutomationPeerField，无法在鼓励语模式下退出自动化树。");
-
-    private static readonly MethodInfo ClearAutomationPeer = AutomationPeerField.FieldType.GetMethod(
-        "ClearValue",
-        new[] { typeof(DependencyObject) })
-        ?? throw new InvalidOperationException("WPF AutomationPeerField 缺少 ClearValue。");
-
-    // ClearValue 只清掉 peer 对象。HasAutomationPeer 仍为 true 时，WPF 直接返回空缓存，
-    // 不再调用 OnCreateAutomationPeer，鼓励语之后切回金额或日历状态就回不了自动化树。
-    private static readonly PropertyInfo HasAutomationPeerProperty = typeof(UIElement).GetProperty(
-        "HasAutomationPeer",
-        BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("WPF 未公开 HasAutomationPeer，无法在退出鼓励语后恢复自动化树。");
-
-    private bool _excludedFromAutomationTree;
     private bool _isInvokable;
     private bool _pointerPressed;
 
@@ -383,7 +353,11 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         set
         {
             _isInvokable = value;
-            if (!value) _pointerPressed = false;
+            if (!value)
+            {
+                _pointerPressed = false;
+                KeyboardFocusPolicy.Clear(this);
+            }
             Focusable = value;
             KeyboardNavigation.SetIsTabStop(this, value);
             Cursor = value ? Cursors.Hand : null;
@@ -437,42 +411,33 @@ internal sealed class AutomationOptionalTextBlock : TextBlock
         KeyboardFocusPolicy.Clear(this);
     }
 
-    internal void SetExcludedFromAutomationTree(bool excluded)
-    {
-        if (_excludedFromAutomationTree == excluded)
-        {
-            return;
-        }
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new InteractiveStatusTextPeer(this);
 
-        _excludedFromAutomationTree = excluded;
-        var uncommonField = AutomationPeerField.GetValue(null)
-            ?? throw new InvalidOperationException("AutomationPeerField 尚未初始化。");
-        ClearAutomationPeer.Invoke(uncommonField, new object[] { this });
-        HasAutomationPeerProperty.SetValue(this, false);
-        var parent = VisualTreeHelper.GetParent(this) as UIElement;
-        while (parent is not null)
-        {
-            UIElementAutomationPeer.FromElement(parent)?.ResetChildrenCache();
-            parent = VisualTreeHelper.GetParent(parent) as UIElement;
-        }
-    }
-
-    protected override AutomationPeer? OnCreateAutomationPeer() =>
-        _excludedFromAutomationTree ? null : new OptionalTextActionPeer(this);
-
-    private sealed class OptionalTextActionPeer(AutomationOptionalTextBlock owner)
+    private sealed class InteractiveStatusTextPeer(InteractiveStatusTextBlock owner)
         : TextBlockAutomationPeer(owner), IInvokeProvider
     {
         protected override AutomationControlType GetAutomationControlTypeCore() =>
             owner.IsInvokable ? AutomationControlType.Button : AutomationControlType.Text;
 
+        protected override bool IsControlElementCore() =>
+            owner.IsVisible && base.IsControlElementCore();
+
+        protected override bool IsContentElementCore() =>
+            owner.IsVisible && base.IsContentElementCore();
+
         public override object? GetPattern(PatternInterface patternInterface) =>
-            patternInterface == PatternInterface.Invoke && owner.IsInvokable
-                ? this : base.GetPattern(patternInterface);
+            patternInterface == PatternInterface.Invoke && owner.IsInvokable && owner.IsVisible
+                ? this
+                : base.GetPattern(patternInterface);
 
         void IInvokeProvider.Invoke()
         {
-            if (!owner.IsEnabled || !owner.IsInvokable) throw new ElementNotEnabledException();
+            if (!owner.IsEnabled || !owner.IsInvokable || !owner.IsVisible)
+            {
+                throw new ElementNotEnabledException();
+            }
+
             owner.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(owner.InvokeAction));
         }
     }

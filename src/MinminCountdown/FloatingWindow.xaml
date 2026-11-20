@@ -312,11 +312,17 @@
                         Margin="8,13,11,0" />
 
             <Grid Margin="12,10,0,29">
-              <local:AutomationOptionalTextBlock x:Name="FloatingIncome"
+              <local:InteractiveStatusTextBlock x:Name="FloatingIncome"
                        FontSize="{DynamicResource TypeCaptionFontSize}"
                        FocusVisualStyle="{x:Null}"
                        Typography.NumeralAlignment="Tabular"
                        Foreground="{DynamicResource FloatingMutedBrush}" />
+              <local:SilentTextBlock x:Name="FloatingEncouragement"
+                       Visibility="Collapsed"
+                       IsHitTestVisible="False"
+                       FontSize="{DynamicResource TypeCaptionFontSize}"
+                       FontFamily="{DynamicResource HandwrittenDecoFontFamily}"
+                       Foreground="{DynamicResource DecoTextSoftBrush}" />
               <Border x:Name="FloatingIncomeFocusRing"
                       Margin="-2" BorderThickness="2" CornerRadius="8"
                       IsHitTestVisible="False">

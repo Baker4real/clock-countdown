@@ -452,7 +452,7 @@ public sealed partial class FloatingWindow
 {
     internal ScrollViewer BodyScrollerForValidation => FloatingBodyScroller;
 
-    internal FrameworkElement IncomeForValidation => FloatingIncome;
+    internal FrameworkElement IncomeForValidation => ActiveBottomStatusElement;
 
     // thumb 拖动输入路径用的真实滚动条 thumb。
     internal Thumb? BodyScrollThumbForValidation

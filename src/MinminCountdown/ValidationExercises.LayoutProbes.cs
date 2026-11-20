@@ -1173,7 +1173,7 @@ internal static partial class ValidationExercises
 
             var lastCardBottom = lastCard.TransformToVisual(scroller)
                 .Transform(new Point(0, lastCard.ActualHeight)).Y;
-            var income = (TextBlock)floating.FindName("FloatingIncome");
+            var income = floating.IncomeForValidation;
             var incomeTop = income.TransformToVisual(scroller).Transform(new Point(0, 0)).Y;
             var stableGapAboveCommandArea = incomeTop - lastCardBottom >= 20;
             return trailingPaddingMatches && stableGapAboveCommandArea;

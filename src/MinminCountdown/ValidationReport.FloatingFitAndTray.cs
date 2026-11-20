@@ -923,6 +923,13 @@ internal static partial class ValidationReport
                     $" background={menu.Background}; border={menu.BorderBrush}; items=" +
                     string.Join("|", items.Select(item => $"{item.Header}:highlight={item.IsHighlighted},font={item.FontFamily.Source},size={item.FontSize},foreground={item.Foreground}")));
             }
+            restore.IsEnabled = false;
+            WindowValidationInput.Pump(menu.Dispatcher);
+            if (restore.Opacity != 0.45)
+                throw new InvalidOperationException("#309 共享菜单项的普通禁用态未复用控件透明度分支。");
+            restore.IsEnabled = true;
+            WindowValidationInput.Pump(menu.Dispatcher);
+
             menuInput = WindowValidationInput.AcquireContextMenuInputForValidation(menu);
             // Use ContextMenu's normal keyboard navigation, which selects the
             // first item through NavigateToStart and real keyboard focus.
@@ -947,6 +954,12 @@ internal static partial class ValidationReport
                     !ColorIs(openManager.Background, SystemColors.HighlightColor) ||
                     !ColorIs(openManager.Foreground, SystemColors.HighlightTextColor))
                     throw new InvalidOperationException("#232 已打开托盘未响应系统高对比开关。");
+                restore.IsEnabled = false;
+                PumpDispatcher();
+                if (restore.Opacity != 1 ||
+                    !ColorIs(restore.Foreground, SystemColors.GrayTextColor) ||
+                    !ColorIs(restore.Background, SystemColors.ControlColor))
+                    throw new InvalidOperationException("#309 共享菜单项在系统对比度下未使用禁用文字与控件面系统色。");
                 var palette = new ApplicationTheme.SystemContrastPalette(
                     Colors.Black, Colors.White, Colors.Navy, Colors.White,
                     Colors.Yellow, Colors.Black, Colors.Silver);
@@ -957,6 +970,11 @@ internal static partial class ValidationReport
                     !ColorIs(openManager.Background, palette.Highlight) ||
                     !ColorIs(openManager.Foreground, palette.HighlightText))
                     throw new InvalidOperationException("#232 已打开托盘未响应运行中系统配色变化。");
+                if (!ColorIs(restore.Foreground, palette.GrayText) ||
+                    !ColorIs(restore.Background, palette.Control))
+                    throw new InvalidOperationException("#309 打开的禁用菜单项未跟随运行中系统配色变化。");
+                restore.IsEnabled = true;
+                PumpDispatcher();
             }
             PumpDispatcher();
             if (!ColorIs(menu.Background, dayCanvas) || !ColorIs(openManager.Background, dayHighlight))

@@ -218,24 +218,11 @@ internal static class TrayMenuFactory
         // #156：非拖动的窗口复位/贴边入口——悬浮窗被拖出屏幕时，托盘仍可达并把窗夹回工作区。
         var resetPositionItem = new MenuItem { Header = "复位窗口位置" };
         var exitItem = new MenuItem { Header = "退出" };
-        var menu = new ContextMenu
-        {
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(4),
-            HasDropShadow = true
-        };
-        menu.SetResourceReference(Control.BackgroundProperty, "CanvasBrush");
-        menu.SetResourceReference(Control.BorderBrushProperty, "ControlBorderBrush");
-        menu.Resources.Add(typeof(MenuItem), CreateMenuItemStyle());
-        // 独立菜单不在任何窗口树内，应用资源替换不会让它重取画刷：打开时按应用资源
-        // 刷新局部副本，打开期间再跟随运行中的配色变化。
-        EventHandler refreshTheme = (_, _) => ApplyThemeResources(menu);
-        menu.Opened += (_, _) =>
-        {
-            ApplyThemeResources(menu);
-            ApplicationTheme.PaletteChanged += refreshTheme;
-        };
-        menu.Closed += (_, _) => ApplicationTheme.PaletteChanged -= refreshTheme;
+        var menu = new ContextMenu();
+        SharedMenuStyles.Apply(menu);
+        // #309：共享默认可供后续原生菜单消费弹层圆角；托盘保留本票要求的现役直角实拍。
+        menu.Resources["RadiusOverlay"] = new CornerRadius(0);
+        menu.Resources["RadiusControl"] = new CornerRadius(0);
         menu.Items.Add(openManagerItem);
         menu.Items.Add(restoreItem);
         menu.Items.Add(resetPositionItem);
@@ -245,60 +232,6 @@ internal static class TrayMenuFactory
         resetPositionItem.Click += (_, _) => resetPosition();
         exitItem.Click += (_, _) => exit();
         return (menu, openManagerItem, restoreItem, resetPositionItem, exitItem);
-    }
-
-    private static void ApplyThemeResources(ContextMenu menu)
-    {
-        foreach (var key in new[] { "CanvasBrush", "ControlBorderBrush", "InkBrush", "MainActionBrush", "MainActionTextBrush" })
-        {
-            if (Application.Current?.TryFindResource(key) is System.Windows.Media.Brush brush)
-            {
-                menu.Resources[key] = brush;
-            }
-        }
-    }
-
-    private static Style CreateMenuItemStyle()
-    {
-        var style = new Style(typeof(MenuItem));
-        style.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("InkBrush")));
-        style.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("CanvasBrush")));
-        style.Setters.Add(new Setter(Control.BorderBrushProperty, new DynamicResourceExtension("ControlBorderBrush")));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(16, 9, 16, 9)));
-        style.Setters.Add(new Setter(Control.FontFamilyProperty, new DynamicResourceExtension("UiFontFamily")));
-        style.Setters.Add(new Setter(Control.FontSizeProperty, new DynamicResourceExtension("TypeBodyFontSize")));
-        style.Setters.Add(new Setter(Control.TemplateProperty, CreateMenuItemTemplate()));
-
-        var highlighted = new Trigger
-        {
-            Property = MenuItem.IsHighlightedProperty,
-            Value = true
-        };
-        highlighted.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("MainActionBrush")));
-        highlighted.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("MainActionTextBrush")));
-        style.Triggers.Add(highlighted);
-        return style;
-    }
-
-    private static ControlTemplate CreateMenuItemTemplate()
-    {
-        // These leaf commands have no icon, checkmark, or submenu. Bind
-        // the rendered surface so the native theme cannot paint a blue highlight.
-        var surface = new FrameworkElementFactory(typeof(Border));
-        surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(Control.BackgroundProperty));
-        surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(Control.BorderBrushProperty));
-        surface.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(Control.BorderThicknessProperty));
-        surface.SetValue(Border.PaddingProperty, new TemplateBindingExtension(Control.PaddingProperty));
-
-        var header = new FrameworkElementFactory(typeof(ContentPresenter));
-        header.SetValue(ContentPresenter.ContentSourceProperty, "Header");
-        header.SetValue(ContentPresenter.RecognizesAccessKeyProperty, true);
-        header.SetValue(FrameworkElement.HorizontalAlignmentProperty,
-            new TemplateBindingExtension(Control.HorizontalContentAlignmentProperty));
-        header.SetValue(FrameworkElement.VerticalAlignmentProperty,
-            new TemplateBindingExtension(Control.VerticalContentAlignmentProperty));
-        surface.AppendChild(header);
-        return new ControlTemplate(typeof(MenuItem)) { VisualTree = surface };
     }
 
 }

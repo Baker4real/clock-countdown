@@ -99,6 +99,7 @@ internal static class VerificationSuite
         Run(results, "floating-countdown-projection-rows-and-primary", VerifyFloatingCountdownProjectionRowsAndPrimary);
         Run(results, "floating-countdown-projection-filter-scopes", VerifyFloatingCountdownProjectionFilterScopes);
         Run(results, "floating-countdown-projection-keys-and-signature", VerifyFloatingCountdownProjectionKeysAndSignature);
+        Run(results, "reminder-rule-preview-builder-and-plain-errors", VerifyReminderRulePreviewBuilderAndPlainErrors);
         if (externalSettingsPath is not null)
         {
             Run(
@@ -3172,6 +3173,242 @@ internal static class VerificationSuite
                     FloatingCountdownProjection.Project(workspace.Snapshot, nowUtc, null, true).SignatureEntries),
                 "下班收尾出现后的签名条目");
         });
+    }
+
+    private static void VerifyReminderRulePreviewBuilderAndPlainErrors()
+    {
+        var nowUtc = new DateTimeOffset(2038, 7, 8, 1, 0, 0, TimeSpan.Zero);
+        var targetUtc = nowUtc.AddDays(5);
+        var date = new DateTime(2038, 7, 9);
+
+        // 1. Once (including past time so live preview stays informative before save validation)
+        var onceBuilt = ReminderRuleEditing.TryBuildPreviewRule(
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Once,
+                date,
+                9,
+                30,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc),
+            out var onceRule);
+        Equal(true, onceBuilt, "一次规则草稿生成预览规则");
+        Equal(
+            new DateTimeOffset(2038, 7, 9, 1, 30, 0, TimeSpan.Zero),
+            ((AbsoluteOnceReminderRule)onceRule!).ScheduledUtc,
+            "一次预览规则使用北京时间转 UTC");
+
+        // 2. Fixed interval preset & custom + invalid custom
+        var customBuilt = ReminderRuleEditing.TryBuildPreviewRule(
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Repeating,
+                date,
+                10,
+                15,
+                ReminderIntervalSelection.Custom,
+                "45",
+                nowUtc),
+            out var customRule);
+        Equal(true, customBuilt, "固定间隔自定义分钟生成预览规则");
+        Equal(45, ((FixedIntervalReminderRule)customRule!).Interval.Minutes, "固定间隔自定义预览分钟数");
+        Equal(
+            false,
+            ReminderRuleEditing.TryBuildPreviewRule(
+                new ReminderRuleEditingRequest(
+                    null,
+                    ReminderEditingMode.Repeating,
+                    date,
+                    10,
+                    15,
+                    ReminderIntervalSelection.Custom,
+                    "0",
+                    nowUtc),
+                out _),
+            "非法自定义间隔不生成预览规则");
+
+        // 3. Countdown relative valid & invalid
+        var relativeBuilt = ReminderRuleEditing.TryBuildPreviewRule(
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.CountdownRelative,
+                null,
+                -1,
+                -1,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                targetUtc,
+                "15"),
+            out var relativeRule);
+        Equal(true, relativeBuilt, "倒计时相对草稿生成预览规则");
+        Equal(15, ((CountdownRelativeReminderRule)relativeRule!).OffsetMinutesBefore, "倒计时相对预览提前分钟");
+        Equal(
+            false,
+            ReminderRuleEditing.TryBuildPreviewRule(
+                new ReminderRuleEditingRequest(
+                    null,
+                    ReminderEditingMode.CountdownRelative,
+                    null,
+                    -1,
+                    -1,
+                    ReminderIntervalSelection.ThirtyMinutes,
+                    string.Empty,
+                    nowUtc,
+                    null,
+                    "15"),
+                out _),
+            "缺少倒计时目标时不生成相对预览规则");
+        Equal(
+            false,
+            ReminderRuleEditing.TryBuildPreviewRule(
+                new ReminderRuleEditingRequest(
+                    null,
+                    ReminderEditingMode.CountdownRelative,
+                    null,
+                    -1,
+                    -1,
+                    ReminderIntervalSelection.ThirtyMinutes,
+                    string.Empty,
+                    nowUtc,
+                    targetUtc,
+                    "5256001"),
+                out _),
+            "越界提前分钟不生成相对预览规则");
+
+        // 4. Calendar Daily / Weekly (normalized weekday order) / Monthly / Yearly + invalid cases
+        var weeklyBuilt = ReminderRuleEditing.TryBuildPreviewRule(
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Calendar,
+                date,
+                9,
+                0,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                CalendarFrequency: CalendarFrequency.Weekly,
+                CalendarInterval: "1",
+                CalendarWeekdays: [DayOfWeek.Thursday, DayOfWeek.Monday]),
+            out var weeklyRule);
+        Equal(true, weeklyBuilt, "按周日历草稿生成预览规则");
+        var weeklyCalendar = (CalendarReminderRule)weeklyRule!;
+        Equal(CalendarFrequency.Weekly, weeklyCalendar.Frequency, "按周预览频率");
+        Equal(1, weeklyCalendar.Interval, "按周预览周期数");
+        Equal(new TimeOnly(9, 0), weeklyCalendar.LocalTime, "按周预览时刻");
+        SequenceEqual(
+            new[] { DayOfWeek.Monday, DayOfWeek.Thursday },
+            ((WeeklyCalendarSelector)weeklyCalendar.Selector).Weekdays,
+            "按周预览星期顺序按周一到周日规范化");
+
+        var yearlyLastBuilt = ReminderRuleEditing.TryBuildPreviewRule(
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Calendar,
+                date,
+                8,
+                45,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                CalendarFrequency: CalendarFrequency.Yearly,
+                CalendarInterval: "2",
+                CalendarMonth: "2",
+                CalendarDay: "1",
+                CalendarLastDay: true),
+            out var yearlyRule);
+        Equal(true, yearlyLastBuilt, "按年最后一天草稿生成预览规则");
+        var yearlyCalendar = (CalendarReminderRule)yearlyRule!;
+        Equal(2, ((YearlyCalendarSelector)yearlyCalendar.Selector).Month, "按年预览月份");
+        Equal(true, ((YearlyCalendarSelector)yearlyCalendar.Selector).LastDay, "按年预览最后一天");
+
+        Equal(
+            false,
+            ReminderRuleEditing.TryBuildPreviewRule(
+                new ReminderRuleEditingRequest(
+                    null,
+                    ReminderEditingMode.Calendar,
+                    date,
+                    9,
+                    0,
+                    ReminderIntervalSelection.ThirtyMinutes,
+                    string.Empty,
+                    nowUtc,
+                    CalendarFrequency: CalendarFrequency.Weekly,
+                    CalendarInterval: "1",
+                    CalendarWeekdays: []),
+                out _),
+            "按周未选星期不生成预览规则");
+        Equal(
+            false,
+            ReminderRuleEditing.TryBuildPreviewRule(
+                new ReminderRuleEditingRequest(
+                    null,
+                    ReminderEditingMode.Calendar,
+                    date,
+                    9,
+                    0,
+                    ReminderIntervalSelection.ThirtyMinutes,
+                    string.Empty,
+                    nowUtc,
+                    CalendarFrequency: CalendarFrequency.Daily,
+                    CalendarInterval: "0"),
+                out _),
+            "每隔几个周期为 0 不生成预览规则");
+
+        // 5. Everyday Chinese validation error strings without jargon terms (and failed saves do not consume GUIDs)
+        var singleGuid = Guid.Parse("77777777-0323-0000-0000-000000000000");
+        var editing = new ReminderRuleEditing(new FixedGuidSource(singleGuid));
+        var badInterval = editing.SaveRule(
+            [],
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Calendar,
+                date,
+                9,
+                0,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                CalendarFrequency: CalendarFrequency.Daily,
+                CalendarInterval: "0"));
+        Equal(false, badInterval.Succeeded, "非法周期数被拒绝");
+        Equal(ReminderRuleEditingErrorTarget.CalendarInterval, badInterval.ErrorTarget, "非法周期数错误目标");
+        Equal("每隔几个周期必须是 1 到 999。", badInterval.Error, "非法周期数错误改用日常说法");
+
+        var badFrequency = editing.SaveRule(
+            [],
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Calendar,
+                date,
+                9,
+                0,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                CalendarFrequency: (CalendarFrequency)99,
+                CalendarInterval: "1"));
+        Equal(false, badFrequency.Succeeded, "不支持的重复周期被拒绝");
+        Equal(ReminderRuleEditingErrorTarget.CalendarSelector, badFrequency.ErrorTarget, "不支持的重复周期错误目标");
+        Equal("请选择支持的重复周期。", badFrequency.Error, "不支持的重复周期错误改用日常说法");
+
+        var savedAfterFailures = editing.SaveRule(
+            [],
+            new ReminderRuleEditingRequest(
+                null,
+                ReminderEditingMode.Calendar,
+                date,
+                9,
+                0,
+                ReminderIntervalSelection.ThirtyMinutes,
+                string.Empty,
+                nowUtc,
+                CalendarFrequency: CalendarFrequency.Daily,
+                CalendarInterval: "1"));
+        Equal(true, savedAfterFailures.Succeeded, "校验失败不消耗 GuidSource，随后保存成功");
+        Equal(singleGuid.ToString("N"), savedAfterFailures.Rules.Single().Id, "失败后首次成功保存拿到首个规则 ID");
     }
 
     private static void VerifyExternalSettingsFixture(string settingsPath)

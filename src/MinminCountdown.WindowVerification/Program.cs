@@ -20,6 +20,8 @@ internal static class Program
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
     internal const string RuleEditorPrimaryAndDirtyFactName = "ReminderRulesEditorSinglePrimaryActionAndDirtyAccept";
     internal const string RuleEditorLayoutAndReachabilityFactName = "ReminderRulesEditorContentSizedListAndReachableActions";
+    internal const string RuleEditorPlainLabelsFactName = "ReminderRulesEditorPlainLanguageLabelsAndAccessibility";
+    internal const string RuleEditorLivePreviewFactName = "ReminderRulesEditorLivePreviewMatchesSavedSummary";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -50,6 +52,10 @@ internal static class Program
         "规则编辑器仅窗口级「完成」使用实心主行动，表单提交为次级按钮；有未提交输入时点「完成」自动提交有效输入、拦住无效输入并保留草稿，不悄悄丢弃（#322）";
     private const string RuleEditorLayoutAndReachabilityFactMeaning =
         "规则编辑器在少规则与多规则下列表按内容取高、超上限后列表内滚动、列表与表单间距不超过区块间距、初始高度随内容且不超上限，688/826/1032 DIP 工作区高度下底部按钮与缩放手柄均可达，且取消、8 条上限与字段校验位置不变（#322）";
+    private const string RuleEditorPlainLabelsFactMeaning =
+        "规则编辑器表单不再出现“日历频率 / 重复间隔 / 日历选择”等实现用语，改用最终日常词表；字段可访问名与可见标签一致且 LabeledBy 关系保持完整；四个规则类型名、类型化领域记录、规则 ID 与持久化 JSON 不变（#323）";
+    private const string RuleEditorLivePreviewFactMeaning =
+        "规则编辑器表单中的一句话预览随所有输入实时更新，在四类规则与各日历周期下均与保存后规则行摘要完全一致，并在输入未补全或越界时给出清晰提示、适配系统高对比度（#323）";
 
     [STAThread]
     private static int Main()
@@ -68,7 +74,9 @@ internal static class Program
             [ReminderRulesEditorSmokeFactName] = false,
             [ConfirmationDialogSmokeFactName] = false,
             [RuleEditorPrimaryAndDirtyFactName] = false,
-            [RuleEditorLayoutAndReachabilityFactName] = false
+            [RuleEditorLayoutAndReachabilityFactName] = false,
+            [RuleEditorPlainLabelsFactName] = false,
+            [RuleEditorLivePreviewFactName] = false
         };
         var failures = new List<string>();
 
@@ -164,6 +172,16 @@ internal static class Program
                 RuleEditorLayoutAndReachabilityFactMeaning,
                 () => ReminderRulesEditorScenario.RunContentSizedListAndReachableActions(
                     RuleEditorLayoutAndReachabilityFactMeaning));
+            RunFact(
+                RuleEditorPlainLabelsFactName,
+                RuleEditorPlainLabelsFactMeaning,
+                () => ReminderRulesEditorCopyAndPreviewScenario.RunPlainLanguageLabelsAndAccessibility(
+                    RuleEditorPlainLabelsFactMeaning));
+            RunFact(
+                RuleEditorLivePreviewFactName,
+                RuleEditorLivePreviewFactMeaning,
+                () => ReminderRulesEditorCopyAndPreviewScenario.RunLivePreviewMatchesSavedSummary(
+                    RuleEditorLivePreviewFactMeaning));
         }
         catch (Exception exception)
         {

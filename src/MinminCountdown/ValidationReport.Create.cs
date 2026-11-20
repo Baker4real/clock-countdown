@@ -748,6 +748,7 @@ internal static partial class ValidationReport
         var floatingTextBounds = Descendants<TextBlock>(floatingRowsForContent)
             .Concat(Descendants<TextBlock>(floatingNoteEntryForContent))
             .Append(Required<TextBlock>(floating, "FloatingIncome"))
+            .Append(Required<TextBlock>(floating, "FloatingEncouragement"))
             .Where(element => element.IsVisible &&
                               element.ActualWidth > 0 &&
                               element.ActualHeight > 0)

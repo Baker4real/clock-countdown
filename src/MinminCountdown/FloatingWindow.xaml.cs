@@ -441,7 +441,12 @@ public sealed partial class FloatingWindow : Window
     internal const string NoteControlRoleCompletion = "completion";
     internal const string NoteControlRoleOverflow = "overflow";
 
-    internal string IncomeText => FloatingIncome.Text;
+    private TextBlock ActiveBottomStatusElement =>
+        FloatingEncouragement.Visibility == Visibility.Visible
+            ? FloatingEncouragement
+            : FloatingIncome;
+
+    internal string IncomeText => ActiveBottomStatusElement.Text;
 
     internal event EventHandler? ExitRequested;
 
@@ -838,6 +843,7 @@ public sealed partial class FloatingWindow : Window
         SetRasterTranslation(OpenManagerButton, -1, -1);
         SetRasterTranslation(CloseFloatingButton, 0, 0);
         SetRasterTranslation(FloatingIncome, 2, 3);
+        SetRasterTranslation(FloatingEncouragement, 2, 3);
         FloatingNoteEntry.Background = ThemeBrush(nextTheme.NoteInputBrushKey);
         FloatingNoteEntry.BorderBrush = ThemeBrush(nextTheme.BorderBrushKey);
         // 局部 BodyBrush 指向悬浮窗弱化色；恢复提示沿用应用正文色。
@@ -2038,6 +2044,7 @@ public sealed partial class FloatingWindow : Window
         }
         FloatingBottomStatus.Apply(
             FloatingIncome,
+            FloatingEncouragement,
             presentation,
             ActiveTheme.MutedBrushKey,
             "DecoTextSoftBrush",

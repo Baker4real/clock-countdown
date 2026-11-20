@@ -31,6 +31,7 @@ internal static class Program
     internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
     internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
+    internal const string FloatingBottomStatusAutomationFactName = "FloatingBottomStatusPublicAutomationTree";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -85,6 +86,9 @@ internal static class Program
         "共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）";
     private const string SharedScrollBarMotionFactMeaning =
         "共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）";
+    private const string FloatingBottomStatusAutomationFactMeaning =
+        "悬浮窗底部状态以互斥的鼓励语无 peer 元素与可朗读/可调用状态元素进出自动化树；鼓励语不在树中，金额与日历状态名称同步，" +
+        "遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）";
 
     [STAThread]
     private static int Main()
@@ -114,7 +118,8 @@ internal static class Program
             [MainTagRenameSyncFactName] = false,
             [InputFocusAndErrorFactName] = false,
             [SharedScrollBarGeometryFactName] = false,
-            [SharedScrollBarMotionFactName] = false
+            [SharedScrollBarMotionFactName] = false,
+            [FloatingBottomStatusAutomationFactName] = false
         };
         var failures = new List<string>();
 
@@ -266,6 +271,11 @@ internal static class Program
                 () => SharedScrollBarScenario.RunMotionAndInteractions(
                     theme,
                     SharedScrollBarMotionFactMeaning));
+            RunFact(FloatingBottomStatusAutomationFactName, FloatingBottomStatusAutomationFactMeaning, () =>
+            {
+                FloatingBottomStatusAutomationScenario.Run();
+                return (true, FloatingBottomStatusAutomationFactMeaning);
+            });
         }
         catch (Exception exception)
         {

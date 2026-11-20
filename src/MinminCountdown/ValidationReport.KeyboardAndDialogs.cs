@@ -1322,7 +1322,7 @@ internal static partial class ValidationReport
         var stackedInput = new TextBox { FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual") };
         var systemDottedList = new ScrollViewer { FocusVisualStyle = systemFocusVisual };
         // #255: income text already has a host-drawn ring; even the approved adorner would duplicate it.
-        var stackedIncome = new AutomationOptionalTextBlock
+        var stackedIncome = new InteractiveStatusTextBlock
         {
             IsInvokable = true,
             FocusVisualStyle = (Style)main.FindResource("MainKeyboardFocusVisual")

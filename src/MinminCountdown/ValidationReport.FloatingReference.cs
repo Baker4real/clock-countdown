@@ -379,6 +379,7 @@ internal static partial class ValidationReport
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var incomeTextProbe = Required<TextBlock>(referenceWindow, "FloatingIncome");
+            var encouragementProbe = Required<SilentTextBlock>(referenceWindow, "FloatingEncouragement");
             var expectedDecoBrush = referenceWindow.TryFindResource("DecoTextSoftBrush") as Brush;
             var expectedDecoFont = referenceWindow.TryFindResource("HandwrittenDecoFontFamily") as FontFamily;
             var floatingIncomeEncouragementWithoutSalary =
@@ -387,12 +388,13 @@ internal static partial class ValidationReport
                     referenceWindow.IncomeText,
                     FloatingBottomStatus.CountdownEncouragementText,
                     StringComparison.Ordinal) &&
-                incomeTextProbe.Visibility == Visibility.Visible &&
-                !incomeTextProbe.IsHitTestVisible &&
+                encouragementProbe.Visibility == Visibility.Visible &&
+                !encouragementProbe.IsHitTestVisible &&
+                incomeTextProbe.Visibility == Visibility.Collapsed &&
                 expectedDecoFont is not null &&
-                ReferenceEquals(incomeTextProbe.FontFamily, expectedDecoFont) &&
+                ReferenceEquals(encouragementProbe.FontFamily, expectedDecoFont) &&
                 expectedDecoBrush is not null &&
-                ReferenceEquals(incomeTextProbe.Foreground, expectedDecoBrush);
+                ReferenceEquals(encouragementProbe.Foreground, expectedDecoBrush);
             var salaryRestored = referenceWorkspace.Apply(new SavePreferencesChange(
                 "Second",
                 referenceSalary,

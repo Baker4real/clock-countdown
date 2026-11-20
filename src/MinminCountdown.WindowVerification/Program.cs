@@ -24,6 +24,8 @@ internal static class Program
     internal const string RuleEditorLivePreviewFactName = "ReminderRulesEditorLivePreviewMatchesSavedSummary";
     internal const string SecondaryDwmSupportedFactName = "SecondaryWindowsUseDwmRoundedChromeAndBorderColor";
     internal const string SecondaryDwmFallbackFactName = "SecondaryWindowsFallbackSquareChromeWhenDwmUnsupported";
+    internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
+    internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -62,6 +64,10 @@ internal static class Program
         "提醒中心与规则编辑器改为不透明无边框窗口，支持系统窗铬时请求系统圆角、投影与 1 DIP 暖色边框并随系统对比度切换同步更新；提醒中心不抢焦点/不置顶/头部拖动/右上首次放置保留手动位置，规则编辑器居中/夹取/高度与缩放手柄可达均保持不变（#324）";
     private const string SecondaryDwmFallbackFactMeaning =
         "系统不支持 DWM 圆角、投影或边框色时（较旧 Windows、DWM 返回失败或抛出异常），提醒中心与规则编辑器均照常显示并可操作，保持非分层不透明与直角回退，由内容边界承担 1 DIP 暖边，并写出与管理窗口同类的回退诊断事件（#324）";
+    private const string ConfirmationDialogTitleFactMeaning =
+        "确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）";
+    private const string ConfirmationDialogResourcesFactMeaning =
+        "连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）";
 
     [STAThread]
     private static int Main()
@@ -84,7 +90,9 @@ internal static class Program
             [RuleEditorPlainLabelsFactName] = false,
             [RuleEditorLivePreviewFactName] = false,
             [SecondaryDwmSupportedFactName] = false,
-            [SecondaryDwmFallbackFactName] = false
+            [SecondaryDwmFallbackFactName] = false,
+            [ConfirmationDialogTitleFactName] = false,
+            [ConfirmationDialogResourcesFactName] = false
         };
         var failures = new List<string>();
 
@@ -200,6 +208,16 @@ internal static class Program
                 SecondaryDwmFallbackFactMeaning,
                 () => SecondaryWindowDwmChromeScenario.RunUnsupportedDwmChromeFallback(
                     SecondaryDwmFallbackFactMeaning));
+            RunFact(ConfirmationDialogTitleFactName, ConfirmationDialogTitleFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunConfirmationDialogTitle();
+                return (true, ConfirmationDialogTitleFactMeaning);
+            });
+            RunFact(ConfirmationDialogResourcesFactName, ConfirmationDialogResourcesFactMeaning, () =>
+            {
+                WindowSmokeScenario.RunConfirmationDialogResources();
+                return (true, ConfirmationDialogResourcesFactMeaning);
+            });
         }
         catch (Exception exception)
         {

@@ -1379,14 +1379,18 @@ internal static class SecondaryWindowChrome
 
 internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
 {
+    private static ResourceDictionary? _sharedWpfUiResources;
     private Style? _dayCancelStyle;
     private Style? _dayConfirmStyle;
     private bool _systemContrastApplied;
 
     internal void ApplyTheme()
     {
-        // 局部别名复制的是画刷实例；配色替换后按应用资源重取，已打开的确认框随之换色。
-        ApplyThemeAliases(Resources);
+        // 局部别名复制的是画刷实例；由共享字典随 PaletteChanged 统一重取，此处补齐按钮系统对比度样式。
+        if (_sharedWpfUiResources is not null)
+        {
+            ApplyThemeAliases(_sharedWpfUiResources);
+        }
         if (CancelButton is null || ConfirmButton is null || _systemContrastApplied == ApplicationTheme.HighContrastEnabled) return;
         if (ApplicationTheme.HighContrastEnabled)
         {
@@ -1414,9 +1418,9 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         string confirmText = "确认删除",
         string confirmStyleKey = "DangerButton")
     {
-        // #205：WPF-UI 只在本确认框的 Window.Resources 中合并；不触碰
-        // Application.Current.Resources，避免其隐式样式进入主窗、悬浮窗和其他次级窗口。
-        Resources = CreateLocalWpfUiResources();
+        // #205/#314：WPF-UI 资源字典进程内只构建一次并在确认框实例间共享；始终留在
+        // 确认框窗口级 Resources，不触碰 Application.Current.Resources。
+        Resources = GetSharedWpfUiResources();
         // Implicit styles are keyed by the exact control type; this subclass
         // therefore applies WPF-UI's MessageBox style explicitly while keeping
         // the style and all merged dictionaries local to this window.
@@ -1516,6 +1520,17 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
 
     public new void Close() => ((Window)this).Close();
 
+    public override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        // #314：正文已保留标题（ConfirmationHeading），标题栏不再重复显示同一文字；
+        // Window.Title 与窗口自动化名称保持不变。
+        if (GetTemplateChild("Title") is UIElement templateTitle)
+        {
+            templateTitle.Visibility = Visibility.Collapsed;
+        }
+    }
+
     protected override void OnLoaded()
     {
         base.OnLoaded();
@@ -1581,16 +1596,30 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
         }
     }
 
-    private static ResourceDictionary CreateLocalWpfUiResources()
+    private static ResourceDictionary GetSharedWpfUiResources()
     {
-        var resources = new ResourceDictionary();
-        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary
+        if (_sharedWpfUiResources is null)
         {
-            Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
-        });
-        resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
-        ApplyThemeAliases(resources);
-        return resources;
+            var resources = new ResourceDictionary();
+            resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ThemesDictionary
+            {
+                Theme = Wpf.Ui.Appearance.ApplicationTheme.Light
+            });
+            resources.MergedDictionaries.Add(new Wpf.Ui.Markup.ControlsDictionary());
+            ApplyThemeAliases(resources);
+            _sharedWpfUiResources = resources;
+            ApplicationTheme.PaletteChanged += OnSharedPaletteChanged;
+        }
+
+        return _sharedWpfUiResources;
+    }
+
+    private static void OnSharedPaletteChanged(object? sender, EventArgs args)
+    {
+        if (_sharedWpfUiResources is not null)
+        {
+            ApplyThemeAliases(_sharedWpfUiResources);
+        }
     }
 
     // WPF-UI resource keys are local aliases of existing warm-pink semantic
@@ -1618,9 +1647,31 @@ internal sealed class ConfirmationDialog : Wpf.Ui.Controls.MessageBox
 
     private static void ApplyThemeAliases(ResourceDictionary resources)
     {
+        var updates = new List<(string Key, object Value)>(ThemeAliases.Length);
         foreach (var (wpfUiKey, themeKey) in ThemeAliases)
         {
-            resources[wpfUiKey] = ApplicationResource(themeKey);
+            var value = ApplicationResource(themeKey);
+            if (!Equals(resources[wpfUiKey], value))
+            {
+                updates.Add((wpfUiKey, value));
+            }
+        }
+        if (updates.Count == 0)
+        {
+            return;
+        }
+
+        resources.BeginInit();
+        try
+        {
+            foreach (var (wpfUiKey, value) in updates)
+            {
+                resources[wpfUiKey] = value;
+            }
+        }
+        finally
+        {
+            resources.EndInit();
         }
     }
 

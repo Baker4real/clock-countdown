@@ -146,3 +146,22 @@ internal static class FocusVisualState
     public static bool GetHostDrawsFocus(DependencyObject target) =>
         (bool)target.GetValue(HostDrawsFocusProperty);
 }
+
+/// <summary>
+/// #303：输入控件（文本框、下拉框、日期框）的字段级错误状态，由共享模板驱动 1/2 DIP 危险色边界。
+/// </summary>
+internal static class InputErrorState
+{
+    public static readonly DependencyProperty HasErrorProperty =
+        DependencyProperty.RegisterAttached(
+            "HasError",
+            typeof(bool),
+            typeof(InputErrorState),
+            new FrameworkPropertyMetadata(false));
+
+    public static void SetHasError(DependencyObject target, bool value) =>
+        target.SetValue(HasErrorProperty, value);
+
+    public static bool GetHasError(DependencyObject target) =>
+        (bool)target.GetValue(HasErrorProperty);
+}

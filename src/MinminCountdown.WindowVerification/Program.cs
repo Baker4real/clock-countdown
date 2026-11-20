@@ -28,6 +28,7 @@ internal static class Program
     internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
     internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
     internal const string MainTagRenameSyncFactName = "MainTagRenameSyncsAcrossAllSurfaces";
+    internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -75,6 +76,9 @@ internal static class Program
         "连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）";
     private const string MainTagRenameSyncFactMeaning =
         "标签管理改名后，管理窗口倒计时行、便签卡、筛选标签与标签选择器立即显示新名称，倒计时行同步更新标签名称与颜色且行的其他内容、键盘焦点和滚动位置不变（#298）";
+    private const string InputFocusAndErrorFactMeaning =
+        "文本框、下拉框与日期框使用非红色焦点和更深暖色悬停边；倒计时编辑器的有效焦点、错误无焦点与错误有焦点" +
+        "分别为 2/1/2 DIP 且不挤布局，首错聚焦、修正即清、帮助文本与礼貌播报保持，系统对比度映射不同系统角色（#303）";
 
     [STAThread]
     private static int Main()
@@ -101,7 +105,8 @@ internal static class Program
             [SecondaryDwmFallbackFactName] = false,
             [ConfirmationDialogTitleFactName] = false,
             [ConfirmationDialogResourcesFactName] = false,
-            [MainTagRenameSyncFactName] = false
+            [MainTagRenameSyncFactName] = false,
+            [InputFocusAndErrorFactName] = false
         };
         var failures = new List<string>();
 
@@ -236,6 +241,11 @@ internal static class Program
                 MainTagRenameSyncFactName,
                 MainTagRenameSyncFactMeaning,
                 () => TagRenameSyncScenario.Run(MainTagRenameSyncFactMeaning));
+            RunFact(InputFocusAndErrorFactName, InputFocusAndErrorFactMeaning, () =>
+            {
+                InputFocusAndErrorScenario.Run();
+                return (true, InputFocusAndErrorFactMeaning);
+            });
         }
         catch (Exception exception)
         {

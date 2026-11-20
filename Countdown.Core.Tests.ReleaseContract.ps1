@@ -72,8 +72,9 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorCopyAndPreviewScenario.cs',
     'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',
-    'src\MinminCountdown.WindowVerification\TagRenameSyncScenario.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#298/#315/#320/#321/#322/#323/#324 build identity contains the window verification input: $windowVerificationInput"
+    'src\MinminCountdown.WindowVerification\TagRenameSyncScenario.cs',
+    'src\MinminCountdown.WindowVerification\InputFocusAndErrorScenario.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#298/#303/#315/#320/#321/#322/#323/#324 build identity contains the window verification input: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
@@ -277,7 +278,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 124 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #315 floating search scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323 rule editor scenarios and #324 secondary DWM chrome scenario to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 125 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #303 input scenario, #315 floating search scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323 rule editor scenarios and #324 secondary DWM chrome scenario to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `

@@ -462,13 +462,16 @@ internal static class MotionBehavior
                 targetBackground,
                 colorDuration,
                 easing);
-            AnimateBrush(
-                _surface,
-                Border.BorderBrushProperty,
-                currentBorder,
-                targetBorder,
-                colorDuration,
-                easing);
+            if (!FocusVisualState.GetHostDrawsFocus(_control))
+            {
+                AnimateBrush(
+                    _surface,
+                    Border.BorderBrushProperty,
+                    currentBorder,
+                    targetBorder,
+                    colorDuration,
+                    easing);
+            }
 
             var scale = EnsureScaleTransform(_surface);
             var targetScale = isPressed ? 0.97 : 1;

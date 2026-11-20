@@ -5099,14 +5099,15 @@ public sealed partial class FloatingWindow
                 FloatingNotesCommandScroller.ScrollToBottom();
                 WindowValidationInput.Pump(Dispatcher);
                 UpdateLayout();
-                var scrollerViewportBottom = ValidationBounds(FloatingNotesCommandScroller).Bottom;
+                var commandAreaBottom = ValidationBounds(FloatingNotesCommandArea).Bottom;
                 var scrolledBarBounds = ValidationBounds(FloatingNotesCommandBar);
                 var commandBarReachableAtBottom =
                     FloatingNotesCommandScroller.VerticalOffset >=
                         FloatingNotesCommandScroller.ScrollableHeight - 0.5 &&
-                    scrolledBarBounds.Bottom <= scrollerViewportBottom + 0.5 &&
-                    scrolledBarBounds.Bottom >= scrollerViewportBottom - 8 &&
-                    ValidationBounds(FloatingAddNote).Bottom <= scrollerViewportBottom + 0.5;
+                    commandAreaBottom <= ActualHeight + 0.5 &&
+                    scrolledBarBounds.Bottom <= commandAreaBottom + 0.5 &&
+                    scrolledBarBounds.Bottom >= commandAreaBottom - 8 &&
+                    ValidationBounds(FloatingAddNote).Bottom <= commandAreaBottom + 0.5;
 
                 FloatingNotesCommandScroller.ScrollToHome();
                 WindowValidationInput.Pump(Dispatcher);

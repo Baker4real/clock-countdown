@@ -339,15 +339,25 @@
           </StackPanel>
         </ScrollViewer>
 
-        <!-- #117 收尾：快速新增展开时表单+命令行可能超过外壳剩余空间；命令区整体收进限高
-             滚动容器（滚动热区最右 x=396 内），收起态内容高度低于限高，布局与基线不变。 -->
-        <ScrollViewer x:Name="FloatingNotesCommandScroller"
-                      Grid.Row="3"
-                      Margin="0,0,76,0"
-                      MaxHeight="170"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Focusable="False">
+        <!-- #117 / #318：命令区整体限高 170（滚动热区最右 x=396 内）。收起态仅显示底部命令行，
+             高度低于限高、布局与现役视觉基线逐像素一致；展开态字段区在限高内滚动，“添加”动作行与
+             底部命令行固定在命令区底部不随字段滚动，出错多一行时“添加”仍完整位于视口内。 -->
+        <Grid x:Name="FloatingNotesCommandArea"
+              Grid.Row="3"
+              Margin="0,0,76,0"
+              MaxHeight="170"
+              ClipToBounds="True"
+              Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <ScrollViewer x:Name="FloatingNotesCommandScroller"
+                        Grid.Row="0"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled"
+                        Focusable="False">
           <ScrollViewer.Resources>
             <Style TargetType="{x:Type ScrollBar}">
               <Setter Property="Width" Value="10" />
@@ -428,22 +438,20 @@
               </Setter>
             </Style>
           </ScrollViewer.Resources>
-          <StackPanel x:Name="FloatingNotesCommandArea"
-                      Visibility="Collapsed">
           <Border x:Name="FloatingNoteEntry"
                   Width="319"
                   HorizontalAlignment="Left"
                   Margin="9,0,0,0"
-                  Padding="10"
+                  Padding="10,6,10,6"
                   Background="{DynamicResource FloatingDayNoteInputBrush}"
                   BorderBrush="{DynamicResource FloatingDayBorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="6"
+                  BorderThickness="1,1,1,0"
+                  CornerRadius="6,6,0,0"
                   Visibility="Collapsed">
             <StackPanel>
               <Border Width="18"
                       Height="3"
-                      Margin="2,-4,0,7"
+                      Margin="2,-2,0,4"
                       HorizontalAlignment="Left"
                       Background="{DynamicResource FloatingHeaderDangerBrush}"
                       IsHitTestVisible="False" />
@@ -477,7 +485,7 @@
               </Grid>
               <TextBlock x:Name="FloatingNoteTextError"
                          FontSize="{DynamicResource TypeCaptionFontSize}"
-                         Margin="2,4,2,0"
+                         Margin="2,3,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
                          Visibility="Collapsed" />
@@ -497,7 +505,7 @@
               </Grid>
               <TextBlock x:Name="FloatingNoteDateError"
                          FontSize="{DynamicResource TypeCaptionFontSize}"
-                         Margin="2,4,2,0"
+                         Margin="2,3,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
                          Visibility="Collapsed" />
@@ -509,31 +517,46 @@
                          TextWrapping="Wrap" />
               <TextBlock x:Name="FloatingReminderMessage"
                          FontSize="{DynamicResource TypeCaptionFontSize}"
-                         Margin="2,4,2,0"
+                         Margin="2,3,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
                          Visibility="Collapsed" />
-              <Grid Margin="0,8,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
-                <Button x:Name="FloatingAddNote"
-                        Grid.Column="1"
-                        Width="68"
-                        Margin="8,0,0,0"
-                        Content="添加"
-                        Style="{DynamicResource PrimaryButton}" />
-              </Grid>
               <TextBlock x:Name="FloatingNoteMessage"
                          FontSize="{DynamicResource TypeCaptionFontSize}"
                          Margin="2,6,2,0"
                          Foreground="{DynamicResource FloatingErrorBrush}"
-                         TextWrapping="Wrap" />
+                         TextWrapping="Wrap"
+                         Visibility="Collapsed" />
             </StackPanel>
           </Border>
+          </ScrollViewer>
+          <Border x:Name="FloatingNoteActionRow"
+                  Grid.Row="1"
+                  Width="319"
+                  HorizontalAlignment="Left"
+                  Margin="9,0,0,0"
+                  Padding="10,4,10,4"
+                  Background="{DynamicResource FloatingDayNoteInputBrush}"
+                  BorderBrush="{DynamicResource FloatingDayBorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="0,0,6,6"
+                  Visibility="Collapsed">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <local:TagSelector x:Name="FloatingTags" HorizontalAlignment="Stretch" />
+              <Button x:Name="FloatingAddNote"
+                      Grid.Column="1"
+                      Width="68"
+                      Margin="8,0,0,0"
+                      Content="添加"
+                      Style="{DynamicResource PrimaryButton}" />
+            </Grid>
+          </Border>
           <Grid x:Name="FloatingNotesCommandBar"
+                Grid.Row="2"
                 Margin="9,4,0,6">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
@@ -630,7 +653,8 @@
                 </StackPanel>
               </Button>
             </StackPanel>
-            <Grid Grid.Row="2"
+            <Grid x:Name="FloatingNotesDecoRow"
+                  Grid.Row="2"
                   Margin="0,2,0,0">
               <!-- #156：悬浮窗手写体装饰退出控件朗读（SilentTextBlock 无自动化 peer，§4/#156 合同）。 -->
               <local:SilentTextBlock x:Name="FloatingNotesDecoTextLeft"
@@ -655,8 +679,7 @@
                          Focusable="False" />
             </Grid>
           </Grid>
-        </StackPanel>
-        </ScrollViewer>
+        </Grid>
       </Grid>
     </Border>
 

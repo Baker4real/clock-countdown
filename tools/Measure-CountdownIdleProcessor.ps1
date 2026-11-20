@@ -177,24 +177,26 @@ function Wait-OwnedRuntimeReady {
     throw "readiness: window-ready receipt not observed for PID $($Process.Id) within 60 seconds."
 }
 
-function Stop-ExactOwnedProcess {
+function Read-ManagedChildReport {
+    param([Parameter(Mandatory)] [string] $Path)
+    if (-not [IO.File]::Exists($Path)) { return $null }
+    try { return [IO.File]::ReadAllText($Path) | ConvertFrom-Json -Depth 20 -ErrorAction Stop }
+    catch [System.Text.Json.JsonException] { return $null }
+}
+
+function Wait-ManagedChildReport {
     param(
-        [Parameter(Mandatory)] $Process,
-        [Parameter(Mandatory)] [DateTimeOffset] $ExpectedStartedAtUtc,
-        [Parameter(Mandatory)] [string] $ExpectedExecutablePath
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] $WrapperProcess
     )
-    if ($Process.HasExited) { return 'already-exited' }
-    $actualStarted = [DateTimeOffset]::new($Process.StartTime).ToUniversalTime()
-    if ($Process.Id -le 0 -or [Math]::Abs(($actualStarted - $ExpectedStartedAtUtc).TotalMilliseconds) -gt 1) {
-        throw 'manual-review: owned process identity drifted; no stop action was sent.'
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $childReport = Read-ManagedChildReport -Path $Path
+        if ($null -ne $childReport -and $null -ne $childReport.Application) { return $childReport }
+        if ($WrapperProcess.HasExited) { throw "identity: managed wrapper exited with code $($WrapperProcess.ExitCode) before reporting an application." }
+        Start-Sleep -Milliseconds 100
     }
-    $actualPath = [IO.Path]::GetFullPath($Process.MainModule.FileName)
-    if (-not [string]::Equals($actualPath, $ExpectedExecutablePath, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'manual-review: owned process executable path drifted; no stop action was sent.'
-    }
-    $Process.Kill($true)
-    if (-not $Process.WaitForExit(5000)) { throw 'manual-review: exact owned process did not exit within 5 seconds after cleanup.' }
-    return 'exact-owned-handle-kill'
+    throw 'identity: managed wrapper did not report its application within 30 seconds.'
 }
 
 function Remove-MeasurementJunction {
@@ -233,6 +235,75 @@ function Read-OwnedDiagnosticEvents {
     @($events)
 }
 
+function Resolve-IdleCounterInstance {
+    param(
+        [Parameter(Mandatory)] $Process,
+        [Parameter(Mandatory)] [int] $ExpectedProcessId
+    )
+    $errors = [System.Collections.Generic.List[string]]::new()
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        $counterErrors = @()
+        $sets = @(Get-Counter -Counter '\Process(*)\ID Process' -ErrorAction SilentlyContinue -ErrorVariable counterErrors)
+        foreach ($error in $counterErrors) { $errors.Add($error.Exception.Message) }
+        $matches = @($sets | ForEach-Object CounterSamples | Where-Object {
+            $_.Status -eq 0 -and [string] $_.Path -match '\\id process$' -and
+            [Math]::Abs([double] $_.CookedValue - $ExpectedProcessId) -lt 0.5
+        })
+        if ($matches.Count -gt 1) { throw "identity: multiple counter instances match PID $ExpectedProcessId." }
+        if ($matches.Count -eq 1) {
+            if ($Process.HasExited) { throw "identity: PID $ExpectedProcessId exited during counter-instance resolution." }
+            return [pscustomobject]@{
+                InstanceName = [string] $matches[0].InstanceName
+                Attempts = $attempt
+                Errors = @($errors | Select-Object -Unique)
+            }
+        }
+        if ($Process.HasExited) { throw "identity: PID $ExpectedProcessId exited during counter-instance resolution." }
+        if ($attempt -lt 5) { Start-Sleep -Seconds 1 }
+    }
+    throw "identity: no valid performance-counter instance for PID $ExpectedProcessId after 5 attempts; errors=$($errors -join ';')"
+}
+
+function Write-IdleCounterDiagnostics {
+    param(
+        [Parameter(Mandatory)] [object[]] $CounterSets,
+        [Parameter(Mandatory)] [int] $ExpectedProcessId,
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $Errors,
+        [string] $ExpectedInstanceName
+    )
+    $rows = @(foreach ($set in $CounterSets) {
+        $all = @($set.CounterSamples)
+        $ids = @($all | Where-Object { [string] $_.Path -match '\\id process$' })
+        $validIds = @($ids | Where-Object Status -eq 0)
+        $targetIds = @($ids | Where-Object { [Math]::Abs([double] $_.CookedValue - $ExpectedProcessId) -lt 0.5 })
+        $targetInstances = @($targetIds | Where-Object Status -eq 0 | ForEach-Object { [string] $_.InstanceName })
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedInstanceName)) { $targetInstances = @($ExpectedInstanceName) }
+        $targetCpu = @($all | Where-Object {
+            $_.Status -eq 0 -and [string] $_.Path -match '\\% processor time$' -and [string] $_.InstanceName -in $targetInstances
+        })
+        [pscustomobject]@{
+            Timestamp = $set.Timestamp
+            IdCounterCount = $ids.Count
+            ValidIdCounterCount = $validIds.Count
+            TargetIdMatchCount = $targetIds.Count
+            TargetIdStatuses = @($targetIds | ForEach-Object { [int] $_.Status })
+            TargetInstanceNames = $targetInstances
+            ValidTargetCpuCount = $targetCpu.Count
+            CpuCounterCount = @($all | Where-Object { [string] $_.Path -match '\\% processor time$' }).Count
+        }
+    })
+    $diagnostics = [pscustomobject]@{
+        ExpectedProcessId = $ExpectedProcessId
+        BindingMode = if ([string]::IsNullOrWhiteSpace($ExpectedInstanceName)) { 'pid-per-set' } else { 'pid-prebound-instance' }
+        ExpectedInstanceName = $ExpectedInstanceName
+        CounterSetCount = $CounterSets.Count
+        CounterErrors = @($Errors | ForEach-Object { $_.Exception.Message } | Select-Object -Unique)
+        Sets = $rows
+    }
+    Write-MeasurementJson -Path $Path -Value $diagnostics
+}
+
 function Get-BackgroundTotalCpu {
     $errors = @()
     $sets = @(Get-Counter -Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 3 -ErrorAction SilentlyContinue -ErrorVariable errors)
@@ -266,6 +337,10 @@ $applicationDll = Join-Path $applicationDirectory 'MinminCountdown.dll'
 if (-not [IO.File]::Exists($application) -or -not [IO.File]::Exists($applicationDll)) {
     throw 'build: app\MinminCountdown.exe and MinminCountdown.dll are required; run the official IncrementalBuild stage first.'
 }
+$wrapperPath = Join-Path $PSScriptRoot 'Invoke-CountdownIdleMeasurementChild.ps1'
+$pwshPath = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$pwshHash = (Get-FileHash -LiteralPath $pwshPath -Algorithm SHA256).Hash
+if (-not [IO.File]::Exists($wrapperPath)) { throw "measurement: missing managed wrapper $wrapperPath" }
 
 $runStamp = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
 $runSuffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
@@ -291,6 +366,11 @@ if ([IO.File]::Exists($payloadPath)) {
     $payloadCommit = [string] $payload.commit
     $payloadAggregate = [string] $payload.aggregateSha256
 }
+if ([string]::IsNullOrWhiteSpace($payloadCommit)) { throw 'source: published-payload.json with a source commit is required.' }
+$payloadSourceCommit = $payloadCommit -replace '-dirty$', ''
+if (-not [string]::Equals($payloadSourceCommit, $gitHead, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "source: stale build '$payloadCommit' does not match HEAD '$gitHead'; rerun the official IncrementalBuild stage."
+}
 $processor = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
 $operatingSystem = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
 $powerLines = @(& powercfg /getactivescheme 2>$null)
@@ -314,6 +394,7 @@ $sourceBinding = [pscustomobject]@{
     PayloadAggregateSha256 = $payloadAggregate
     MeasurementScriptSha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     MeasurementModuleSha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'Countdown.IdleProcessorMeasurement.psm1') -Algorithm SHA256).Hash
+    MeasurementWrapperSha256 = (Get-FileHash -LiteralPath $wrapperPath -Algorithm SHA256).Hash
     BaselineFixtureSha256 = (Get-FileHash -LiteralPath $fixtureBaseline -Algorithm SHA256).Hash
     CalendarFixtureSha256 = (Get-FileHash -LiteralPath $fixtureCalendar -Algorithm SHA256).Hash
 }
@@ -336,7 +417,7 @@ $environment = [pscustomobject]@{
 }
 $counterContract = [pscustomobject]@{
     Provider = 'Windows Get-Counter PDH'
-    CounterPaths = @('\Process(*)\% Processor Time', '\Process(*)\ID Process')
+    CounterPaths = @('\Process(<PID-bound-instance>)\% Processor Time', '\Process(*)\ID Process (pre-sample resolution only)')
     SampleIntervalSeconds = 1
     RequestedSetCount = $SecondsPerTier + 3
     DiscardedInitialSetCount = 1
@@ -344,7 +425,7 @@ $counterContract = [pscustomobject]@{
     MinimumObservedDurationSeconds = 60
     WarmupSeconds = 5
     SingleCoreDefinition = 'Process % Processor Time cooked value; 100 means one fully used logical processor. No division by logical processor count.'
-    PidBinding = 'Match Process(*)\ID Process in every set, then read % Processor Time from the same counter instance.'
+    PidBinding = 'Before sampling, resolve exactly one process counter instance from Process(*)\ID Process. Sample only that instance; any mid-window app exit fails the tier, preventing reuse from being accepted.'
 }
 $launchIntent = [pscustomobject]@{
     SchemaVersion = 1
@@ -354,7 +435,8 @@ $launchIntent = [pscustomobject]@{
     OwnerTokenIssuedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
     Application = $application
     WorkingDirectoryScope = "$runRoot\<tier>"
-    ArgumentTemplate = '--exit-after-ready-for-test --exit-after-ready-seconds <bounded> --instance-activation-test-state <tier> --settings-file <tier settings> --diagnostic-log-path <token-bound tier log>'
+    ArgumentTemplate = 'managed wrapper config: --exit-after-ready-for-test --exit-after-ready-seconds <bounded> --instance-activation-test-state <tier> --settings-file <tier settings> --diagnostic-log-path <tier log>'
+    ManagedWrapper = $wrapperPath
     TargetTiers = @(Get-IdleMeasurementTierDefinition)
     Readiness = 'runtime-status window-ready PID match and expected owned-window visibility'
     ReadinessTimeoutSeconds = 60
@@ -362,7 +444,7 @@ $launchIntent = [pscustomobject]@{
     ExpectedResult = 'at least 60 PID-bound samples spanning at least 60 seconds, stable visibility, unchanged temporary settings, automatic test exit'
     Lifetime = 'task-scoped'
     OfficialIsolation = 'Invoke-CountdownSuiteLowImpact.ps1 -> Start-IsolatedSuiteProcess.ps1 -> owned Job with kill-on-close'
-    AllowedCleanup = 'wait for test auto-exit; on failure or timeout only kill the exact owned Process handle after PID, start-time and executable-path verification'
+    AllowedCleanup = 'wait for test auto-exit; on failure or timeout the managed wrapper verifies identity, attempts bounded graceful stop, reverifies full identity, then may escalate; coordinator never kills by name or PID alone'
 }
 Write-MeasurementJson -Path (Join-Path $runRoot 'launch-intent.json') -Value $launchIntent
 
@@ -407,32 +489,48 @@ try {
         $runtimeStatusPath = Join-Path $tierRoot 'runtime-status.json'
         $processRecordPath = Join-Path $tierRoot 'process.json'
         $autoExitSeconds = $SecondsPerTier + 25
-        $ownedProcess = $null
-        $stdoutTask = $null
-        $stderrTask = $null
-        $startedAtUtc = $null
-        $actualExecutablePath = $null
+        $wrapperProcess = $null
+        $applicationProcess = $null
+        $wrapperStdoutTask = $null
+        $wrapperStderrTask = $null
+        $wrapperStartedAtUtc = $null
+        $wrapperExecutablePath = $null
+        $childReportPath = Join-Path $tierRoot 'child-report.json'
+        $stopRequestPath = Join-Path $tierRoot 'stop.request'
         $tierError = $null
-        $cleanupMethod = $null
         $processRecord = [ordered]@{
-            SchemaVersion = 1
+            SchemaVersion = 2
             Tier = $tier.Name
             OwnershipMode = 'task-scoped'
             OwnerTokenSha256 = $ownerTokenHash
-            OwnerTokenReport = 'token-bound child diagnostic log'
+            OwnerTokenReport = 'managed wrapper child-report.json'
+            OwnerTokenLaunchReportVerified = $false
             OwnerTokenReportVerified = $false
+            OwnerTokenReportPath = $childReportPath
+            OwnerTokenReportedByPid = $null
+            OwnerTokenReportSha256 = $null
             ProcessId = $null
-            ParentProcessId = $PID
+            ParentProcessId = $null
+            CoordinatorProcessId = $PID
             StartedAtUtc = $null
             ExecutablePath = $null
             ApplicationExeSha256 = $sourceBinding.ApplicationExeSha256
             PriorityClass = $null
+            WrapperProcessId = $null
+            WrapperParentProcessId = $PID
+            WrapperStartedAtUtc = $null
+            WrapperExecutablePath = $null
+            WrapperExecutableSha256 = $pwshHash
+            WrapperExitCode = $null
             Readiness = 'pending'
             ProcessState = 'launching'
             ExpectedExitCode = 0
             ExitCode = $null
             ExitedAtUtc = $null
             CleanupMethod = $null
+            CoordinatorStopRequestedAtUtc = $null
+            GracefulStop = $null
+            Escalation = $null
             TemporarySettingsPath = $settingsPath
             TemporarySettingsSha256Before = $settingsHashBefore
             TemporarySettingsSha256After = $null
@@ -443,7 +541,31 @@ try {
         }
         Write-MeasurementJson -Path $processRecordPath -Value $processRecord
         try {
-            $startInfo = [Diagnostics.ProcessStartInfo]::new($tierApplication)
+            $wrapperConfig = [pscustomobject]@{
+                OwnerTokenSha256 = $ownerTokenHash
+                Application = $tierApplication
+                ApplicationArguments = @(
+                    '--exit-after-ready-for-test',
+                    '--exit-after-ready-seconds', ([string] $autoExitSeconds),
+                    '--instance-activation-test-state', ([string] $tier.ActivationState),
+                    '--settings-file', $settingsPath,
+                    '--diagnostic-log-path', $diagnosticPath
+                )
+                WorkingDirectory = $tierRoot
+                ReportPath = $childReportPath
+                StopRequestPath = $stopRequestPath
+                GracefulStopMode = 'WpfExternalClose'
+                GracefulStopTimeoutSeconds = 10
+                EscalationExitTimeoutSeconds = 5
+                ExpectedApplicationExitCode = 0
+                MaximumRunSeconds = $autoExitSeconds + 30
+                ProxyAddress = $proxyAddress
+                StandardOutputPath = Join-Path $tierRoot 'app.stdout.log'
+                StandardErrorPath = Join-Path $tierRoot 'app.stderr.log'
+            }
+            $wrapperConfigPath = Join-Path $tierRoot 'wrapper-config.json'
+            Write-MeasurementJson -Path $wrapperConfigPath -Value $wrapperConfig
+            $startInfo = [Diagnostics.ProcessStartInfo]::new($pwshPath)
             $startInfo.WorkingDirectory = $tierRoot
             $startInfo.UseShellExecute = $false
             $startInfo.CreateNoWindow = $true
@@ -451,57 +573,83 @@ try {
             $startInfo.RedirectStandardError = $true
             $startInfo.StandardOutputEncoding = $utf8NoBom
             $startInfo.StandardErrorEncoding = $utf8NoBom
-            foreach ($argument in @(
-                '--exit-after-ready-for-test',
-                '--exit-after-ready-seconds', ([string] $autoExitSeconds),
-                '--instance-activation-test-state', ([string] $tier.ActivationState),
-                '--settings-file', $settingsPath,
-                '--diagnostic-log-path', $diagnosticPath)) {
+            foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', $wrapperPath, '-ConfigurationPath', $wrapperConfigPath)) {
                 $startInfo.ArgumentList.Add($argument)
             }
             $startInfo.Environment['MINMIN_IDLE_MEASUREMENT_OWNER_TOKEN'] = $ownerToken
-            $startInfo.Environment['MINMIN_IDLE_MEASUREMENT_OWNER_TOKEN_SHA256'] = $ownerTokenHash
-            foreach ($proxyVariable in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
-                $startInfo.Environment[$proxyVariable] = $proxyAddress
+            $wrapperProcess = [Diagnostics.Process]::Start($startInfo)
+            if ($null -eq $wrapperProcess) { throw 'launch: managed wrapper start returned null.' }
+            $wrapperStartedAtUtc = [DateTimeOffset]::new($wrapperProcess.StartTime).ToUniversalTime()
+            $wrapperExecutablePath = Get-IdleMeasurementProcessImagePath -ProcessId $wrapperProcess.Id
+            $wrapperStdoutTask = $wrapperProcess.StandardOutput.ReadToEndAsync()
+            $wrapperStderrTask = $wrapperProcess.StandardError.ReadToEndAsync()
+            $wrapperProcess.PriorityClass = [Diagnostics.ProcessPriorityClass]::BelowNormal
+            $processRecord.WrapperProcessId = $wrapperProcess.Id
+            $processRecord.WrapperStartedAtUtc = $wrapperStartedAtUtc.ToString('o')
+            $processRecord.WrapperExecutablePath = $wrapperExecutablePath
+            $processRecord.ProcessState = 'wrapper-running'
+            Write-MeasurementJson -Path $processRecordPath -Value $processRecord
+
+            $launchReport = Wait-ManagedChildReport -Path $childReportPath -WrapperProcess $wrapperProcess
+            $applicationProcess = [Diagnostics.Process]::GetProcessById([int] $launchReport.Application.ProcessId)
+            $applicationStartedAtUtc = [DateTimeOffset]::new($applicationProcess.StartTime).ToUniversalTime()
+            $applicationExecutablePath = Get-IdleMeasurementProcessImagePath -ProcessId $applicationProcess.Id
+            $reportBinding = @{
+                ExpectedOwnerTokenSha256 = $ownerTokenHash
+                CoordinatorProcessId = $PID
+                ExpectedWrapperProcessId = $wrapperProcess.Id
+                ExpectedWrapperStartedAtUtc = $wrapperStartedAtUtc
+                ExpectedWrapperExecutablePath = $wrapperExecutablePath
+                ExpectedWrapperExecutableSha256 = $pwshHash
+                ExpectedApplicationProcessId = $applicationProcess.Id
+                ExpectedApplicationStartedAtUtc = $applicationStartedAtUtc
+                ExpectedApplicationExecutablePath = $applicationExecutablePath
+                ExpectedApplicationExecutableSha256 = $sourceBinding.ApplicationExeSha256
             }
-            [void] $startInfo.Environment.Remove('NO_PROXY')
-            $ownedProcess = [Diagnostics.Process]::Start($startInfo)
-            if ($null -eq $ownedProcess) { throw 'launch: Process.Start returned null.' }
-            $startedAtUtc = [DateTimeOffset]::new($ownedProcess.StartTime).ToUniversalTime()
-            $actualExecutablePath = [IO.Path]::GetFullPath($ownedProcess.MainModule.FileName)
-            $stdoutTask = $ownedProcess.StandardOutput.ReadToEndAsync()
-            $stderrTask = $ownedProcess.StandardError.ReadToEndAsync()
-            $ownedProcess.PriorityClass = [Diagnostics.ProcessPriorityClass]::BelowNormal
-            $processRecord.ProcessId = $ownedProcess.Id
-            $processRecord.StartedAtUtc = $startedAtUtc.ToString('o')
-            $processRecord.ExecutablePath = $actualExecutablePath
-            $processRecord.PriorityClass = $ownedProcess.PriorityClass.ToString()
+            if (-not (Test-IdleMeasurementChildReport -Report $launchReport @reportBinding)) {
+                throw 'identity: managed wrapper launch report failed token, PID, start-time, executable hash or parent-chain verification.'
+            }
+            $processRecord.OwnerTokenLaunchReportVerified = $true
+            $processRecord.ProcessId = $applicationProcess.Id
+            $processRecord.ParentProcessId = $wrapperProcess.Id
+            $processRecord.StartedAtUtc = $applicationStartedAtUtc.ToString('o')
+            $processRecord.ExecutablePath = $applicationExecutablePath
+            $processRecord.PriorityClass = $applicationProcess.PriorityClass.ToString()
             $processRecord.ProcessState = 'running'
             Write-MeasurementJson -Path $processRecordPath -Value $processRecord
 
-            $receipt = Wait-OwnedRuntimeReady -Path $runtimeStatusPath -Process $ownedProcess
+            $receipt = Wait-OwnedRuntimeReady -Path $runtimeStatusPath -Process $applicationProcess
             $processRecord.Readiness = 'window-ready'
             if ($tier.Name -ceq 'main-only') {
-                $bothVisible = Wait-ExpectedVisibility -OwnedProcessId $ownedProcess.Id -Tier ([pscustomobject]@{ FloatingVisible = $true; MainVisible = $true }) -Process $ownedProcess
+                $bothVisible = Wait-ExpectedVisibility -OwnedProcessId $applicationProcess.Id -Tier ([pscustomobject]@{ FloatingVisible = $true; MainVisible = $true }) -Process $applicationProcess
                 [MinminIdleMeasurementNative]::HideOwnedWindow([long] $bothVisible.FloatingHandle)
                 $processRecord.VisibilityAdjustment = 'ShowWindow(SW_HIDE) on the exact owned floating HWND after MainVisible readiness'
             }
-            $readyVisibility = Wait-ExpectedVisibility -OwnedProcessId $ownedProcess.Id -Tier $tier -Process $ownedProcess
+            $readyVisibility = Wait-ExpectedVisibility -OwnedProcessId $applicationProcess.Id -Tier $tier -Process $applicationProcess
             $processRecord.Readiness = 'window-ready-and-visibility-verified'
             $processRecord.VisibilityAtReady = $readyVisibility
             Write-MeasurementJson -Path $processRecordPath -Value $processRecord
 
             Start-Sleep -Seconds 5
-            $visibilityAtStart = Wait-ExpectedVisibility -OwnedProcessId $ownedProcess.Id -Tier $tier -Process $ownedProcess
-            $processorTimeBefore = $ownedProcess.TotalProcessorTime
+            $counterBinding = Resolve-IdleCounterInstance -Process $applicationProcess -ExpectedProcessId $applicationProcess.Id
+            $processRecord.CounterInstance = $counterBinding.InstanceName
+            $processRecord.CounterInstanceResolutionAttempts = $counterBinding.Attempts
+            $processRecord.CounterInstanceResolutionErrors = $counterBinding.Errors
+            $cpuCounterPath = '\Process(' + $counterBinding.InstanceName + ')\% Processor Time'
+            $visibilityAtStart = Wait-ExpectedVisibility -OwnedProcessId $applicationProcess.Id -Tier $tier -Process $applicationProcess
+            $processorTimeBefore = $applicationProcess.TotalProcessorTime
             $wallBefore = [DateTimeOffset]::UtcNow
             $counterErrors = @()
-            $counterSets = @(Get-Counter -Counter @('\Process(*)\% Processor Time', '\Process(*)\ID Process') -SampleInterval 1 -MaxSamples ($SecondsPerTier + 3) -ErrorAction SilentlyContinue -ErrorVariable counterErrors)
+            $counterSets = @(Get-Counter -Counter $cpuCounterPath -SampleInterval 1 -MaxSamples ($SecondsPerTier + 3) -ErrorAction SilentlyContinue -ErrorVariable counterErrors)
             $wallAfter = [DateTimeOffset]::UtcNow
-            $processorTimeAfter = $ownedProcess.TotalProcessorTime
-            if ($ownedProcess.HasExited) { throw "measurement: app exited during counter collection with code $($ownedProcess.ExitCode)." }
-            $summary = ConvertTo-IdleProcessorSampleSummary -CounterSets $counterSets -ProcessId $ownedProcess.Id -SkipInitialSets 1 -MinimumSeconds 60 -MinimumSamples 60
-            $visibilityAtEnd = Wait-ExpectedVisibility -OwnedProcessId $ownedProcess.Id -Tier $tier -Process $ownedProcess
+            $processorTimeAfter = $applicationProcess.TotalProcessorTime
+            $counterDiagnosticsPath = Join-Path $tierRoot 'counter-diagnostics.json'
+            Write-IdleCounterDiagnostics -CounterSets $counterSets -ExpectedProcessId $applicationProcess.Id -Path $counterDiagnosticsPath -Errors $counterErrors -ExpectedInstanceName $counterBinding.InstanceName
+            $processRecord.CounterDiagnosticsPath = $counterDiagnosticsPath
+            $processRecord.CounterErrors = @($counterErrors | ForEach-Object { $_.Exception.Message } | Select-Object -Unique)
+            if ($applicationProcess.HasExited) { throw "measurement: app exited during counter collection with code $($applicationProcess.ExitCode)." }
+            $summary = ConvertTo-IdleProcessorSampleSummary -CounterSets $counterSets -ProcessId $applicationProcess.Id -CounterInstance $counterBinding.InstanceName -SkipInitialSets 1 -MinimumSeconds 60 -MinimumSamples 60
+            $visibilityAtEnd = Wait-ExpectedVisibility -OwnedProcessId $applicationProcess.Id -Tier $tier -Process $applicationProcess
             $samplesPath = Join-Path $tierRoot 'samples.jsonl'
             $sampleLines = @($summary.Samples | ForEach-Object { $_ | ConvertTo-Json -Compress })
             [IO.File]::WriteAllLines($samplesPath, $sampleLines, $utf8NoBom)
@@ -519,6 +667,7 @@ try {
                 MainVisible = [bool] $tier.MainVisible
                 CalendarRule = [bool] $tier.CalendarRule
                 FixtureSha256 = $settingsHashBefore
+                CounterBinding = $counterBinding
                 CounterErrors = @($counterErrors | ForEach-Object { $_.Exception.Message } | Select-Object -Unique)
                 VisibilityAtStart = $visibilityAtStart
                 VisibilityAtEnd = $visibilityAtEnd
@@ -532,34 +681,52 @@ try {
             $tierError = $_
             $processRecord.Error = $_.Exception.Message
         } finally {
-            if ($null -ne $ownedProcess) {
+            if ($null -ne $wrapperProcess) {
                 try {
-                    if ($null -eq $tierError -and -not $ownedProcess.HasExited) {
-                        [void] $ownedProcess.WaitForExit(30000)
+                    if ($null -eq $tierError -and -not $wrapperProcess.HasExited) {
+                        [void] $wrapperProcess.WaitForExit(30000)
                     }
-                    if (-not $ownedProcess.HasExited) {
-                        $cleanupMethod = Stop-ExactOwnedProcess -Process $ownedProcess -ExpectedStartedAtUtc $startedAtUtc -ExpectedExecutablePath $actualExecutablePath
+                    if (-not $wrapperProcess.HasExited) {
+                        [IO.File]::WriteAllText($stopRequestPath, 'stop', $utf8NoBom)
+                        $processRecord.CoordinatorStopRequestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+                        [void] $wrapperProcess.WaitForExit(20000)
+                    }
+                    if (-not $wrapperProcess.HasExited) {
+                        throw 'manual-review: managed wrapper did not finish bounded graceful stop and escalation; coordinator sent no kill and the official owned Job remains the safety boundary.'
+                    }
+                    $wrapperProcess.WaitForExit()
+                    $processRecord.WrapperExitCode = $wrapperProcess.ExitCode
+                    $wrapperStdout = if ($null -ne $wrapperStdoutTask) { $wrapperStdoutTask.GetAwaiter().GetResult() } else { '' }
+                    $wrapperStderr = if ($null -ne $wrapperStderrTask) { $wrapperStderrTask.GetAwaiter().GetResult() } else { '' }
+                    [IO.File]::WriteAllText((Join-Path $tierRoot 'wrapper.stdout.log'), $wrapperStdout, $utf8NoBom)
+                    [IO.File]::WriteAllText((Join-Path $tierRoot 'wrapper.stderr.log'), $wrapperStderr, $utf8NoBom)
+                    $finalChildReport = Read-ManagedChildReport -Path $childReportPath
+                    if ($null -eq $finalChildReport) { throw 'identity: managed wrapper final report is missing or invalid.' }
+                    $processRecord.OwnerTokenReportedByPid = $finalChildReport.Wrapper.ProcessId
+                    $processRecord.OwnerTokenReportSha256 = (Get-FileHash -LiteralPath $childReportPath -Algorithm SHA256).Hash
+                    $processRecord.GracefulStop = $finalChildReport.GracefulStop
+                    $processRecord.Escalation = $finalChildReport.Escalation
+                    if ($null -ne $applicationProcess -and $null -ne $finalChildReport.Application) {
+                        $finalReportVerified = Test-IdleMeasurementChildReport -Report $finalChildReport @reportBinding
+                        $processRecord.OwnerTokenReportVerified = $finalReportVerified -and $finalChildReport.Application.ProcessState -ceq 'exited'
+                        $processRecord.ExitCode = $finalChildReport.Application.ExitCode
+                        $processRecord.ProcessState = $finalChildReport.Application.ProcessState
+                        $processRecord.ExitedAtUtc = $finalChildReport.Application.ExitedAtUtc
+                        $processRecord.CleanupMethod = $finalChildReport.CleanupMethod
+                        $processRecord.DiagnosticEvents = @(Read-OwnedDiagnosticEvents -Path $diagnosticPath -OwnedProcessId $applicationProcess.Id)
+                        $processRecord.DiagnosticLogSha256 = (Get-FileHash -LiteralPath $diagnosticPath -Algorithm SHA256).Hash
                     } else {
-                        $cleanupMethod = if ($null -eq $tierError) { 'expected-auto-exit' } else { 'already-exited-after-failure' }
+                        $processRecord.ProcessState = 'manual-review-no-verified-application-report'
                     }
-                    $ownedProcess.WaitForExit()
-                    $processRecord.ExitCode = $ownedProcess.ExitCode
-                    $processRecord.ProcessState = 'exited'
-                    $processRecord.ExitedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-                    $processRecord.CleanupMethod = $cleanupMethod
-                    $stdout = if ($null -ne $stdoutTask) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
-                    $stderr = if ($null -ne $stderrTask) { $stderrTask.GetAwaiter().GetResult() } else { '' }
-                    [IO.File]::WriteAllText((Join-Path $tierRoot 'stdout.log'), $stdout, $utf8NoBom)
-                    [IO.File]::WriteAllText((Join-Path $tierRoot 'stderr.log'), $stderr, $utf8NoBom)
                     $processRecord.TemporarySettingsSha256After = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash
                     $processRecord.TemporarySettingsUnchanged = $processRecord.TemporarySettingsSha256After -ceq $settingsHashBefore
-                    $processRecord.DiagnosticEvents = @(Read-OwnedDiagnosticEvents -Path $diagnosticPath -OwnedProcessId $ownedProcess.Id)
-                    $processRecord.OwnerTokenReportVerified = $true
-                    $processRecord.DiagnosticLogSha256 = (Get-FileHash -LiteralPath $diagnosticPath -Algorithm SHA256).Hash
                     if ($null -eq $tierError) {
-                        if ($cleanupMethod -cne 'expected-auto-exit' -or $ownedProcess.ExitCode -ne 0) {
+                        $cleanupAccepted = $processRecord.CleanupMethod -in @('expected-auto-exit', 'graceful-wpfexternalclose')
+                        if (-not $processRecord.OwnerTokenReportVerified -or -not $processRecord.OwnerTokenLaunchReportVerified -or
+                            $wrapperProcess.ExitCode -ne 0 -or $processRecord.ProcessState -cne 'exited' -or
+                            $processRecord.ExitCode -ne 0 -or -not $cleanupAccepted) {
                             $tierError = [System.Management.Automation.ErrorRecord]::new(
-                                [InvalidOperationException]::new("cleanup: expected automatic exit 0, got method=$cleanupMethod code=$($ownedProcess.ExitCode)"),
+                                [InvalidOperationException]::new("cleanup: invalid managed completion; wrapper=$($wrapperProcess.ExitCode) app=$($processRecord.ExitCode) state=$($processRecord.ProcessState) method=$($processRecord.CleanupMethod) tokenVerified=$($processRecord.OwnerTokenReportVerified)"),
                                 'IdleMeasurementCleanup', [System.Management.Automation.ErrorCategory]::OperationStopped, $null)
                             $processRecord.Error = $tierError.Exception.Message
                         }
@@ -574,7 +741,8 @@ try {
                     if ($null -eq $tierError) { $tierError = $_ }
                     $processRecord.Error = @($processRecord.Error, $_.Exception.Message) | Where-Object { $_ } | Select-Object -Unique
                 } finally {
-                    $ownedProcess.Dispose()
+                    if ($null -ne $applicationProcess) { $applicationProcess.Dispose() }
+                    $wrapperProcess.Dispose()
                 }
             }
             Remove-MeasurementJunction -Path $junction -ExpectedParent $tierRoot

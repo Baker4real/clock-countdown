@@ -90,7 +90,10 @@ foreach ($requiredPath in @(
         'tools/Invoke-CountdownSuiteLowImpact.ps1',
         'tools/Countdown.IdleProcessorMeasurement.psm1',
         'tools/Measure-CountdownIdleProcessor.ps1',
+        'tools/Invoke-CountdownIdleMeasurementChild.ps1',
         'tools/Test-CountdownIdleProcessorMeasurement.ps1',
+        'tools/Test-CountdownIdleMeasurementChild.ps1',
+        'tools/Test-CountdownIdleMeasurementChildFixture.ps1',
         'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
         'tools/PopupValidationContract.cs'

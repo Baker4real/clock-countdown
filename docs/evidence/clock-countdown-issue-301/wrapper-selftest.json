@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "hash_scope": "git-blob",
+  "issue": 301,
+  "evidenceType": "managed-wrapper-token-and-cleanup-selftest",
+  "status": "complete",
+  "wrapperScriptSha256": "603CDB8B5632A235DF150EB41DBF27F031F921685CFBBABACF958166932B9169",
+  "cases": [
+    {
+      "name": "normal-auto-exit",
+      "report": {
+        "SchemaVersion": 1,
+        "ReportRole": "managed-child-wrapper",
+        "ReportSequence": 3,
+        "ReportedAtUtc": "2026-11-19T10:27:09.1830464+08:00",
+        "OwnerTokenSha256": "2807D3F955132D2DF0AE427AF9910705EE641A69E2FA9F2B63BAB69E9CD448C7",
+        "Wrapper": {
+          "ProcessId": 27264,
+          "ParentProcessId": 28184,
+          "StartedAtUtc": "2026-11-19T10:26:56.7259349+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "ScriptPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-296-301\\tools\\Invoke-CountdownIdleMeasurementChild.ps1",
+          "ScriptSha256": "603CDB8B5632A235DF150EB41DBF27F031F921685CFBBABACF958166932B9169"
+        },
+        "Application": {
+          "ProcessId": 84164,
+          "ParentProcessId": 27264,
+          "StartedAtUtc": "2026-11-19T10:26:58.1518639+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "PriorityClass": "BelowNormal",
+          "ProcessState": "exited",
+          "ExitCode": 0,
+          "ExitedAtUtc": "2026-11-19T10:27:09.1745763+08:00"
+        },
+        "GracefulStop": {
+          "Requested": false,
+          "RequestedAtUtc": null,
+          "IdentityVerifiedBeforeRequest": false,
+          "Attempted": false,
+          "SignalWritten": false,
+          "OwnedWindowCount": null,
+          "OwnerFound": false,
+          "ClosePosted": false,
+          "Exited": false,
+          "FinishedAtUtc": null,
+          "Error": null
+        },
+        "Escalation": {
+          "Attempted": false,
+          "AttemptedAtUtc": null,
+          "IdentityReverified": false,
+          "KillAttempted": false,
+          "Exited": false,
+          "FinishedAtUtc": null,
+          "Error": null
+        },
+        "CleanupMethod": "expected-auto-exit",
+        "Error": null
+      }
+    },
+    {
+      "name": "bounded-graceful-stop",
+      "report": {
+        "SchemaVersion": 1,
+        "ReportRole": "managed-child-wrapper",
+        "ReportSequence": 6,
+        "ReportedAtUtc": "2026-11-19T10:27:11.1793598+08:00",
+        "OwnerTokenSha256": "EC062A17A2F62AB707AD31EFC1623B6BD18BC94F1556132F07C2730E209BD5EF",
+        "Wrapper": {
+          "ProcessId": 12032,
+          "ParentProcessId": 28184,
+          "StartedAtUtc": "2026-11-19T10:27:09.247258+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "ScriptPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-296-301\\tools\\Invoke-CountdownIdleMeasurementChild.ps1",
+          "ScriptSha256": "603CDB8B5632A235DF150EB41DBF27F031F921685CFBBABACF958166932B9169"
+        },
+        "Application": {
+          "ProcessId": 59340,
+          "ParentProcessId": 12032,
+          "StartedAtUtc": "2026-11-19T10:27:10.6031929+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "PriorityClass": "BelowNormal",
+          "ProcessState": "exited",
+          "ExitCode": 0,
+          "ExitedAtUtc": "2026-11-19T10:27:11.1647045+08:00"
+        },
+        "GracefulStop": {
+          "Requested": true,
+          "RequestedAtUtc": "2026-11-19T10:27:10.7518627+08:00",
+          "IdentityVerifiedBeforeRequest": true,
+          "Attempted": true,
+          "SignalWritten": true,
+          "OwnedWindowCount": null,
+          "OwnerFound": false,
+          "ClosePosted": false,
+          "Exited": true,
+          "FinishedAtUtc": "2026-11-19T10:27:11.1519635+08:00",
+          "Error": null
+        },
+        "Escalation": {
+          "Attempted": false,
+          "AttemptedAtUtc": null,
+          "IdentityReverified": false,
+          "KillAttempted": false,
+          "Exited": false,
+          "FinishedAtUtc": null,
+          "Error": null
+        },
+        "CleanupMethod": "graceful-fixturefile",
+        "Error": null
+      }
+    },
+    {
+      "name": "identity-reverified-escalation-after-graceful-timeout",
+      "report": {
+        "SchemaVersion": 1,
+        "ReportRole": "managed-child-wrapper",
+        "ReportSequence": 7,
+        "ReportedAtUtc": "2026-11-19T10:27:13.6243856+08:00",
+        "OwnerTokenSha256": "615489D61C5F681DD1D5B8EC554B2B3500D1613DCA947DBD992BD49EA883E614",
+        "Wrapper": {
+          "ProcessId": 62308,
+          "ParentProcessId": 28184,
+          "StartedAtUtc": "2026-11-19T10:27:11.2317521+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "ScriptPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-296-301\\tools\\Invoke-CountdownIdleMeasurementChild.ps1",
+          "ScriptSha256": "603CDB8B5632A235DF150EB41DBF27F031F921685CFBBABACF958166932B9169"
+        },
+        "Application": {
+          "ProcessId": 79340,
+          "ParentProcessId": 62308,
+          "StartedAtUtc": "2026-11-19T10:27:12.2248854+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "PriorityClass": "BelowNormal",
+          "ProcessState": "exited",
+          "ExitCode": -1,
+          "ExitedAtUtc": "2026-11-19T10:27:13.6151102+08:00"
+        },
+        "GracefulStop": {
+          "Requested": true,
+          "RequestedAtUtc": "2026-11-19T10:27:12.3904444+08:00",
+          "IdentityVerifiedBeforeRequest": true,
+          "Attempted": true,
+          "SignalWritten": true,
+          "OwnedWindowCount": null,
+          "OwnerFound": false,
+          "ClosePosted": false,
+          "Exited": false,
+          "FinishedAtUtc": "2026-11-19T10:27:13.5161033+08:00",
+          "Error": null
+        },
+        "Escalation": {
+          "Attempted": true,
+          "AttemptedAtUtc": "2026-11-19T10:27:13.5247537+08:00",
+          "IdentityReverified": true,
+          "KillAttempted": true,
+          "Exited": true,
+          "FinishedAtUtc": "2026-11-19T10:27:13.6094748+08:00",
+          "Error": null
+        },
+        "CleanupMethod": "escalated-exact-owned-handle",
+        "Error": null
+      }
+    },
+    {
+      "name": "real-wpf-graceful-stop-on-measurement-failure",
+      "report": {
+        "SchemaVersion": 1,
+        "ReportRole": "managed-child-wrapper",
+        "ReportSequence": 6,
+        "ReportedAtUtc": "2026-11-19T10:36:16.6771335+08:00",
+        "OwnerTokenSha256": "2238F3799CED93443A39CD485E26480A96281E9BB3D238C937A995FAA03E9163",
+        "Wrapper": {
+          "ProcessId": 22376,
+          "ParentProcessId": 52040,
+          "StartedAtUtc": "2026-11-19T10:35:03.1656263+08:00",
+          "ExecutablePath": "D:\\Codex\\tools\\PowerShell\\7.7.0\\pwsh.exe",
+          "ExecutableSha256": "F2833E07A5A7D59153FFC63DB83BD6B62F6C63FFD8B5B5099A2FEADF6B605336",
+          "ScriptPath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-296-301\\tools\\Invoke-CountdownIdleMeasurementChild.ps1",
+          "ScriptSha256": "603CDB8B5632A235DF150EB41DBF27F031F921685CFBBABACF958166932B9169"
+        },
+        "Application": {
+          "ProcessId": 71552,
+          "ParentProcessId": 22376,
+          "StartedAtUtc": "2026-11-19T10:35:04.1924583+08:00",
+          "ExecutablePath": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-296-301\\app\\MinminCountdown.exe",
+          "ExecutableSha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
+          "PriorityClass": "BelowNormal",
+          "ProcessState": "exited",
+          "ExitCode": 0,
+          "ExitedAtUtc": "2026-11-19T10:36:16.6661438+08:00"
+        },
+        "GracefulStop": {
+          "Requested": true,
+          "RequestedAtUtc": "2026-11-19T10:36:16.5040639+08:00",
+          "IdentityVerifiedBeforeRequest": true,
+          "Attempted": true,
+          "SignalWritten": false,
+          "OwnedWindowCount": 20,
+          "OwnerFound": true,
+          "ClosePosted": true,
+          "Exited": true,
+          "FinishedAtUtc": "2026-11-19T10:36:16.6552239+08:00",
+          "Error": null
+        },
+        "Escalation": {
+          "Attempted": false,
+          "AttemptedAtUtc": null,
+          "IdentityReverified": false,
+          "KillAttempted": false,
+          "Exited": false,
+          "FinishedAtUtc": null,
+          "Error": null
+        },
+        "CleanupMethod": "graceful-wpfexternalclose",
+        "Error": null
+      }
+    }
+  ],
+  "run_artifact_root": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\selftest-efbf5aca09df40c58dc44179b567fde9",
+  "run_artifact_normal_report": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\selftest-efbf5aca09df40c58dc44179b567fde9\\normal\\child-report.json",
+  "run_artifact_normal_report_sha256": "D9BC0603E579BDD1C3D83F6905EA368C9FF2872EA5395392773351B234CD5B6A",
+  "run_artifact_graceful_report": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\selftest-efbf5aca09df40c58dc44179b567fde9\\graceful\\child-report.json",
+  "run_artifact_graceful_report_sha256": "9A28D63BE552B22B70CCC58FBE79E4D9EE37727A04ABF347ECF5F4E4939B7B5B",
+  "run_artifact_escalation_report": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\selftest-efbf5aca09df40c58dc44179b567fde9\\ignore\\child-report.json",
+  "run_artifact_escalation_report_sha256": "492504F3A9EF5730FAD8B5681E23B4E7EDC976BD831F4BBBBF667620CE9990AC",
+  "run_artifact_wpf_report": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261119T023457772Z-cd39940f\\both-hidden\\child-report.json",
+  "run_artifact_wpf_report_sha256": "61A7CED7C5CFAD05A36BEED6118849E07A7B0EC05F572F6ECF663DE0699A0E02"
+}

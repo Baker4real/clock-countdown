@@ -16,14 +16,9 @@
           "detail": "git diff --check exited 0 for the current measurement-only changes."
         },
         {
-          "check": "docs-links",
-          "status": "processed",
-          "detail": "Test-CountdownPublicationEvidence.ps1 -Source Index validated tree 85d18ac15c659d301872ff11562e926fc19ded66: 48 Markdown files, 297 links, 129 hash references, no failures."
-        },
-        {
           "check": "runtime-behavior",
           "status": "processed",
-          "detail": "Official isolated IdleProcessorMeasurement completed with exit 0; five tiers each had 62 PID-bound samples spanning at least 63 seconds, stable visibility, unchanged temporary settings and automatic owned-process exit 0. Raw: D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261118T135627539Z-937881c9"
+          "detail": "Official isolated IdleProcessorMeasurement completed with exit 0; five tiers had at least 60 PID-bound samples spanning at least 60 seconds, stable visibility, unchanged temporary settings, verified managed-wrapper token/identity reports and recorded bounded cleanup. Raw: D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261119T031147859Z-3e64a566"
         }
       ],
       "notApplicable": [

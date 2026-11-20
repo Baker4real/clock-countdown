@@ -2,6 +2,39 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if (-not ('MinminIdleMeasurementIdentityNative' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class MinminIdleMeasurementIdentityNative
+{
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool QueryFullProcessImageNameW(IntPtr process, int flags, StringBuilder path, ref int size);
+    public static string GetImagePath(int processId)
+    {
+        var handle = OpenProcess(0x1000, false, processId);
+        if (handle == IntPtr.Zero) throw new InvalidOperationException("OpenProcess failed: " + Marshal.GetLastWin32Error());
+        try
+        {
+            var path = new StringBuilder(32768);
+            var size = path.Capacity;
+            if (!QueryFullProcessImageNameW(handle, 0, path, ref size))
+                throw new InvalidOperationException("QueryFullProcessImageNameW failed: " + Marshal.GetLastWin32Error());
+            return path.ToString();
+        }
+        finally { CloseHandle(handle); }
+    }
+}
+'@
+}
+
+function Get-IdleMeasurementProcessImagePath {
+    param([Parameter(Mandatory)] [int] $ProcessId)
+    [MinminIdleMeasurementIdentityNative]::GetImagePath($ProcessId)
+}
+
 function Get-IdleMeasurementTierDefinition {
     [CmdletBinding()]
     param()
@@ -39,6 +72,7 @@ function ConvertTo-IdleProcessorSampleSummary {
     param(
         [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $CounterSets,
         [Parameter(Mandatory)] [int] $ProcessId,
+        [string] $CounterInstance,
         [ValidateRange(0, 1000)] [int] $SkipInitialSets = 0,
         [ValidateRange(1, 86400)] [int] $MinimumSeconds = 60,
         [ValidateRange(1, 86400)] [int] $MinimumSamples = 60
@@ -49,15 +83,18 @@ function ConvertTo-IdleProcessorSampleSummary {
     $selectedSets = @($CounterSets | Select-Object -Skip $SkipInitialSets)
     foreach ($set in $selectedSets) {
         $counterSamples = @($set.CounterSamples | Where-Object { $_.Status -eq 0 })
-        $idSamples = @($counterSamples | Where-Object {
-            [string] $_.Path -match '\\id process$' -and
-            [Math]::Abs([double] $_.CookedValue - $ProcessId) -lt 0.5
-        })
-        if ($idSamples.Count -gt 1) {
-            throw "identity: multiple process counter instances match PID $ProcessId."
+        $instanceName = $CounterInstance
+        if ([string]::IsNullOrWhiteSpace($instanceName)) {
+            $idSamples = @($counterSamples | Where-Object {
+                [string] $_.Path -match '\\id process$' -and
+                [Math]::Abs([double] $_.CookedValue - $ProcessId) -lt 0.5
+            })
+            if ($idSamples.Count -gt 1) {
+                throw "identity: multiple process counter instances match PID $ProcessId."
+            }
+            if ($idSamples.Count -eq 0) { continue }
+            $instanceName = [string] $idSamples[0].InstanceName
         }
-        if ($idSamples.Count -eq 0) { continue }
-        $instanceName = [string] $idSamples[0].InstanceName
         $cpuSamples = @($counterSamples | Where-Object {
             [string] $_.Path -match '\\% processor time$' -and
             [string] $_.InstanceName -ceq $instanceName
@@ -91,6 +128,8 @@ function ConvertTo-IdleProcessorSampleSummary {
     $mean = [double] $statistics.Average
     [pscustomobject]@{
         ProcessId = $ProcessId
+        CounterInstance = $CounterInstance
+        BindingMode = if ([string]::IsNullOrWhiteSpace($CounterInstance)) { 'pid-per-set' } else { 'pid-prebound-instance' }
         SampleCount = $orderedSamples.Count
         CounterSetCount = $selectedSets.Count
         DiscardedInitialSetCount = [Math]::Min($SkipInitialSets, $CounterSets.Count)
@@ -107,4 +146,49 @@ function ConvertTo-IdleProcessorSampleSummary {
     }
 }
 
-Export-ModuleMember -Function Get-IdleMeasurementTierDefinition, ConvertTo-IdleProcessorSampleSummary
+function Test-IdleMeasurementChildReport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Report,
+        [Parameter(Mandatory)] [string] $ExpectedOwnerTokenSha256,
+        [Parameter(Mandatory)] [int] $CoordinatorProcessId,
+        [Parameter(Mandatory)] [int] $ExpectedWrapperProcessId,
+        [Parameter(Mandatory)] [DateTimeOffset] $ExpectedWrapperStartedAtUtc,
+        [Parameter(Mandatory)] [string] $ExpectedWrapperExecutablePath,
+        [Parameter(Mandatory)] [string] $ExpectedWrapperExecutableSha256,
+        [Parameter(Mandatory)] [int] $ExpectedApplicationProcessId,
+        [Parameter(Mandatory)] [DateTimeOffset] $ExpectedApplicationStartedAtUtc,
+        [Parameter(Mandatory)] [string] $ExpectedApplicationExecutablePath,
+        [Parameter(Mandatory)] [string] $ExpectedApplicationExecutableSha256
+    )
+
+    try {
+        if ([string] $Report.ReportRole -cne 'managed-child-wrapper') { return $false }
+        if ([string] $Report.OwnerTokenSha256 -cne $ExpectedOwnerTokenSha256) { return $false }
+        if ([int] $Report.Wrapper.ProcessId -ne $ExpectedWrapperProcessId -or
+            [int] $Report.Wrapper.ParentProcessId -ne $CoordinatorProcessId -or
+            [int] $Report.Application.ParentProcessId -ne $ExpectedWrapperProcessId) { return $false }
+        if ([int] $Report.Application.ProcessId -ne $ExpectedApplicationProcessId) { return $false }
+        if ((ConvertTo-IdleMeasurementUtc $Report.Wrapper.StartedAtUtc) -ne $ExpectedWrapperStartedAtUtc.ToUniversalTime() -or
+            (ConvertTo-IdleMeasurementUtc $Report.Application.StartedAtUtc) -ne $ExpectedApplicationStartedAtUtc.ToUniversalTime()) { return $false }
+        foreach ($binding in @(
+            @{ Actual = [string] $Report.Wrapper.ExecutablePath; Expected = $ExpectedWrapperExecutablePath },
+            @{ Actual = [string] $Report.Application.ExecutablePath; Expected = $ExpectedApplicationExecutablePath }
+        )) {
+            if ([string]::IsNullOrWhiteSpace($binding.Actual) -or
+                -not [string]::Equals([IO.Path]::GetFullPath($binding.Actual), [IO.Path]::GetFullPath($binding.Expected), [StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+        foreach ($hashBinding in @(
+            @{ Actual = [string] $Report.Wrapper.ExecutableSha256; Expected = $ExpectedWrapperExecutableSha256 },
+            @{ Actual = [string] $Report.Application.ExecutableSha256; Expected = $ExpectedApplicationExecutableSha256 }
+        )) {
+            if ($hashBinding.Actual -notmatch '^[0-9A-Fa-f]{64}$' -or
+                -not [string]::Equals($hashBinding.Actual, $hashBinding.Expected, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+Export-ModuleMember -Function Get-IdleMeasurementTierDefinition, ConvertTo-IdleProcessorSampleSummary, Test-IdleMeasurementChildReport, Get-IdleMeasurementProcessImagePath

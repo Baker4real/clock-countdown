@@ -68,6 +68,16 @@ try {
     Add-MeasurementCheck -Name 'summary:known-input' -Passed $false -Detail $_.Exception.Message
 }
 
+try {
+    $cpuOnlySets = @($sets | ForEach-Object {
+        [pscustomobject]@{ Timestamp = $_.Timestamp; CounterSamples = @($_.CounterSamples[0]) }
+    })
+    $prebound = ConvertTo-IdleProcessorSampleSummary -CounterSets $cpuOnlySets -ProcessId 4242 -CounterInstance 'minmincountdown' -SkipInitialSets 1
+    Add-MeasurementCheck -Name 'summary:prebound-cpu-only' -Passed ($prebound.SampleCount -eq 62 -and $prebound.MeanSingleCorePercent -eq 1.0) -Detail (Format-SummaryDetail $prebound)
+} catch {
+    Add-MeasurementCheck -Name 'summary:prebound-cpu-only' -Passed $false -Detail $_.Exception.Message
+}
+
 foreach ($case in @(
     @{ Name = 'reject-short-duration'; Count = 61; IntervalSeconds = 0.5; Expected = 'duration' },
     @{ Name = 'reject-insufficient-samples'; Count = 59; IntervalSeconds = 1.0; Expected = 'samples' },
@@ -97,6 +107,70 @@ try {
     Add-MeasurementCheck -Name 'tiers:calendar-comparison' -Passed (@($tiers | Where-Object CalendarRule).Count -eq 1 -and [bool]($tiers | Where-Object CalendarRule).FloatingVisible -and -not [bool]($tiers | Where-Object CalendarRule).MainVisible) -Detail ($tiers | ConvertTo-Json -Compress)
 } catch {
     Add-MeasurementCheck -Name 'tiers:definitions' -Passed $false -Detail $_.Exception.Message
+}
+
+try {
+    $syntheticFixtureRoot = Join-Path ([IO.Path]::GetTempPath()) 'minmin-idle-measurement-unit'
+    $syntheticWrapperPath = Join-Path $syntheticFixtureRoot 'pwsh.exe'
+    $syntheticApplicationPath = Join-Path $syntheticFixtureRoot 'app.exe'
+    $childReport = [pscustomobject]@{
+        ReportRole = 'managed-child-wrapper'
+        OwnerTokenSha256 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        Wrapper = [pscustomobject]@{
+            ProcessId = 100
+            ParentProcessId = 50
+            StartedAtUtc = '2026-11-19T00:00:00Z'
+            ExecutablePath = $syntheticWrapperPath
+            ExecutableSha256 = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'
+        }
+        Application = [pscustomobject]@{
+            ProcessId = 200
+            ParentProcessId = 100
+            StartedAtUtc = '2026-11-19T00:00:01Z'
+            ExecutablePath = $syntheticApplicationPath
+            ExecutableSha256 = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC'
+        }
+    }
+    $reportBinding = @{
+        ExpectedOwnerTokenSha256 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        CoordinatorProcessId = 50
+        ExpectedWrapperProcessId = 100
+        ExpectedWrapperStartedAtUtc = [DateTimeOffset]::Parse('2026-11-19T00:00:00Z')
+        ExpectedWrapperExecutablePath = $syntheticWrapperPath
+        ExpectedWrapperExecutableSha256 = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'
+        ExpectedApplicationProcessId = 200
+        ExpectedApplicationStartedAtUtc = [DateTimeOffset]::Parse('2026-11-19T00:00:01Z')
+        ExpectedApplicationExecutablePath = $syntheticApplicationPath
+        ExpectedApplicationExecutableSha256 = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC'
+    }
+    Add-MeasurementCheck -Name 'child-report:valid-binding' -Passed (Test-IdleMeasurementChildReport -Report $childReport @reportBinding)
+    $wrongToken = $childReport | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $wrongToken.OwnerTokenSha256 = 'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD'
+    Add-MeasurementCheck -Name 'child-report:reject-token-mismatch' -Passed (-not (Test-IdleMeasurementChildReport -Report $wrongToken @reportBinding))
+    $wrongParent = $childReport | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $wrongParent.Application.ParentProcessId = 999
+    Add-MeasurementCheck -Name 'child-report:reject-parent-mismatch' -Passed (-not (Test-IdleMeasurementChildReport -Report $wrongParent @reportBinding))
+    $missingHash = $childReport | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $missingHash.Application.PSObject.Properties.Remove('ExecutableSha256')
+    Add-MeasurementCheck -Name 'child-report:reject-missing-hash' -Passed (-not (Test-IdleMeasurementChildReport -Report $missingHash @reportBinding))
+} catch {
+    Add-MeasurementCheck -Name 'child-report:binding-contract' -Passed $false -Detail $_.Exception.Message
+}
+
+$childIntegrationOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleMeasurementChild.ps1')) -join [Environment]::NewLine
+$childIntegrationExit = $LASTEXITCODE
+try {
+    $childIntegration = $childIntegrationOutput | ConvertFrom-Json -Depth 8 -ErrorAction Stop
+    Add-MeasurementCheck -Name 'child-report:managed-wrapper-integration' -Passed ($childIntegrationExit -eq 0 -and [bool] $childIntegration.Valid) -Detail "checks=$($childIntegration.Checks.Count); root=$($childIntegration.Root); failures=$($childIntegration.Failures -join ';')"
+    $expectedTempPrefix = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $childRootFull = if ([string]::IsNullOrWhiteSpace([string] $childIntegration.Root)) { '' } else { [IO.Path]::GetFullPath([string] $childIntegration.Root) }
+    $underTemp = -not [string]::IsNullOrWhiteSpace($childRootFull) -and $childRootFull.StartsWith($expectedTempPrefix, [StringComparison]::OrdinalIgnoreCase)
+    Add-MeasurementCheck -Name 'child-report:scratch-under-temp' -Passed $underTemp -Detail "root=$childRootFull; expectedPrefix=$expectedTempPrefix"
+    $reportedCleanedUp = $null -ne $childIntegration.PSObject.Properties['CleanedUp'] -and [bool] $childIntegration.CleanedUp
+    $removedFromDisk = -not [string]::IsNullOrWhiteSpace($childRootFull) -and -not [IO.Directory]::Exists($childRootFull)
+    Add-MeasurementCheck -Name 'child-report:scratch-cleaned-on-pass' -Passed ($childIntegrationExit -eq 0 -and [bool] $childIntegration.Valid -and $reportedCleanedUp -and $removedFromDisk) -Detail "cleanedUp=$reportedCleanedUp; exists=$([IO.Directory]::Exists($childRootFull)); root=$childRootFull"
+} catch {
+    Add-MeasurementCheck -Name 'child-report:managed-wrapper-integration' -Passed $false -Detail $_.Exception.Message
 }
 
 $report = [pscustomobject]@{

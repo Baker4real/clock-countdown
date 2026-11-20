@@ -75,6 +75,10 @@ public sealed partial class FloatingWindow
         {
             Consider(FloatingIncome);
         }
+        else if (!string.IsNullOrEmpty(FloatingEncouragement.Text))
+        {
+            Consider(FloatingEncouragement);
+        }
 
         if (first is null || last is null)
         {

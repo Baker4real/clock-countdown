@@ -3988,7 +3988,7 @@ public sealed partial class FloatingWindow
 
         var incomePreferences = _desktopWorkspace.Snapshot.Settings.Preferences;
         var originalIncomeText = IncomeText;
-        var originalIncomeVisibility = FloatingIncome.Visibility;
+        var originalIncomeVisibility = ActiveBottomStatusElement.Visibility;
         var incomeHiddenWithoutSalary = false;
         var incomeRestoredWithSalary = false;
         try
@@ -4015,7 +4015,7 @@ public sealed partial class FloatingWindow
             incomeHiddenWithoutSalary =
                 zeroSalaryApplied &&
                 !(IncomeText ?? string.Empty).StartsWith("今日已赚", StringComparison.Ordinal) &&
-                FloatingIncome.Visibility == Visibility.Visible &&
+                ActiveBottomStatusElement.Visibility == Visibility.Visible &&
                 string.Equals(IncomeText, expectedBottomStatusText, StringComparison.Ordinal);
         }
         finally
@@ -4035,7 +4035,7 @@ public sealed partial class FloatingWindow
             incomeRestoredWithSalary =
                 _desktopWorkspace.Snapshot.Settings.Preferences.MonthlySalary ==
                     incomePreferences.MonthlySalary &&
-                FloatingIncome.Visibility == originalIncomeVisibility &&
+                ActiveBottomStatusElement.Visibility == originalIncomeVisibility &&
                 string.Equals(IncomeText, originalIncomeText, StringComparison.Ordinal);
         }
 

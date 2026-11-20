@@ -68,7 +68,7 @@ function Resolve-ReferenceBaselineMode {
 function Get-FloatingInformationFontTokenFailures {
     param([Parameter(Mandatory)] [string] $RepositoryRoot)
     [xml] $xaml = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'src/MinminCountdown/FloatingWindow.xaml') -Raw
-    foreach ($element in $xaml.SelectNodes('//*[local-name()="TextBlock" or local-name()="AutomationOptionalTextBlock" or local-name()="SilentTextBlock"]')) {
+    foreach ($element in $xaml.SelectNodes('//*[local-name()="TextBlock" or local-name()="InteractiveStatusTextBlock" or local-name()="SilentTextBlock"]')) {
         if ($element.GetAttribute('FontSize') -notmatch '^\{DynamicResource \w+FontSize\}$') {
             'XAML:' + $element.GetAttribute('Name', 'http://schemas.microsoft.com/winfx/2006/xaml') + ':' + $element.GetAttribute('Text')
         }
@@ -3857,7 +3857,7 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273/#274/#297/#298/#303/#306/#314/#315/#318/#320/#321/#322/#323/#324：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    # #273/#274/#297/#298/#303/#306/#314/#315/#316/#318/#320/#321/#322/#323/#324：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
     $windowVerificationFacts = [ordered]@{
         MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
@@ -3883,6 +3883,7 @@ exit 23
         MainCountdownInputFocusAndErrorStates = '文本框、下拉框与日期框使用非红色焦点和更深暖色悬停边；倒计时编辑器的有效焦点、错误无焦点与错误有焦点分别为 2/1/2 DIP 且不挤布局，首错聚焦、修正即清、帮助文本与礼貌播报保持，系统对比度映射不同系统角色（#303）'
         SharedScrollBarRestingThinAndExpandBehavior = '共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）'
         SharedScrollBarMotionAndInteractionsWork = '共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）'
+        FloatingBottomStatusPublicAutomationTree = '悬浮窗底部状态以互斥的鼓励语无 peer 元素与可朗读/可调用状态元素进出自动化树；鼓励语不在树中，金额与日历状态名称同步，遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）'
         DisabledStateUnifiedAndPreserved = '全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `

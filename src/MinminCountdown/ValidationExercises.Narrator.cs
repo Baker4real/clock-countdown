@@ -140,7 +140,8 @@ internal static partial class ValidationExercises
                     AutomationLiveSetting.Assertive),
                 "提醒送达失败必须触发强制 LiveRegionChanged。已收到：" + DescribeAnnouncements(announced));
 
-            var income = (AutomationOptionalTextBlock)floating.FindName("FloatingIncome");
+            var income = (InteractiveStatusTextBlock)floating.FindName("FloatingIncome");
+            var encouragement = (SilentTextBlock)floating.FindName("FloatingEncouragement");
             var statusBrushKey = FloatingThemePalette.Daylight.MutedBrushKey;
             const string encouragementBrushKey = "DecoTextSoftBrush";
             var encouragementFont = (FontFamily)floating.FindResource("HandwrittenDecoFontFamily");
@@ -159,6 +160,7 @@ internal static partial class ValidationExercises
                 "金额模式的底部文案必须是今日已赚金额。");
             FloatingBottomStatus.Apply(
                 income,
+                encouragement,
                 resolvedAmount,
                 statusBrushKey,
                 encouragementBrushKey,
@@ -170,8 +172,11 @@ internal static partial class ValidationExercises
             var amountPeer = FrameworkElementAutomationPeer.CreatePeerForElement(income);
             Must(
                 amountPeer is not null &&
+                amountPeer.IsControlElement() &&
                 string.Equals(amountPeer.GetName(), amountName, StringComparison.Ordinal) &&
-                AutomationRawTreeContains(floatingRoot, new[] { income }),
+                AutomationRawTreeContains(floatingRoot, new[] { income }) &&
+                encouragement.Visibility == Visibility.Collapsed &&
+                !AutomationRawTreeContains(floatingRoot, new[] { encouragement }),
                 "金额模式下悬浮窗底部必须留在自动化树中，名称是今日已赚金额。");
 
             var resolvedEncouragement = FloatingBottomStatus.Resolve(
@@ -186,17 +191,22 @@ internal static partial class ValidationExercises
                 "月薪为 0 且日历就绪时底部必须是鼓励语。");
             FloatingBottomStatus.Apply(
                 income,
+                encouragement,
                 resolvedEncouragement,
                 statusBrushKey,
                 encouragementBrushKey,
                 encouragementFont);
             floating.UpdateLayout();
             FlushNarrator(floating.Dispatcher);
+            var collapsedIncomePeer = FrameworkElementAutomationPeer.CreatePeerForElement(income);
             Must(
-                string.Equals(income.Text, encouragementText, StringComparison.Ordinal) &&
-                income.Visibility == Visibility.Visible &&
-                FrameworkElementAutomationPeer.CreatePeerForElement(income) is null &&
-                !AutomationRawTreeContains(floatingRoot, new[] { income }),
+                string.Equals(encouragement.Text, encouragementText, StringComparison.Ordinal) &&
+                encouragement.Visibility == Visibility.Visible &&
+                FrameworkElementAutomationPeer.CreatePeerForElement(encouragement) is null &&
+                !AutomationRawTreeContains(floatingRoot, new[] { encouragement }) &&
+                income.Visibility == Visibility.Collapsed &&
+                string.IsNullOrEmpty(income.Text) &&
+                (collapsedIncomePeer is null || (!collapsedIncomePeer.IsControlElement() && string.IsNullOrEmpty(collapsedIncomePeer.GetName()))),
                 "鼓励语模式下悬浮窗底部文本必须退出自动化树，可见文案仍在。");
 
             var resolvedStatus = FloatingBottomStatus.Resolve(
@@ -211,6 +221,7 @@ internal static partial class ValidationExercises
                 "日历未就绪时底部必须是日历状态文案。");
             FloatingBottomStatus.Apply(
                 income,
+                encouragement,
                 resolvedStatus,
                 statusBrushKey,
                 encouragementBrushKey,
@@ -220,8 +231,10 @@ internal static partial class ValidationExercises
             var statusPeer = FrameworkElementAutomationPeer.CreatePeerForElement(income);
             Must(
                 statusPeer is not null &&
+                statusPeer.IsControlElement() &&
                 string.Equals(statusPeer.GetName(), calendarStatusName, StringComparison.Ordinal) &&
-                AutomationRawTreeContains(floatingRoot, new[] { income }),
+                AutomationRawTreeContains(floatingRoot, new[] { income }) &&
+                encouragement.Visibility == Visibility.Collapsed,
                 "日历状态模式下悬浮窗底部必须可以读到，名称是当前状态文案。");
             return true;
         }

@@ -15,7 +15,7 @@ internal static class KeyboardFocusPolicyFixtures
         var text = new TextBox { Text = "Input" };
         var combo = new ComboBox { ItemsSource = new[] { "One", "Two" }, SelectedIndex = 0 };
         var date = new DatePicker { SelectedDate = new DateTime(2031, 12, 31) };
-        var income = new AutomationOptionalTextBlock { Text = "Income", IsInvokable = true };
+        var income = new InteractiveStatusTextBlock { Text = "Income", IsInvokable = true };
         var list = new ScrollViewer { Height = 40, Content = new TextBlock { Text = "List" } };
         var status = new TextBlock { Text = "Status", Focusable = true };
         var panel = new StackPanel();

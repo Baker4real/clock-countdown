@@ -3883,6 +3883,7 @@ exit 23
         MainCountdownInputFocusAndErrorStates = '文本框、下拉框与日期框使用非红色焦点和更深暖色悬停边；倒计时编辑器的有效焦点、错误无焦点与错误有焦点分别为 2/1/2 DIP 且不挤布局，首错聚焦、修正即清、帮助文本与礼貌播报保持，系统对比度映射不同系统角色（#303）'
         SharedScrollBarRestingThinAndExpandBehavior = '共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）'
         SharedScrollBarMotionAndInteractionsWork = '共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）'
+        DisabledStateUnifiedAndPreserved = '全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -5085,7 +5086,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $confirmDirtyExitAllowedBody -match '_mainWindow\?\.DescribeUnsavedExitWork\(\)' -and
         $confirmDirtyExitAllowedBody -match '_floatingWindow\?\.DescribeUnsavedExitWork\(\)' -and
         $confirmDirtyExitAllowedBody -match 'ProcessExitConfirmation\.Confirm\(owner, reasons\)' -and
-        $confirmDirtyExitAllowedBody -notmatch '(?<!Process)ExitConfirmation\.Confirm' -and
         $confirmDirtyExitAllowedBody -notmatch 'if \(reasons\.Count == 0\)') '退出确认咨询主窗与悬浮窗的未保存描述，干净状态也经统一确认入口（#213 源码契约）'
     Assert-Equal $true (
         $appHostSource -match 'FloatingWindowCloseBridge\.Attach\(' -and

@@ -3062,14 +3062,8 @@ public sealed partial class MainWindow
                 setter.TargetName == "FocusRing" &&
                 setter.Property == Border.BorderBrushProperty &&
                 MarkupResourceKeyIs(setter.Value, "ActiveBrush"));
-        var hasDisabledOpacity = triggers
-            .OfType<Trigger>()
-            .Where(trigger => trigger.Property == UIElement.IsEnabledProperty)
-            .SelectMany(trigger => trigger.Setters.OfType<Setter>())
-            .Any(setter =>
-                setter.Property == UIElement.OpacityProperty &&
-                setter.Value is double opacity &&
-                Math.Abs(opacity - 0.45) <= 0.001);
+        var probe = new Button { Style = style };
+        var hasDisabledOpacity = DisabledUses45Opacity(probe, "InteractionSurface");
         return hasPressRing && hasDisabledOpacity;
     }
 

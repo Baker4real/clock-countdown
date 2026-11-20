@@ -32,6 +32,7 @@ internal static class Program
     internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
     internal const string SharedScrollBarGeometryFactName = "SharedScrollBarRestingThinAndExpandBehavior";
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
+    internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -88,6 +89,8 @@ internal static class Program
         "共享滚动条在管理窗口列表与窗口级滚动、提醒中心、规则编辑器与弹层内静止可见宽 4 DIP、悬停命中轨或拖动展开到 10 DIP、命中轨保持 10 DIP 且颜色对邻近表面对比度不低于 3:1，悬浮窗 4 DIP 滚动条不变（#306）";
     private const string SharedScrollBarMotionFactMeaning =
         "共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）";
+    private const string DisabledStateUnifiedFactMeaning =
+        "全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）";
 
     [STAThread]
     private static int Main()
@@ -118,7 +121,8 @@ internal static class Program
             [MainTagRenameSyncFactName] = false,
             [InputFocusAndErrorFactName] = false,
             [SharedScrollBarGeometryFactName] = false,
-            [SharedScrollBarMotionFactName] = false
+            [SharedScrollBarMotionFactName] = false,
+            [DisabledStateUnifiedFactName] = false
         };
         var failures = new List<string>();
 
@@ -275,6 +279,12 @@ internal static class Program
                 () => SharedScrollBarScenario.RunMotionAndInteractions(
                     theme,
                     SharedScrollBarMotionFactMeaning));
+            RunFact(
+                DisabledStateUnifiedFactName,
+                DisabledStateUnifiedFactMeaning,
+                () => DisabledStateScenario.Run(
+                    theme,
+                    DisabledStateUnifiedFactMeaning));
         }
         catch (Exception exception)
         {

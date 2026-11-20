@@ -66,10 +66,11 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs',
     'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
+    'src\MinminCountdown.WindowVerification\FloatingQuickAddErrorLayoutScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterLongTitleScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorCopyAndPreviewScenario.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#321/#322/#323 build identity contains the window verification input: $windowVerificationInput"
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#318/#321/#322/#323 build identity contains the window verification input: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"

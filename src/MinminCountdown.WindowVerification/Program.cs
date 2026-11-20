@@ -20,6 +20,7 @@ internal static class Program
     internal const string RuleEditorLayoutAndReachabilityFactName = "ReminderRulesEditorContentSizedListAndReachableActions";
     internal const string RuleEditorPlainLabelsFactName = "ReminderRulesEditorPlainLanguageLabelsAndAccessibility";
     internal const string RuleEditorLivePreviewFactName = "ReminderRulesEditorLivePreviewMatchesSavedSummary";
+    internal const string FloatingQuickAddErrorLayoutFactName = "FloatingQuickAddActionPinnedInErrorState";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -48,6 +49,8 @@ internal static class Program
         "规则编辑器表单不再出现“日历频率 / 重复间隔 / 日历选择”等实现用语，改用最终日常词表；字段可访问名与可见标签一致且 LabeledBy 关系保持完整；四个规则类型名、类型化领域记录、规则 ID 与持久化 JSON 不变（#323）";
     private const string RuleEditorLivePreviewFactMeaning =
         "规则编辑器表单中的一句话预览随所有输入实时更新，在四类规则与各日历周期下均与保存后规则行摘要完全一致，并在输入未补全或越界时给出清晰提示、适配系统高对比度（#323）";
+    private const string FloatingQuickAddErrorLayoutFactMeaning =
+        "悬浮窗快速新增便签的字段区在命令区限高内滚动，“添加”动作行固定在命令区底部不随字段滚动；正文留空或日期留空出错时“添加”完整位于视口内且可点击、错误文案可见，展开回顶、收起态几何与命中高度及 Tab 顺序均保持不变（#318）";
 
     [STAThread]
     private static int Main()
@@ -66,7 +69,8 @@ internal static class Program
             [RuleEditorPrimaryAndDirtyFactName] = false,
             [RuleEditorLayoutAndReachabilityFactName] = false,
             [RuleEditorPlainLabelsFactName] = false,
-            [RuleEditorLivePreviewFactName] = false
+            [RuleEditorLivePreviewFactName] = false,
+            [FloatingQuickAddErrorLayoutFactName] = false
         };
         var failures = new List<string>();
 
@@ -162,6 +166,11 @@ internal static class Program
                 RuleEditorLivePreviewFactMeaning,
                 () => ReminderRulesEditorCopyAndPreviewScenario.RunLivePreviewMatchesSavedSummary(
                     RuleEditorLivePreviewFactMeaning));
+            RunFact(
+                FloatingQuickAddErrorLayoutFactName,
+                FloatingQuickAddErrorLayoutFactMeaning,
+                () => FloatingQuickAddErrorLayoutScenario.Run(
+                    FloatingQuickAddErrorLayoutFactMeaning));
         }
         catch (Exception exception)
         {

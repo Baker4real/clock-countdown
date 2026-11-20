@@ -3857,7 +3857,7 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273/#274/#297：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    # #273/#274/#297/#314/#322：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
     $windowVerificationFacts = [ordered]@{
         MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
@@ -3866,6 +3866,8 @@ exit 23
         ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
         ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
         ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
+        ReminderRulesEditorSinglePrimaryActionAndDirtyAccept = '规则编辑器仅窗口级「完成」使用实心主行动，表单提交为次级按钮；有未提交输入时点「完成」自动提交有效输入、拦住无效输入并保留草稿，不悄悄丢弃（#322）'
+        ReminderRulesEditorContentSizedListAndReachableActions = '规则编辑器在少规则与多规则下列表按内容取高、超上限后列表内滚动、列表与表单间距不超过区块间距、初始高度随内容且不超上限，688/826/1032 DIP 工作区高度下底部按钮与缩放手柄均可达，且取消、8 条上限与字段校验位置不变（#322）'
         ConfirmationDialogTitleAppearsOnce = '确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）'
         ConfirmationDialogReusesLocalWpfUiResources = '连续打开多个确认框复用同一份局部 WPF-UI 资源字典，WPF-UI 资源不进入应用级资源，运行中切换系统对比度配色后已开与新开确认框配色正确（#314）'
     }
@@ -3877,7 +3879,7 @@ exit 23
     Assert-ExactReportFields `
         -Report $windowVerification `
         -ExpectedNames @($windowVerificationFacts.Keys) `
-        -Name '窗口验证只产出声明的事实，不生成整份产品报告'
+        -Name '窗口验证只产出注册的独立窗口验证事实，不生成整份产品报告'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $true ([bool] $windowVerification.$factName) `
             "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"
@@ -5254,14 +5256,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $trayIconHostSource -match 'TrayLeftMouseUp' -and
         $trayIconHostSource -notmatch 'TrayLeftMouseDoubleClick' -and
         $trayIconHostSource -match '打开管理窗口' -and
-        $trayIconHostSource -notmatch 'System\.Windows\.Forms' -and
-        $trayIconHostSource -match 'SetResourceReference\(Control.BackgroundProperty, "CanvasBrush"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("InkBrush"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("ControlBorderBrush"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("MainActionBrush"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("MainActionTextBrush"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("UiFontFamily"\)' -and
-        $trayIconHostSource -match 'DynamicResourceExtension\("TypeBodyFontSize"\)') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口，并消费动态主题与字号 token（#213/#232）'
+        $trayIconHostSource -notmatch 'System\.Windows\.Forms') 'H.NotifyIcon 托盘单击恢复，菜单含打开管理窗口（#213/#232）'
     Assert-Equal $true (
         $floatingTraySource -match 'private void ResetWindowPosition\(\) => _floatingWindow\.ResetPositionIntoWorkArea\(\);') '托盘复位动作直达悬浮窗夹取实现（#156 源码契约）'
     $resetPositionBody = [regex]::Match(

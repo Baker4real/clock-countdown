@@ -15,6 +15,8 @@ internal static class Program
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
     internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
+    internal const string RuleEditorPrimaryAndDirtyFactName = "ReminderRulesEditorSinglePrimaryActionAndDirtyAccept";
+    internal const string RuleEditorLayoutAndReachabilityFactName = "ReminderRulesEditorContentSizedListAndReachableActions";
     internal const string ConfirmationDialogTitleFactName = "ConfirmationDialogTitleAppearsOnce";
     internal const string ConfirmationDialogResourcesFactName = "ConfirmationDialogReusesLocalWpfUiResources";
 
@@ -34,6 +36,10 @@ internal static class Program
         "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
     private const string ConfirmationDialogSmokeFactMeaning =
         "确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）";
+    private const string RuleEditorPrimaryAndDirtyFactMeaning =
+        "规则编辑器仅窗口级「完成」使用实心主行动，表单提交为次级按钮；有未提交输入时点「完成」自动提交有效输入、拦住无效输入并保留草稿，不悄悄丢弃（#322）";
+    private const string RuleEditorLayoutAndReachabilityFactMeaning =
+        "规则编辑器在少规则与多规则下列表按内容取高、超上限后列表内滚动、列表与表单间距不超过区块间距、初始高度随内容且不超上限，688/826/1032 DIP 工作区高度下底部按钮与缩放手柄均可达，且取消、8 条上限与字段校验位置不变（#322）";
     private const string ConfirmationDialogTitleFactMeaning =
         "确认框标题在可见树只出现一次，窗口名称不变，取消仍是唯一安全默认、Enter/Esc 不执行危险动作且自动化标识不变（#314）";
     private const string ConfirmationDialogResourcesFactMeaning =
@@ -52,6 +58,8 @@ internal static class Program
             [ReminderCenterSmokeFactName] = false,
             [ReminderRulesEditorSmokeFactName] = false,
             [ConfirmationDialogSmokeFactName] = false,
+            [RuleEditorPrimaryAndDirtyFactName] = false,
+            [RuleEditorLayoutAndReachabilityFactName] = false,
             [ConfirmationDialogTitleFactName] = false,
             [ConfirmationDialogResourcesFactName] = false
         };
@@ -124,6 +132,16 @@ internal static class Program
                 WindowSmokeScenario.RunConfirmationDialog();
                 return (true, ConfirmationDialogSmokeFactMeaning);
             });
+            RunFact(
+                RuleEditorPrimaryAndDirtyFactName,
+                RuleEditorPrimaryAndDirtyFactMeaning,
+                () => ReminderRulesEditorScenario.RunSinglePrimaryActionAndDirtyAccept(
+                    RuleEditorPrimaryAndDirtyFactMeaning));
+            RunFact(
+                RuleEditorLayoutAndReachabilityFactName,
+                RuleEditorLayoutAndReachabilityFactMeaning,
+                () => ReminderRulesEditorScenario.RunContentSizedListAndReachableActions(
+                    RuleEditorLayoutAndReachabilityFactMeaning));
             RunFact(ConfirmationDialogTitleFactName, ConfirmationDialogTitleFactMeaning, () =>
             {
                 WindowSmokeScenario.RunConfirmationDialogTitle();

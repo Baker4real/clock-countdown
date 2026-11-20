@@ -379,7 +379,7 @@ internal static partial class ValidationReport
             referenceWindow.UpdateTime(referenceUtc);
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 2);
             var incomeTextProbe = Required<TextBlock>(referenceWindow, "FloatingIncome");
-            var encouragementProbe = Required<SilentTextBlock>(referenceWindow, "FloatingEncouragement");
+            var encouragementProbe = ((Grid)incomeTextProbe.Parent).Children.OfType<SilentTextBlock>().Single();
             var expectedDecoBrush = referenceWindow.TryFindResource("DecoTextSoftBrush") as Brush;
             var expectedDecoFont = referenceWindow.TryFindResource("HandwrittenDecoFontFamily") as FontFamily;
             var floatingIncomeEncouragementWithoutSalary =

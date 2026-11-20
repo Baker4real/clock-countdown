@@ -745,10 +745,13 @@ internal static partial class ValidationReport
             .ToArray();
         var floatingRowsForContent = Required<StackPanel>(floating, "FloatingRows");
         var floatingNoteEntryForContent = Required<Border>(floating, "FloatingNoteEntry");
+        var floatingIncomeForContent = Required<TextBlock>(floating, "FloatingIncome");
+        var floatingBottomTexts = floatingIncomeForContent.Parent is DependencyObject bottomHost
+            ? Descendants<TextBlock>(bottomHost)
+            : new[] { floatingIncomeForContent };
         var floatingTextBounds = Descendants<TextBlock>(floatingRowsForContent)
             .Concat(Descendants<TextBlock>(floatingNoteEntryForContent))
-            .Append(Required<TextBlock>(floating, "FloatingIncome"))
-            .Append(Required<TextBlock>(floating, "FloatingEncouragement"))
+            .Concat(floatingBottomTexts)
             .Where(element => element.IsVisible &&
                               element.ActualWidth > 0 &&
                               element.ActualHeight > 0)

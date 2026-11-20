@@ -468,7 +468,7 @@ internal static partial class ValidationReport
         Require(income.Text == "今日已赚 ￥59.97", "Invoke 后未显示最新金额。");
         WindowValidationInput.RaiseKey(income, Key.Enter);
         RequireHidden();
-        var encouragement = Required<SilentTextBlock>(window, "FloatingEncouragement");
+        var encouragement = ((Grid)income.Parent).Children.OfType<SilentTextBlock>().Single();
         var preferences = workspace.Snapshot.Settings.Preferences;
         Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd)).Succeeded, "零薪资夹具失败。");
         window.UpdateTime(clock.UtcNow);

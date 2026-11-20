@@ -3863,6 +3863,7 @@ exit 23
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
         MainListOverflowScrollsAndReachesActions = '两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）'
         FloatingWindowRendersAndFindsManagerButton = '悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）'
+        FloatingNoteSearchExpandsAndFocusesWithoutReentry = '悬浮窗从 Ctrl+F、搜索按钮和提示条词钮展开搜索都在布局后聚焦输入框，连续触发不在入口返回前重入；共享搜索词、Esc 清空收起和提示条三态保持不变（#315）'
         ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
         ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
         ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
@@ -3875,7 +3876,7 @@ exit 23
     Assert-ExactReportFields `
         -Report $windowVerification `
         -ExpectedNames @($windowVerificationFacts.Keys) `
-        -Name '窗口验证只产出三条空态事实与四条窗口冒烟事实，不生成整份产品报告'
+        -Name '窗口验证只产出三条空态事实、四条窗口冒烟事实与 #315 搜索聚焦事实，不生成整份产品报告'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $true ([bool] $windowVerification.$factName) `
             "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"

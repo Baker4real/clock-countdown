@@ -49,6 +49,7 @@ public sealed partial class FloatingWindow : Window
     private bool _dateDirty;
     private bool _searchExpanded;
     private bool _syncingSearch;
+    private int _searchFocusRequestVersion;
     private bool _quickAddExpanded;
     private bool _earningsHidden;
     private IReadOnlyList<ReminderRule> _floatingReminderRules = Array.Empty<ReminderRule>();
@@ -1626,6 +1627,7 @@ public sealed partial class FloatingWindow : Window
         ApplicationTheme.PaletteChanged += OnPaletteChanged;
         Closed += (_, _) =>
         {
+            CancelPendingSearchFocus();
             ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _desktopWorkspace.UndoChanged -= OnFloatingUndoChanged;
             _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Floating, false);
@@ -2293,11 +2295,36 @@ public sealed partial class FloatingWindow : Window
         UpdateSearchPresentation();
         if (!focus)
         {
+            CancelPendingSearchFocus();
             return;
         }
 
-        WindowValidationInput.Pump(Dispatcher);
-        Keyboard.Focus(FloatingNoteSearch);
+        ScheduleNoteSearchFocus();
+    }
+
+    private void ScheduleNoteSearchFocus()
+    {
+        var requestVersion = ++_searchFocusRequestVersion;
+        // #315：不在展开入口里起嵌套消息循环，改为在当前布局完成后再把焦点交给搜索框；
+        // 连续触发或提前收起/切页时按版本号与当前状态自动作废旧请求。
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (requestVersion != _searchFocusRequestVersion ||
+                _workspace != WorkspaceKind.Notes ||
+                !_searchExpanded ||
+                !FloatingNoteSearch.IsVisible ||
+                !FloatingNoteSearch.IsEnabled)
+            {
+                return;
+            }
+
+            Keyboard.Focus(FloatingNoteSearch);
+        }), DispatcherPriority.Loaded);
+    }
+
+    private void CancelPendingSearchFocus()
+    {
+        _searchFocusRequestVersion++;
     }
 
     private void ClearNoteSearch()
@@ -2439,6 +2466,7 @@ public sealed partial class FloatingWindow : Window
 
     private void ReleaseCollapsedSearchFocus()
     {
+        CancelPendingSearchFocus();
         if (!FloatingNoteSearch.IsKeyboardFocusWithin)
         {
             return;

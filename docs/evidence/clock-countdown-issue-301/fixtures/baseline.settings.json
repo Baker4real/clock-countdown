@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 10,
+  "timeZoneId": "China Standard Time",
+  "displayPrecision": "Second",
+  "monthlySalary": 0,
+  "workStart": "09:00",
+  "workEnd": "18:00",
+  "themePreference": "Day",
+  "tags": [],
+  "countdowns": [],
+  "notes": [],
+  "reminderStates": {}
+}

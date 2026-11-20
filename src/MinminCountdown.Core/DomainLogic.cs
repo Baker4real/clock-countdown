@@ -258,21 +258,40 @@ public static class ReminderSchedule
 
 public sealed class ReminderScheduler
 {
+    private static readonly IReadOnlyList<DueReminderOccurrence> EmptyDueOccurrences =
+        Array.AsReadOnly(Array.Empty<DueReminderOccurrence>());
+
     private readonly Dictionary<string, long> _lastRepeatCycles = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<CalendarReminderRule, DateTimeOffset?, DateTimeOffset, DateTimeOffset?>
         _getLatestCalendarOccurrenceUtc;
+    private readonly Func<CalendarReminderRule, DateTimeOffset, DateTimeOffset?>?
+        _getNextCalendarOccurrenceUtc;
+    private long _mutationVersion;
+    private ScanGate? _scanGate;
 
     public ReminderScheduler()
-        : this(CalendarOccurrenceCalculator.GetLatestOccurrenceUtc)
+        : this(
+            CalendarOccurrenceCalculator.GetLatestOccurrenceUtc,
+            CalendarOccurrenceCalculator.GetNextOccurrenceUtc)
     {
     }
 
     public ReminderScheduler(
         Func<CalendarReminderRule, DateTimeOffset?, DateTimeOffset, DateTimeOffset?>
             getLatestCalendarOccurrenceUtc)
+        : this(getLatestCalendarOccurrenceUtc, getNextCalendarOccurrenceUtc: null)
+    {
+    }
+
+    public ReminderScheduler(
+        Func<CalendarReminderRule, DateTimeOffset?, DateTimeOffset, DateTimeOffset?>
+            getLatestCalendarOccurrenceUtc,
+        Func<CalendarReminderRule, DateTimeOffset, DateTimeOffset?>?
+            getNextCalendarOccurrenceUtc)
     {
         _getLatestCalendarOccurrenceUtc = getLatestCalendarOccurrenceUtc ??
             throw new ArgumentNullException(nameof(getLatestCalendarOccurrenceUtc));
+        _getNextCalendarOccurrenceUtc = getNextCalendarOccurrenceUtc;
     }
 
     public void Initialize(CountdownSettings settings, DateTimeOffset nowUtc)
@@ -285,6 +304,8 @@ public sealed class ReminderScheduler
                 _lastRepeatCycles[repeating.Id] = TryGetHandledRepeatCycle(settings, repeating);
             }
         }
+
+        InvalidateScanGate();
     }
 
     public void Synchronize(CountdownSettings previous, CountdownSettings current, DateTimeOffset nowUtc)
@@ -314,40 +335,89 @@ public sealed class ReminderScheduler
             _lastRepeatCycles.Remove(staleId);
         }
 
+        InvalidateScanGate();
     }
 
-    public IReadOnlyList<NoteRecord> GetDue(CountdownSettings settings, DateTimeOffset nowUtc) =>
-        GetDueOccurrences(settings, nowUtc)
+    public IReadOnlyList<NoteRecord> GetDue(CountdownSettings settings, DateTimeOffset nowUtc)
+    {
+        var due = GetDueOccurrences(settings, nowUtc);
+        if (due.Count == 0)
+        {
+            return Array.Empty<NoteRecord>();
+        }
+
+        return due
             .Where(static occurrence => occurrence.Source is NoteReminderSource)
             .Select(static occurrence => ((NoteReminderSource)occurrence.Source).Note)
             .ToArray();
+    }
 
     public IReadOnlyList<DueReminderOccurrence> GetDueOccurrences(
         CountdownSettings settings,
         DateTimeOffset nowUtc)
     {
+        var normalizedNowUtc = nowUtc.ToUniversalTime();
+        if (_scanGate is { } gate &&
+            ReferenceEquals(gate.Settings, settings) &&
+            gate.MutationVersion == _mutationVersion &&
+            normalizedNowUtc >= gate.ValidFromInclusiveUtc &&
+            (gate.NextCheckAtUtc is null || normalizedNowUtc < gate.NextCheckAtUtc.Value))
+        {
+            return gate.DueOccurrences;
+        }
+
         var due = new List<DueReminderOccurrence>();
         var liveRuleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var canGate = true;
+        DateTimeOffset? nextCheckAtUtc = null;
+
+        void TrackNextCheck(DateTimeOffset? candidateUtc)
+        {
+            if (candidateUtc is not { } candidate)
+            {
+                return;
+            }
+
+            var normalizedCandidate = candidate.ToUniversalTime();
+            if (nextCheckAtUtc is null || normalizedCandidate < nextCheckAtUtc.Value)
+            {
+                nextCheckAtUtc = normalizedCandidate;
+            }
+        }
+
         foreach (var source in GetActiveSources(settings))
         {
             foreach (var rule in source.ReminderRules)
             {
-                if (TryGetUnresolvedOccurrence(settings, rule, nowUtc, out var unresolvedScheduledUtc))
+                if (TryGetUnresolvedOccurrence(settings, rule, normalizedNowUtc, out var unresolvedScheduledUtc))
                 {
                     due.Add(new DueReminderOccurrence(source, rule, unresolvedScheduledUtc));
                     continue;
                 }
 
-                if (HasActiveSnooze(settings, rule, nowUtc))
+                if (TryGetActiveSnoozeUntilUtc(settings, rule, normalizedNowUtc, out var snoozeUntilUtc))
                 {
+                    TrackNextCheck(snoozeUntilUtc);
                     continue;
+                }
+
+                if (TryGetFutureUnresolvedOccurrenceUtc(settings, rule, normalizedNowUtc, out var futureUnresolvedUtc))
+                {
+                    TrackNextCheck(futureUnresolvedUtc);
                 }
 
                 if (rule is AbsoluteOnceReminderRule once)
                 {
-                    if (nowUtc >= once.ScheduledUtc && !WasHandled(settings, once))
+                    if (!WasHandled(settings, once))
                     {
-                        due.Add(new DueReminderOccurrence(source, once, once.ScheduledUtc));
+                        if (normalizedNowUtc >= once.ScheduledUtc)
+                        {
+                            due.Add(new DueReminderOccurrence(source, once, once.ScheduledUtc));
+                        }
+                        else
+                        {
+                            TrackNextCheck(once.ScheduledUtc);
+                        }
                     }
 
                     continue;
@@ -357,11 +427,18 @@ public sealed class ReminderScheduler
                 {
                     var scheduledUtc = ReminderSchedule.GetScheduledUtc(
                         relative,
-                        nowUtc,
+                        normalizedNowUtc,
                         source.CountdownTargetUtc);
-                    if (nowUtc >= scheduledUtc && !WasHandled(settings, relative, scheduledUtc))
+                    if (!WasHandled(settings, relative, scheduledUtc))
                     {
-                        due.Add(new DueReminderOccurrence(source, relative, scheduledUtc));
+                        if (normalizedNowUtc >= scheduledUtc)
+                        {
+                            due.Add(new DueReminderOccurrence(source, relative, scheduledUtc));
+                        }
+                        else
+                        {
+                            TrackNextCheck(scheduledUtc);
+                        }
                     }
 
                     continue;
@@ -376,7 +453,7 @@ public sealed class ReminderScheduler
                         scheduledUtc = _getLatestCalendarOccurrenceUtc(
                             calendar,
                             state?.HandledThroughUtc,
-                            nowUtc);
+                            normalizedNowUtc);
                     }
                     catch (SettingsValidationException)
                     {
@@ -394,6 +471,36 @@ public sealed class ReminderScheduler
                         due.Add(new DueReminderOccurrence(source, calendar, scheduledUtc.Value));
                     }
 
+                    if (_getNextCalendarOccurrenceUtc is null)
+                    {
+                        canGate = false;
+                    }
+                    else
+                    {
+                        var afterExclusiveUtc = scheduledUtc is null &&
+                                                state?.HandledThroughUtc is { } handledThroughUtc &&
+                                                handledThroughUtc > normalizedNowUtc
+                            ? handledThroughUtc
+                            : normalizedNowUtc;
+                        DateTimeOffset? nextCalendarUtc;
+                        try
+                        {
+                            nextCalendarUtc = _getNextCalendarOccurrenceUtc(calendar, afterExclusiveUtc);
+                        }
+                        catch (SettingsValidationException)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception)
+                        {
+                            throw new SettingsValidationException(
+                                "Ical.Net 无法计算日历提醒 occurrence。",
+                                exception);
+                        }
+
+                        TrackNextCheck(nextCalendarUtc);
+                    }
+
                     continue;
                 }
 
@@ -403,8 +510,15 @@ public sealed class ReminderScheduler
                 }
 
                 liveRuleIds.Add(repeating.Id);
-                if (!TryGetRepeatCycle(repeating, nowUtc, out var cycle))
+                if (!TryGetRepeatCycle(repeating, normalizedNowUtc, out var cycle))
                 {
+                    var handledOrTrackedCycle = _lastRepeatCycles.TryGetValue(repeating.Id, out var trackedCycle)
+                        ? trackedCycle
+                        : TryGetHandledRepeatCycle(settings, repeating);
+                    TrackNextCheck(TryAddIntervals(
+                        repeating.FirstDueUtc,
+                        handledOrTrackedCycle,
+                        repeating.Interval.Minutes));
                     continue;
                 }
 
@@ -419,18 +533,44 @@ public sealed class ReminderScheduler
                     due.Add(new DueReminderOccurrence(
                         source,
                         repeating,
-                        ReminderSchedule.GetScheduledUtc(repeating, nowUtc)));
+                        ReminderSchedule.GetScheduledUtc(repeating, normalizedNowUtc)));
+                    TrackNextCheck(TryAddIntervals(
+                        repeating.FirstDueUtc,
+                        cycle,
+                        repeating.Interval.Minutes));
+                }
+                else
+                {
+                    TrackNextCheck(TryAddIntervals(
+                        repeating.FirstDueUtc,
+                        lastCycle,
+                        repeating.Interval.Minutes));
                 }
             }
         }
 
-        foreach (var staleId in _lastRepeatCycles.Keys
-                     .Where(id => !liveRuleIds.Contains(id)).ToArray())
+        if (_lastRepeatCycles.Count > 0)
         {
-            _lastRepeatCycles.Remove(staleId);
+            foreach (var staleId in _lastRepeatCycles.Keys
+                         .Where(id => !liveRuleIds.Contains(id)).ToArray())
+            {
+                _lastRepeatCycles.Remove(staleId);
+            }
         }
 
-        return due;
+        var result = due.Count == 0
+            ? EmptyDueOccurrences
+            : Array.AsReadOnly(due.ToArray());
+        _scanGate = canGate
+            ? new ScanGate(settings, _mutationVersion, normalizedNowUtc, nextCheckAtUtc, result)
+            : null;
+        return result;
+    }
+
+    private void InvalidateScanGate()
+    {
+        _mutationVersion++;
+        _scanGate = null;
     }
 
     private static bool TryGetUnresolvedOccurrence(
@@ -440,7 +580,50 @@ public sealed class ReminderScheduler
         out DateTimeOffset scheduledUtc)
     {
         scheduledUtc = default;
-        if (!settings.ReminderStates.TryGetValue(rule.Id, out var state) ||
+        if (!TryGetUndisposedDeliveryUtc(settings, rule, out var state, out var deliveredUtc))
+        {
+            return false;
+        }
+
+        if (nowUtc < deliveredUtc)
+        {
+            return false;
+        }
+
+        if (state.ActiveSnooze is { } snooze && nowUtc < snooze.SnoozeUntilUtc)
+        {
+            return false;
+        }
+
+        scheduledUtc = deliveredUtc;
+        return true;
+    }
+
+    private static bool TryGetFutureUnresolvedOccurrenceUtc(
+        CountdownSettings settings,
+        ReminderRule rule,
+        DateTimeOffset nowUtc,
+        out DateTimeOffset scheduledUtc)
+    {
+        scheduledUtc = default;
+        if (!TryGetUndisposedDeliveryUtc(settings, rule, out _, out var deliveredUtc) ||
+            deliveredUtc <= nowUtc)
+        {
+            return false;
+        }
+
+        scheduledUtc = deliveredUtc;
+        return true;
+    }
+
+    private static bool TryGetUndisposedDeliveryUtc(
+        CountdownSettings settings,
+        ReminderRule rule,
+        out ReminderRuleState state,
+        out DateTimeOffset deliveredUtc)
+    {
+        deliveredUtc = default;
+        if (!settings.ReminderStates.TryGetValue(rule.Id, out state!) ||
             !ReminderOccurrenceKey.TryParse(state.LastDeliveredOccurrenceKey, out var delivered) ||
             !string.Equals(delivered.RuleId, rule.Id, StringComparison.OrdinalIgnoreCase))
         {
@@ -454,27 +637,27 @@ public sealed class ReminderScheduler
             return false;
         }
 
-        if (nowUtc < delivered.ScheduledUtc)
-        {
-            return false;
-        }
-
-        if (state.ActiveSnooze is { } snooze && nowUtc < snooze.SnoozeUntilUtc)
-        {
-            return false;
-        }
-
-        scheduledUtc = delivered.ScheduledUtc;
+        deliveredUtc = delivered.ScheduledUtc;
         return true;
     }
 
-    private static bool HasActiveSnooze(
+    private static bool TryGetActiveSnoozeUntilUtc(
         CountdownSettings settings,
         ReminderRule rule,
-        DateTimeOffset nowUtc) =>
-        settings.ReminderStates.TryGetValue(rule.Id, out var state) &&
-        state.ActiveSnooze is { } snooze &&
-        nowUtc < snooze.SnoozeUntilUtc;
+        DateTimeOffset nowUtc,
+        out DateTimeOffset snoozeUntilUtc)
+    {
+        if (settings.ReminderStates.TryGetValue(rule.Id, out var state) &&
+            state.ActiveSnooze is { } snooze &&
+            nowUtc < snooze.SnoozeUntilUtc)
+        {
+            snoozeUntilUtc = snooze.SnoozeUntilUtc;
+            return true;
+        }
+
+        snoozeUntilUtc = default;
+        return false;
+    }
 
     public void ConfirmDisplayed(NoteRecord note, DateTimeOffset displayedAtUtc)
     {
@@ -508,6 +691,7 @@ public sealed class ReminderScheduler
             if (!_lastRepeatCycles.TryGetValue(repeating.Id, out var lastCycle) || cycle > lastCycle)
             {
                 _lastRepeatCycles[repeating.Id] = cycle;
+                InvalidateScanGate();
             }
         }
     }
@@ -530,9 +714,38 @@ public sealed class ReminderScheduler
             if (!_lastRepeatCycles.TryGetValue(repeating.Id, out var lastCycle) || cycle > lastCycle)
             {
                 _lastRepeatCycles[repeating.Id] = cycle;
+                InvalidateScanGate();
             }
         }
     }
+
+    private static DateTimeOffset? TryAddIntervals(
+        DateTimeOffset firstDueUtc,
+        long intervalCount,
+        int intervalMinutes)
+    {
+        if (intervalCount <= 0)
+        {
+            return firstDueUtc.ToUniversalTime();
+        }
+
+        var normalizedFirstDueUtc = firstDueUtc.ToUniversalTime();
+        var intervalTicks = TimeSpan.FromMinutes(intervalMinutes).Ticks;
+        var maxIntervals = (DateTimeOffset.MaxValue.UtcTicks - normalizedFirstDueUtc.UtcTicks) / intervalTicks;
+        if (intervalCount > maxIntervals)
+        {
+            return null;
+        }
+
+        return normalizedFirstDueUtc.AddTicks(intervalCount * intervalTicks);
+    }
+
+    private sealed record ScanGate(
+        CountdownSettings Settings,
+        long MutationVersion,
+        DateTimeOffset ValidFromInclusiveUtc,
+        DateTimeOffset? NextCheckAtUtc,
+        IReadOnlyList<DueReminderOccurrence> DueOccurrences);
 
     private static bool TryGetRepeatCycle(
         FixedIntervalReminderRule repeating,

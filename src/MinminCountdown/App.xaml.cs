@@ -1107,81 +1107,88 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
 
     public void Tick(DateTimeOffset nowUtc)
     {
-        foreach (var active in _active.Values.ToArray())
+        if (_active.Count > 0)
         {
-            if (!OccurrenceIsCurrent(active))
+            foreach (var active in _active.Values.ToArray())
             {
-                Remove(active);
-                continue;
-            }
-
-            if (active.NextAcknowledgementRetryUtc is { } acknowledgementRetryUtc &&
-                nowUtc >= acknowledgementRetryUtc)
-            {
-                if (active.AcknowledgementBatch is { } batch)
+                if (!OccurrenceIsCurrent(active))
                 {
-                    AcknowledgeAll(batch.Where(member => IsActive(member) && OccurrenceIsCurrent(member)).ToArray(), nowUtc);
+                    Remove(active);
+                    continue;
                 }
-                else
+
+                if (active.NextAcknowledgementRetryUtc is { } acknowledgementRetryUtc &&
+                    nowUtc >= acknowledgementRetryUtc)
                 {
-                    Acknowledge(active, nowUtc);
+                    if (active.AcknowledgementBatch is { } batch)
+                    {
+                        AcknowledgeAll(batch.Where(member => IsActive(member) && OccurrenceIsCurrent(member)).ToArray(), nowUtc);
+                    }
+                    else
+                    {
+                        Acknowledge(active, nowUtc);
+                    }
+                    continue;
                 }
-                continue;
-            }
 
-            if (active.NextSnoozeRetryUtc is { } snoozeRetryUtc &&
-                nowUtc >= snoozeRetryUtc)
-            {
-                Snooze(
-                    active,
-                    active.PendingSnoozeOption,
-                    active.PendingCustomSnoozeBeijing,
-                    nowUtc);
-                continue;
-            }
+                if (active.NextSnoozeRetryUtc is { } snoozeRetryUtc &&
+                    nowUtc >= snoozeRetryUtc)
+                {
+                    Snooze(
+                        active,
+                        active.PendingSnoozeOption,
+                        active.PendingCustomSnoozeBeijing,
+                        nowUtc);
+                    continue;
+                }
 
-            if (active.NextCompletionRetryUtc is { } completionRetryUtc &&
-                nowUtc >= completionRetryUtc)
-            {
-                CompleteNote(active, nowUtc);
-                continue;
-            }
+                if (active.NextCompletionRetryUtc is { } completionRetryUtc &&
+                    nowUtc >= completionRetryUtc)
+                {
+                    CompleteNote(active, nowUtc);
+                    continue;
+                }
 
-            if (active.NextPersistenceRetryUtc is { } retryUtc && nowUtc >= retryUtc)
-            {
-                ConfirmRenderedOccurrence(active, nowUtc);
+                if (active.NextPersistenceRetryUtc is { } retryUtc && nowUtc >= retryUtc)
+                {
+                    ConfirmRenderedOccurrence(active, nowUtc);
+                }
             }
         }
 
-        var snapshot = _workspace.Snapshot;
-        var countdownOrder = snapshot.Settings.Countdowns
-            .Select((countdown, index) => (countdown.Id, index))
-            .ToDictionary(static item => item.Id, static item => item.index, StringComparer.OrdinalIgnoreCase);
-        var noteOrder = snapshot.Settings.Notes
-            .Select((note, index) => (note.Id, index))
-            .ToDictionary(static item => item.Id, static item => item.index, StringComparer.OrdinalIgnoreCase);
+        var dueOccurrences = _workspace.GetDueReminderOccurrences(nowUtc);
         var added = false;
-        foreach (var occurrence in _workspace.GetDueReminderOccurrences(nowUtc))
+        if (dueOccurrences.Count > 0)
         {
-            var source = occurrence.Source;
-            var key = ActiveReminderOccurrenceKey.Create(occurrence);
-            if (_active.Values.Any(active =>
-                    string.Equals(
-                        active.Key.RuleId,
-                        key.RuleId,
-                        StringComparison.OrdinalIgnoreCase)))
+            CountdownSettings? settingsForOrdering = null;
+            Dictionary<string, int>? countdownOrder = null;
+            Dictionary<string, int>? noteOrder = null;
+            foreach (var occurrence in dueOccurrences)
             {
-                continue;
-            }
+                var source = occurrence.Source;
+                var key = ActiveReminderOccurrenceKey.Create(occurrence);
+                if (HasActiveRule(key.RuleId) || _active.ContainsKey(key))
+                {
+                    continue;
+                }
 
-            if (!_active.ContainsKey(key))
-            {
+                settingsForOrdering ??= _workspace.Snapshot.Settings;
+                int recordOrder;
+                if (source.Kind == ReminderSourceKind.Countdown)
+                {
+                    countdownOrder ??= BuildRecordOrder(settingsForOrdering.Countdowns, static countdown => countdown.Id);
+                    recordOrder = countdownOrder.GetValueOrDefault(source.Id, int.MaxValue);
+                }
+                else
+                {
+                    noteOrder ??= BuildRecordOrder(settingsForOrdering.Notes, static note => note.Id);
+                    recordOrder = noteOrder.GetValueOrDefault(source.Id, int.MaxValue);
+                }
+
                 Add(
                     key,
                     source,
-                    source.Kind == ReminderSourceKind.Countdown
-                        ? countdownOrder.GetValueOrDefault(source.Id, int.MaxValue)
-                        : noteOrder.GetValueOrDefault(source.Id, int.MaxValue),
+                    recordOrder,
                     RuleOrder(source, key.RuleId));
                 added = true;
             }
@@ -1731,6 +1738,32 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
 
     private bool IsActive(ActiveReminder expected) =>
         _active.TryGetValue(expected.Key, out var current) && ReferenceEquals(current, expected);
+
+    private bool HasActiveRule(string ruleId)
+    {
+        foreach (var active in _active.Values)
+        {
+            if (string.Equals(active.Key.RuleId, ruleId, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Dictionary<string, int> BuildRecordOrder<TRecord>(
+        IReadOnlyList<TRecord> records,
+        Func<TRecord, string> getId)
+    {
+        var order = new Dictionary<string, int>(records.Count, StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < records.Count; index++)
+        {
+            order[getId(records[index])] = index;
+        }
+
+        return order;
+    }
 
     private static ReminderSource? FindSource(
         CountdownSettings settings,

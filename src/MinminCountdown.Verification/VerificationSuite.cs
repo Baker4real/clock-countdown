@@ -98,6 +98,8 @@ internal static class VerificationSuite
         Run(results, "desktop-workspace-batch-undo-restores-order-and-states", VerifyDesktopWorkspaceBatchUndoRestoresOrderAndStates);
         Run(results, "desktop-workspace-snapshot-caches-time-independent-projections-and-invalidates-on-mutations", VerifyDesktopWorkspaceSnapshotTimeIndependentCaching);
         Run(results, "desktop-workspace-snapshot-cache-matches-uncached-oracle-across-mutations-filters-and-expiry", VerifyDesktopWorkspaceSnapshotEquivalenceAndExpiryInvalidation);
+        Run(results, "reminder-scheduler-next-due-gating-skips-idle-calendar-scans-and-realigns-immediately", VerifyReminderSchedulerNextDueGating);
+        Run(results, "reminder-due-scan-matches-uncached-oracle-across-all-rule-types-and-clock-transitions", VerifyReminderDueScanMatchesUncachedOracle);
         Run(results, "floating-countdown-projection-rows-and-primary", VerifyFloatingCountdownProjectionRowsAndPrimary);
         Run(results, "floating-countdown-projection-filter-scopes", VerifyFloatingCountdownProjectionFilterScopes);
         Run(results, "floating-countdown-projection-keys-and-signature", VerifyFloatingCountdownProjectionKeysAndSignature);
@@ -3628,6 +3630,632 @@ internal static class VerificationSuite
             {
                 Equal(e, a, $"{subject}[{index}]");
             }
+        }
+    }
+
+    private static void VerifyReminderSchedulerNextDueGating()
+    {
+        var baseUtc = new DateTimeOffset(2032, 3, 1, 0, 58, 0, TimeSpan.Zero); // 北京时间 2032-03-01 08:58:00
+        var onceRule = new AbsoluteOnceReminderRule("gate-once", baseUtc.AddMinutes(1)); // 08:59:00
+        var repeatRule = new FixedIntervalReminderRule("gate-repeat", baseUtc.AddMinutes(2), new ReminderInterval(5)); // 09:00:00, 09:05:00...
+        var relativeRule = new CountdownRelativeReminderRule("gate-relative", 30); // target 09:33 -> 09:03:00
+        var dailyCalendar = new CalendarReminderRule(
+            "gate-cal-daily",
+            CalendarFrequency.Daily,
+            2,
+            new DateOnly(2032, 3, 1),
+            new TimeOnly(9, 4), // 01:04:00Z
+            new DailyCalendarSelector());
+        var monthlyLastDayCalendar = new CalendarReminderRule(
+            "gate-cal-month-last",
+            CalendarFrequency.Monthly,
+            1,
+            new DateOnly(2032, 3, 1),
+            new TimeOnly(9, 10),
+            new MonthlyCalendarSelector(null, true)); // 2032-03-31 09:10
+
+        var countdown = new CountdownRecord(
+            "gate-countdown",
+            "门控倒计时",
+            baseUtc.AddMinutes(35), // 09:33:00
+            Array.Empty<string>(),
+            [relativeRule, monthlyLastDayCalendar]);
+        var note = new NoteRecord(
+            "gate-note",
+            "门控便签",
+            "2032-03-01",
+            false,
+            Array.Empty<string>(),
+            [onceRule, repeatRule, dailyCalendar]);
+        var settings = new CountdownSettings(
+            [countdown],
+            [note],
+            Array.Empty<TagRecord>(),
+            CountdownSettings.Empty.Preferences,
+            new Dictionary<string, ReminderRuleState>(StringComparer.OrdinalIgnoreCase));
+
+        var latestCalls = 0;
+        var nextCalls = 0;
+        var scheduler = new ReminderScheduler(
+            (rule, afterExclusiveUtc, atOrBeforeUtc) =>
+            {
+                latestCalls++;
+                return CalendarOccurrenceCalculator.GetLatestOccurrenceUtc(rule, afterExclusiveUtc, atOrBeforeUtc);
+            },
+            (rule, afterExclusiveUtc) =>
+            {
+                nextCalls++;
+                return CalendarOccurrenceCalculator.GetNextOccurrenceUtc(rule, afterExclusiveUtc);
+            });
+        scheduler.Initialize(settings, baseUtc);
+
+        // 首次扫描执行一次日历查询，并建立下一次到期门控（08:59:00）。
+        var initialDue = scheduler.GetDueOccurrences(settings, baseUtc);
+        AssertDueOccurrencesEqual(EvaluateUncachedDueOccurrences(settings, baseUtc), initialDue, "初始空闲扫描");
+        Equal(2, latestCalls, "初始扫描两条日历规则各查一次最新 occurrence");
+        Equal(2, nextCalls, "初始扫描两条日历规则各计算一次下一 occurrence");
+        RejectsWrite(
+            () => ((IList<DueReminderOccurrence>)initialDue).Clear(),
+            "门控返回空结果只读");
+
+        // 在 08:58:00 到 08:58:59.9999999 之间按 250ms 推进，日历查询次数必须完全为 0。
+        var latestAfterInit = latestCalls;
+        var nextAfterInit = nextCalls;
+        for (var ms = 250; ms < 60_000; ms += 250)
+        {
+            var tickUtc = baseUtc.AddMilliseconds(ms);
+            var idleDue = scheduler.GetDueOccurrences(settings, tickUtc);
+            Equal(0, idleDue.Count, $"空闲拍 +{ms}ms 无到期");
+        }
+
+        var oneTickBeforeOnce = onceRule.ScheduledUtc.AddTicks(-1);
+        Equal(0, scheduler.GetDueOccurrences(settings, oneTickBeforeOnce).Count, "首个到期前 1 tick 仍无到期");
+        Equal(latestAfterInit, latestCalls, "空闲门控期间不调用 GetLatestOccurrenceUtc");
+        Equal(nextAfterInit, nextCalls, "空闲门控期间不调用 GetNextOccurrenceUtc");
+
+        // 到达首个到期时刻 +20ms（模拟 InteractiveClockCadence 同秒落地）：门控立即打开并精确命中。
+        var onceSameSecondUtc = onceRule.ScheduledUtc.AddMilliseconds(20);
+        var atOnce = scheduler.GetDueOccurrences(settings, onceSameSecondUtc);
+        AssertDueOccurrencesEqual(EvaluateUncachedDueOccurrences(settings, onceSameSecondUtc), atOnce, "一次性规则同秒到期");
+        Equal(1, atOnce.Count, "一次性规则到点条目数");
+        Equal(onceRule.Id, atOnce[0].Rule.Id, "一次性规则到点 ID");
+        RejectsWrite(
+            () => ((IList<DueReminderOccurrence>)atOnce).Clear(),
+            "门控返回非空结果只读");
+
+        // 未确认前继续在 [08:59:00.020, 09:00:00) 推进，门控稳定复用结果，不再重复枚举日历。
+        var latestAtOnce = latestCalls;
+        var nextAtOnce = nextCalls;
+        var duringOnceUtc = onceRule.ScheduledUtc.AddSeconds(30);
+        var repeatedOnce = scheduler.GetDueOccurrences(settings, duringOnceUtc);
+        AssertDueOccurrencesEqual(EvaluateUncachedDueOccurrences(settings, duringOnceUtc), repeatedOnce, "待处理窗口内复用");
+        Equal(latestAtOnce, latestCalls, "待处理窗口内不重复调用 GetLatestOccurrenceUtc");
+        Equal(nextAtOnce, nextCalls, "待处理窗口内不重复调用 GetNextOccurrenceUtc");
+
+        // 确认送达并处置 once 后更换 settings：门控立即失效，09:00:00 之前不重扫，09:00:00 同秒触发 repeat。
+        var onceKey = ReminderOccurrenceKey.Create(onceRule, onceRule.ScheduledUtc).ToString();
+        var afterOnceDisposed = settings with
+        {
+            ReminderStates = new Dictionary<string, ReminderRuleState>(StringComparer.OrdinalIgnoreCase)
+            {
+                [onceRule.Id] = new(onceRule.Id, onceRule.ScheduledUtc, onceKey, onceKey)
+            }
+        };
+        scheduler.Synchronize(settings, afterOnceDisposed, duringOnceUtc);
+        Equal(0, scheduler.GetDueOccurrences(afterOnceDisposed, duringOnceUtc).Count, "处置后 08:59:30 无到期");
+        var latestBeforeRepeat = latestCalls;
+        Equal(0, scheduler.GetDueOccurrences(afterOnceDisposed, repeatRule.FirstDueUtc.AddTicks(-1)).Count, "重复规则到期前 1 tick");
+        Equal(latestBeforeRepeat, latestCalls, "重复规则到期前门控命中");
+
+        var atRepeat = scheduler.GetDueOccurrences(afterOnceDisposed, repeatRule.FirstDueUtc.AddMilliseconds(20));
+        AssertDueOccurrencesEqual(
+            EvaluateUncachedDueOccurrences(afterOnceDisposed, repeatRule.FirstDueUtc.AddMilliseconds(20)),
+            atRepeat,
+            "固定间隔规则同秒到期");
+        Equal(repeatRule.Id, atRepeat.Single().Rule.Id, "固定间隔规则到点 ID");
+
+        // ConfirmDisplayed 使门控立即失效，下一周期（09:05）之前不会重扫。
+        var repeatKey = ReminderOccurrenceKey.Create(repeatRule, repeatRule.FirstDueUtc).ToString();
+        var afterRepeatDisposed = afterOnceDisposed with
+        {
+            ReminderStates = new Dictionary<string, ReminderRuleState>(afterOnceDisposed.ReminderStates, StringComparer.OrdinalIgnoreCase)
+            {
+                [repeatRule.Id] = new(repeatRule.Id, repeatRule.FirstDueUtc, repeatKey, repeatKey)
+            }
+        };
+        scheduler.ConfirmDisplayed(new NoteReminderSource(note), repeatRule.Id, repeatRule.FirstDueUtc);
+        scheduler.Synchronize(afterOnceDisposed, afterRepeatDisposed, repeatRule.FirstDueUtc.AddSeconds(1));
+        Equal(0, scheduler.GetDueOccurrences(afterRepeatDisposed, repeatRule.FirstDueUtc.AddSeconds(2)).Count, "确认固定间隔后空闲");
+
+        // 09:03:00 触发倒计时相对规则。
+        var relativeDueUtc = countdown.TargetUtc.AddMinutes(-relativeRule.OffsetMinutesBefore);
+        var latestBeforeRelative = latestCalls;
+        Equal(0, scheduler.GetDueOccurrences(afterRepeatDisposed, relativeDueUtc.AddMilliseconds(-250)).Count, "相对规则到期前 250ms");
+        Equal(latestBeforeRelative, latestCalls, "相对规则到期前不重扫日历");
+        var atRelative = scheduler.GetDueOccurrences(afterRepeatDisposed, relativeDueUtc.AddMilliseconds(20));
+        AssertDueOccurrencesEqual(
+            EvaluateUncachedDueOccurrences(afterRepeatDisposed, relativeDueUtc.AddMilliseconds(20)),
+            atRelative,
+            "倒计时相对规则同秒到期");
+        Equal(relativeRule.Id, atRelative.Single().Rule.Id, "倒计时相对规则到点 ID");
+
+        // 系统时钟回拨：回到 09:01:00（小于 ValidFromInclusiveUtc），门控必须立即重算，不再返回 09:03 的相对提醒。
+        var jumpedBackUtc = baseUtc.AddMinutes(3); // 09:01:00
+        var afterJumpBack = scheduler.GetDueOccurrences(afterRepeatDisposed, jumpedBackUtc);
+        AssertDueOccurrencesEqual(EvaluateUncachedDueOccurrences(afterRepeatDisposed, jumpedBackUtc), afterJumpBack, "时钟回拨至相对规则之前");
+        Equal(0, afterJumpBack.Count, "时钟回拨后不再误报未到达的相对提醒");
+
+        // 回拨后继续正常推进，到达 09:04:00 时两条规则（相对 09:03 与日历 09:04）都准确命中。
+        var dailyFirstUtc = new DateTimeOffset(2032, 3, 1, 1, 4, 0, TimeSpan.Zero);
+        var atDaily = scheduler.GetDueOccurrences(afterRepeatDisposed, dailyFirstUtc.AddMilliseconds(20));
+        AssertDueOccurrencesEqual(
+            EvaluateUncachedDueOccurrences(afterRepeatDisposed, dailyFirstUtc.AddMilliseconds(20)),
+            atDaily,
+            "回拨后推进至日历规则到期");
+        SequenceEqual(
+            new[] { relativeRule.Id, dailyCalendar.Id },
+            atDaily.Select(static item => item.Rule.Id).ToArray(),
+            "回拨后再推进命中相对与日历规则");
+
+        // 长时间停顿 / 睡眠恢复（跳过 10 天至 2032-03-11 09:05）：每条规则只合并返回最新错过 occurrence。
+        var afterLongSleepUtc = new DateTimeOffset(2032, 3, 11, 1, 5, 0, TimeSpan.Zero);
+        var afterSleepDue = scheduler.GetDueOccurrences(afterRepeatDisposed, afterLongSleepUtc);
+        AssertDueOccurrencesEqual(
+            EvaluateUncachedDueOccurrences(afterRepeatDisposed, afterLongSleepUtc),
+            afterSleepDue,
+            "睡眠恢复十天后合并补发");
+        Equal(
+            new DateTimeOffset(2032, 3, 11, 1, 4, 0, TimeSpan.Zero),
+            afterSleepDue.Single(item => item.Rule.Id == dailyCalendar.Id).ScheduledUtc,
+            "日历规则只返回最新错过 occurrence");
+        Equal(
+            new DateTimeOffset(2032, 3, 11, 1, 5, 0, TimeSpan.Zero),
+            afterSleepDue.Single(item => item.Rule.Id == repeatRule.Id).ScheduledUtc,
+            "固定间隔规则只返回最新错过 occurrence");
+
+        // 未处置已送达 occurrence 在时钟回拨到其计划时刻之前时隐藏，时间重新到达时必须立即重现。
+        var deliveredCalendarUtc = new DateTimeOffset(2032, 3, 11, 1, 4, 0, TimeSpan.Zero);
+        var deliveredCalendarKey = ReminderOccurrenceKey.Create(dailyCalendar, deliveredCalendarUtc).ToString();
+        var unresolvedCalendarOnly = CountdownSettings.Empty with
+        {
+            Notes = [note with { ReminderRules = [dailyCalendar] }],
+            ReminderStates = new Dictionary<string, ReminderRuleState>(StringComparer.OrdinalIgnoreCase)
+            {
+                [dailyCalendar.Id] = new(dailyCalendar.Id, deliveredCalendarUtc, deliveredCalendarKey, null)
+            }
+        };
+        var beforeDeliveredUtc = deliveredCalendarUtc.AddMinutes(-10);
+        Equal(0, scheduler.GetDueOccurrences(unresolvedCalendarOnly, beforeDeliveredUtc).Count, "回拨至已送达未处置时刻之前暂不出现");
+        var latestBeforeUnresolved = latestCalls;
+        Equal(0, scheduler.GetDueOccurrences(unresolvedCalendarOnly, deliveredCalendarUtc.AddTicks(-1)).Count, "已送达未处置时刻前 1 tick 门控命中");
+        Equal(latestBeforeUnresolved, latestCalls, "回拨后等待已送达未处置时刻不重扫日历");
+        var reappeared = scheduler.GetDueOccurrences(unresolvedCalendarOnly, deliveredCalendarUtc);
+        AssertDueOccurrencesEqual(
+            EvaluateUncachedDueOccurrences(unresolvedCalendarOnly, deliveredCalendarUtc),
+            reappeared,
+            "重新到达已送达未处置时刻立即出现");
+        Equal(deliveredCalendarUtc, reappeared.Single().ScheduledUtc, "重新出现的未处置 occurrence 时刻");
+
+        // 空规则集合稳定命中空门控（NextCheckAtUtc == null），修改设置后立即重算。
+        var emptySettings = CountdownSettings.Empty;
+        Equal(0, scheduler.GetDueOccurrences(emptySettings, baseUtc).Count, "空规则初次扫描");
+        Equal(0, scheduler.GetDueOccurrences(emptySettings, baseUtc.AddYears(5)).Count, "空规则推进五年仍为空");
+        var addedFuture = emptySettings with
+        {
+            Notes = [note with { ReminderRules = [onceRule] }]
+        };
+        Equal(1, scheduler.GetDueOccurrences(addedFuture, onceRule.ScheduledUtc).Count, "更换设置实例后立即重算");
+
+        // 单参自定义日历委托构造保留失败闭锁与每次调用语义，不静默绕过自定义委托。
+        var customCalls = 0;
+        var customScheduler = new ReminderScheduler((rule, afterUtc, atOrBeforeUtc) =>
+        {
+            customCalls++;
+            return CalendarOccurrenceCalculator.GetLatestOccurrenceUtc(rule, afterUtc, atOrBeforeUtc);
+        });
+        var singleCalSettings = CountdownSettings.Empty with
+        {
+            Notes = [note with { ReminderRules = [dailyCalendar] }]
+        };
+        _ = customScheduler.GetDueOccurrences(singleCalSettings, baseUtc);
+        _ = customScheduler.GetDueOccurrences(singleCalSettings, baseUtc.AddSeconds(1));
+        Equal(2, customCalls, "单参自定义日历委托构造不绕过调用方委托");
+    }
+
+    private static void VerifyReminderDueScanMatchesUncachedOracle()
+    {
+        WithTemporaryDirectory(directory =>
+        {
+            var settingsPath = Path.Combine(directory, "settings.json");
+            var baseUtc = new DateTimeOffset(2032, 1, 30, 0, 58, 0, TimeSpan.Zero); // 北京时间 2032-01-30 08:58:00（闰年）
+            var clock = new SettableClock(baseUtc);
+            var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: clock));
+
+            IReadOnlyList<DueReminderOccurrence> AssertDueMatchesOracle(DateTimeOffset atUtc, string step)
+            {
+                var actual = workspace.GetDueReminderOccurrences(atUtc);
+                var diskSettings = new SettingsStore(clock: new FixedClock(atUtc)).Load(settingsPath).Settings;
+                var expected = EvaluateUncachedDueOccurrences(diskSettings, atUtc);
+                AssertDueOccurrencesEqual(expected, actual, step);
+
+                var expectedNotes = expected
+                    .Where(static item => item.Source is NoteReminderSource)
+                    .Select(static item => ((NoteReminderSource)item.Source).Note.Id)
+                    .ToArray();
+                var actualNotes = workspace.GetDueReminders(atUtc)
+                    .Select(static item => item.Id)
+                    .ToArray();
+                SequenceEqual(expectedNotes, actualNotes, $"{step} - GetDueReminders 便签 ID 顺序");
+                return actual;
+            }
+
+            // 构造覆盖四类规则（一次性、固定间隔、倒计时相对、四频率日历）与两类来源的组合。
+            var noteOnce = new AbsoluteOnceReminderRule("eq-once", baseUtc.AddMinutes(1)); // 01-30 08:59:00
+            var noteRepeat = new FixedIntervalReminderRule("eq-repeat", baseUtc.AddMinutes(2), new ReminderInterval(10)); // 09:00, 09:10...
+            var noteWeekly = new CalendarReminderRule(
+                "eq-cal-weekly",
+                CalendarFrequency.Weekly,
+                1,
+                new DateOnly(2032, 1, 30),
+                new TimeOnly(9, 3), // 01-30 周五 09:03 -> 01:03Z
+                new WeeklyCalendarSelector([DayOfWeek.Monday, DayOfWeek.Friday]));
+            var noteMonthly31 = new CalendarReminderRule(
+                "eq-cal-month31",
+                CalendarFrequency.Monthly,
+                1,
+                new DateOnly(2032, 1, 30),
+                new TimeOnly(9, 4), // 01-31 09:04，跳过二月，03-31 09:04
+                new MonthlyCalendarSelector(31, false));
+
+            var countdownRelative = new CountdownRelativeReminderRule("eq-relative", 30); // target 09:32 -> 09:02:00
+            var countdownDaily = new CalendarReminderRule(
+                "eq-cal-daily",
+                CalendarFrequency.Daily,
+                2,
+                new DateOnly(2032, 1, 30),
+                new TimeOnly(9, 5), // 01-30 09:05, 02-01 09:05...
+                new DailyCalendarSelector());
+            var countdownMonthLast = new CalendarReminderRule(
+                "eq-cal-month-last",
+                CalendarFrequency.Monthly,
+                1,
+                new DateOnly(2032, 1, 30),
+                new TimeOnly(9, 6), // 01-31, 02-29(闰), 03-31
+                new MonthlyCalendarSelector(null, true));
+            var countdownYearlyLeap = new CalendarReminderRule(
+                "eq-cal-yearly-leap",
+                CalendarFrequency.Yearly,
+                1,
+                new DateOnly(2032, 1, 30),
+                new TimeOnly(9, 7), // 2032-02-29 09:07, 2036-02-29 09:07
+                new YearlyCalendarSelector(2, 29, false));
+
+            Applied(
+                workspace,
+                new SaveNoteChange(
+                    null,
+                    "等价验证便签",
+                    new DateTime(2032, 1, 30),
+                    false,
+                    [],
+                    [noteOnce, noteRepeat, noteWeekly, noteMonthly31]),
+                "保存四规则便签");
+            Applied(
+                workspace,
+                new SaveCountdownChange(
+                    null,
+                    "等价验证倒计时",
+                    baseUtc.AddMinutes(34), // 09:32:00
+                    [],
+                    [countdownRelative, countdownDaily, countdownMonthLast, countdownYearlyLeap]),
+                "保存四规则倒计时");
+
+            var noteId = workspace.Snapshot.Settings.Notes.Single().Id;
+            var countdownId = workspace.Snapshot.Settings.Countdowns.Single().Id;
+
+            // 空闲窗口内连续 250ms 推进：复用空集合且与无缓存基准逐项一致。
+            var idleFirst = AssertDueMatchesOracle(baseUtc, "初始空闲");
+            var idleNotesFirst = workspace.GetDueReminders(baseUtc);
+            var idleSecond = AssertDueMatchesOracle(baseUtc.AddMilliseconds(250), "推进 250ms 空闲");
+            var idleNotesSecond = workspace.GetDueReminders(baseUtc.AddMilliseconds(250));
+            Equal(true, ReferenceEquals(idleFirst, idleSecond), "空闲门控复用空发生项集合");
+            Equal(true, ReferenceEquals(idleNotesFirst, idleNotesSecond), "空闲门控复用空便签集合");
+            RejectsWrite(() => ((IList<DueReminderOccurrence>)idleFirst).Clear(), "空闲空发生项集合只读");
+
+            // 逐 250ms 推进穿过 08:59 (once)、09:00 (repeat)、09:02 (relative)、09:03 (weekly)、09:05 (daily)。
+            AssertDueMatchesOracle(noteOnce.ScheduledUtc.AddTicks(-1), "once 到期前 1 tick");
+            var atOnce = AssertDueMatchesOracle(noteOnce.ScheduledUtc.AddMilliseconds(20), "once 同秒到期");
+            var atOnceRepeatRead = AssertDueMatchesOracle(noteOnce.ScheduledUtc.AddMilliseconds(270), "once 待确认窗口复用");
+            Equal(true, ReferenceEquals(atOnce, atOnceRepeatRead), "待处理窗口命中门控复用冻结发生项");
+            RejectsWrite(() => ((IList<DueReminderOccurrence>)atOnce).Clear(), "非空冻结发生项只读");
+
+            // 确认送达 once，并做亚秒级稍后提醒（08:59:00.530 + 10 分钟 = 09:09:00.530）。
+            clock.UtcNow = noteOnce.ScheduledUtc.AddMilliseconds(530);
+            Equal(true, workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, noteId, noteOnce.Id, noteOnce.ScheduledUtc).Succeeded, "确认 once 送达");
+            AssertDueMatchesOracle(clock.UtcNow, "确认 once 送达后未处置仍保留");
+            Equal(
+                true,
+                workspace.SnoozeReminder(ReminderSourceKind.Note, noteId, noteOnce.Id, noteOnce.ScheduledUtc, ReminderSnoozeOption.TenMinutes, null).Succeeded,
+                "亚秒级稍后 once 十分钟");
+            var snoozeUntilUtc = clock.UtcNow.AddMinutes(10);
+            AssertDueMatchesOracle(clock.UtcNow, "稍后后立即抑制 once");
+            AssertDueMatchesOracle(baseUtc.AddMinutes(-2), "稍后期间时钟回拨至原计划时刻之前");
+            AssertDueMatchesOracle(snoozeUntilUtc.AddTicks(-1), "亚秒级稍后到期前 1 tick");
+            var atSnoozeExpiry = AssertDueMatchesOracle(snoozeUntilUtc, "亚秒级稍后精确到点立即出现");
+            Equal(true, atSnoozeExpiry.Any(item => item.Rule.Id == noteOnce.Id && item.ScheduledUtc == noteOnce.ScheduledUtc), "亚秒级稍后原 occurrence 恢复");
+            Equal(true, workspace.AcknowledgeReminder(ReminderSourceKind.Note, noteId, noteOnce.Id, noteOnce.ScheduledUtc).Succeeded, "知道了 once");
+            AssertDueMatchesOracle(snoozeUntilUtc, "知道了 once 后立即移除");
+
+            // 确认并处置已到点的 repeat、relative、weekly、daily；同时验证倒计时目标前移/后移与已送达旧 occurrence 共存。
+            var dueAtSnooze = AssertDueMatchesOracle(snoozeUntilUtc, "09:09 时的到期批次");
+            var relativeDue = dueAtSnooze.Single(item => item.Rule.Id == countdownRelative.Id);
+            var weeklyDue = dueAtSnooze.Single(item => item.Rule.Id == noteWeekly.Id);
+            var dailyDue = dueAtSnooze.Single(item => item.Rule.Id == countdownDaily.Id);
+            var repeatDue = dueAtSnooze.Single(item => item.Rule.Id == noteRepeat.Id);
+
+            // 验证冻结的周日历规则内部 Weekdays 仍不可写污染缓存。
+            RejectsWrite(
+                () => ((IList<DayOfWeek>)((WeeklyCalendarSelector)((CalendarReminderRule)weeklyDue.Rule).Selector).Weekdays)[0] = DayOfWeek.Sunday,
+                "冻结周日历发生项 Weekdays 只读");
+
+            Equal(true, workspace.ConfirmReminderDisplayed(ReminderSourceKind.Countdown, countdownId, countdownRelative.Id, relativeDue.ScheduledUtc).Succeeded, "送达倒计时相对提醒");
+            Equal(true, workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, noteId, noteWeekly.Id, weeklyDue.ScheduledUtc).Succeeded, "送达周日历提醒");
+            Equal(true, workspace.ConfirmReminderDisplayed(ReminderSourceKind.Countdown, countdownId, countdownDaily.Id, dailyDue.ScheduledUtc).Succeeded, "送达两日日历提醒");
+            Equal(true, workspace.ConfirmReminderDisplayed(ReminderSourceKind.Note, noteId, noteRepeat.Id, repeatDue.ScheduledUtc).Succeeded, "送达固定间隔提醒");
+
+            // 已送达未处置的相对提醒在倒计时目标后移时仍保留，处置后重算新目标派生时刻。
+            var currentCountdown = workspace.Snapshot.Settings.Countdowns.Single();
+            var movedTargetUtc = baseUtc.AddMinutes(50); // 09:48 -> 新派生 09:18
+            clock.UtcNow = snoozeUntilUtc;
+            Applied(
+                workspace,
+                new SaveCountdownChange(currentCountdown.Id, currentCountdown.Name, movedTargetUtc, currentCountdown.TagIds, currentCountdown.ReminderRules),
+                "目标后移保留已送达旧相对提醒");
+            AssertDueMatchesOracle(snoozeUntilUtc, "目标后移后旧未处置相对提醒仍在");
+            Equal(
+                true,
+                workspace.AcknowledgeReminders(
+                    [
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Countdown, countdownId, countdownRelative.Id, relativeDue.ScheduledUtc),
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Note, noteId, noteWeekly.Id, weeklyDue.ScheduledUtc),
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Countdown, countdownId, countdownDaily.Id, dailyDue.ScheduledUtc),
+                        new ReminderAcknowledgementRequest(ReminderSourceKind.Note, noteId, noteRepeat.Id, repeatDue.ScheduledUtc)
+                    ]).Succeeded,
+                "批量知道了四条提醒");
+            AssertDueMatchesOracle(snoozeUntilUtc, "批量知道了后全部清除");
+
+            // 时钟回拨到 08:57（早于所有规则与 HandledThroughUtc），再正常推进回 09:18（新相对时刻）。
+            AssertDueMatchesOracle(baseUtc.AddMinutes(-1), "时钟回拨至所有规则之前");
+            AssertDueMatchesOracle(baseUtc.AddMinutes(12), "回拨后回到 09:10（repeat 新周期）");
+            AssertDueMatchesOracle(movedTargetUtc.AddMinutes(-countdownRelative.OffsetMinutesBefore).AddTicks(-1), "新相对派生时刻前 1 tick");
+            var atMovedRelative = AssertDueMatchesOracle(movedTargetUtc.AddMinutes(-countdownRelative.OffsetMinutesBefore), "新相对派生时刻精确到期");
+            Equal(true, atMovedRelative.Any(item => item.Rule.Id == countdownRelative.Id), "目标后移后的新相对提醒到期");
+
+            // 长时间停顿 / 睡眠恢复：跳过一个月到达 2032-02-29 09:10（闰年二月末 + 闰日年规则），再跳到 2036-03-01（4 年闰日）。
+            var leapDayUtc = new DateTimeOffset(2032, 2, 29, 1, 10, 0, TimeSpan.Zero);
+            var atLeapDay = AssertDueMatchesOracle(leapDayUtc, "长时间停顿至闰年 2 月 29 日");
+            Equal(
+                new DateTimeOffset(2032, 2, 29, 1, 6, 0, TimeSpan.Zero),
+                atLeapDay.Single(item => item.Rule.Id == countdownMonthLast.Id).ScheduledUtc,
+                "月末规则命中闰年 2 月 29 日");
+            Equal(
+                new DateTimeOffset(2032, 2, 29, 1, 7, 0, TimeSpan.Zero),
+                atLeapDay.Single(item => item.Rule.Id == countdownYearlyLeap.Id).ScheduledUtc,
+                "年闰日规则命中 2032-02-29");
+            Equal(
+                new DateTimeOffset(2032, 1, 31, 1, 4, 0, TimeSpan.Zero),
+                atLeapDay.Single(item => item.Rule.Id == noteMonthly31.Id).ScheduledUtc,
+                "月 31 日规则跳过 2 月并保留 1 月 31 日最新错过 occurrence");
+
+            var fourYearsLaterUtc = new DateTimeOffset(2036, 3, 1, 2, 0, 0, TimeSpan.Zero);
+            var atFourYears = AssertDueMatchesOracle(fourYearsLaterUtc, "四年长停顿合并至最新错过 occurrence");
+            Equal(
+                new DateTimeOffset(2036, 2, 29, 1, 7, 0, TimeSpan.Zero),
+                atFourYears.Single(item => item.Rule.Id == countdownYearlyLeap.Id).ScheduledUtc,
+                "四年长停顿后年闰日规则只补发 2036-02-29");
+
+            // 完成便签与重新打开（通过撤销完成）：立即重算且与无缓存基准一致。
+            clock.UtcNow = fourYearsLaterUtc;
+            Equal(true, workspace.ApplyWithUndo(new SetNoteCompletionChange(noteId, true), WorkspaceUndoSurface.Main).Succeeded, "完成便签推进游标");
+            var afterComplete = AssertDueMatchesOracle(fourYearsLaterUtc, "完成便签后立即移除便签全部提醒");
+            Equal(false, afterComplete.Any(item => item.SourceKind == ReminderSourceKind.Note), "完成便签后无便签到期提醒");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Main).Succeeded, "撤销完成重新打开便签");
+            AssertDueMatchesOracle(fourYearsLaterUtc, "重新打开便签后不补发历史周期");
+            AssertDueMatchesOracle(fourYearsLaterUtc.AddMinutes(10), "重新打开便签后未来周期照常到期");
+
+            // 规则改期、删除便签与撤销删除：门控立即失效重算，与无缓存基准一致。
+            var editedDaily = countdownDaily with { LocalTime = new TimeOnly(10, 5) }; // 02:05:00Z，较 fourYearsLaterUtc 晚 5 分钟
+            var latestCountdown = workspace.Snapshot.Settings.Countdowns.Single();
+            Applied(
+                workspace,
+                new SaveCountdownChange(
+                    latestCountdown.Id,
+                    latestCountdown.Name,
+                    fourYearsLaterUtc.AddDays(10),
+                    latestCountdown.TagIds,
+                    [countdownRelative, editedDaily, countdownMonthLast, countdownYearlyLeap]),
+                "修改日历规则本地时间");
+            AssertDueMatchesOracle(fourYearsLaterUtc, "日历改期后立即重算");
+            AssertDueMatchesOracle(fourYearsLaterUtc.AddMinutes(5).AddTicks(-1), "日历改期新时刻前 1 tick");
+            var atEditedDaily = AssertDueMatchesOracle(fourYearsLaterUtc.AddMinutes(5), "日历改期新时刻精确到期");
+            Equal(true, atEditedDaily.Any(item => item.Rule.Id == editedDaily.Id), "改期后的日历规则立即按新时刻到期");
+
+            Equal(true, workspace.ApplyWithUndo(new DeleteNoteChange(noteId), WorkspaceUndoSurface.Floating).Succeeded, "带撤销删除便签");
+            AssertDueMatchesOracle(fourYearsLaterUtc.AddMinutes(10), "删除便签后立即移除其到期提醒");
+            Equal(true, workspace.Undo(WorkspaceUndoSurface.Floating).Succeeded, "撤销删除便签");
+            AssertDueMatchesOracle(fourYearsLaterUtc.AddMinutes(10), "撤销删除便签后立即恢复其到期提醒");
+
+            // 冷启动：在已落盘、包含多条错过规则的设置文件上新加载 DesktopWorkspace，只补发每条规则最新错过项。
+            var coldStartUtc = fourYearsLaterUtc.AddDays(5);
+            var coldWorkspace = DesktopWorkspace.Load(settingsPath, new SettingsStore(clock: new FixedClock(coldStartUtc)));
+            var coldActual = coldWorkspace.GetDueReminderOccurrences(coldStartUtc);
+            var coldExpected = EvaluateUncachedDueOccurrences(
+                new SettingsStore(clock: new FixedClock(coldStartUtc)).Load(settingsPath).Settings,
+                coldStartUtc);
+            AssertDueOccurrencesEqual(coldExpected, coldActual, "冷启动仅补发每条规则最新错过发生项");
+            Equal(
+                coldActual.Count,
+                coldActual.Select(static item => item.Rule.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                "冷启动每条规则最多一条 occurrence");
+        });
+    }
+
+    private static IReadOnlyList<DueReminderOccurrence> EvaluateUncachedDueOccurrences(
+        CountdownSettings settings,
+        DateTimeOffset nowUtc)
+    {
+        var due = new List<DueReminderOccurrence>();
+        var sources = settings.Countdowns
+            .Select(static countdown => (ReminderSource)new CountdownReminderSource(countdown))
+            .Concat(settings.Notes
+                .Where(static note => !note.IsCompleted)
+                .Select(static note => (ReminderSource)new NoteReminderSource(note)));
+        foreach (var source in sources)
+        {
+            foreach (var rule in source.ReminderRules)
+            {
+                if (OracleTryGetUnresolved(settings, rule, nowUtc, out var unresolvedScheduledUtc))
+                {
+                    due.Add(new DueReminderOccurrence(source, rule, unresolvedScheduledUtc));
+                    continue;
+                }
+
+                if (settings.ReminderStates.TryGetValue(rule.Id, out var snoozeState) &&
+                    snoozeState.ActiveSnooze is { } snooze &&
+                    nowUtc < snooze.SnoozeUntilUtc)
+                {
+                    continue;
+                }
+
+                switch (rule)
+                {
+                    case AbsoluteOnceReminderRule once:
+                    {
+                        var handled = settings.ReminderStates.TryGetValue(once.Id, out var onceState) &&
+                                      onceState.HandledThroughUtc is { } handledThroughUtc &&
+                                      handledThroughUtc >= once.ScheduledUtc;
+                        if (nowUtc >= once.ScheduledUtc && !handled)
+                        {
+                            due.Add(new DueReminderOccurrence(source, once, once.ScheduledUtc));
+                        }
+
+                        break;
+                    }
+                    case CountdownRelativeReminderRule relative:
+                    {
+                        var scheduledUtc = ReminderSchedule.GetScheduledUtc(
+                            relative,
+                            nowUtc,
+                            source.CountdownTargetUtc);
+                        var handled = settings.ReminderStates.TryGetValue(relative.Id, out var relativeState) &&
+                                      relativeState.HandledThroughUtc == scheduledUtc.ToUniversalTime();
+                        if (nowUtc >= scheduledUtc && !handled)
+                        {
+                            due.Add(new DueReminderOccurrence(source, relative, scheduledUtc));
+                        }
+
+                        break;
+                    }
+                    case CalendarReminderRule calendar:
+                    {
+                        settings.ReminderStates.TryGetValue(calendar.Id, out var calendarState);
+                        var scheduledUtc = CalendarOccurrenceCalculator.GetLatestOccurrenceUtc(
+                            calendar,
+                            calendarState?.HandledThroughUtc,
+                            nowUtc);
+                        if (scheduledUtc is not null)
+                        {
+                            due.Add(new DueReminderOccurrence(source, calendar, scheduledUtc.Value));
+                        }
+
+                        break;
+                    }
+                    case FixedIntervalReminderRule repeating:
+                    {
+                        if (nowUtc < repeating.FirstDueUtc)
+                        {
+                            break;
+                        }
+
+                        var cycle = (long)Math.Floor((nowUtc - repeating.FirstDueUtc).TotalMinutes /
+                            repeating.Interval.Minutes) + 1;
+                        long lastCycle = 0;
+                        if (settings.ReminderStates.TryGetValue(repeating.Id, out var repeatState) &&
+                            repeatState.HandledThroughUtc is { } handledThroughUtc &&
+                            handledThroughUtc >= repeating.FirstDueUtc)
+                        {
+                            lastCycle = (handledThroughUtc.Ticks - repeating.FirstDueUtc.Ticks) /
+                                TimeSpan.FromMinutes(repeating.Interval.Minutes).Ticks + 1;
+                        }
+
+                        if (cycle > lastCycle)
+                        {
+                            due.Add(new DueReminderOccurrence(
+                                source,
+                                repeating,
+                                ReminderSchedule.GetScheduledUtc(repeating, nowUtc)));
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return due;
+    }
+
+    private static bool OracleTryGetUnresolved(
+        CountdownSettings settings,
+        ReminderRule rule,
+        DateTimeOffset nowUtc,
+        out DateTimeOffset scheduledUtc)
+    {
+        scheduledUtc = default;
+        if (!settings.ReminderStates.TryGetValue(rule.Id, out var state) ||
+            !ReminderOccurrenceKey.TryParse(state.LastDeliveredOccurrenceKey, out var delivered) ||
+            !string.Equals(delivered.RuleId, rule.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (ReminderOccurrenceKey.TryParse(state.LastDispositionOccurrenceKey, out var disposition) &&
+            string.Equals(disposition.RuleId, rule.Id, StringComparison.OrdinalIgnoreCase) &&
+            disposition.ScheduledUtc >= delivered.ScheduledUtc)
+        {
+            return false;
+        }
+
+        if (nowUtc < delivered.ScheduledUtc)
+        {
+            return false;
+        }
+
+        if (state.ActiveSnooze is { } snooze && nowUtc < snooze.SnoozeUntilUtc)
+        {
+            return false;
+        }
+
+        scheduledUtc = delivered.ScheduledUtc;
+        return true;
+    }
+
+    private static void AssertDueOccurrencesEqual(
+        IReadOnlyList<DueReminderOccurrence> expected,
+        IReadOnlyList<DueReminderOccurrence> actual,
+        string step)
+    {
+        Equal(expected.Count, actual.Count, $"{step} - 到期发生项数量");
+        for (var index = 0; index < expected.Count; index++)
+        {
+            var e = expected[index];
+            var a = actual[index];
+            Equal(e.SourceKind, a.SourceKind, $"{step}[{index}].SourceKind");
+            Equal(e.SourceId, a.SourceId, $"{step}[{index}].SourceId");
+            Equal(e.Source.DisplayText, a.Source.DisplayText, $"{step}[{index}].Source.DisplayText");
+            Equal(e.Rule.Id, a.Rule.Id, $"{step}[{index}].Rule.Id");
+            Equal(e.Rule.GetType(), a.Rule.GetType(), $"{step}[{index}].Rule.Type");
+            Equal(e.ScheduledUtc, a.ScheduledUtc, $"{step}[{index}].ScheduledUtc");
         }
     }
 

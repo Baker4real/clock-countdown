@@ -12,6 +12,7 @@ internal static class Program
     internal const string GuidanceFactName = "MainEmptyStatesGuideToSingleAddEntry";
     internal const string OverflowFactName = "MainListOverflowScrollsAndReachesActions";
     internal const string FloatingSmokeFactName = "FloatingWindowRendersAndFindsManagerButton";
+    internal const string FloatingNoteSearchFactName = "FloatingNoteSearchExpandsAndFocusesWithoutReentry";
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
     internal const string ReminderCenterLongTitleFactName = "ReminderCenterLongTitleDisclosure";
     internal const string ReminderCenterTwoRowLayoutFactName = "ReminderCenterTwoRowLayoutAndLazyCustomSnooze";
@@ -37,6 +38,9 @@ internal static class Program
         "两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）";
     private const string FloatingSmokeFactMeaning =
         "悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）";
+    private const string FloatingNoteSearchFactMeaning =
+        "悬浮窗从 Ctrl+F、搜索按钮和提示条词钮展开搜索都在布局后聚焦输入框，连续触发不在入口返回前重入；" +
+        "共享搜索词、Esc 清空收起和提示条三态保持不变（#315）";
     private const string ReminderCenterSmokeFactMeaning =
         "提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）";
     private const string ReminderCenterLongTitleFactMeaning =
@@ -79,6 +83,7 @@ internal static class Program
             [GuidanceFactName] = false,
             [OverflowFactName] = false,
             [FloatingSmokeFactName] = false,
+            [FloatingNoteSearchFactName] = false,
             [ReminderCenterSmokeFactName] = false,
             [ReminderCenterLongTitleFactName] = false,
             [ReminderCenterTwoRowLayoutFactName] = false,
@@ -147,6 +152,11 @@ internal static class Program
             {
                 WindowSmokeScenario.RunFloating();
                 return (true, FloatingSmokeFactMeaning);
+            });
+            RunFact(FloatingNoteSearchFactName, FloatingNoteSearchFactMeaning, () =>
+            {
+                FloatingNoteSearchScenario.Run();
+                return (true, FloatingNoteSearchFactMeaning);
             });
             RunFact(ReminderCenterSmokeFactName, ReminderCenterSmokeFactMeaning, () =>
             {

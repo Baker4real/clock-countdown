@@ -246,6 +246,7 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorCopyAndPreviewScenario.cs',
     'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
+    'src\MinminCountdown.WindowVerification\FloatingNoteSearchScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterLongTitleScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterSnoozeMenuScenario.cs',
     'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',

@@ -13,6 +13,7 @@ internal static class Program
     internal const string OverflowFactName = "MainListOverflowScrollsAndReachesActions";
     internal const string FloatingSmokeFactName = "FloatingWindowRendersAndFindsManagerButton";
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
+    internal const string ReminderCenterLongTitleFactName = "ReminderCenterLongTitleDisclosure";
     internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
 
@@ -28,6 +29,9 @@ internal static class Program
         "悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）";
     private const string ReminderCenterSmokeFactMeaning =
         "提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）";
+    private const string ReminderCenterLongTitleFactMeaning =
+        "长标题在真实提醒中心收起为两行省略，键盘展开/收起显示全文并同步可访问名，整行保留完整正文；" +
+        "相对时间原位更新不改展开状态、焦点或滚动（#321）";
     private const string ReminderRulesEditorSmokeFactMeaning =
         "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
     private const string ConfirmationDialogSmokeFactMeaning =
@@ -44,6 +48,7 @@ internal static class Program
             [OverflowFactName] = false,
             [FloatingSmokeFactName] = false,
             [ReminderCenterSmokeFactName] = false,
+            [ReminderCenterLongTitleFactName] = false,
             [ReminderRulesEditorSmokeFactName] = false,
             [ConfirmationDialogSmokeFactName] = false
         };
@@ -105,6 +110,11 @@ internal static class Program
             {
                 WindowSmokeScenario.RunReminderCenter();
                 return (true, ReminderCenterSmokeFactMeaning);
+            });
+            RunFact(ReminderCenterLongTitleFactName, ReminderCenterLongTitleFactMeaning, () =>
+            {
+                ReminderCenterLongTitleScenario.Run();
+                return (true, ReminderCenterLongTitleFactMeaning);
             });
             RunFact(ReminderRulesEditorSmokeFactName, ReminderRulesEditorSmokeFactMeaning, () =>
             {

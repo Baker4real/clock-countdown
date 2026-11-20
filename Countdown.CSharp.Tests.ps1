@@ -3864,6 +3864,7 @@ exit 23
         MainListOverflowScrollsAndReachesActions = '两个列表真实溢出时保留滚动条，滚轮、thumb 与 PageDown 能滚动并到底，末行与每行操作都能滚进视口（#248）'
         FloatingWindowRendersAndFindsManagerButton = '悬浮窗在隔离桌面完成首帧，并能按自动化标识找到“打开管理窗口”按钮（#297）'
         ReminderCenterRendersAndFindsAcknowledgeAll = '提醒中心在隔离桌面完成首帧，并能按自动化标识找到“全部知道了”按钮（#297）'
+        ReminderCenterLongTitleDisclosure = '长标题在真实提醒中心收起为两行省略，键盘展开/收起显示全文并同步可访问名，整行保留完整正文；相对时间原位更新不改展开状态、焦点或滚动（#321）'
         ReminderRulesEditorRendersAndFindsMode = '规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）'
         ConfirmationDialogRendersAndFindsCancel = '确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）'
     }
@@ -3875,7 +3876,7 @@ exit 23
     Assert-ExactReportFields `
         -Report $windowVerification `
         -ExpectedNames @($windowVerificationFacts.Keys) `
-        -Name '窗口验证只产出三条空态事实与四条窗口冒烟事实，不生成整份产品报告'
+        -Name '窗口验证只产出既有空态/冒烟事实与长标题披露事实，不生成整份产品报告'
     foreach ($factName in $windowVerificationFacts.Keys) {
         Assert-Equal $true ([bool] $windowVerification.$factName) `
             "$($windowVerificationFacts[$factName])；$($windowVerificationResult.Stderr)"

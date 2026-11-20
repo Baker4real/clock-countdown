@@ -23,7 +23,7 @@ internal static class KeyboardFocusPolicy
             new MouseButtonEventHandler(OnPreviewPointerDown), handledEventsToo: true);
         EventManager.RegisterClassHandler(typeof(Control), UIElement.GotKeyboardFocusEvent,
             new KeyboardFocusChangedEventHandler(OnGotKeyboardFocus), handledEventsToo: true);
-        EventManager.RegisterClassHandler(typeof(AutomationOptionalTextBlock), UIElement.GotKeyboardFocusEvent,
+        EventManager.RegisterClassHandler(typeof(InteractiveStatusTextBlock), UIElement.GotKeyboardFocusEvent,
             new KeyboardFocusChangedEventHandler(OnGotKeyboardFocus), handledEventsToo: true);
     }
 
@@ -34,7 +34,7 @@ internal static class KeyboardFocusPolicy
 
     internal static bool UsesTemplateOrHostStroke(FrameworkElement element)
     {
-        if (FocusVisualState.GetHostDrawsFocus(element) || element is AutomationOptionalTextBlock)
+        if (FocusVisualState.GetHostDrawsFocus(element) || element is InteractiveStatusTextBlock)
             return true;
         if (element is not Control control) return false;
         if (control is TextBox or ComboBox or DatePicker or CalendarDayButton or CalendarButton) return true;
@@ -55,7 +55,7 @@ internal static class KeyboardFocusPolicy
         if (element.FocusVisualStyle is not null) return true;
 
         // The income text is not a Control. Its sibling ring binds to the same visible state.
-        if (element is AutomationOptionalTextBlock)
+        if (element is InteractiveStatusTextBlock)
             return FocusVisualState.GetIsKeyboardFocusVisible(element);
         if (element is not Control control) return false;
 

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Media;
 
@@ -61,39 +62,55 @@ internal static class FloatingBottomStatus
     }
 
     public static void Apply(
-        AutomationOptionalTextBlock target,
+        InteractiveStatusTextBlock statusTarget,
+        SilentTextBlock encouragementTarget,
         FloatingBottomStatusPresentation presentation,
         string statusBrushKey,
         string encouragementBrushKey,
         FontFamily encouragementFontFamily)
     {
         var isEncouragement = presentation.Kind == FloatingBottomStatusKind.Encouragement;
-        target.IsInvokable = presentation.Kind == FloatingBottomStatusKind.Earnings;
-        target.Text = presentation.Text;
-        target.SetExcludedFromAutomationTree(isEncouragement);
+        var hasText = !string.IsNullOrEmpty(presentation.Text);
+        var previousVisibility = statusTarget.Visibility;
+        var previousInvokable = statusTarget.IsInvokable;
+        var previousText = statusTarget.Text;
+        var previousName = AutomationProperties.GetName(statusTarget);
+
         if (isEncouragement)
         {
-            AutomationProperties.SetName(target, string.Empty);
+            statusTarget.IsInvokable = false;
+            statusTarget.Text = string.Empty;
+            AutomationProperties.SetName(statusTarget, string.Empty);
+            statusTarget.Visibility = Visibility.Collapsed;
+            statusTarget.IsHitTestVisible = false;
+
+            encouragementTarget.Text = presentation.Text;
+            encouragementTarget.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+            encouragementTarget.SetResourceReference(TextBlock.ForegroundProperty, encouragementBrushKey);
+            encouragementTarget.FontFamily = encouragementFontFamily;
+            encouragementTarget.IsHitTestVisible = false;
         }
         else
         {
-            AutomationProperties.SetName(target, presentation.Text);
-        }
-        target.Visibility = string.IsNullOrEmpty(presentation.Text)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        target.SetResourceReference(
-            TextBlock.ForegroundProperty,
-            isEncouragement ? encouragementBrushKey : statusBrushKey);
-        if (isEncouragement)
-        {
-            target.FontFamily = encouragementFontFamily;
-        }
-        else
-        {
-            target.ClearValue(TextBlock.FontFamilyProperty);
+            encouragementTarget.Text = string.Empty;
+            encouragementTarget.Visibility = Visibility.Collapsed;
+            encouragementTarget.IsHitTestVisible = false;
+
+            statusTarget.IsInvokable = presentation.Kind == FloatingBottomStatusKind.Earnings;
+            statusTarget.Text = presentation.Text;
+            AutomationProperties.SetName(statusTarget, presentation.Text);
+            statusTarget.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
+            statusTarget.SetResourceReference(TextBlock.ForegroundProperty, statusBrushKey);
+            statusTarget.ClearValue(TextBlock.FontFamilyProperty);
+            statusTarget.IsHitTestVisible = true;
         }
 
-        target.IsHitTestVisible = !isEncouragement;
+        if (statusTarget.Visibility != previousVisibility ||
+            statusTarget.IsInvokable != previousInvokable ||
+            !string.Equals(statusTarget.Text, previousText, StringComparison.Ordinal) ||
+            !string.Equals(AutomationProperties.GetName(statusTarget), previousName, StringComparison.Ordinal))
+        {
+            UIElementAutomationPeer.FromElement(statusTarget)?.InvalidatePeer();
+        }
     }
 }

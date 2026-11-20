@@ -468,11 +468,16 @@ internal static partial class ValidationReport
         Require(income.Text == "今日已赚 ￥59.97", "Invoke 后未显示最新金额。");
         WindowValidationInput.RaiseKey(income, Key.Enter);
         RequireHidden();
+        var encouragement = ((Grid)income.Parent).Children.OfType<SilentTextBlock>().Single();
         var preferences = workspace.Snapshot.Settings.Preferences;
         Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd)).Succeeded, "零薪资夹具失败。");
         window.UpdateTime(clock.UtcNow);
-        Require(income.Text == FloatingBottomStatus.CountdownEncouragementText &&
-            UIElementAutomationPeer.CreatePeerForElement(income) is null, "鼓励语合同改变。");
+        Require(encouragement.Visibility == Visibility.Visible &&
+            encouragement.Text == FloatingBottomStatus.CountdownEncouragementText &&
+            UIElementAutomationPeer.CreatePeerForElement(encouragement) is null &&
+            income.Visibility == Visibility.Collapsed &&
+            string.IsNullOrEmpty(income.Text) &&
+            UIElementAutomationPeer.CreatePeerForElement(income)?.IsControlElement() != true, "鼓励语合同改变。");
         Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, preferences.MonthlySalary,
             preferences.WorkStart, preferences.WorkEnd)).Succeeded, "薪资恢复夹具失败。");
         window.UpdateTime(clock.UtcNow);

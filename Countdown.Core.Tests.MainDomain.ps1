@@ -1,4 +1,4 @@
-# Countdown.Core.Tests.ps1 的 MainDomain 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
+﻿# Countdown.Core.Tests.ps1 的 MainDomain 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
 $firstTag = New-CountdownTagRecord -Id ' work ' -Name ' 工作 ' -Color ' #6B8E23 '
 Assert-Equal 'work' $firstTag.id 'Tag record normalizes ID'
@@ -56,16 +56,16 @@ $holidayUnavailableCopy = '节假日安排未就绪：距离下班和今日已�
 $floatingBottomStatusSource = [System.IO.File]::ReadAllText(
     (Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingBottomStatus.cs'),
     [System.Text.Encoding]::UTF8)
-# Apply 的参数是应用内的 AutomationOptionalTextBlock。这里只验证 Resolve，
+# Apply 的参数是应用内的 InteractiveStatusTextBlock 与 SilentTextBlock。这里只验证 Resolve，
 # 编进仅承载 Apply 所需成员的同名类型，避免把整份 UiControls 拉进这个纯函数编译。
 $floatingBottomStatusPeerStub = @"
-internal sealed class AutomationOptionalTextBlock : System.Windows.Controls.TextBlock
+internal sealed class InteractiveStatusTextBlock : System.Windows.Controls.TextBlock
 {
     internal bool IsInvokable { get; set; }
+}
 
-    internal void SetExcludedFromAutomationTree(bool excluded)
-    {
-    }
+internal sealed class SilentTextBlock : System.Windows.Controls.TextBlock
+{
 }
 
 "@

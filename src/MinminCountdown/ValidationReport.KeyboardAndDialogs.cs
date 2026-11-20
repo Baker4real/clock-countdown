@@ -1428,42 +1428,40 @@ internal static partial class ValidationReport
                     AutomationProperties.GetAutomationId(button),
                     "ReminderCenterMinimizeToTaskbar",
                     StringComparison.Ordinal));
-            var snoozeChoice = Descendants<ComboBox>(window).Single(comboBox =>
-                comboBox.IsVisible &&
-                AutomationProperties.GetName(comboBox).StartsWith(
-                    "稍后提醒时间：",
-                    StringComparison.Ordinal));
+            var snoozeMenu = snooze.ContextMenu
+                ?? throw new InvalidOperationException("提醒中心稍后提醒按钮缺少稍后菜单。");
+            var entryRow = Descendants<Border>(window).Single(border =>
+                border.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
+            var noPreCreatedCustomControls =
+                !Descendants<DatePicker>(entryRow).Any() &&
+                !Descendants<ComboBox>(entryRow).Any();
             acknowledge.Focus();
             var tabRequest = new TraversalRequest(FocusNavigationDirection.Next);
             var dispositionActionsTraverse =
                 acknowledge.MoveFocus(tabRequest) &&
-                snoozeChoice.IsKeyboardFocusWithin &&
-                snoozeChoice.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, snooze) &&
                 snooze.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, complete) &&
                 complete.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, openSource);
-            var snoozeChoiceFocusable =
-                snoozeChoice.Focusable &&
-                snoozeChoice.IsTabStop &&
-                snoozeChoice.Focus();
             snooze.Focus();
             var snoozeActionsTraverse =
+                snooze.Focusable &&
                 snooze.IsTabStop &&
                 snooze.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, complete);
             var tabTraverses =
+                noPreCreatedCustomControls &&
                 dispositionActionsTraverse &&
-                snoozeChoiceFocusable &&
                 snoozeActionsTraverse;
 
-            // #86 AC1 回归：选中「自定义」后日期、小时、分钟进入 Tab 链且不跳出当前条目。
-            var entryRow = Descendants<Border>(window).Single(border =>
-                border.Tag is ActiveReminderOccurrenceKey rowKey && rowKey == key);
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            // #86/#320 回归：从稍后菜单选中「自定义」后懒创建日期、小时、分钟与确认按钮，
+            // 进入 Tab 链且步步留在当前条目内。
+            ValidationExercises.SelectReminderSnoozeMenuItem(
+                window,
+                snooze,
+                snoozeMenu,
+                ReminderSnoozeOption.Custom);
             PumpDispatcher();
             var customDate = Descendants<DatePicker>(entryRow).Single();
             var customHour = Descendants<ComboBox>(entryRow).Single(comboBox =>
@@ -1474,15 +1472,20 @@ internal static partial class ValidationReport
                 AutomationProperties.GetName(comboBox).StartsWith(
                     "自定义稍后分钟：",
                     StringComparison.Ordinal));
+            var customConfirm = Descendants<Button>(entryRow).Single(button =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(button),
+                    "ReminderEntryCustomSnoozeConfirm",
+                    StringComparison.Ordinal));
             openSource.Focus();
             var customVisible =
-                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible;
+                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible && customConfirm.IsVisible;
             // 主题 ComboBox 模板内的 ToggleButton 可聚焦，会为每个下拉多占一步 Tab；
-            // 因此只要求焦点按 打开来源→日期→小时→分钟 的顺序前进、允许控件内部件占步，且步步留在条目内。
-            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟
+            // 因此只要求焦点按 打开来源→日期→小时→分钟→确认稍后 的顺序前进、允许控件内部件占步，且步步留在条目内。
+            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟 4=确认稍后
             var customChainStaysInEntry = customVisible;
             UIElement? customMover = openSource;
-            for (var step = 0; step < 12 && customStage < 3 && customChainStaysInEntry; step++)
+            for (var step = 0; step < 14 && customStage < 4 && customChainStaysInEntry; step++)
             {
                 if (customMover?.MoveFocus(tabRequest) != true ||
                     Keyboard.FocusedElement is not DependencyObject customFocused ||
@@ -1506,22 +1509,32 @@ internal static partial class ValidationReport
                     customChainStaysInEntry = customStage is 2 or 3;
                     customStage = 3;
                 }
+                else if (FocusStaysWithin(entryRow, customConfirm))
+                {
+                    customChainStaysInEntry = customStage is 3 or 4;
+                    customStage = 4;
+                }
                 else
                 {
                     customChainStaysInEntry = false;
                 }
                 customMover = customFocused as UIElement;
             }
-            customChainStaysInEntry = customChainStaysInEntry && customStage == 3;
+            customChainStaysInEntry = customChainStaysInEntry && customStage == 4;
 
-            // 切回预设项后自定义控件退出 Tab 链；条目末尾动作之后 Tab 仍绕回当前条目。
-            snoozeChoice.SelectedIndex = 0;
+            // 选回预设项后自定义控件收起并退出 Tab 链；条目末尾动作之后 Tab 仍绕回当前条目。
+            ValidationExercises.SelectReminderSnoozeMenuItem(
+                window,
+                snooze,
+                snoozeMenu,
+                ReminderSnoozeOption.TenMinutes);
             PumpDispatcher();
             snooze.Focus();
             var presetChainRestored =
                 !customDate.IsVisible &&
                 !customHour.IsVisible &&
                 !customMinute.IsVisible &&
+                !customConfirm.IsVisible &&
                 snooze.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, complete);
             openSource.Focus();

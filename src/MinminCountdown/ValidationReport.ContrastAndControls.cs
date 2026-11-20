@@ -1519,10 +1519,11 @@ internal static partial class ValidationReport
                 Top = -20_000,
                 Opacity = 0
             };
+            var comboKey = new ActiveReminderOccurrenceKey(
+                "combo-click-rule",
+                new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero));
             reminderCenter.AddEntry(new ReminderCenterItem(
-                new ActiveReminderOccurrenceKey(
-                    "combo-click-rule",
-                    new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero)),
+                comboKey,
                 new NoteRecord(
                     "combo-click-note",
                     "下拉点击验证",
@@ -1533,12 +1534,17 @@ internal static partial class ValidationReport
                 0,
                 0));
             reminderCenter.Show();
+            reminderCenter.SetDeliveryReady(comboKey);
             PumpDispatcher();
-            var snoozeChoice = Descendants<ComboBox>(reminderCenter).Single(comboBox =>
-                AutomationProperties.GetName(comboBox).StartsWith("稍后提醒时间：", StringComparison.Ordinal));
-            snoozeChoice.SelectedItem = snoozeChoice.Items
-                .OfType<ComboBoxItem>()
-                .Single(item => Equals(item.Tag, ReminderSnoozeOption.Custom));
+            var snoozeButton = Descendants<Button>(reminderCenter).Single(button =>
+                AutomationProperties.GetName(button).StartsWith("稍后提醒：", StringComparison.Ordinal));
+            var snoozeMenu = snoozeButton.ContextMenu
+                ?? throw new InvalidOperationException("提醒中心稍后提醒按钮缺少稍后菜单。");
+            ValidationExercises.SelectReminderSnoozeMenuItem(
+                reminderCenter,
+                snoozeButton,
+                snoozeMenu,
+                ReminderSnoozeOption.Custom);
             PumpDispatcher();
             var reminderResults = Descendants<ComboBox>(reminderCenter)
                 .Select(comboBox => MeasureCombo(AutomationProperties.GetName(comboBox), comboBox))

@@ -276,7 +276,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 122 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #320 snooze menu scenario, #321 long-title scenario, #322/#323 rule editor scenarios and #324 secondary DWM chrome scenario to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 123 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #318 floating quick-add scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323 rule editor scenarios and #324 secondary DWM chrome scenario to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `

@@ -346,6 +346,7 @@
               Grid.Row="3"
               Margin="0,0,76,0"
               MaxHeight="170"
+              ClipToBounds="True"
               Visibility="Collapsed">
           <Grid.RowDefinitions>
             <RowDefinition Height="*" />

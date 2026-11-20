@@ -169,7 +169,7 @@ public sealed class ReminderEditing
             string.Empty);
     }
 
-    private static bool TryGetIntervalMinutes(
+    internal static bool TryGetIntervalMinutes(
         ReminderIntervalSelection selection,
         string customIntervalMinutes,
         out int intervalMinutes)
@@ -487,6 +487,106 @@ public sealed class ReminderRuleEditing
             ReminderRuleEditingErrorTarget.None);
     }
 
+    public static bool TryBuildPreviewRule(
+        ReminderRuleEditingRequest request,
+        out ReminderRule? rule)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        const string previewRuleId = "preview";
+        rule = null;
+
+        switch (request.Mode)
+        {
+            case ReminderEditingMode.Once:
+            {
+                if (!TryBuildBeijingInstantUtc(
+                        request.FirstDueDate,
+                        request.FirstDueHour,
+                        request.FirstDueMinute,
+                        out var scheduledUtc))
+                {
+                    return false;
+                }
+
+                rule = new AbsoluteOnceReminderRule(previewRuleId, scheduledUtc);
+                return true;
+            }
+            case ReminderEditingMode.Repeating:
+            {
+                if (!ReminderEditing.TryGetIntervalMinutes(
+                        request.IntervalSelection,
+                        request.CustomIntervalMinutes,
+                        out var intervalMinutes) ||
+                    !TryBuildBeijingInstantUtc(
+                        request.FirstDueDate,
+                        request.FirstDueHour,
+                        request.FirstDueMinute,
+                        out var firstDueUtc))
+                {
+                    return false;
+                }
+
+                rule = new FixedIntervalReminderRule(
+                    previewRuleId,
+                    firstDueUtc,
+                    new ReminderInterval(intervalMinutes));
+                return true;
+            }
+            case ReminderEditingMode.CountdownRelative:
+            {
+                if (request.CountdownTargetUtc is null ||
+                    !int.TryParse(
+                        request.OffsetMinutesBefore,
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var offsetMinutesBefore) ||
+                    offsetMinutesBefore is < 0 or > 5_256_000)
+                {
+                    return false;
+                }
+
+                rule = new CountdownRelativeReminderRule(previewRuleId, offsetMinutesBefore);
+                return true;
+            }
+            case ReminderEditingMode.Calendar:
+            {
+                if (!TryParseCalendarRule(request, previewRuleId, out var calendarRule, out _, out _))
+                {
+                    return false;
+                }
+
+                rule = calendarRule;
+                return true;
+            }
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryBuildBeijingInstantUtc(
+        DateTime? date,
+        int hour,
+        int minute,
+        out DateTimeOffset utc)
+    {
+        if (date is null || hour is < 0 or > 23 || minute is < 0 or > 59)
+        {
+            utc = default;
+            return false;
+        }
+
+        var local = new DateTimeOffset(
+            date.Value.Year,
+            date.Value.Month,
+            date.Value.Day,
+            hour,
+            minute,
+            0,
+            TimeSpan.FromHours(8));
+        utc = local.ToUniversalTime();
+        return true;
+    }
+
     private static ReminderRuleEditingResult Failure(
         IReadOnlyList<ReminderRule> existingRules,
         string error,
@@ -499,92 +599,17 @@ public sealed class ReminderRuleEditing
         ReminderRule? existingRule,
         ReminderRuleEditingRequest request)
     {
-        if (!int.TryParse(
-                request.CalendarInterval,
-                NumberStyles.None,
-                CultureInfo.InvariantCulture,
-                out var interval) ||
-            interval is < 1 or > 999)
+        if (!TryParseCalendarRule(
+                request,
+                existingRule?.Id ?? string.Empty,
+                out var parsedCalendar,
+                out var error,
+                out var errorTarget))
         {
-            return Failure(
-                existingRules,
-                "日历重复间隔必须是 1 到 999。",
-                ReminderRuleEditingErrorTarget.CalendarInterval);
+            return Failure(existingRules, error, errorTarget);
         }
 
-        if (request.FirstDueDate is null ||
-            request.FirstDueHour is < 0 or > 23 ||
-            request.FirstDueMinute is < 0 or > 59)
-        {
-            return Failure(
-                existingRules,
-                "请选择完整的日历起始日期和本地时间。",
-                ReminderRuleEditingErrorTarget.FirstDue);
-        }
-
-        CalendarSelector selector;
-        switch (request.CalendarFrequency)
-        {
-            case CalendarFrequency.Daily:
-                selector = new DailyCalendarSelector();
-                break;
-            case CalendarFrequency.Weekly:
-                var weekdays = request.CalendarWeekdays?.Distinct().OrderBy(
-                    static day => day == DayOfWeek.Sunday ? 7 : (int)day).ToArray() ?? [];
-                if (weekdays.Length == 0)
-                {
-                    return Failure(
-                        existingRules,
-                        "按周重复必须至少选择一个星期。",
-                        ReminderRuleEditingErrorTarget.CalendarSelector);
-                }
-
-                selector = new WeeklyCalendarSelector(weekdays);
-                break;
-            case CalendarFrequency.Monthly:
-                if (!TryBuildMonthlySelector(request.CalendarDay, request.CalendarLastDay, out var monthly))
-                {
-                    return Failure(
-                        existingRules,
-                        "按月重复必须选择 1 到 31 日或显式最后一天。",
-                        ReminderRuleEditingErrorTarget.CalendarSelector);
-                }
-
-                selector = monthly;
-                break;
-            case CalendarFrequency.Yearly:
-                if (!int.TryParse(
-                        request.CalendarMonth,
-                        NumberStyles.None,
-                        CultureInfo.InvariantCulture,
-                        out var month) ||
-                    month is < 1 or > 12 ||
-                    !TryBuildMonthlySelector(request.CalendarDay, request.CalendarLastDay, out var yearlyDay))
-                {
-                    return Failure(
-                        existingRules,
-                        "按年重复必须选择月份及 1 到 31 日或显式最后一天。",
-                        ReminderRuleEditingErrorTarget.CalendarSelector);
-                }
-
-                selector = new YearlyCalendarSelector(month, yearlyDay.Day, yearlyDay.LastDay);
-                break;
-            default:
-                return Failure(
-                    existingRules,
-                    "请选择支持的日历重复频率。",
-                    ReminderRuleEditingErrorTarget.CalendarSelector);
-        }
-
-        var id = existingRule?.Id ?? _guidSource.NewGuid().ToString("N");
-        var calendar = new CalendarReminderRule(
-            id,
-            request.CalendarFrequency,
-            interval,
-            DateOnly.FromDateTime(request.FirstDueDate.Value),
-            new TimeOnly(request.FirstDueHour, request.FirstDueMinute),
-            selector);
-        var scheduleKey = ReminderRuleSchedule.CreateKey(calendar);
+        var scheduleKey = ReminderRuleSchedule.CreateKey(parsedCalendar!);
         if (existingRules.Where((_, index) => index != existingIndex)
             .Any(existing => ReminderRuleSchedule.CreateKey(existing) == scheduleKey))
         {
@@ -594,6 +619,8 @@ public sealed class ReminderRuleEditing
                 ReminderRuleEditingErrorTarget.CalendarSelector);
         }
 
+        var id = existingRule?.Id ?? _guidSource.NewGuid().ToString("N");
+        var calendar = parsedCalendar! with { Id = id };
         var candidate = existingRules.ToArray();
         if (existingIndex >= 0)
         {
@@ -609,6 +636,97 @@ public sealed class ReminderRuleEditing
             Array.AsReadOnly(candidate),
             string.Empty,
             ReminderRuleEditingErrorTarget.None);
+    }
+
+    private static bool TryParseCalendarRule(
+        ReminderRuleEditingRequest request,
+        string ruleId,
+        out CalendarReminderRule? calendar,
+        out string error,
+        out ReminderRuleEditingErrorTarget errorTarget)
+    {
+        calendar = null;
+        if (!int.TryParse(
+                request.CalendarInterval,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var interval) ||
+            interval is < 1 or > 999)
+        {
+            error = "每隔几个周期必须是 1 到 999。";
+            errorTarget = ReminderRuleEditingErrorTarget.CalendarInterval;
+            return false;
+        }
+
+        if (request.FirstDueDate is null ||
+            request.FirstDueHour is < 0 or > 23 ||
+            request.FirstDueMinute is < 0 or > 59)
+        {
+            error = "请选择完整的日历起始日期和本地时间。";
+            errorTarget = ReminderRuleEditingErrorTarget.FirstDue;
+            return false;
+        }
+
+        CalendarSelector selector;
+        switch (request.CalendarFrequency)
+        {
+            case CalendarFrequency.Daily:
+                selector = new DailyCalendarSelector();
+                break;
+            case CalendarFrequency.Weekly:
+                var weekdays = request.CalendarWeekdays?.Distinct().OrderBy(
+                    static day => day == DayOfWeek.Sunday ? 7 : (int)day).ToArray() ?? [];
+                if (weekdays.Length == 0)
+                {
+                    error = "按周重复必须至少选择一个星期。";
+                    errorTarget = ReminderRuleEditingErrorTarget.CalendarSelector;
+                    return false;
+                }
+
+                selector = new WeeklyCalendarSelector(weekdays);
+                break;
+            case CalendarFrequency.Monthly:
+                if (!TryBuildMonthlySelector(request.CalendarDay, request.CalendarLastDay, out var monthly))
+                {
+                    error = "按月重复必须选择 1 到 31 日或显式最后一天。";
+                    errorTarget = ReminderRuleEditingErrorTarget.CalendarSelector;
+                    return false;
+                }
+
+                selector = monthly;
+                break;
+            case CalendarFrequency.Yearly:
+                if (!int.TryParse(
+                        request.CalendarMonth,
+                        NumberStyles.None,
+                        CultureInfo.InvariantCulture,
+                        out var month) ||
+                    month is < 1 or > 12 ||
+                    !TryBuildMonthlySelector(request.CalendarDay, request.CalendarLastDay, out var yearlyDay))
+                {
+                    error = "按年重复必须选择月份及 1 到 31 日或显式最后一天。";
+                    errorTarget = ReminderRuleEditingErrorTarget.CalendarSelector;
+                    return false;
+                }
+
+                selector = new YearlyCalendarSelector(month, yearlyDay.Day, yearlyDay.LastDay);
+                break;
+            default:
+                error = "请选择支持的重复周期。";
+                errorTarget = ReminderRuleEditingErrorTarget.CalendarSelector;
+                return false;
+        }
+
+        calendar = new CalendarReminderRule(
+            ruleId,
+            request.CalendarFrequency,
+            interval,
+            DateOnly.FromDateTime(request.FirstDueDate.Value),
+            new TimeOnly(request.FirstDueHour, request.FirstDueMinute),
+            selector);
+        error = string.Empty;
+        errorTarget = ReminderRuleEditingErrorTarget.None;
+        return true;
     }
 
     private static bool TryBuildMonthlySelector(

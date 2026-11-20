@@ -620,25 +620,42 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type TextBox}">
-            <Border x:Name="Surface"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="{DynamicResource RadiusControl}">
-              <ScrollViewer x:Name="PART_ContentHost"
-                            Margin="{TemplateBinding Padding}"
-                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-            </Border>
+            <Grid x:Name="Root">
+              <Border x:Name="Surface"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="{DynamicResource RadiusControl}" />
+              <!-- #303：内容槽固定保留 1 DIP 边框位，Surface 在 1/2 DIP 焦点与错误边之间切换时不挤动布局或内容。 -->
+              <Border x:Name="ContentSlot" BorderThickness="1" BorderBrush="Transparent">
+                <ScrollViewer x:Name="PART_ContentHost"
+                              Margin="{TemplateBinding Padding}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+              </Border>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
+              <Trigger Property="focus:InputErrorState.HasError" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="focus:InputErrorState.HasError" Value="True" />
+                  <Condition Property="IsKeyboardFocused" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+                <Setter TargetName="ContentSlot" Property="Opacity" Value="0.45" />
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -648,7 +665,9 @@
                 <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                <Setter TargetName="ContentSlot" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -872,12 +891,14 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="{x:Type ComboBox}">
-            <Grid>
+            <Grid x:Name="Root">
               <Border x:Name="Surface"
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="{DynamicResource RadiusControl}">
+                      CornerRadius="{DynamicResource RadiusControl}" />
+              <!-- #303：内容槽固定保留 1 DIP 边框位，Surface 切换 1/2 DIP 焦点或错误边时不挤动布局。 -->
+              <Border x:Name="ContentSlot" BorderThickness="1" BorderBrush="Transparent">
                 <Grid>
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
@@ -908,7 +929,7 @@
                                 IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                     <ToggleButton.Template>
                       <ControlTemplate TargetType="{x:Type ToggleButton}">
-                        <Border x:Name="ArrowSurface" Background="Transparent" CornerRadius="0,9,9,0">
+                        <Border x:Name="ArrowSurface" Margin="0,1,1,1" Background="Transparent" CornerRadius="0,9,9,0">
                           <Path Width="10"
                                 Height="6"
                                 Fill="{DynamicResource BodyBrush}"
@@ -951,16 +972,29 @@
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
               </Trigger>
               <Trigger Property="IsDropDownOpen" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </Trigger>
-              <Trigger Property="IsKeyboardFocused" Value="True">
-                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+              <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                 <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
+              <Trigger Property="focus:InputErrorState.HasError" Value="True">
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="focus:InputErrorState.HasError" Value="True" />
+                  <Condition Property="IsKeyboardFocusWithin" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
+                <Setter TargetName="ContentSlot" Property="Opacity" Value="0.45" />
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
@@ -970,7 +1004,9 @@
                 <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter TargetName="Surface" Property="Opacity" Value="1" />
+                <Setter TargetName="ContentSlot" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -1059,17 +1095,33 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
               </Trigger>
               <Trigger Property="IsDropDownOpen" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                 <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                 <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
+              <Trigger Property="focus:InputErrorState.HasError" Value="True">
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+              </Trigger>
+              <MultiTrigger>
+                <MultiTrigger.Conditions>
+                  <Condition Property="focus:InputErrorState.HasError" Value="True" />
+                  <Condition Property="IsKeyboardFocusWithin" Value="True" />
+                </MultiTrigger.Conditions>
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+              </MultiTrigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="PART_Root" Property="Opacity" Value="0.45" />
               </Trigger>
@@ -1081,6 +1133,8 @@
                 <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
+                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
                 <Setter TargetName="PART_Root" Property="Opacity" Value="1" />
               </MultiTrigger>
             </ControlTemplate.Triggers>

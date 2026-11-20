@@ -2987,6 +2987,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SetCountdownEditorExpanded(true);
             SaveCountdownButton.Content = "保存修改";
             CancelCountdownEdit.Visibility = Visibility.Visible;
+            ClearCountdownFieldErrors();
         }
         finally
         {
@@ -3879,12 +3880,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             isError ? "DangerBrush" : "SuccessBrush"));
     }
 
-    // #151：字段级错误反馈（镜像悬浮窗快速新增）——错误文本完整出现在字段旁、不裁切；
-    // 名称/帮助文本同步到错误行与来源控件，修正字段值后由 WireEvents 的回调清除。
+    // #151/#303：字段级错误反馈（镜像悬浮窗快速新增）——错误文本完整出现在字段旁、不裁切；
+    // 名称/帮助文本同步到错误行与来源控件，来源输入挂上独立错误边框，修正字段值后立即清除。
     private static void ShowCountdownValidationError(TextBlock field, string message, Control source)
     {
         SetFieldError(field, message);
         AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void ShowPreferenceFieldError(TextBlock field, string message, Control source)
@@ -3944,7 +3946,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         var previousMessage = field.Text;
         SetFieldError(field, string.Empty);
-        foreach (var control in CountdownValidationControls())
+        foreach (var control in CountdownValidationControls(field))
         {
             if (string.Equals(
                     AutomationProperties.GetHelpText(control),
@@ -3953,6 +3955,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 AutomationProperties.SetHelpText(control, string.Empty);
             }
+
+            InputErrorState.SetHasError(control, false);
         }
 
         if (!string.IsNullOrWhiteSpace(previousMessage) &&
@@ -3975,9 +3979,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         });
     }
 
-    private IEnumerable<Control> CountdownValidationControls()
+    private IEnumerable<Control> CountdownValidationControls(TextBlock field)
     {
-        yield return CountdownName;
+        if (ReferenceEquals(field, CountdownNameError))
+        {
+            yield return CountdownName;
+            yield break;
+        }
+
         yield return CountdownDate;
         yield return CountdownHour;
         yield return CountdownMinute;

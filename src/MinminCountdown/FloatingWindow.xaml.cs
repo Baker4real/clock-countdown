@@ -939,16 +939,16 @@ public sealed partial class FloatingWindow : Window
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
 
-            // #232: validate the rendered focus boundary against the application
-            // interaction role; matching the local (possibly misbound) alias is insufficient.
+            // #232/#303: validate the rendered focus boundary against the application
+            // non-red input focus role; matching the local (possibly misbound) alias is insufficient.
             Activate();
             Keyboard.Focus(FloatingNoteText);
             WindowValidationInput.Pump(Dispatcher);
             var focusSurface = FloatingNoteText.Template.FindName("Surface", FloatingNoteText) as Border;
             if (!FloatingNoteText.IsKeyboardFocused ||
-                !ReferenceEquals(focusSurface?.BorderBrush, Application.Current.FindResource("ActiveBrush")))
+                !ReferenceEquals(focusSurface?.BorderBrush, Application.Current.FindResource("MainActionFocusBrush")))
             {
-                throw new InvalidOperationException("#232 快速新增实际输入焦点必须使用 Active，而非 Danger。");
+                throw new InvalidOperationException("#303 快速新增实际输入焦点必须使用非红色的 MainActionFocusBrush，而非 Active 或 Danger。");
             }
 
             var textBoxes = new[] { FloatingNoteText, FloatingNoteSearch };

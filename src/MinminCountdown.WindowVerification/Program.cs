@@ -15,6 +15,7 @@ internal static class Program
     internal const string ReminderCenterSmokeFactName = "ReminderCenterRendersAndFindsAcknowledgeAll";
     internal const string ReminderRulesEditorSmokeFactName = "ReminderRulesEditorRendersAndFindsMode";
     internal const string ConfirmationDialogSmokeFactName = "ConfirmationDialogRendersAndFindsCancel";
+    internal const string InputFocusAndErrorFactName = "MainCountdownInputFocusAndErrorStates";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -32,6 +33,9 @@ internal static class Program
         "规则编辑器在隔离桌面完成首帧，并能按自动化标识找到“提醒规则类型”下拉框（#297）";
     private const string ConfirmationDialogSmokeFactMeaning =
         "确认框在隔离桌面完成首帧，并能按自动化标识找到“取消”按钮（#297）";
+    private const string InputFocusAndErrorFactMeaning =
+        "文本框、下拉框与日期框使用非红色焦点和更深暖色悬停边；倒计时编辑器的有效焦点、错误无焦点与错误有焦点" +
+        "分别为 2/1/2 DIP 且不挤布局，首错聚焦、修正即清、帮助文本与礼貌播报保持，系统对比度映射不同系统角色（#303）";
 
     [STAThread]
     private static int Main()
@@ -45,7 +49,8 @@ internal static class Program
             [FloatingSmokeFactName] = false,
             [ReminderCenterSmokeFactName] = false,
             [ReminderRulesEditorSmokeFactName] = false,
-            [ConfirmationDialogSmokeFactName] = false
+            [ConfirmationDialogSmokeFactName] = false,
+            [InputFocusAndErrorFactName] = false
         };
         var failures = new List<string>();
 
@@ -115,6 +120,11 @@ internal static class Program
             {
                 WindowSmokeScenario.RunConfirmationDialog();
                 return (true, ConfirmationDialogSmokeFactMeaning);
+            });
+            RunFact(InputFocusAndErrorFactName, InputFocusAndErrorFactMeaning, () =>
+            {
+                InputFocusAndErrorScenario.Run();
+                return (true, InputFocusAndErrorFactMeaning);
             });
         }
         catch (Exception exception)

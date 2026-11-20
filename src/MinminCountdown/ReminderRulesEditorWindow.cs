@@ -45,6 +45,16 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly TextBlock _calendarIntervalError = ErrorText();
     private readonly TextBlock _calendarSelectorError = ErrorText();
     private readonly TextBlock _collectionError = ErrorText();
+    private readonly TextBlock _rulePreview = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+    private readonly Border _rulePreviewSurface = new()
+    {
+        BorderThickness = new Thickness(1),
+        Padding = new Thickness(10, 6, 10, 6)
+    };
     private readonly Button _saveRuleButton = new() { MinWidth = 104 };
     private readonly Button _cancelRuleEditButton = new()
     {
@@ -226,11 +236,12 @@ internal sealed class ReminderRulesEditorWindow : Window
         NameControl(_interval, "固定间隔分钟");
         NameControl(_customInterval, "自定义固定间隔分钟");
         NameControl(_relativeOffset, "倒计时提前分钟");
-        NameControl(_calendarFrequency, "日历重复频率");
-        NameControl(_calendarInterval, "日历重复间隔");
-        NameControl(_calendarMonth, "日历重复月份");
-        NameControl(_calendarDay, "日历重复日期");
-        NameControl(_calendarLastDay, "显式选择最后一天");
+        NameControl(_calendarFrequency, "重复周期");
+        NameControl(_calendarInterval, "每隔几个周期");
+        NameControl(_calendarSelector, "具体哪几天");
+        NameControl(_calendarMonth, "具体月份");
+        NameControl(_calendarDay, "具体日期");
+        NameControl(_calendarLastDay, "最后一天");
         NameControl(_saveRuleButton, "保存提醒规则");
         NameControl(_cancelRuleEditButton, "取消编辑提醒规则");
 
@@ -243,9 +254,12 @@ internal sealed class ReminderRulesEditorWindow : Window
         AutomationProperties.SetAutomationId(_relativeOffset, "ReminderRuleRelativeOffsetMinutes");
         AutomationProperties.SetAutomationId(_calendarFrequency, "ReminderRuleCalendarFrequency");
         AutomationProperties.SetAutomationId(_calendarInterval, "ReminderRuleCalendarInterval");
+        AutomationProperties.SetAutomationId(_calendarSelector, "ReminderRuleCalendarSelector");
         AutomationProperties.SetAutomationId(_calendarMonth, "ReminderRuleCalendarMonth");
         AutomationProperties.SetAutomationId(_calendarDay, "ReminderRuleCalendarDay");
         AutomationProperties.SetAutomationId(_calendarLastDay, "ReminderRuleCalendarLastDay");
+        AutomationProperties.SetAutomationId(_rulePreviewSurface, "ReminderRulePreviewSurface");
+        AutomationProperties.SetAutomationId(_rulePreview, "ReminderRulePreview");
         AutomationProperties.SetAutomationId(_saveRuleButton, "SaveReminderRuleButton");
         AutomationProperties.SetAutomationId(_cancelRuleEditButton, "CancelReminderRuleEditButton");
         AutomationProperties.SetAutomationId(_countText, "ReminderRulesCount");
@@ -277,6 +291,14 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_calendarMonth, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarMonthIndex), _viewModel, BindingMode.TwoWay);
         Bind(_calendarDay, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarDayIndex), _viewModel, BindingMode.TwoWay);
         Bind(_calendarLastDay, ToggleButton.IsCheckedProperty, nameof(ReminderRulesEditorViewModel.CalendarLastDay), _viewModel, BindingMode.TwoWay);
+        _rulePreview.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
+        _rulePreviewSurface.Child = _rulePreview;
+        _rulePreviewSurface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
+        _rulePreviewSurface.SetResourceReference(Border.BackgroundProperty, "CardBrush");
+        _rulePreviewSurface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        Bind(_rulePreview, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.RulePreviewText), _viewModel);
+        Bind(_rulePreview, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.RulePreviewText), _viewModel);
+        UpdateRulePreviewForeground();
         Bind(_saveRuleButton, Button.ContentProperty, nameof(ReminderRulesEditorViewModel.SaveRuleButtonText), _viewModel);
         Bind(_cancelRuleEditButton, UIElement.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCancelRuleEditVisible), _viewModel, converter: _visibilityConverter);
         Bind(_saveRuleButton, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.SaveRuleCommand), _viewModel);
@@ -378,12 +400,24 @@ internal sealed class ReminderRulesEditorWindow : Window
             nameof(ReminderRulesEditorViewModel.IsIntervalVisible));
         AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError,
             nameof(ReminderRulesEditorViewModel.IsRelativeVisible));
-        AddFormRow(form, 4, "日历频率", _calendarFrequency, ErrorText(),
+        AddFormRow(form, 4, "重复周期", _calendarFrequency, ErrorText(),
             nameof(ReminderRulesEditorViewModel.IsCalendarFrequencyVisible));
-        AddFormRow(form, 5, "重复间隔", _calendarInterval, _calendarIntervalError,
+        AddFormRow(form, 5, "每隔几个周期", _calendarInterval, _calendarIntervalError,
             nameof(ReminderRulesEditorViewModel.IsCalendarIntervalVisible));
-        AddFormRow(form, 6, "日历选择", _calendarSelector, _calendarSelectorError,
+        var calendarSelectorLabel = AddFormRow(form, 6, "具体哪几天", _calendarSelector, _calendarSelectorError,
             nameof(ReminderRulesEditorViewModel.IsCalendarSelectorVisible));
+        Bind(calendarSelectorLabel, UIElement.VisibilityProperty,
+            nameof(ReminderRulesEditorViewModel.IsCalendarSelectorControlsVisible), _viewModel,
+            converter: _visibilityConverter);
+        AutomationProperties.SetLabeledBy(_calendarMonth, calendarSelectorLabel);
+        AutomationProperties.SetLabeledBy(_calendarDay, calendarSelectorLabel);
+        AutomationProperties.SetLabeledBy(_calendarLastDay, calendarSelectorLabel);
+        foreach (var checkBox in _calendarWeekdayChecks.Values)
+        {
+            AutomationProperties.SetLabeledBy(checkBox, calendarSelectorLabel);
+        }
+        var previewLabel = AddPreviewRow(form, 7, "规则预览", _rulePreviewSurface);
+        AutomationProperties.SetLabeledBy(_rulePreview, previewLabel);
 
         // #322：窗口级「完成」为唯一实心主行动，表单提交改为次级按钮样式。
         _saveRuleButton.SetResourceReference(StyleProperty, "SecondaryButton");
@@ -536,6 +570,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         };
         labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
         labelBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        AutomationProperties.SetLabeledBy(input, labelBlock);
         input.SetValue(Grid.RowProperty, 0);
         input.SetValue(Grid.ColumnProperty, 1);
         input.SetValue(FrameworkElement.MarginProperty, new Thickness(0, rowIndex == 0 ? 0 : 10, 0, 0));
@@ -550,10 +585,45 @@ internal sealed class ReminderRulesEditorWindow : Window
         return labelBlock;
     }
 
+    private static TextBlock AddPreviewRow(Grid form, int rowIndex, string label, UIElement previewSurface)
+    {
+        form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var labelBlock = new TextBlock
+        {
+            Text = label,
+            Margin = new Thickness(0, 10, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
+        labelBlock.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
+        AutomationProperties.SetLabeledBy(previewSurface, labelBlock);
+        previewSurface.SetValue(Grid.RowProperty, 0);
+        previewSurface.SetValue(Grid.ColumnProperty, 1);
+        previewSurface.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 10, 0, 0));
+        row.Children.Add(labelBlock);
+        row.Children.Add(previewSurface);
+        Grid.SetRow(row, rowIndex);
+        Grid.SetColumnSpan(row, 2);
+        form.Children.Add(row);
+        return labelBlock;
+    }
+
     private void WireEvents()
     {
         ((System.Collections.Specialized.INotifyCollectionChanged)_viewModel.RuleItems).CollectionChanged +=
             (_, _) => RenderRules();
+        _viewModel.PropertyChanged += (_, args) =>
+        {
+            if (string.IsNullOrEmpty(args.PropertyName) ||
+                string.Equals(args.PropertyName, nameof(ReminderRulesEditorViewModel.IsRulePreviewValid), StringComparison.Ordinal))
+            {
+                UpdateRulePreviewForeground();
+            }
+        };
         _viewModel.DraftAccepted += (_, _) => DialogResult = true;
         _viewModel.DraftCancelled += (_, _) => DialogResult = false;
         _viewModel.ValidationErrorRaised += OnValidationErrorRaised;
@@ -761,6 +831,11 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     private double ReadSpacing(string resourceKey, double fallback) =>
         TryFindResource(resourceKey) is double value ? value : fallback;
+
+    private void UpdateRulePreviewForeground() =>
+        _rulePreview.SetResourceReference(
+            TextBlock.ForegroundProperty,
+            _viewModel.IsRulePreviewValid ? "InkBrush" : "MutedBrush");
 
     private static void NameControl(DependencyObject target, string name) =>
         AutomationProperties.SetName(target, name);

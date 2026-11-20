@@ -1018,7 +1018,7 @@ internal static partial class ValidationExercises
     private static bool ProbeReminderRuleFormModes(ReminderRulesEditorWindow editor, bool supportsRelative)
     {
         var mode = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
-        var knownLabels = new[] { "规则类型", "首次提醒", "开始日期", "固定间隔", "提前分钟", "日历频率", "重复间隔", "日历选择" };
+        var knownLabels = new[] { "规则类型", "首次提醒", "开始日期", "固定间隔", "提前分钟", "重复周期", "每隔几个周期", "具体哪几天" };
         var passed = true;
         void Check(string scenario, params string[] expected)
         {
@@ -1036,8 +1036,8 @@ internal static partial class ValidationExercises
                 ("ReminderRuleFirstDueMinute", firstDueVisible),
                 ("ReminderRuleInterval", expected.Contains("固定间隔")),
                 ("ReminderRuleRelativeOffsetMinutes", expected.Contains("提前分钟")),
-                ("ReminderRuleCalendarFrequency", expected.Contains("日历频率")),
-                ("ReminderRuleCalendarInterval", expected.Contains("重复间隔"))
+                ("ReminderRuleCalendarFrequency", expected.Contains("重复周期")),
+                ("ReminderRuleCalendarInterval", expected.Contains("每隔几个周期"))
             }.All(field => FindByAutomationId<FrameworkElement>(editor, field.Item1).IsVisible == field.Item2);
             var timeSeparatorMatches = VisualDescendants<TextBlock>(editor)
                 .Any(text => text.Text == ":" && text.IsVisible) == firstDueVisible;
@@ -1075,9 +1075,9 @@ internal static partial class ValidationExercises
         }
         mode.SelectedIndex = supportsRelative ? 3 : 2;
         FindByAutomationId<ComboBox>(editor, "ReminderRuleCalendarFrequency").SelectedIndex = 1;
-        Check("calendar-weekly", "规则类型", "开始日期", "日历频率", "重复间隔", "日历选择");
+        Check("calendar-weekly", "规则类型", "开始日期", "重复周期", "每隔几个周期", "具体哪几天");
         FindByAutomationId<ComboBox>(editor, "ReminderRuleCalendarFrequency").SelectedIndex = 3;
-        Check("calendar-yearly", "规则类型", "开始日期", "日历频率", "重复间隔", "日历选择");
+        Check("calendar-yearly", "规则类型", "开始日期", "重复周期", "每隔几个周期", "具体哪几天");
         mode.SelectedIndex = 0;
         Check("once-after-calendar", "规则类型", "首次提醒");
         return passed;

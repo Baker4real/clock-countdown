@@ -39,7 +39,10 @@ internal sealed class ReminderCenterWindow : Window
     private int _nativeWindowDragCompletionCount;
     private int _taskbarFlashRequestCount;
 
-    public ReminderCenterWindow(Window? placementSource = null)
+    public ReminderCenterWindow(
+        Window? placementSource = null,
+        DiagnosticLogger? logger = null,
+        IDwmWindowChromeHost? dwmChromeHost = null)
     {
         _placementSource = placementSource;
         _viewModel = new ReminderCenterViewModel();
@@ -50,14 +53,14 @@ internal sealed class ReminderCenterWindow : Window
         Height = 520;
         MinWidth = 400;
         MinHeight = 360;
-        WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.CanResizeWithGrip;
         // #215：出现时不激活、不抢焦点、不置顶；显示在任务栏且标题带条目数。
         ShowInTaskbar = true;
         ShowActivated = false;
         Topmost = false;
-        Background = Brushes.Transparent;
-        AllowsTransparency = true;
+        // #324：改为不透明无边框窗口，向 DWM 请求系统圆角、投影与 1 DIP 暖边。
+        SetResourceReference(BackgroundProperty, "ReminderPageBrush");
+        DwmWindowChrome.ConfigureOpaqueBorderlessChrome(this);
         DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒中心");
 
@@ -160,13 +163,18 @@ internal sealed class ReminderCenterWindow : Window
 
         var surface = new Border
         {
-            Child = layout,
-            BorderThickness = new Thickness(1)
+            Child = layout
         };
-        // #250：次级窗口外壳与条目卡同用 §13.3 RadiusCard。
-        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BackgroundProperty, "ReminderPageBrush");
-        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        // #324：由 DWM 承担系统圆角/投影与 1 DIP 暖色边框；不支持时自动回退为直角并由内容边界承担 1 DIP 暖边。
+        DwmWindowChrome.AttachSecondaryWindow(
+            this,
+            surface,
+            "PeachLineColor",
+            "PeachLineBrush",
+            DwmWindowChrome.ReminderCenterEvents,
+            logger,
+            dwmChromeHost);
         Content = surface;
 
         ContentRendered += (_, _) =>

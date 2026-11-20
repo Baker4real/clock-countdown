@@ -75,7 +75,9 @@ internal sealed class ReminderRulesEditorWindow : Window
         IGuidSource? guidSource = null,
         ReminderRuleEditingErrorTarget initialErrorTarget = ReminderRuleEditingErrorTarget.None,
         string initialError = "",
-        DateTimeOffset? countdownTargetUtc = null)
+        DateTimeOffset? countdownTargetUtc = null,
+        DiagnosticLogger? logger = null,
+        IDwmWindowChromeHost? dwmChromeHost = null)
     {
         _viewModel = new ReminderRulesEditorViewModel(
             initialRules,
@@ -95,15 +97,24 @@ internal sealed class ReminderRulesEditorWindow : Window
         // #322：SizeToContent.Height 下由 ReapplyPlacement 统一按多屏工作区居中于所有者并夹取，
         // 避免 WPF 延迟 CenterOwner 把副屏负坐标夹回系统主屏。
         WindowStartupLocation = WindowStartupLocation.Manual;
-        Background = Brushes.Transparent;
-        AllowsTransparency = true;
-        WindowStyle = WindowStyle.None;
+        // #324：改为不透明无边框窗口，向 DWM 请求系统圆角、投影与 1 DIP 暖边。
+        SetResourceReference(BackgroundProperty, "CanvasBrush");
+        DwmWindowChrome.ConfigureOpaqueBorderlessChrome(this);
         ResizeMode = ResizeMode.CanResizeWithGrip;
         DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒规则编辑器");
 
         ConfigureControls();
-        Content = BuildContent();
+        var surface = BuildContent();
+        DwmWindowChrome.AttachSecondaryWindow(
+            this,
+            surface,
+            "PeachLineColor",
+            "PeachLineBrush",
+            DwmWindowChrome.ReminderRulesEditorEvents,
+            logger,
+            dwmChromeHost);
+        Content = surface;
         Bind(_firstDueLabel, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.FirstDueLabel), _viewModel);
         WireEvents();
         WindowWorkAreaGeometry.TrackChanges(this, ReapplyPlacement,
@@ -348,7 +359,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         }
     }
 
-    private UIElement BuildContent()
+    private Border BuildContent()
     {
         var heading = new TextBlock
         {
@@ -482,13 +493,9 @@ internal sealed class ReminderRulesEditorWindow : Window
 
         var surface = new Border
         {
-            Child = layout,
-            BorderThickness = new Thickness(1)
+            Child = layout
         };
-        // #250：次级窗口外壳与规则行同用 §13.3 RadiusCard。
-        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusCard");
         surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
-        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
         return surface;
     }
 

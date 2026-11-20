@@ -44,6 +44,8 @@ public sealed partial class App : Application
     private bool _floatingWindowClosed;
     private bool _shuttingDown;
 
+    internal DiagnosticLogger? DiagnosticLogger => _logger;
+
     private void OnStartup(object sender, StartupEventArgs eventArgs)
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
@@ -206,7 +208,7 @@ public sealed partial class App : Application
                 desktopWorkspace,
                 _logger,
                 (sourceKind, sourceId) => managerLifecycle.OpenReminderSource(sourceKind, sourceId),
-                () => new ReminderCenterWindow(_floatingWindow));
+                () => new ReminderCenterWindow(_floatingWindow, _logger));
             _floatingWindow = new FloatingWindow(
                 desktopWorkspace,
                 _calendar,
@@ -1254,7 +1256,7 @@ internal sealed class ReminderDeliveryCoordinator : IDisposable
             return _window;
         }
 
-        var window = _windowFactory?.Invoke() ?? new ReminderCenterWindow();
+        var window = _windowFactory?.Invoke() ?? new ReminderCenterWindow(logger: _logger);
         _window = window;
         window.EntryRendered += (_, args) => OnEntryRendered(args.Key);
         window.AcknowledgeRequested += (_, args) => OnAcknowledgeRequested(args.Key);

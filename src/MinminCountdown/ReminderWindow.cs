@@ -109,12 +109,13 @@ internal sealed class ReminderCenterWindow : Window
             Button.CommandProperty,
             new Binding(nameof(ReminderCenterViewModel.AcknowledgeAllCommand)));
         // #215：头部右端「收起」把窗口最小化到任务栏；有条目时关闭守卫不变。
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         _minimizeToTaskbar = UiAccessibility.Name(
             new Button
             {
                 Content = CreateIconTextContent(CreateMinimizeIcon("InkBrush"), "收起"),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0),
+                Margin = new Thickness(unitSpacing, 0, 0, 0),
                 Cursor = Cursors.Hand
             },
             "收起提醒中心到任务栏");
@@ -512,9 +513,12 @@ internal sealed class ReminderCenterWindow : Window
         Grid.SetColumn(scheduled, 1);
         scheduledRow.Children.Add(scheduledClock);
         scheduledRow.Children.Add(scheduled);
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
+        var blockGap = SpacingTokens.Resolve(this, SpacingTokens.BlockGap);
+        var cardPadding = SpacingTokens.Resolve(this, SpacingTokens.CardPadding);
         var error = new TextBlock
         {
-            Margin = new Thickness(0, 8, 0, 0),
+            Margin = new Thickness(0, unitSpacing, 0, 0),
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeights.SemiBold
         };
@@ -535,7 +539,7 @@ internal sealed class ReminderCenterWindow : Window
         var divider = new Border
         {
             Height = 1,
-            Margin = new Thickness(0, 12, 0, 0)
+            Margin = new Thickness(0, blockGap, 0, 0)
         };
         divider.SetResourceReference(Border.BackgroundProperty, "NoteLineBrush");
 
@@ -544,7 +548,7 @@ internal sealed class ReminderCenterWindow : Window
             {
                 Content = CreateIconTextContent(CreateCheckCircleIcon("MainActionTextBrush"), "知道了"),
                 MinWidth = 82,
-                Margin = new Thickness(0, 0, 8, 0),
+                Margin = new Thickness(0, 0, unitSpacing, 0),
                 Padding = new Thickness(8, 0, 8, 0),
                 Style = (Style)FindResource("PrimaryButton")
             },
@@ -611,13 +615,13 @@ internal sealed class ReminderCenterWindow : Window
         primaryActions.Children.Add(snooze);
         var secondaryActions = new WrapPanel
         {
-            Margin = new Thickness(0, 8, 0, 0),
+            Margin = new Thickness(0, unitSpacing, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Center
         };
         AutomationProperties.SetAutomationId(secondaryActions, "ReminderEntryActionsSecondaryRow");
         if (item.CanComplete)
         {
-            complete.Margin = new Thickness(0, 0, 8, 0);
+            complete.Margin = new Thickness(0, 0, unitSpacing, 0);
             secondaryActions.Children.Add(complete);
         }
         secondaryActions.Children.Add(openSource);
@@ -642,8 +646,8 @@ internal sealed class ReminderCenterWindow : Window
         {
             Tag = item.Key,
             Child = cardGrid,
-            Padding = new Thickness(14),
-            Margin = new Thickness(0, 0, 0, 8),
+            Padding = new Thickness(cardPadding),
+            Margin = new Thickness(0, 0, 0, unitSpacing),
             BorderThickness = new Thickness(1),
             DataContext = viewModel
         };
@@ -1318,11 +1322,12 @@ internal sealed class ReminderCenterWindow : Window
             nameof(ReminderCenterEntryViewModel.CustomHourIndex),
             viewModel,
             mode: BindingMode.TwoWay);
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         var customMinute = UiAccessibility.Name(
             new ComboBox
             {
                 Width = 68,
-                Margin = new Thickness(0, 0, 8, 0),
+                Margin = new Thickness(0, 0, unitSpacing, 0),
                 ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray()
             },
             $"自定义稍后分钟：{item.Source.DisplayText}");
@@ -1353,7 +1358,7 @@ internal sealed class ReminderCenterWindow : Window
             viewModel);
         var customTimeRow = new WrapPanel
         {
-            Margin = new Thickness(0, 8, 0, 0)
+            Margin = new Thickness(0, unitSpacing, 0, 0)
         };
         AutomationProperties.SetAutomationId(customTimeRow, "ReminderEntryCustomSnoozeTimeRow");
         customTimeRow.Children.Add(customHour);

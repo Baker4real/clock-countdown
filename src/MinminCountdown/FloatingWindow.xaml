@@ -102,7 +102,7 @@
                           Grid.Column="2"
                           Width="72"
                           Height="36"
-                          Margin="8,0,0,0"
+                          Margin="{local:SpacingThickness Left=SpacingUnit}"
                           Content="便签"
                           Style="{DynamicResource FloatingHeaderSegmentButton}" />
             <Button x:Name="MinimizeToTrayButton"
@@ -209,7 +209,7 @@
                     MinHeight="36"
                     Height="36"
                     Padding="0"
-                    Margin="8,0,0,0"
+                    Margin="{local:SpacingThickness Left=SpacingUnit}"
                     Content="✕"
                     FontSize="{DynamicResource TypeCaptionFontSize}"
                     Style="{DynamicResource SecondaryButton}" />
@@ -495,7 +495,7 @@
                          Foreground="{DynamicResource FloatingErrorBrush}"
                          TextWrapping="Wrap"
                          Visibility="Collapsed" />
-              <Grid Margin="0,8,0,0">
+              <Grid Margin="{local:SpacingThickness Top=SpacingUnit}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
                   <ColumnDefinition Width="Auto" />
@@ -505,7 +505,7 @@
                 <Button x:Name="FloatingManageReminderRules"
                         Grid.Column="1"
                         Width="116"
-                        Margin="8,0,0,0"
+                        Margin="{local:SpacingThickness Left=SpacingUnit}"
                         Content="提醒规则"
                         Style="{DynamicResource SecondaryButton}" />
               </Grid>
@@ -556,7 +556,7 @@
               <Button x:Name="FloatingAddNote"
                       Grid.Column="1"
                       Width="68"
-                      Margin="8,0,0,0"
+                      Margin="{local:SpacingThickness Left=SpacingUnit}"
                       Content="添加"
                       Style="{DynamicResource PrimaryButton}" />
             </Grid>
@@ -578,7 +578,7 @@
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="FloatingDeleteUndoText"
-                         Margin="0,0,8,0"
+                         Margin="{local:SpacingThickness Right=SpacingUnit}"
                          VerticalAlignment="Center"
                          Foreground="{DynamicResource FloatingMutedBrush}"
                          FontSize="{DynamicResource TypeCaptionFontSize}"
@@ -604,7 +604,7 @@
                       Width="38"
                       MinWidth="38"
                       MinHeight="38"
-                      Margin="8,0,0,0"
+                      Margin="{local:SpacingThickness Left=SpacingUnit}"
                       Padding="0"
                       FocusVisualStyle="{x:Null}"
                       Style="{DynamicResource SecondaryButton}"
@@ -630,7 +630,7 @@
               </Button>
               <Button x:Name="FloatingOpenSettings"
                       MinHeight="38"
-                      Margin="8,0,0,0"
+                      Margin="{local:SpacingThickness Left=SpacingUnit}"
                       Padding="12,0"
                       Style="{DynamicResource SecondaryButton}"
                       ToolTip="打开管理窗口">

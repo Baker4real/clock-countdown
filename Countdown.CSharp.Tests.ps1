@@ -3896,6 +3896,7 @@ exit 23
         DatePickerSingleBoxInteractionAndLongestDateFit = '六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）'
         MainNoteSearchCoalescesAndPreservesTagControls = '管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）'
         MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame = '管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）'
+        SpacingTokensWiredAcrossWindows = 'SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -6158,11 +6159,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingWindowXamlSource -match 'x:Name="FloatingAddNoteToggle"[^>]*MinHeight="38"' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingSearchNotes"[^>]*Width="38"[^>]*MinWidth="38"[^>]*MinHeight="38"' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingOpenSettings"[^>]*MinHeight="38"') '悬浮底部命令三按钮保持 38px 命中高度（#143 命中区源码契约）'
-    Assert-Equal $true (
-        $floatingWindowXamlSource -match 'x:Name="FloatingNotesButton"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingSearchNotes"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingOpenSettings"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingNoteSearchHintClear"[^>]*Margin="8,0,0,0"') '悬浮相邻命令按钮横向间距 8px（#143 间距源码契约）'
+    # #311：上述四枚悬浮相邻命令按钮横向 8px 间距已改绑 SpacingUnit token，默认值（8）与 token 联动由
+    # 独立窗口验证事实 SpacingTokensWiredAcrossWindows 在真实悬浮窗上运行态守住，不再用旧字面量正则。
     Assert-Equal $true (
         $floatingNotesSource -match 'CalendarIndexCheckboxSlotWidth = 36' -and
         $floatingNotesSource -match 'new GridLength\(CalendarIndexCheckboxSlotWidth\)') '悬浮便签复选框槽位 36px（#143 命中区源码契约）'

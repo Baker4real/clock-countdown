@@ -39,9 +39,15 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 108 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure, including shared native menu resources and #330 numeric input behavior, separate from repository-only window verification sources'
+Assert-Equal 109 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure, including shared native menu resources, #330 numeric input behavior and #333 CsWin32 NativeMethods.txt, separate from repository-only window verification sources'
 Assert-Equal $true ('src\MinminCountdown\NumericInputBehavior.cs' -in @($releaseContract.SourceBuildFiles)) '#330 source-build closure contains the reusable numeric input behavior'
 Assert-Equal $true ('src\MinminCountdown\NumericInputBehavior.cs' -in @($releaseContract.BuildInputFiles)) '#330 deploy identity contains the reusable numeric input behavior'
+$csWin32NativeMethodsInput = 'src\MinminCountdown\NativeMethods.txt'
+Assert-Equal $true ($csWin32NativeMethodsInput -in @($releaseContract.SourceBuildFiles)) '#333 source-build closure contains the CsWin32 NativeMethods.txt manifest'
+Assert-Equal $true ($csWin32NativeMethodsInput -in @($releaseContract.BuildInputFiles)) '#333 deploy identity contains the CsWin32 NativeMethods.txt manifest'
+Assert-Equal $false ($csWin32NativeMethodsInput -in @($releaseContract.PackageFiles)) '#333 CsWin32 NativeMethods.txt stays out of the office package'
+Assert-Equal $false ($csWin32NativeMethodsInput -in @($releaseContract.InstalledFiles)) '#333 CsWin32 NativeMethods.txt is not installed as a runtime file'
+Assert-Equal $false $releaseContract.IntegrityHashes.Contains($csWin32NativeMethodsInput) '#333 CsWin32 NativeMethods.txt is not statically pinned'
 foreach ($equivalenceBuildInput in @('src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs', 'src\MinminCountdown\SettingsEquivalenceCommand.cs')) {
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.SourceBuildFiles)) "#272 source-build closure contains the exact equivalence input: $equivalenceBuildInput"
     Assert-Equal $true ($equivalenceBuildInput -in @($releaseContract.BuildInputFiles)) "#272 deploy identity contains the exact equivalence input: $equivalenceBuildInput"
@@ -124,6 +130,7 @@ $installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { 
 $publishedPayloadManifest = Get-Content -LiteralPath (
     Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Assert-Equal ((@($publishedPayloadManifest.files.path) | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract preserves every published application file without extra runtime files'
+Assert-Equal 0 @($publishedPayloadManifest.files.path | Where-Object { $_ -match 'CsWin32|Win32Metadata|Win32Docs' }).Count '#333 build-time CsWin32 packages add zero runtime files to the published payload'
 $expectedOfficePackageSupportFiles = @(
     'Deploy-OfficeCountdown.ps1',
     'Install-Countdown.ps1',
@@ -289,7 +296,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 135 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #310 disabled-state scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330 rule editor scenarios and #324 secondary DWM chrome scenario to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 136 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #310 disabled-state scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330 rule editor scenarios, #324 secondary DWM chrome scenario and #333 CsWin32 NativeMethods.txt to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `
@@ -1480,12 +1487,12 @@ function Get-CountdownReleaseContract { throw 'DEPLOY_CONTINUED_WITHOUT_COVERAGE
             continue
         }
         [void] $evaluatedSourceBuildFiles.Add($projectPath.Substring($sourceClosureRoot.Length + 1))
-        $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,ProjectReference' '-getProperty:ApplicationIcon,ApplicationManifest' | Out-String
+        $evaluatedJson = & $managedDotnet msbuild $projectPath '-getItem:Compile,ApplicationDefinition,Page,Content,AdditionalFiles,ProjectReference' '-getProperty:ApplicationIcon,ApplicationManifest' | Out-String
         if ($LASTEXITCODE -ne 0) {
             throw "MSBuild source-closure evaluation failed: $projectPath"
         }
         $evaluatedProject = $evaluatedJson | ConvertFrom-Json
-        foreach ($itemType in @('Compile', 'ApplicationDefinition', 'Page', 'Content')) {
+        foreach ($itemType in @('Compile', 'ApplicationDefinition', 'Page', 'Content', 'AdditionalFiles')) {
             $itemProperty = $evaluatedProject.Items.PSObject.Properties[$itemType]
             if ($null -eq $itemProperty) {
                 continue

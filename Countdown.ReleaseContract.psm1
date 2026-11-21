@@ -161,6 +161,7 @@ $script:sourceBuildNonAssetFiles = @(
     'src\MinminCountdown\MonitorGeometryValidation.cs',
     'src\MinminCountdown\MonitorWorkAreaResolver.cs',
     'src\MinminCountdown\MotionBehavior.cs',
+    'src\MinminCountdown\NativeMethods.txt',
     'src\MinminCountdown\NoteCompletionExit.cs',
     'src\MinminCountdown\NumericInputBehavior.cs',
     'src\MinminCountdown\ReminderCenterViewModel.cs',

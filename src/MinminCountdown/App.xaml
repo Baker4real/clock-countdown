@@ -831,12 +831,30 @@
     </Style>
 
     <Style x:Key="DatePickerTextBoxStyle"
-           TargetType="{x:Type primitives:DatePickerTextBox}"
-           BasedOn="{StaticResource {x:Type TextBox}}">
+           TargetType="{x:Type primitives:DatePickerTextBox}">
       <Setter Property="IsReadOnly" Value="True" />
       <Setter Property="Focusable" Value="False" />
-      <!-- #151：日期框文字区与主窗倒计时页白纸输入面同色（由 DatePicker.Background 决定）。 -->
-      <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <!-- #312：文本区位于统一单框 Surface 之内，不再自绘独立边框或底色。 -->
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource ActiveBrush}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="{x:Type primitives:DatePickerTextBox}">
+            <ScrollViewer x:Name="PART_ContentHost"
+                          Margin="{TemplateBinding Padding}"
+                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                          Focusable="False"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Hidden" />
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
     </Style>
 
     <Style TargetType="{x:Type DatePicker}"
@@ -855,46 +873,82 @@
           <ControlTemplate TargetType="{x:Type DatePicker}">
             <Grid x:Name="PART_Root"
                   focus:DisabledStateBehavior.IsEnabled="True"
-                  focus:DisabledStateBehavior.ContrastBorderTargetNames="PART_TextBox,PART_Button">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="38" />
-              </Grid.ColumnDefinitions>
-              <!-- #153：选中日期文本与列表/组头同一中文日期格式——数字与「月」「日」之间留空格（§3）。
-                   绑定固定 OneWay：只读文本框不回写 SelectedDate；文字区由模板内置切换面打开日历。 -->
-              <primitives:DatePickerTextBox x:Name="PART_TextBox"
-                                            Grid.Column="0"
-                                            Style="{StaticResource DatePickerTextBoxStyle}"
-                                            BorderThickness="1,1,0,1"
-                                            Padding="{TemplateBinding Padding}"
-                                            IsHitTestVisible="False"
-                                            Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay, StringFormat={x:Static core:DateDisplay.FullDateBindingFormat}}" />
-              <ToggleButton x:Name="PART_TextToggle"
-                            Grid.Column="0"
-                            Style="{x:Static focus:WpfUiPickerStyles.ToggleButton}"
-                            ClickMode="Release"
-                            Focusable="False"
-                            IsTabStop="False"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            AutomationProperties.Name="打开日历"
-                            IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
-              <!-- 日期框的 Tab 焦点落在这枚按钮上；整框焦点边界由 IsKeyboardFocusWithin 触发器画，
-                   按钮不再叠 FocusVisualStyle 装饰层，也不点亮自己的焦点环（§4 #152）。 -->
-              <ui:Button x:Name="PART_Button"
-                      Grid.Column="1"
-                      Style="{StaticResource {x:Type Button}}"
-                      FocusVisualStyle="{x:Null}"
-                      focus:FocusVisualState.HostDrawsFocus="True"
-                      Padding="0"
+                  focus:DisabledStateBehavior.OpacityTargetNames="Surface,ContentSlot"
+                  focus:DisabledStateBehavior.ContrastBorderTargetNames="Surface">
+              <Border x:Name="Surface"
                       Background="{TemplateBinding Background}"
-                      BorderThickness="1"
-                      ToolTip="打开日历"
-                      AutomationProperties.Name="打开日历">
-                <Path Width="10" Height="6" Fill="{DynamicResource BodyBrush}" Data="M 0,0 L 10,0 L 5,6 Z" />
-              </ui:Button>
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="{DynamicResource RadiusControl}" />
+              <!-- #303/#312：内容槽固定保留 1 DIP 边框位，Surface 切换 1/2 DIP 焦点或错误边时不挤动布局；
+                   单框高度、圆角与 36 DIP 箭头列均与 ComboBox 一致，箭头落在同一外框之内。 -->
+              <Border x:Name="ContentSlot" BorderThickness="1" BorderBrush="Transparent">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="36" />
+                  </Grid.ColumnDefinitions>
+                  <!-- #153：选中日期文本与列表/组头同一中文日期格式——数字与「月」「日」之间留空格（§3）。
+                       绑定固定 OneWay：只读文本框不回写 SelectedDate；文字区由模板内置切换面打开日历。 -->
+                  <primitives:DatePickerTextBox x:Name="PART_TextBox"
+                                                Grid.Column="0"
+                                                Style="{StaticResource DatePickerTextBoxStyle}"
+                                                Foreground="{TemplateBinding Foreground}"
+                                                Padding="{TemplateBinding Padding}"
+                                                IsHitTestVisible="False"
+                                                Text="{Binding SelectedDate, RelativeSource={RelativeSource TemplatedParent}, Mode=OneWay, StringFormat={x:Static core:DateDisplay.FullDateBindingFormat}}" />
+                  <ToggleButton x:Name="PART_TextToggle"
+                                Grid.Column="0"
+                                Style="{x:Static focus:WpfUiPickerStyles.ToggleButton}"
+                                ClickMode="Release"
+                                Focusable="False"
+                                IsTabStop="False"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                AutomationProperties.Name="打开日历"
+                                IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                  <!-- #152/#312：日期框的 Tab 焦点落在这枚箭头按钮上；整框单层焦点边界由外层 Surface 经
+                       IsKeyboardFocusWithin 触发器绘制，按钮不叠 FocusVisualStyle 也不画内框。 -->
+                  <ui:Button x:Name="PART_Button"
+                             Grid.Column="1"
+                             Style="{x:Null}"
+                             Focusable="True"
+                             IsTabStop="True"
+                             FocusVisualStyle="{x:Null}"
+                             focus:FocusVisualState.HostDrawsFocus="True"
+                             Cursor="Hand"
+                             Padding="0"
+                             MinWidth="0"
+                             MinHeight="0"
+                             Background="Transparent"
+                             BorderBrush="Transparent"
+                             BorderThickness="0"
+                             ToolTip="打开日历"
+                             AutomationProperties.Name="打开日历">
+                    <ui:Button.Template>
+                      <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ArrowSurface"
+                                Margin="0,1,1,1"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="0,9,9,0">
+                          <Path Width="10"
+                                Height="6"
+                                Fill="{DynamicResource BodyBrush}"
+                                Data="M 0,0 L 10,0 L 5,6 Z"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ArrowSurface" Property="Background" Value="{DynamicResource CardBrush}" />
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </ui:Button.Template>
+                  </ui:Button>
+                </Grid>
+              </Border>
               <focus:MotionPopup x:Name="PART_Popup"
-                     Grid.ColumnSpan="2"
                      Placement="Bottom"
                      StaysOpen="False"
                      AllowsTransparency="True"
@@ -913,32 +967,26 @@
             </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource CardBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource ActiveHoverBrush}" />
               </Trigger>
               <Trigger Property="IsDropDownOpen" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
               </Trigger>
               <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
-                <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </Trigger>
               <Trigger Property="focus:InputErrorState.HasError" Value="True">
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
               </Trigger>
               <MultiTrigger>
                 <MultiTrigger.Conditions>
                   <Condition Property="focus:InputErrorState.HasError" Value="True" />
                   <Condition Property="IsKeyboardFocusWithin" Value="True" />
                 </MultiTrigger.Conditions>
-                <Setter TargetName="PART_TextBox" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-                <Setter TargetName="PART_TextBox" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
-                <Setter TargetName="PART_Button" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
-                <Setter TargetName="PART_Button" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                <Setter TargetName="Surface" Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                <Setter TargetName="Surface" Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
               </MultiTrigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>

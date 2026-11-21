@@ -332,23 +332,16 @@ internal static class InputFocusAndErrorScenario
     {
         if (input is DatePicker picker)
         {
+            var dateSurface = (Border?)picker.Template?.FindName("Surface", picker)
+                ?? throw new InvalidOperationException("日期框缺少单框外层 Surface。");
             var text = (Control?)picker.Template?.FindName("PART_TextBox", picker)
                 ?? throw new InvalidOperationException("日期框缺少 PART_TextBox。");
             var button = (Control?)picker.Template?.FindName("PART_Button", picker)
                 ?? throw new InvalidOperationException("日期框缺少 PART_Button。");
-            text.ApplyTemplate();
-            button.ApplyTemplate();
-            var textSurface = (Border?)text.Template?.FindName("Surface", text)
-                ?? throw new InvalidOperationException("日期框 PART_TextBox 缺少 Surface。");
-            var buttonSurface = (Border?)button.Template?.FindName("Surface", button)
-                ?? throw new InvalidOperationException("日期框 PART_Button 缺少 Surface。");
-            return
-            [
-                ("PART_TextBox", text.BorderBrush, text.BorderThickness),
-                ("PART_TextBox.Surface", textSurface.BorderBrush, textSurface.BorderThickness),
-                ("PART_Button", button.BorderBrush, button.BorderThickness),
-                ("PART_Button.Surface", buttonSurface.BorderBrush, buttonSurface.BorderThickness)
-            ];
+            Require(
+                text.BorderThickness == default && button.BorderThickness == default,
+                $"日期框内部部件不应再画独立边框：text={text.BorderThickness}，button={button.BorderThickness}。");
+            return [("Surface", dateSurface.BorderBrush, dateSurface.BorderThickness)];
         }
 
         var surface = (Border?)input.Template?.FindName("Surface", input)

@@ -3892,6 +3892,8 @@ exit 23
         ReminderRulesEditorFixedIntervalVisualAndIsolationContract = '规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）'
         OverlaySurfaceBordersMeetContrastWithoutShadow = '筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）'
         FilterMatchModeDisclosureAndOverlayFocusLifecycle = '筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）'
+        DatePickerSingleBoxGeometryAndFocus = '六处日期框均采用单一外框且与下拉框高度、圆角与箭头列宽一致，箭头位于边界之内、无内层双边与缝隙；整框键盘焦点只画单层边界（有效暖金/错误危险色且不挤布局、系统对比度可区分、禁用态同步），箭头按钮仍为 Tab 停靠点（#312）'
+        DatePickerSingleBoxInteractionAndLongestDateFit = '六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -5461,23 +5463,30 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
     $productionDatePickerMeasurements = @($adapterValidation.DatePickerProductionMeasurements)
-    # 管理窗等比收缩后正文降一档而日期模板下拉列不缩，倒计时日期框与筛选弹层日期框同样纳入裁切断言（#237）。
-    $clippingGuardedDatePickers = @('Main.CountdownDate', 'Main.NoteDate', 'Main.NoteDateFilter', 'Floating.NoteDate')
+    # 管理窗等比收缩后正文降一档而日期模板下拉列不缩，#312 将全部六处生产日期框纳入裁切几何断言。
+    $clippingGuardedDatePickers = @('Main.CountdownDate', 'Main.NoteDate', 'Main.NoteDateFilter', 'Floating.NoteDate', 'ReminderRules.FirstDueDate')
     foreach ($measurement in @(
         $productionDatePickerMeasurements |
             Where-Object { $_.Name -in $clippingGuardedDatePickers }
     )) {
-        Assert-Equal $true ([bool] $measurement.TextFit.Fits) "日期框完整中文日期不裁切：$($measurement.Name)（#190 / #237）"
+        Assert-Equal $true ([bool] $measurement.TextFit.Fits) "日期框完整中文日期不裁切：$($measurement.Name)（#190 / #237 / #312）"
         Assert-Equal $true (
             [double] $measurement.TextFit.Available -gt 0 -and
             [double] $measurement.TextFit.Required -gt 0 -and
             [double] $measurement.TextFit.Available -ge [double] $measurement.TextFit.Required
-        ) "日期框文本宽度不超过可用宽度：$($measurement.Name)（#190 / #237）"
+        ) "日期框文本宽度不超过可用宽度：$($measurement.Name)（#190 / #237 / #312）"
     }
-    Assert-Equal 4 @(
+    Assert-Equal 5 @(
         $productionDatePickerMeasurements |
             Where-Object { $_.Name -in $clippingGuardedDatePickers }
-    ).Count '主窗口倒计时、便签与筛选日期框、悬浮窗便签日期框均纳入裁切几何断言（#190 / #237）'
+    ).Count '主窗口三处、悬浮窗与规则编辑器日期框均纳入裁切几何断言（#190 / #237 / #312）'
+    $reminderCenterDateMeasurement = $adapterValidation.DatePickerReminderCenterMeasurement
+    Assert-Equal $true ([bool] $reminderCenterDateMeasurement.TextFit.Fits) '提醒中心自定义稍后日期框完整中文日期不裁切（#312）'
+    Assert-Equal $true (
+        [double] $reminderCenterDateMeasurement.TextFit.Available -gt 0 -and
+        [double] $reminderCenterDateMeasurement.TextFit.Required -gt 0 -and
+        [double] $reminderCenterDateMeasurement.TextFit.Available -ge [double] $reminderCenterDateMeasurement.TextFit.Required
+    ) '提醒中心自定义稍后日期框文本宽度不超过可用宽度（#312）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.CountdownElementsVisible) '倒计时首次空态显示角色、标题、说明和填写引导'

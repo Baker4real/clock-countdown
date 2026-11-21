@@ -65,11 +65,13 @@ internal static class KeyboardFocusPolicy
             inputHost = node as DatePicker ?? (Control?)(node as ComboBox);
         inputHost ??= control as TextBox;
 
-        // DatePicker focuses PART_Button, but PART_TextBox draws the surrounding input stroke.
-        // Its button ring must stay unlit even when focus was transferred by the keyboard.
+        // DatePicker focuses PART_Button, while its outer Surface draws the surrounding single-box stroke.
+        // Inner child controls must neither carry IsKeyboardFocusVisible nor draw a second focus stroke.
         return inputHost is not null
             ? TemplatePartsDrawFocusStroke(inputHost, "FocusRing", "Box", "Surface", "PART_TextBox") &&
-                (ReferenceEquals(inputHost, control) || !TemplatePartsDrawFocusStroke(control, "FocusRing"))
+                (ReferenceEquals(inputHost, control) ||
+                 (!FocusVisualState.GetIsKeyboardFocusVisible(control) &&
+                  !TemplatePartsDrawFocusStroke(control, "FocusRing", "Surface", "ArrowSurface")))
             : FocusVisualState.GetIsKeyboardFocusVisible(control) &&
                 TemplatePartsDrawFocusStroke(control, "FocusRing", "Box", "Surface", "PART_TextBox");
     }

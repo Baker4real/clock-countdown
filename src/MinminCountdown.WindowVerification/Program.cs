@@ -41,6 +41,8 @@ internal static class Program
     internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
     internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
     internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
+    internal const string DatePickerSingleBoxGeometryFactName = "DatePickerSingleBoxGeometryAndFocus";
+    internal const string DatePickerSingleBoxInteractionFactName = "DatePickerSingleBoxInteractionAndLongestDateFit";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -121,6 +123,12 @@ internal static class Program
     private const string FilterMatchModeAndFocusFactMeaning =
         "筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；" +
         "「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）";
+    private const string DatePickerSingleBoxGeometryFactMeaning =
+        "六处日期框均采用单一外框且与下拉框高度、圆角与箭头列宽一致，箭头位于边界之内、无内层双边与缝隙；" +
+        "整框键盘焦点只画单层边界（有效暖金/错误危险色且不挤布局、系统对比度可区分、禁用态同步），箭头按钮仍为 Tab 停靠点（#312）";
+    private const string DatePickerSingleBoxInteractionFactMeaning =
+        "六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，" +
+        "且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）";
 
     [STAThread]
     private static int Main()
@@ -160,7 +168,9 @@ internal static class Program
             [RuleEditorFixedIntervalNumericFactName] = false,
             [RuleEditorFixedIntervalVisualFactName] = false,
             [OverlaySurfaceBordersFactName] = false,
-            [FilterMatchModeAndFocusFactName] = false
+            [FilterMatchModeAndFocusFactName] = false,
+            [DatePickerSingleBoxGeometryFactName] = false,
+            [DatePickerSingleBoxInteractionFactName] = false
         };
         var failures = new List<string>();
 
@@ -366,6 +376,18 @@ internal static class Program
                 () => OverlayBorderAndFilterMatchModeScenario.RunFilterMatchModeAndFocusLifecycle(
                     theme,
                     FilterMatchModeAndFocusFactMeaning));
+            RunFact(
+                DatePickerSingleBoxGeometryFactName,
+                DatePickerSingleBoxGeometryFactMeaning,
+                () => DatePickerSingleBoxScenario.RunGeometryAndFocus(
+                    theme,
+                    DatePickerSingleBoxGeometryFactMeaning));
+            RunFact(
+                DatePickerSingleBoxInteractionFactName,
+                DatePickerSingleBoxInteractionFactMeaning,
+                () => DatePickerSingleBoxScenario.RunInteractionAndLongestDateFit(
+                    theme,
+                    DatePickerSingleBoxInteractionFactMeaning));
         }
         catch (Exception exception)
         {

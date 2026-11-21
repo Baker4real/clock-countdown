@@ -515,6 +515,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
+        // #312：单框日期控件与相邻小时下拉框之间保留 SpacingUnit(8 DIP) 间距，避免外框相撞。
+        _firstDueDate.Margin = new Thickness(0, 0, 8, 0);
         Grid.SetColumn(_firstDueHour, 1);
         var separator = new TextBlock
         {

@@ -14,6 +14,9 @@ namespace MinminCountdown;
 internal sealed class ReminderRulesEditorViewModel : ObservableObject
 {
     internal const string IncompleteRulePreviewText = "请完善上方设置以生成预览";
+    internal const int MinimumFixedIntervalMinutes = 1;
+    internal const int MaximumFixedIntervalMinutes = 1440;
+    internal const string InvalidFixedIntervalError = "自定义提醒必须是 1 到 1440 分钟。";
 
     private const int CalendarModeIndexWithoutCountdown = 2;
     private const int CalendarModeIndexWithCountdown = 3;
@@ -35,7 +38,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private int _firstDueHourIndex = -1;
     private int _firstDueMinuteIndex = -1;
     private int _intervalIndex = 1;
-    private string _customIntervalMinutes = string.Empty;
+    private int? _customIntervalMinutes;
+    private bool _hasInvalidCustomIntervalInput;
     private string _relativeOffsetMinutes = "0";
     private int _calendarFrequencyIndex;
     private string _calendarInterval = "1";
@@ -204,10 +208,16 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         }
     }
 
-    public string CustomIntervalMinutes
+    public int? CustomIntervalMinutes
     {
         get => _customIntervalMinutes;
-        set => SetFormProperty(ref _customIntervalMinutes, value ?? string.Empty);
+        set => SetFormProperty(ref _customIntervalMinutes, value);
+    }
+
+    public bool HasInvalidCustomIntervalInput
+    {
+        get => _hasInvalidCustomIntervalInput;
+        set => SetFormProperty(ref _hasInvalidCustomIntervalInput, value);
     }
 
     public string RelativeOffsetMinutes
@@ -348,6 +358,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             if (SetProperty(ref _intervalError, value))
             {
                 OnPropertyChanged(nameof(IsIntervalErrorVisible));
+                OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
             }
         }
     }
@@ -406,6 +417,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public bool IsFirstDueErrorVisible => !string.IsNullOrEmpty(FirstDueError);
 
     public bool IsIntervalErrorVisible => !string.IsNullOrEmpty(IntervalError);
+
+    public bool IsIntervalComboErrorVisible => IsIntervalErrorVisible && !IsCustomIntervalVisible;
 
     public bool IsRelativeOffsetErrorVisible => !string.IsNullOrEmpty(RelativeOffsetError);
 
@@ -478,7 +491,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             OnPropertyChanged(nameof(EditingRuleId));
             ModeIndex = 0;
             IntervalIndex = 1;
-            CustomIntervalMinutes = string.Empty;
+            CustomIntervalMinutes = null;
+            HasInvalidCustomIntervalInput = false;
             RelativeOffsetMinutes = "0";
             CalendarFrequencyIndex = 0;
             CalendarInterval = "1";
@@ -546,8 +560,9 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                     _ => 3
                 };
                 CustomIntervalMinutes = minutes is 15 or 30 or 60
-                    ? string.Empty
-                    : minutes.ToString(CultureInfo.InvariantCulture);
+                    ? null
+                    : minutes;
+                HasInvalidCustomIntervalInput = false;
             }
 
             if (rule is CountdownRelativeReminderRule relative)
@@ -623,7 +638,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         FirstDueHourIndex,
         FirstDueMinuteIndex,
         SelectedInterval,
-        CustomIntervalMinutes,
+        CustomIntervalMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
         _clock.UtcNow,
         _countdownTargetUtc,
         RelativeOffsetMinutes,
@@ -724,6 +739,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsCalendarMonthVisible));
         OnPropertyChanged(nameof(IsCalendarDayVisible));
         OnPropertyChanged(nameof(IsCustomIntervalVisible));
+        OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
         NotifyPreviewChanged();
     }
 
@@ -756,8 +772,19 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             NotifyPreviewChanged();
         }
 
-        ClearErrors();
+        var immediateIntervalError = !_updatingForm && HasImmediateCustomIntervalError();
+        ClearErrors(preserveImmediateIntervalError: immediateIntervalError);
+        if (immediateIntervalError)
+        {
+            IntervalError = InvalidFixedIntervalError;
+        }
     }
+
+    private bool HasImmediateCustomIntervalError() =>
+        IsCustomIntervalVisible &&
+        (_hasInvalidCustomIntervalInput ||
+         (_customIntervalMinutes is int minutes &&
+          minutes is < MinimumFixedIntervalMinutes or > MaximumFixedIntervalMinutes));
 
     private void SetFormDirty(bool value)
     {
@@ -849,11 +876,14 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         ValidationErrorRaised?.Invoke(this, new ReminderRuleEditorErrorEventArgs(target, error));
     }
 
-    private void ClearErrors()
+    private void ClearErrors(bool preserveImmediateIntervalError = false)
     {
         ModeError = string.Empty;
         FirstDueError = string.Empty;
-        IntervalError = string.Empty;
+        if (!preserveImmediateIntervalError)
+        {
+            IntervalError = string.Empty;
+        }
         RelativeOffsetError = string.Empty;
         CalendarIntervalError = string.Empty;
         CalendarSelectorError = string.Empty;
@@ -861,6 +891,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsModeErrorVisible));
         OnPropertyChanged(nameof(IsFirstDueErrorVisible));
         OnPropertyChanged(nameof(IsIntervalErrorVisible));
+        OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
         OnPropertyChanged(nameof(IsRelativeOffsetErrorVisible));
         OnPropertyChanged(nameof(IsCalendarIntervalErrorVisible));
         OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));

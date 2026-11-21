@@ -37,6 +37,8 @@ internal static class Program
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
     internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
+    internal const string RuleEditorFixedIntervalNumericFactName = "ReminderRulesEditorFixedIntervalNumericInput";
+    internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -107,6 +109,10 @@ internal static class Program
     private const string FloatingWorkdayCompletionFactMeaning =
         "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
         "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
+    private const string RuleEditorFixedIntervalNumericFactMeaning =
+        "规则编辑器固定间隔支持上下键与滚轮在 1 到 1440 整数范围内增减、超出范围或非法输入当场提示且错误文案不变；ViewModel 属性为可空数值且对外保存、脏态与预览行为不变（#330）";
+    private const string RuleEditorFixedIntervalVisualFactMeaning =
+        "规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）";
 
     [STAThread]
     private static int Main()
@@ -142,7 +148,9 @@ internal static class Program
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
             [MainEmptyAndHighContrastRibbonFactName] = false,
-            [FloatingWorkdayCompletionFactName] = false
+            [FloatingWorkdayCompletionFactName] = false,
+            [RuleEditorFixedIntervalNumericFactName] = false,
+            [RuleEditorFixedIntervalVisualFactName] = false
         };
         var failures = new List<string>();
 
@@ -326,6 +334,16 @@ internal static class Program
                 FloatingWorkdayCompletionScenario.Run();
                 return (true, FloatingWorkdayCompletionFactMeaning);
             });
+            RunFact(
+                RuleEditorFixedIntervalNumericFactName,
+                RuleEditorFixedIntervalNumericFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalNumericInput(
+                    RuleEditorFixedIntervalNumericFactMeaning));
+            RunFact(
+                RuleEditorFixedIntervalVisualFactName,
+                RuleEditorFixedIntervalVisualFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalVisualAndIsolation(
+                    RuleEditorFixedIntervalVisualFactMeaning));
         }
         catch (Exception exception)
         {

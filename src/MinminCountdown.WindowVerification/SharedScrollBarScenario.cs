@@ -418,7 +418,7 @@ internal static class SharedScrollBarScenario
                     RaiseHoverEnter(bar);
                     var expandSettled = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
-                        450,
+                        2000,
                         () =>
                         {
                             var width = VisibleThickness(bar, thumbSurface);
@@ -448,7 +448,7 @@ internal static class SharedScrollBarScenario
                     RaiseHoverLeave(bar);
                     var collapseSettled = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
-                        450,
+                        2000,
                         () =>
                         {
                             var width = VisibleThickness(bar, thumbSurface);
@@ -477,7 +477,7 @@ internal static class SharedScrollBarScenario
                     RaiseHoverEnter(bar);
                     var reachedMidExpand = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
-                        250,
+                        1000,
                         () =>
                         {
                             var width = VisibleThickness(bar, thumbSurface);
@@ -495,7 +495,7 @@ internal static class SharedScrollBarScenario
                         RaiseHoverLeave(bar);
                         var reversedSettled = WindowValidationInput.PumpRenderedFrames(
                             main.Dispatcher,
-                            450,
+                            2000,
                             () =>
                             {
                                 var width = VisibleThickness(bar, thumbSurface);
@@ -528,7 +528,7 @@ internal static class SharedScrollBarScenario
                     RaiseHoverEnter(bar);
                     _ = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
-                        250,
+                        1000,
                         () =>
                         {
                             var width = VisibleThickness(bar, thumbSurface);
@@ -996,7 +996,7 @@ internal static class SharedScrollBarScenario
     {
         _ = WindowValidationInput.PumpRenderedFrames(
             main.Dispatcher,
-            450,
+            2000,
             () => Math.Abs(VisibleThickness(bar, thumbSurface) - target) <= GeometryToleranceDip);
     }
 

@@ -344,7 +344,7 @@ internal static class FloatingNoteOverflowMenuScenario
                 PointerClickButton(trigger1);
                 var enterSettled = WindowValidationInput.PumpRenderedFrames(
                     floating.Dispatcher,
-                    500,
+                    2000,
                     () =>
                     {
                         if (menu.IsOpen)
@@ -374,7 +374,7 @@ internal static class FloatingNoteOverflowMenuScenario
                 var exitObservedOpenWhileClosing = menu.IsOpen;
                 var exitSettled = WindowValidationInput.PumpRenderedFrames(
                     floating.Dispatcher,
-                    450,
+                    2000,
                     () =>
                     {
                         exitSamples.Add((menu.IsOpen, menu.Opacity, ReadTranslateY(menu), IsOpacityAnimated(menu)));

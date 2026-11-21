@@ -3,7 +3,7 @@
   "hash_scope": "git-blob",
   "issue": 301,
   "evidenceType": "pre-optimization-idle-processor-baseline",
-  "status": "baseline-complete-issue-open",
+  "status": "baseline-complete-integrated-verified",
   "protocolRevision": 2,
   "previousBaseline": {
     "path": "baseline-prereview-20261118.json",
@@ -406,8 +406,8 @@
     "isolated": true,
     "desktopName": "MinminSuiteIso-IdleProcessorMeasurement"
   },
-  "fullGateStatus": "pending-orchestrator",
-  "issueCommentStatus": "unverified-not-written-by-this-agent",
+  "fullGateStatus": "passed-clean-r2r-on-integration-prd-296",
+  "issueCommentStatus": "pending-prd-296-release-writeback",
   "run_artifact_root": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261119T031147859Z-3e64a566",
   "run_artifact_measurement_json": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261119T031147859Z-3e64a566\\measurement.json",
   "run_artifact_measurement_json_sha256": "0912ADD391DF232203E6980CDA5A42210477FA7CE3E10902E628DC822E0E93E6",

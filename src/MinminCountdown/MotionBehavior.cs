@@ -1901,6 +1901,8 @@ internal static class ScrollBarMotionBehavior
         private DependencyPropertyDescriptor? _draggingDescriptor;
         private DependencyPropertyDescriptor? _orientationDescriptor;
         private DoubleAnimation? _activeAnimation;
+        private EventHandler? _activeCompletedHandler;
+        private long _animationVersion;
         private bool _attached;
         private bool _isPointerOver;
         private bool _isDragging;
@@ -2086,14 +2088,6 @@ internal static class ScrollBarMotionBehavior
             }
         }
 
-        private void OnAnimationCompleted(object? sender, EventArgs args)
-        {
-            if (ReferenceEquals(sender, _activeAnimation))
-            {
-                ClearActiveAnimationSubscription();
-            }
-        }
-
         private Border? ResolveThumbSurface(bool isHorizontal)
         {
             if (_thumbSurface is not null)
@@ -2159,6 +2153,7 @@ internal static class ScrollBarMotionBehavior
                 return;
             }
 
+            var version = ++_animationVersion;
             var animation = new DoubleAnimation
             {
                 From = currentCrossScale,
@@ -2168,8 +2163,16 @@ internal static class ScrollBarMotionBehavior
                     ?? MotionTokens.CreateEaseOut(),
                 FillBehavior = FillBehavior.Stop
             };
+            EventHandler completedHandler = (_, _) =>
+            {
+                if (version == _animationVersion)
+                {
+                    ClearActiveAnimationSubscription();
+                }
+            };
             _activeAnimation = animation;
-            animation.Completed += OnAnimationCompleted;
+            _activeCompletedHandler = completedHandler;
+            animation.Completed += completedHandler;
             ApplicationTheme.PaletteChanged += OnPaletteChanged;
             scale.BeginAnimation(crossProperty, animation, HandoffBehavior.SnapshotAndReplace);
         }
@@ -2183,9 +2186,15 @@ internal static class ScrollBarMotionBehavior
 
         private void ClearActiveAnimationSubscription()
         {
+            _animationVersion++;
             if (_activeAnimation is not null)
             {
-                _activeAnimation.Completed -= OnAnimationCompleted;
+                if (_activeCompletedHandler is not null)
+                {
+                    _activeAnimation.Completed -= _activeCompletedHandler;
+                    _activeCompletedHandler = null;
+                }
+
                 _activeAnimation = null;
             }
 

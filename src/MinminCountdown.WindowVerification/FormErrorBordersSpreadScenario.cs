@@ -911,6 +911,49 @@ internal static class FormErrorBordersSpreadScenario
             Settle(editor);
             RequireClearedFieldError(firstDueTime, firstDueError, "规则编辑器首次时刻修正后", failures);
 
+            // 首次日期与时刻双错：先修正日期 -> 日期错误边清零且时刻保留错误边与 HelpText；再修正时刻 -> 两者均清；反序亦然
+            firstDueDate.SelectedDate = null;
+            firstDueTime.Text = "25:00";
+            Keyboard.Focus(saveRule);
+            Settle(editor);
+            InvokeCommandButton(saveRule, editor);
+            Check(failures, "规则编辑器首次日期与时刻双错时聚焦首错日期并双挂错误边",
+                firstDueDate.IsKeyboardFocusWithin &&
+                InputErrorState.GetHasError(firstDueDate) &&
+                InputErrorState.GetHasError(firstDueTime) &&
+                firstDueError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(firstDueDate), firstDueError.Text, StringComparison.Ordinal) &&
+                string.Equals(AutomationProperties.GetHelpText(firstDueTime), firstDueError.Text, StringComparison.Ordinal));
+
+            firstDueDate.SelectedDate = futureBeijing.Date;
+            Settle(editor);
+            Check(failures, "规则编辑器首次双错仅修正日期后清除日期错误边并保留时刻错误边与 HelpText",
+                !InputErrorState.GetHasError(firstDueDate) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(firstDueDate)) &&
+                InputErrorState.GetHasError(firstDueTime) &&
+                firstDueError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(firstDueTime), firstDueError.Text, StringComparison.Ordinal));
+            firstDueTime.Text = "10:30";
+            Settle(editor);
+            RequireClearedFieldError(firstDueTime, firstDueError, "规则编辑器首次双错补修时刻后", failures);
+
+            firstDueDate.SelectedDate = null;
+            firstDueTime.Text = "25:00";
+            Keyboard.Focus(saveRule);
+            Settle(editor);
+            InvokeCommandButton(saveRule, editor);
+            firstDueTime.Text = "10:30";
+            Settle(editor);
+            Check(failures, "规则编辑器首次双错仅修正时刻后清除时刻错误边并保留日期错误边与 HelpText",
+                !InputErrorState.GetHasError(firstDueTime) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(firstDueTime)) &&
+                InputErrorState.GetHasError(firstDueDate) &&
+                firstDueError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(firstDueDate), firstDueError.Text, StringComparison.Ordinal));
+            firstDueDate.SelectedDate = futureBeijing.Date;
+            Settle(editor);
+            RequireClearedFieldError(firstDueDate, firstDueError, "规则编辑器首次双错补修日期后", failures);
+
             // 过去时间：日期与时刻双错，提交聚焦首错日期（2 DIP），时刻无焦点（1 DIP），切焦零位移
             firstDueDate.SelectedDate = pastBeijing.Date;
             firstDueTime.Text = pastBeijing.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -1082,11 +1125,18 @@ internal static class FormErrorBordersSpreadScenario
             RequireInputBorder(editor, calendarDay, "DangerBrush", 2, "规则编辑器按年日期切焦有焦点", failures);
             RequireUnchangedRects(yearlyRects, CaptureRects(root, calendarMonth, calendarDay), "规则编辑器按年错态切焦", failures);
 
-            // 仅按年日期未选 -> 仅日期出错且聚焦日期；同时验证高对比度区分有效聚焦月份与出错日期
+            // 按年双错时仅修正月份：月份错误边与 HelpText 立即清除，未修正的日期错误边、HelpText 与错误提示继续保留
             calendarMonth.SelectedIndex = 5;
             Settle(editor);
-            Check(failures, "按年修正月份后先清错误边", !InputErrorState.GetHasError(calendarMonth) && !InputErrorState.GetHasError(calendarDay));
-            calendarDay.SelectedIndex = -1;
+            Check(failures, "按年双错仅修正月份后立即清除月份错误边并保留未修正日期错误边与 HelpText",
+                !InputErrorState.GetHasError(calendarMonth) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(calendarMonth)) &&
+                InputErrorState.GetHasError(calendarDay) &&
+                calendarSelectorError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(calendarDay), calendarSelectorError.Text, StringComparison.Ordinal));
+            RequireInputBorder(editor, calendarDay, "DangerBrush", 2, "规则编辑器按年仅修正月份后日期仍保持出错有焦点", failures);
+
+            // 仅按年日期未选再次提交 -> 仅日期出错且聚焦日期；同时验证高对比度区分有效聚焦月份与出错日期
             Keyboard.Focus(saveRule);
             Settle(editor);
             InvokeCommandButton(saveRule, editor);
@@ -1113,6 +1163,24 @@ internal static class FormErrorBordersSpreadScenario
             calendarDay.SelectedIndex = 14;
             Settle(editor);
             RequireClearedFieldError(calendarDay, calendarSelectorError, "规则编辑器按年日期修正后", failures);
+
+            // 按年双错反序：仅修正日期时保留月份错误边与 HelpText，再修正月份后两者均清
+            calendarMonth.SelectedIndex = -1;
+            calendarDay.SelectedIndex = -1;
+            Keyboard.Focus(saveRule);
+            Settle(editor);
+            InvokeCommandButton(saveRule, editor);
+            calendarDay.SelectedIndex = 14;
+            Settle(editor);
+            Check(failures, "按年双错仅修正日期后清除日期错误边并保留月份错误边与 HelpText",
+                !InputErrorState.GetHasError(calendarDay) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(calendarDay)) &&
+                InputErrorState.GetHasError(calendarMonth) &&
+                calendarSelectorError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(calendarMonth), calendarSelectorError.Text, StringComparison.Ordinal));
+            calendarMonth.SelectedIndex = 5;
+            Settle(editor);
+            RequireClearedFieldError(calendarMonth, calendarSelectorError, "规则编辑器按年反序补修月份后", failures);
 
             _ = cancelDraft;
         }
@@ -1264,6 +1332,51 @@ internal static class FormErrorBordersSpreadScenario
             customTime.Text = futureBeijing.ToString("HH:mm", CultureInfo.InvariantCulture);
             Settle(center);
             RequireClearedFieldError(customTime, customError, "提醒中心自定义时间修正后", failures);
+
+            // 3b. 日期为空且时间非法双错：先修正日期 -> 日期清错且时间保留错误边与 HelpText；再修正时间 -> 两者均清；反序亦然
+            customDate.SelectedDate = null;
+            customTime.Text = "25:00";
+            Keyboard.Focus(customConfirm);
+            Settle(center);
+            WindowValidationInput.InvokeButton(customConfirm);
+            Settle(center);
+            Check(failures, "提醒中心自定义日期与时间双错时聚焦首错日期并双挂错误边",
+                customDate.IsKeyboardFocusWithin &&
+                InputErrorState.GetHasError(customDate) &&
+                InputErrorState.GetHasError(customTime) &&
+                customError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(customDate), customError.Text, StringComparison.Ordinal) &&
+                string.Equals(AutomationProperties.GetHelpText(customTime), customError.Text, StringComparison.Ordinal));
+
+            customDate.SelectedDate = futureBeijing.Date;
+            Settle(center);
+            Check(failures, "提醒中心自定义双错仅修正日期后清除日期错误边并保留时间错误边与 HelpText",
+                !InputErrorState.GetHasError(customDate) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(customDate)) &&
+                InputErrorState.GetHasError(customTime) &&
+                customError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(customTime), customError.Text, StringComparison.Ordinal));
+            customTime.Text = futureBeijing.ToString("HH:mm", CultureInfo.InvariantCulture);
+            Settle(center);
+            RequireClearedFieldError(customTime, customError, "提醒中心自定义双错补修时间后", failures);
+
+            customDate.SelectedDate = null;
+            customTime.Text = "25:00";
+            Keyboard.Focus(customConfirm);
+            Settle(center);
+            WindowValidationInput.InvokeButton(customConfirm);
+            Settle(center);
+            customTime.Text = futureBeijing.ToString("HH:mm", CultureInfo.InvariantCulture);
+            Settle(center);
+            Check(failures, "提醒中心自定义双错仅修正时间后清除时间错误边并保留日期错误边与 HelpText",
+                !InputErrorState.GetHasError(customTime) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(customTime)) &&
+                InputErrorState.GetHasError(customDate) &&
+                customError.IsVisible &&
+                string.Equals(AutomationProperties.GetHelpText(customDate), customError.Text, StringComparison.Ordinal));
+            customDate.SelectedDate = futureBeijing.Date;
+            Settle(center);
+            RequireClearedFieldError(customDate, customError, "提醒中心自定义双错补修日期后", failures);
 
             // 4. 过去时间提交（真实 coordinator 拒绝）：双挂错误边，提交聚焦首错 CustomDate（2 DIP），CustomTime 无焦（1 DIP），切焦零位移
             customDate.SelectedDate = pastBeijing.Date;

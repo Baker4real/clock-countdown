@@ -25,6 +25,7 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
     internal const string InvalidCalendarIntervalError = "每隔几个周期必须是 1 到 999。";
     private const string IncompleteFirstDueError = "请选择完整的首次提醒日期和时间。";
     private const string IncompleteCalendarScheduleError = "请选择完整的日历起始日期和本地时间。";
+    private const string IncompleteYearlyCalendarSelectorError = "按年重复必须选择月份及 1 到 31 日或显式最后一天。";
 
     private const int CalendarModeIndexWithoutCountdown = 2;
     private const int CalendarModeIndexWithCountdown = 3;
@@ -422,7 +423,7 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
 
     partial void OnModeIndexChanged(int value)
     {
-        OnFormFieldChanged();
+        OnFormFieldChanged(clearPairedIncompleteErrors: true);
         EnsureWeeklySelection();
         UpdateVisibility();
     }
@@ -779,15 +780,17 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRulePreviewValid));
     }
 
-    private void OnFormFieldChanged()
+    private void OnFormFieldChanged(bool clearPairedIncompleteErrors = false)
     {
         if (!_updatingForm)
         {
-            MarkFormDirty();
+            MarkFormDirty(clearPairedIncompleteErrors);
         }
     }
 
-    private void MarkFormDirty()
+    private void MarkFormDirty() => MarkFormDirty(clearPairedIncompleteErrors: false);
+
+    private void MarkFormDirty(bool clearPairedIncompleteErrors)
     {
         if (!_updatingForm)
         {
@@ -795,13 +798,17 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
             NotifyPreviewChanged();
         }
 
+        var preserveFirstDueError = !_updatingForm && !clearPairedIncompleteErrors && HasIncompleteFirstDueError();
+        var preserveCalendarSelectorError = !_updatingForm && !clearPairedIncompleteErrors && HasIncompleteYearlyCalendarSelectorError();
         var immediateIntervalError = !_updatingForm && HasImmediateCustomIntervalError();
         var immediateRelativeOffsetError = !_updatingForm && HasImmediateRelativeOffsetError();
         var immediateCalendarIntervalError = !_updatingForm && HasImmediateCalendarIntervalError();
         ClearErrors(
+            preserveFirstDueError: preserveFirstDueError,
             preserveImmediateIntervalError: immediateIntervalError,
             preserveImmediateRelativeOffsetError: immediateRelativeOffsetError,
-            preserveImmediateCalendarIntervalError: immediateCalendarIntervalError);
+            preserveImmediateCalendarIntervalError: immediateCalendarIntervalError,
+            preserveCalendarSelectorError: preserveCalendarSelectorError);
         if (immediateIntervalError)
         {
             IntervalError = InvalidFixedIntervalError;
@@ -817,6 +824,18 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
             CalendarIntervalError = InvalidCalendarIntervalError;
         }
     }
+
+    private bool HasIncompleteFirstDueError() =>
+        IsFirstDueVisible &&
+        (string.Equals(FirstDueError, IncompleteFirstDueError, StringComparison.Ordinal) ||
+         string.Equals(FirstDueError, IncompleteCalendarScheduleError, StringComparison.Ordinal)) &&
+        (FirstDueDate is null || FirstDueTime is null || HasInvalidFirstDueTimeInput);
+
+    private bool HasIncompleteYearlyCalendarSelectorError() =>
+        IsCalendarMode &&
+        SelectedCalendarFrequency == CalendarFrequency.Yearly &&
+        string.Equals(CalendarSelectorError, IncompleteYearlyCalendarSelectorError, StringComparison.Ordinal) &&
+        (CalendarMonthIndex < 0 || (!CalendarLastDay && CalendarDayIndex < 0));
 
     private bool HasImmediateCustomIntervalError() =>
         IsCustomIntervalVisible &&
@@ -916,12 +935,18 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
     }
 
     private void ClearErrors(
+        bool preserveFirstDueError = false,
         bool preserveImmediateIntervalError = false,
         bool preserveImmediateRelativeOffsetError = false,
-        bool preserveImmediateCalendarIntervalError = false)
+        bool preserveImmediateCalendarIntervalError = false,
+        bool preserveCalendarSelectorError = false)
     {
         ModeError = string.Empty;
-        FirstDueError = string.Empty;
+        if (!preserveFirstDueError)
+        {
+            FirstDueError = string.Empty;
+        }
+
         if (!preserveImmediateIntervalError)
         {
             IntervalError = string.Empty;
@@ -937,7 +962,11 @@ internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
             CalendarIntervalError = string.Empty;
         }
 
-        CalendarSelectorError = string.Empty;
+        if (!preserveCalendarSelectorError)
+        {
+            CalendarSelectorError = string.Empty;
+        }
+
         CollectionError = string.Empty;
         OnPropertyChanged(nameof(IsModeErrorVisible));
         NotifyFirstDueErrorStateChanged();

@@ -56,6 +56,7 @@ public sealed partial class FloatingWindow
     private bool _overflowOpenedByPointer;
     private bool _overflowEscapeClosePending;
     private bool _overflowFocusRestoredForCurrentOpen;
+    private bool _reopeningNoteOverflowMenu;
 
     private bool IsNoteOverflowMenuOpen =>
         _noteOverflowMenu is { IsOpen: true };
@@ -567,6 +568,11 @@ public sealed partial class FloatingWindow
             handledEventsToo: true);
         menu.Closed += (_, _) =>
         {
+            if (_reopeningNoteOverflowMenu || menu.IsOpen)
+            {
+                return;
+            }
+
             var triggerToRestore = _activeOverflowTrigger;
             _activeOverflowNote = null;
             _activeOverflowTrigger = null;
@@ -627,7 +633,15 @@ public sealed partial class FloatingWindow
             Activate();
         }
 
-        PopupMotionBehavior.OpenContextMenu(menu, immediate: immediate);
+        _reopeningNoteOverflowMenu = true;
+        try
+        {
+            PopupMotionBehavior.OpenContextMenu(menu, immediate: immediate);
+        }
+        finally
+        {
+            _reopeningNoteOverflowMenu = false;
+        }
     }
 
     private void CloseNoteOverflowMenu(bool immediate)

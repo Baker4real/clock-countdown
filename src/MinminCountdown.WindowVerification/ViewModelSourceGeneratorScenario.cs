@@ -354,11 +354,22 @@ internal static class ViewModelSourceGeneratorScenario
                 entryChanges.Contains(nameof(ReminderCenterEntryViewModel.CustomTimeHelpText)),
             "不完整自定义稍后未发出错误边框与 HelpText 通知或未请求聚焦", failures);
 
-        // 修正日期即清错，时间非法失焦报错，再修正恢复并提交
+        // 日期与时间双错时仅修正日期：日期错误边与 HelpText 立即清除，未修正时间保留错误边与 HelpText，补齐时间后清错
         entry.CustomDate = new DateTime(2038, 7, 10);
+        Require(entry.IsCustomErrorVisible &&
+                !entry.IsCustomDateErrorVisible &&
+                string.IsNullOrEmpty(entry.CustomDateHelpText) &&
+                entry.IsCustomTimeErrorVisible &&
+                !string.IsNullOrEmpty(entry.CustomTimeHelpText),
+            "双错下仅填入 CustomDate 未清除日期错误或过早清除了未修正时间错误", failures);
+
+        entry.CustomTime = new TimeSpan(9, 0, 0);
         Require(!entry.IsCustomErrorVisible &&
-                string.IsNullOrEmpty(entry.CustomDateHelpText),
-            "填入有效 CustomDate 后未清除自定义稍后错误", failures);
+                !entry.IsCustomDateErrorVisible &&
+                !entry.IsCustomTimeErrorVisible &&
+                string.IsNullOrEmpty(entry.CustomDateHelpText) &&
+                string.IsNullOrEmpty(entry.CustomTimeHelpText),
+            "补齐有效 CustomTime 后未清除自定义稍后错误", failures);
 
         entry.HasInvalidCustomTimeInput = true;
         entry.ValidateCustomTimeOnBlur();

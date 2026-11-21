@@ -16,6 +16,11 @@
           "detail": "git diff --check exited 0 for the current measurement-only changes."
         },
         {
+          "check": "low-impact-suite",
+          "status": "processed",
+          "detail": "Merged into integration/prd-296 (commit fe7682ce) and passed full CleanR2R low-impact suite gate on integration/prd-296."
+        },
+        {
           "check": "runtime-behavior",
           "status": "processed",
           "detail": "Official isolated IdleProcessorMeasurement completed with exit 0; five tiers had at least 60 PID-bound samples spanning at least 60 seconds, stable visibility, unchanged temporary settings, verified managed-wrapper token/identity reports and recorded bounded cleanup. Raw: D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-296-20261118\\issue-301\\run-20261119T031147859Z-3e64a566"
@@ -39,13 +44,10 @@
           "reason": "This is a measurement entry, not a runtime migration, offline candidate or rollback change."
         }
       ],
-      "status": "candidate",
-      "summary": "Delivered a repeatable isolated five-tier idle processor measurement and a pre-optimization baseline; optimization tickets remain untouched.",
-      "missing": [
-        "Five-stage full gate on the final integrated commit.",
-        "Issue comment writeback by the orchestrator."
-      ],
-      "next": "Orchestrator merges the latest integration tip, runs the full gate, and writes the baseline summary to GitHub #301."
+      "status": "integrated-verified",
+      "summary": "Delivered a repeatable isolated five-tier idle processor measurement and a pre-optimization baseline; merged into integration/prd-296 and passed full CleanR2R gate.",
+      "missing": [],
+      "next": "Integrated and verified on integration/prd-296; final main release and GitHub #301 closeout occur with PRD #296 publication."
     }
   ]
 }

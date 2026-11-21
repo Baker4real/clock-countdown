@@ -2668,8 +2668,7 @@ public sealed partial class FloatingWindow : Window
     {
         var previousMessage = field.Text;
         SetNoteFieldError(field, string.Empty);
-        var source = NoteValidationControl(field);
-        if (source is not null)
+        foreach (var source in NoteValidationControls(field))
         {
             if (string.Equals(
                     AutomationProperties.GetHelpText(source),
@@ -2724,24 +2723,24 @@ public sealed partial class FloatingWindow : Window
         });
     }
 
-    private Control? NoteValidationControl(TextBlock field)
+    private IEnumerable<Control> NoteValidationControls(TextBlock field)
     {
         if (ReferenceEquals(field, FloatingNoteTextError))
         {
-            return FloatingNoteText;
+            yield return FloatingNoteText;
+            yield break;
         }
 
         if (ReferenceEquals(field, FloatingNoteDateError))
         {
-            return FloatingNoteDate;
+            yield return FloatingNoteDate;
+            yield break;
         }
 
         if (ReferenceEquals(field, FloatingReminderMessage))
         {
-            return FloatingManageReminderRules;
+            yield return FloatingManageReminderRules;
         }
-
-        return null;
     }
 
     private (string NoteId, string? Role)? FocusedFloatingNoteTag()

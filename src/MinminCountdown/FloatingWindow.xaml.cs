@@ -16,9 +16,6 @@ namespace MinminCountdown;
 public sealed partial class FloatingWindow : Window
 {
     private const double CountdownScrollBarSafeOffset = 76;
-
-    // #149：列表视口底部稳定内边距（12 DIP，§5 区块节奏），末卡不视觉顶住底部命令区。
-    private const double FloatingNotesListBottomPadding = 12;
     private static readonly string[] QuickAddThemeCheckNames =
     [
         "TextBox",
@@ -1880,11 +1877,11 @@ public sealed partial class FloatingWindow : Window
             }
             else
             {
-                // #149：列表视口底部稳定内边距，末卡不视觉顶住底部命令区（DESIGN §10）。
+                // #149/#311：列表视口底部稳定内边距消费 SpacingBlockGap（12 DIP，§5 区块节奏），末卡不视觉顶住底部命令区（DESIGN §10）。
                 // 用普通 FrameworkElement 而非 Border：基线管线以 rows 内 Border 数计卡。
                 FloatingRows.Children.Add(new FrameworkElement
                 {
-                    Height = FloatingNotesListBottomPadding,
+                    Height = SpacingTokens.Resolve(this, SpacingTokens.BlockGap),
                     IsHitTestVisible = false,
                     Focusable = false
                 });
@@ -2132,7 +2129,7 @@ public sealed partial class FloatingWindow : Window
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             Text = "没有匹配的便签。",
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, SpacingTokens.Resolve(this, SpacingTokens.Unit)),
             HorizontalAlignment = HorizontalAlignment.Center,
             TextWrapping = TextWrapping.Wrap
         };

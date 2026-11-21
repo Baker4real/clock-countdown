@@ -3894,6 +3894,7 @@ exit 23
         FilterMatchModeDisclosureAndOverlayFocusLifecycle = '筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）'
         DatePickerSingleBoxGeometryAndFocus = '六处日期框均采用单一外框且与下拉框高度、圆角与箭头列宽一致，箭头位于边界之内、无内层双边与缝隙；整框键盘焦点只画单层边界（有效暖金/错误危险色且不挤布局、系统对比度可区分、禁用态同步），箭头按钮仍为 Tab 停靠点（#312）'
         DatePickerSingleBoxInteractionAndLongestDateFit = '六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）'
+        SpacingTokensWiredAcrossWindows = 'SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -6156,11 +6157,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingWindowXamlSource -match 'x:Name="FloatingAddNoteToggle"[^>]*MinHeight="38"' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingSearchNotes"[^>]*Width="38"[^>]*MinWidth="38"[^>]*MinHeight="38"' -and
         $floatingWindowXamlSource -match 'x:Name="FloatingOpenSettings"[^>]*MinHeight="38"') '悬浮底部命令三按钮保持 38px 命中高度（#143 命中区源码契约）'
-    Assert-Equal $true (
-        $floatingWindowXamlSource -match 'x:Name="FloatingNotesButton"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingSearchNotes"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingOpenSettings"[^>]*Margin="8,0,0,0"' -and
-        $floatingWindowXamlSource -match 'x:Name="FloatingNoteSearchHintClear"[^>]*Margin="8,0,0,0"') '悬浮相邻命令按钮横向间距 8px（#143 间距源码契约）'
+    # #311：上述四枚悬浮相邻命令按钮横向 8px 间距已改绑 SpacingUnit token，默认值（8）与 token 联动由
+    # 独立窗口验证事实 SpacingTokensWiredAcrossWindows 在真实悬浮窗上运行态守住，不再用旧字面量正则。
     Assert-Equal $true (
         $floatingNotesSource -match 'CalendarIndexCheckboxSlotWidth = 36' -and
         $floatingNotesSource -match 'new GridLength\(CalendarIndexCheckboxSlotWidth\)') '悬浮便签复选框槽位 36px（#143 命中区源码契约）'

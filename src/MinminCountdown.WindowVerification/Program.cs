@@ -43,6 +43,7 @@ internal static class Program
     internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
     internal const string DatePickerSingleBoxGeometryFactName = "DatePickerSingleBoxGeometryAndFocus";
     internal const string DatePickerSingleBoxInteractionFactName = "DatePickerSingleBoxInteractionAndLongestDateFit";
+    internal const string SpacingTokensWiredFactName = "SpacingTokensWiredAcrossWindows";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -129,6 +130,9 @@ internal static class Program
     private const string DatePickerSingleBoxInteractionFactMeaning =
         "六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，" +
         "且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）";
+    private const string SpacingTokensWiredFactMeaning =
+        "SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器" +
+        "的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）";
 
     [STAThread]
     private static int Main()
@@ -170,7 +174,8 @@ internal static class Program
             [OverlaySurfaceBordersFactName] = false,
             [FilterMatchModeAndFocusFactName] = false,
             [DatePickerSingleBoxGeometryFactName] = false,
-            [DatePickerSingleBoxInteractionFactName] = false
+            [DatePickerSingleBoxInteractionFactName] = false,
+            [SpacingTokensWiredFactName] = false
         };
         var failures = new List<string>();
 
@@ -388,6 +393,10 @@ internal static class Program
                 () => DatePickerSingleBoxScenario.RunInteractionAndLongestDateFit(
                     theme,
                     DatePickerSingleBoxInteractionFactMeaning));
+            RunFact(
+                SpacingTokensWiredFactName,
+                SpacingTokensWiredFactMeaning,
+                () => SpacingTokenWiringScenario.Run(SpacingTokensWiredFactMeaning));
         }
         catch (Exception exception)
         {

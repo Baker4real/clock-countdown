@@ -160,13 +160,13 @@ public sealed partial class FloatingWindow
         layout.Children.Add(overflowMenu);
         layout.Children.Add(dateStamp);
 
-        // DESIGN §10：便签卡底按条目在暖黄与白纸之间交替，形成条带节奏。
+        // DESIGN §10：便签卡底按条目在暖黄与白纸之间交替，形成条带节奏；卡间距消费 SpacingUnit。
         var card = new Border
         {
             Child = layout,
             Width = CalendarIndexNoteCardWidth,
             MinHeight = 72,
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, SpacingTokens.Resolve(this, SpacingTokens.Unit)),
             HorizontalAlignment = HorizontalAlignment.Left,
             BorderThickness = new Thickness(1),
             ClipToBounds = true,

@@ -8,8 +8,10 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Xaml;
 using MinminCountdown.Core;
 using WpfPath = System.Windows.Shapes.Path;
 
@@ -735,8 +737,9 @@ internal sealed class TagSelector : Grid
             "选择标签");
         Children.Add(_trigger);
 
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         _search = UiAccessibility.Name(
-            new TextBox { MaxLength = 30, Margin = new Thickness(0, 0, 0, 8) },
+            new TextBox { MaxLength = 30, Margin = new Thickness(0, 0, 0, unitSpacing) },
             "搜索或新建标签");
         _search.TextChanged += (_, _) => RenderItems();
 
@@ -747,7 +750,7 @@ internal sealed class TagSelector : Grid
                 IsDefault = false,
                 Visibility = Visibility.Collapsed,
                 Style = (Style)FindResource("PrimaryButton"),
-                Margin = new Thickness(0, 8, 0, 0)
+                Margin = new Thickness(0, unitSpacing, 0, 0)
             },
             "新建当前搜索标签");
         _create.Click += (_, _) =>
@@ -775,7 +778,7 @@ internal sealed class TagSelector : Grid
         _surface = new Border
         {
             BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 8, 0, 0),
+            Margin = new Thickness(0, unitSpacing, 0, 0),
             Child = panel,
             MinWidth = 230
         };
@@ -2008,5 +2011,166 @@ internal static class DisabledStateBehavior
 
             _appliedContrastBrushes.Clear();
         }
+    }
+}
+
+// #311：间距 token（App.xaml 的 sys:Double 资源）的统一读取入口与 XAML 包装扩展。
+// XAML 与 C# 共享同一真源；缺失 token 直接失败闭锁，不静默回退到硬编码副本。
+internal static class SpacingTokens
+{
+    public const string Unit = "SpacingUnit";
+    public const string FieldRow = "SpacingFieldRow";
+    public const string BlockGap = "SpacingBlockGap";
+    public const string CardPadding = "SpacingCardPadding";
+
+    public static double Resolve(FrameworkElement element, string resourceKey) =>
+        element.TryFindResource(resourceKey) is double elementValue
+            ? elementValue
+            : ResolveApplication(resourceKey);
+
+    public static double Resolve(object? targetObject, object? rootObject, string resourceKey)
+    {
+        if (targetObject is FrameworkElement element && element.TryFindResource(resourceKey) is double elementValue)
+        {
+            return elementValue;
+        }
+
+        if (targetObject is FrameworkContentElement contentElement &&
+            contentElement.TryFindResource(resourceKey) is double contentValue)
+        {
+            return contentValue;
+        }
+
+        if (rootObject is FrameworkElement rootElement &&
+            rootElement.TryFindResource(resourceKey) is double rootElementValue)
+        {
+            return rootElementValue;
+        }
+
+        if (rootObject is Application rootApp &&
+            rootApp.TryFindResource(resourceKey) is double rootAppValue)
+        {
+            return rootAppValue;
+        }
+
+        return ResolveApplication(resourceKey);
+    }
+
+    internal static double ResolveEdge(object? value, object? targetObject, object? rootObject)
+    {
+        if (value is null)
+        {
+            return 0;
+        }
+
+        if (value is double numeric)
+        {
+            return numeric;
+        }
+
+        if (value is string text)
+        {
+            var trimmed = text.Trim();
+            if (trimmed.Length == 0)
+            {
+                return 0;
+            }
+
+            if (double.TryParse(
+                    trimmed,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed))
+            {
+                return parsed;
+            }
+
+            return Resolve(targetObject, rootObject, trimmed);
+        }
+
+        throw new InvalidOperationException($"Unsupported spacing edge value '{value}'.");
+    }
+
+    private static double ResolveApplication(string resourceKey)
+    {
+        if (Application.Current?.TryFindResource(resourceKey) is double appValue)
+        {
+            return appValue;
+        }
+
+        throw new InvalidOperationException($"Spacing token '{resourceKey}' is not defined in application resources.");
+    }
+}
+
+[MarkupExtensionReturnType(typeof(Thickness))]
+public sealed class SpacingThicknessExtension : MarkupExtension
+{
+    public SpacingThicknessExtension() { }
+
+    public SpacingThicknessExtension(object all)
+    {
+        All = all;
+    }
+
+    public object? All { get; set; }
+    public object? Left { get; set; }
+    public object? Top { get; set; }
+    public object? Right { get; set; }
+    public object? Bottom { get; set; }
+
+    public override object ProvideValue(IServiceProvider serviceProvider)
+    {
+        var target = serviceProvider.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+        if (target?.TargetObject?.GetType().FullName == "System.Windows.SharedDp")
+        {
+            return this;
+        }
+
+        var root = (serviceProvider.GetService(typeof(IRootObjectProvider)) as IRootObjectProvider)?.RootObject;
+        if (All is not null)
+        {
+            var uniform = SpacingTokens.ResolveEdge(All, target?.TargetObject, root);
+            return new Thickness(
+                Left is not null ? SpacingTokens.ResolveEdge(Left, target?.TargetObject, root) : uniform,
+                Top is not null ? SpacingTokens.ResolveEdge(Top, target?.TargetObject, root) : uniform,
+                Right is not null ? SpacingTokens.ResolveEdge(Right, target?.TargetObject, root) : uniform,
+                Bottom is not null ? SpacingTokens.ResolveEdge(Bottom, target?.TargetObject, root) : uniform);
+        }
+
+        return new Thickness(
+            SpacingTokens.ResolveEdge(Left, target?.TargetObject, root),
+            SpacingTokens.ResolveEdge(Top, target?.TargetObject, root),
+            SpacingTokens.ResolveEdge(Right, target?.TargetObject, root),
+            SpacingTokens.ResolveEdge(Bottom, target?.TargetObject, root));
+    }
+}
+
+[MarkupExtensionReturnType(typeof(GridLength))]
+public sealed class SpacingGridLengthExtension : MarkupExtension
+{
+    public SpacingGridLengthExtension() { }
+
+    public SpacingGridLengthExtension(string key)
+    {
+        Key = key;
+    }
+
+    public string? Key { get; set; }
+
+    public override object ProvideValue(IServiceProvider serviceProvider)
+    {
+        if (string.IsNullOrWhiteSpace(Key))
+        {
+            throw new InvalidOperationException("SpacingGridLength requires a spacing token key.");
+        }
+
+        var target = serviceProvider.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+        if (target?.TargetObject?.GetType().FullName == "System.Windows.SharedDp")
+        {
+            return this;
+        }
+
+        var root = (serviceProvider.GetService(typeof(IRootObjectProvider)) as IRootObjectProvider)?.RootObject;
+        return new GridLength(SpacingTokens.Resolve(target?.TargetObject, root, Key.Trim()));
     }
 }

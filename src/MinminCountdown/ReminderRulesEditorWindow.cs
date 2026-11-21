@@ -59,8 +59,7 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly Button _cancelRuleEditButton = new()
     {
         Content = "取消编辑",
-        MinWidth = 92,
-        Margin = new Thickness(8, 0, 0, 0)
+        MinWidth = 92
     };
     private TextBlock _firstDueLabel = null!;
     private Border _dragHeader = null!;
@@ -397,7 +396,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         AutomationProperties.SetAutomationId(_dragHeader, "ReminderRulesEditorDragHeader");
         _dragHeader.MouseLeftButtonDown += OnHeaderMouseLeftButtonDown;
 
-        var blockGap = ReadSpacing("SpacingBlockGap", 12);
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
+        var blockGap = SpacingTokens.Resolve(this, SpacingTokens.BlockGap);
         var scroller = new ScrollViewer
         {
             Content = _rulesHost,
@@ -442,6 +442,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         // #322：窗口级「完成」为唯一实心主行动，表单提交改为次级按钮样式。
         _saveRuleButton.SetResourceReference(StyleProperty, "SecondaryButton");
         _cancelRuleEditButton.SetResourceReference(StyleProperty, "SecondaryButton");
+        _cancelRuleEditButton.Margin = new Thickness(unitSpacing, 0, 0, 0);
         var ruleActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -470,7 +471,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             Content = "取消",
             MinWidth = 88,
             IsCancel = true,
-            Margin = new Thickness(8, 0, 0, 0)
+            Margin = new Thickness(unitSpacing, 0, 0, 0)
         };
         NameControl(cancel, "取消提醒规则草稿");
         cancel.SetResourceReference(StyleProperty, "SecondaryButton");
@@ -515,8 +516,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
-        // #312：单框日期控件与相邻小时下拉框之间保留 SpacingUnit(8 DIP) 间距，避免外框相撞。
-        _firstDueDate.Margin = new Thickness(0, 0, 8, 0);
+        // #312/#311：单框日期控件与相邻小时下拉框之间保留 SpacingUnit(8 DIP) 间距，避免外框相撞。
+        _firstDueDate.Margin = new Thickness(0, 0, SpacingTokens.Resolve(this, SpacingTokens.Unit), 0);
         Grid.SetColumn(_firstDueHour, 1);
         var separator = new TextBlock
         {
@@ -541,7 +542,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
         Grid.SetColumn(_customInterval, 1);
-        _customInterval.Margin = new Thickness(8, 0, 0, 0);
+        _customInterval.Margin = new Thickness(SpacingTokens.Resolve(this, SpacingTokens.Unit), 0, 0, 0);
         row.Children.Add(_interval);
         row.Children.Add(_customInterval);
         return row;
@@ -552,7 +553,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         _calendarDateSelector.Orientation = Orientation.Horizontal;
         _calendarMonth.Width = 90;
         _calendarDay.Width = 90;
-        _calendarDay.Margin = new Thickness(8, 0, 0, 0);
+        _calendarDay.Margin = new Thickness(SpacingTokens.Resolve(this, SpacingTokens.Unit), 0, 0, 0);
         _calendarLastDay.Margin = new Thickness(12, 0, 0, 0);
         AutomationProperties.SetAutomationId(_calendarDateSelector, "ReminderRuleCalendarDateSelector");
         _calendarDateSelector.Children.Add(_calendarMonth);
@@ -580,10 +581,11 @@ internal sealed class ReminderRulesEditorWindow : Window
         {
             Bind(row, UIElement.VisibilityProperty, visibilityProperty, _viewModel, converter: _visibilityConverter);
         }
+        var fieldRowGap = SpacingTokens.Resolve(this, SpacingTokens.FieldRow);
         var labelBlock = new TextBlock
         {
             Text = label,
-            Margin = new Thickness(0, rowIndex == 0 ? 0 : 10, 10, 0),
+            Margin = new Thickness(0, rowIndex == 0 ? 0 : fieldRowGap, 10, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
@@ -591,7 +593,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         AutomationProperties.SetLabeledBy(input, labelBlock);
         input.SetValue(Grid.RowProperty, 0);
         input.SetValue(Grid.ColumnProperty, 1);
-        input.SetValue(FrameworkElement.MarginProperty, new Thickness(0, rowIndex == 0 ? 0 : 10, 0, 0));
+        input.SetValue(FrameworkElement.MarginProperty, new Thickness(0, rowIndex == 0 ? 0 : fieldRowGap, 0, 0));
         Grid.SetRow(error, 1);
         Grid.SetColumn(error, 1);
         row.Children.Add(labelBlock);
@@ -603,17 +605,18 @@ internal sealed class ReminderRulesEditorWindow : Window
         return labelBlock;
     }
 
-    private static TextBlock AddPreviewRow(Grid form, int rowIndex, string label, UIElement previewSurface)
+    private TextBlock AddPreviewRow(Grid form, int rowIndex, string label, UIElement previewSurface)
     {
         form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(128) });
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var fieldRowGap = SpacingTokens.Resolve(this, SpacingTokens.FieldRow);
         var labelBlock = new TextBlock
         {
             Text = label,
-            Margin = new Thickness(0, 10, 10, 0),
+            Margin = new Thickness(0, fieldRowGap, 10, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         labelBlock.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowBodyFontSize");
@@ -621,7 +624,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         AutomationProperties.SetLabeledBy(previewSurface, labelBlock);
         previewSurface.SetValue(Grid.RowProperty, 0);
         previewSurface.SetValue(Grid.ColumnProperty, 1);
-        previewSurface.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 10, 0, 0));
+        previewSurface.SetValue(FrameworkElement.MarginProperty, new Thickness(0, fieldRowGap, 0, 0));
         row.Children.Add(labelBlock);
         row.Children.Add(previewSurface);
         Grid.SetRow(row, rowIndex);
@@ -745,7 +748,7 @@ internal sealed class ReminderRulesEditorWindow : Window
             return;
         }
 
-        var itemSpacing = ReadSpacing("SpacingUnit", 8);
+        var itemSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         var itemCount = _viewModel.RuleItems.Count;
         for (var index = 0; index < itemCount; index++)
         {
@@ -846,9 +849,6 @@ internal sealed class ReminderRulesEditorWindow : Window
         text.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
         return text;
     }
-
-    private double ReadSpacing(string resourceKey, double fallback) =>
-        TryFindResource(resourceKey) is double value ? value : fallback;
 
     private void UpdateRulePreviewForeground() =>
         _rulePreview.SetResourceReference(

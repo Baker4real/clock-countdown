@@ -41,6 +41,8 @@ internal static class Program
     internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
     internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
     internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
+    internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
+    internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -121,6 +123,11 @@ internal static class Program
     private const string FilterMatchModeAndFocusFactMeaning =
         "筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；" +
         "「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）";
+    private const string MainNoteSearchCoalesceFactMeaning =
+        "管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；" +
+        "搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）";
+    private const string MainHiddenDeferRefreshFactMeaning =
+        "管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）";
 
     [STAThread]
     private static int Main()
@@ -160,7 +167,9 @@ internal static class Program
             [RuleEditorFixedIntervalNumericFactName] = false,
             [RuleEditorFixedIntervalVisualFactName] = false,
             [OverlaySurfaceBordersFactName] = false,
-            [FilterMatchModeAndFocusFactName] = false
+            [FilterMatchModeAndFocusFactName] = false,
+            [MainNoteSearchCoalesceFactName] = false,
+            [MainHiddenDeferRefreshFactName] = false
         };
         var failures = new List<string>();
 
@@ -366,6 +375,16 @@ internal static class Program
                 () => OverlayBorderAndFilterMatchModeScenario.RunFilterMatchModeAndFocusLifecycle(
                     theme,
                     FilterMatchModeAndFocusFactMeaning));
+            RunFact(
+                MainNoteSearchCoalesceFactName,
+                MainNoteSearchCoalesceFactMeaning,
+                () => MainWindowRefreshScenario.RunNoteSearchAndTagControls(
+                    MainNoteSearchCoalesceFactMeaning));
+            RunFact(
+                MainHiddenDeferRefreshFactName,
+                MainHiddenDeferRefreshFactMeaning,
+                () => MainWindowRefreshScenario.RunHiddenDeferAndFirstFrameRefresh(
+                    MainHiddenDeferRefreshFactMeaning));
         }
         catch (Exception exception)
         {

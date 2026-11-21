@@ -3892,6 +3892,8 @@ exit 23
         ReminderRulesEditorFixedIntervalVisualAndIsolationContract = '规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）'
         OverlaySurfaceBordersMeetContrastWithoutShadow = '筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）'
         FilterMatchModeDisclosureAndOverlayFocusLifecycle = '筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）'
+        MainNoteSearchCoalescesAndPreservesTagControls = '管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）'
+        MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame = '管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

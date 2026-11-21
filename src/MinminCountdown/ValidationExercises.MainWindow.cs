@@ -1152,9 +1152,13 @@ internal static partial class ValidationExercises
                 }
             }
             VerifyRows(5);
-            ((TextBox)main.FindName("NoteSearch")).Text = "交替便签 4";
+            var searchToFilter = (TextBox)main.FindName("NoteSearch");
+            searchToFilter.Text = "交替便签 4";
+            WindowValidationInput.RaisePreviewKey(searchToFilter, Key.Enter);
             VerifyRows(1);
-            ((TextBox)main.FindName("NoteSearch")).Clear();
+            var searchToClear = (TextBox)main.FindName("NoteSearch");
+            searchToClear.Clear();
+            WindowValidationInput.RaisePreviewKey(searchToClear, Key.Enter);
             VerifyRows(5);
             var removed = workspace.Snapshot.Settings.Notes.First();
             MustApply(workspace, new DeleteNoteChange(removed.Id));
@@ -2003,8 +2007,10 @@ internal static partial class ValidationExercises
 
             var unselected = VerifyPass("未完成", parts.ActiveRows, expectedCards: 5, expectScrollBar: true);
             parts.Search.Text = fixture.SearchTerm;
+            WindowValidationInput.RaisePreviewKey(parts.Search, Key.Enter);
             VerifyPass("搜索", parts.ActiveRows, expectedCards: 2, expectScrollBar: null);
             parts.Search.Clear();
+            WindowValidationInput.RaisePreviewKey(parts.Search, Key.Enter);
             WindowValidationInput.Pump(main.Dispatcher);
 
             var chosen = VisualDescendants<NoteSelectionCard>(parts.ActiveRows).Where(card => card.IsVisible).Take(2).ToArray();

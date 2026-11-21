@@ -776,7 +776,9 @@ internal static partial class ValidationReport
                 VisiblePoliteTextEquals(status, "筛选结果：0 个倒计时");
 
             window.ShowWorkspace(WorkspaceKind.Notes);
-            Required<TextBox>(window, "NoteSearch").Text = "__validation_no_matching_note__";
+            var noteSearch = Required<TextBox>(window, "NoteSearch");
+            noteSearch.Text = "__validation_no_matching_note__";
+            WindowValidationInput.RaisePreviewKey(noteSearch, Key.Enter);
             PumpDispatcher();
             var notesFilterEmptyAnnounced = noteSaved && VisiblePoliteTextEquals(
                 emptyNotes,

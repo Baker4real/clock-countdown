@@ -951,8 +951,7 @@ internal static partial class ValidationExercises
                 "无效自定义稍后没有在来源控件显示错误或改变了状态。");
             Must(
                 FindReminderEntryControl<DatePicker>(center, key, "自定义稍后日期：").IsVisible &&
-                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后小时：").IsVisible &&
-                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后分钟：").IsVisible,
+                FindReminderEntryControl<TextBox>(center, key, "自定义稍后时间：").IsVisible,
                 "无效自定义稍后的来源控件未真实展开。");
             Must(center.RequestSnooze(key, ReminderSnoozeOption.TenMinutes),
                 "更正后无法点击 10 分钟稍后控件。");

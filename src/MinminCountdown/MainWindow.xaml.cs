@@ -1354,7 +1354,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.MarkLive(NoteDateError);
         UiAccessibility.MarkLive(MonthlySalaryError);
         UiAccessibility.MarkLive(WorkStartError);
+        AutomationProperties.SetAutomationId(WorkStartError, "WorkStartError");
         UiAccessibility.MarkLive(WorkEndError);
+        AutomationProperties.SetAutomationId(WorkEndError, "WorkEndError");
         UiAccessibility.MarkLive(NoteMessage);
         UiAccessibility.MarkLive(TagManagerMessage);
     }
@@ -1483,16 +1485,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             MarkSettingsDraftDirty();
             ClearPreferenceFieldError(MonthlySalaryError);
         };
-        WorkStart.TextChanged += (_, _) =>
-        {
-            MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(WorkStartError);
-        };
-        WorkEnd.TextChanged += (_, _) =>
-        {
-            MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(WorkEndError);
-        };
+        WorkStart.TextChanged += (_, _) => OnWorkStartTextChanged();
+        WorkStart.LostKeyboardFocus += (_, _) => ValidateWorkStartOnBlur();
+        WorkEnd.TextChanged += (_, _) => OnWorkEndTextChanged();
+        WorkEnd.LostKeyboardFocus += (_, _) => ValidateWorkEndOnBlur();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
         AddEmptyNoteButton.Click += (_, _) => FocusNoteTextFromEmptyState();
@@ -3082,9 +3078,98 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ResetNoteEditor();
     }
 
+    private const string WorkStartFormatErrorMessage = "上班时间请使用 HH:mm。";
+    private const string WorkEndFormatErrorMessage = "下班时间请使用 HH:mm。";
+    private const string WorkTimeOrderErrorMessage = "下班时间必须晚于上班时间。";
+
+    private void OnWorkStartTextChanged()
+    {
+        MarkSettingsDraftDirty();
+        if (TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var start))
+        {
+            ClearPreferenceFieldError(WorkStartError);
+            if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var end) &&
+                end > start &&
+                string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void OnWorkEndTextChanged()
+    {
+        MarkSettingsDraftDirty();
+        if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var end))
+        {
+            if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var start) ||
+                end > start ||
+                !string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void ValidateWorkStartOnBlur()
+    {
+        if (_loadingPreferences ||
+            !PreferencesPopup.IsOpen ||
+            PopupMotionBehavior.IsClosing(PreferencesPopup) ||
+            !WorkStart.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart))
+        {
+            ShowPreferenceFieldError(WorkStartError, WorkStartFormatErrorMessage, WorkStart);
+            return;
+        }
+
+        ClearPreferenceFieldError(WorkStartError);
+        if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
+        {
+            if (workEnd <= workStart)
+            {
+                ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            }
+            else if (string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void ValidateWorkEndOnBlur()
+    {
+        if (_loadingPreferences ||
+            !PreferencesPopup.IsOpen ||
+            PopupMotionBehavior.IsClosing(PreferencesPopup) ||
+            !WorkEnd.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkEndFormatErrorMessage, WorkEnd);
+            return;
+        }
+
+        if (TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart) &&
+            workEnd <= workStart)
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            return;
+        }
+
+        ClearPreferenceFieldError(WorkEndError);
+    }
+
     private void SavePreferences()
     {
-        // #151：偏好格式错误出现在对应字段下方并同时镜像到底栏；不再只出现在窗口底栏。
+        // #151/#329：偏好格式与上下班顺序错误出现在对应字段下方、挂接错误边框并同时镜像到底栏。
         ClearPreferenceFieldErrors();
         if (!decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var salary) &&
             !decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out salary))
@@ -3103,18 +3188,26 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        if (!TimeSpan.TryParseExact(WorkStart.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workStart))
+        if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart))
         {
-            ShowPreferenceFieldError(WorkStartError, "上班时间请使用 HH:mm。", WorkStart);
-            SetMessage(StatusText, "上班时间请使用 HH:mm。", true);
+            ShowPreferenceFieldError(WorkStartError, WorkStartFormatErrorMessage, WorkStart);
+            SetMessage(StatusText, WorkStartFormatErrorMessage, true);
             WorkStart.Focus();
             return;
         }
 
-        if (!TimeSpan.TryParseExact(WorkEnd.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workEnd))
+        if (!TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
         {
-            ShowPreferenceFieldError(WorkEndError, "下班时间请使用 HH:mm。", WorkEnd);
-            SetMessage(StatusText, "下班时间请使用 HH:mm。", true);
+            ShowPreferenceFieldError(WorkEndError, WorkEndFormatErrorMessage, WorkEnd);
+            SetMessage(StatusText, WorkEndFormatErrorMessage, true);
+            WorkEnd.Focus();
+            return;
+        }
+
+        if (workEnd <= workStart)
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            SetMessage(StatusText, WorkTimeOrderErrorMessage, true);
             WorkEnd.Focus();
             return;
         }
@@ -3469,8 +3562,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             DisplayPrecision.SelectedIndex = PrecisionIndex(preferences.DisplayPrecision);
             MonthlySalary.Text = FormatMonthlySalary(preferences.MonthlySalary);
-            WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
-            WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
+            TimeInputBehavior.SetValue(WorkStart, preferences.WorkStart);
+            TimeInputBehavior.SetValue(WorkEnd, preferences.WorkEnd);
         }
         finally
         {
@@ -4501,10 +4594,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
-    private void ShowPreferenceFieldError(TextBlock field, string message, Control source)
+    private static void ShowPreferenceFieldError(TextBlock field, string message, Control source)
     {
         SetFieldError(field, message);
         AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void ClearCountdownFieldErrors()
@@ -4579,7 +4673,23 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
-    private void ClearPreferenceFieldError(TextBlock field) => SetFieldError(field, string.Empty);
+    private void ClearPreferenceFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetFieldError(field, string.Empty);
+        foreach (var control in PreferenceValidationControls(field))
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(control),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(control, string.Empty);
+            }
+
+            InputErrorState.SetHasError(control, false);
+        }
+    }
 
     private static void SetFieldError(TextBlock field, string message)
     {
@@ -4613,6 +4723,23 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         yield return NoteText;
         yield return NoteDate;
+    }
+
+    private IEnumerable<Control> PreferenceValidationControls(TextBlock field)
+    {
+        if (ReferenceEquals(field, MonthlySalaryError))
+        {
+            yield return MonthlySalary;
+            yield break;
+        }
+
+        if (ReferenceEquals(field, WorkStartError))
+        {
+            yield return WorkStart;
+            yield break;
+        }
+
+        yield return WorkEnd;
     }
 
     private void LoadCharacterAssets(string assetRoot)

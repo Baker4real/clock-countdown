@@ -224,10 +224,10 @@ internal static partial class ValidationReport
         IReadOnlyList<DatePickerProductionMeasurement> Attached,
         DatePickerProductionMeasurement ReminderCenter,
         DatePickerProductionMeasurement UnattachedNegative,
-        int ReminderHourOptionCount,
-        int ReminderMinuteOptionCount,
+        bool ReminderRuleTimeThemed,
         int ReminderCenterComboBoxCount,
-        int ReminderCenterComboBoxThemedCount)
+        int ReminderCenterComboBoxThemedCount,
+        bool ReminderCenterCustomTimeThemed)
     {
         public int ProductionInputCount => Attached.Count + 1;
 
@@ -246,8 +246,9 @@ internal static partial class ValidationReport
             !string.IsNullOrWhiteSpace(ReminderCenter.AutomationName);
 
         public bool ReminderCenterComboBoxesUseThemedDropDowns =>
-            ReminderCenterComboBoxCount == 2 &&
-            ReminderCenterComboBoxThemedCount == ReminderCenterComboBoxCount;
+            ReminderCenterComboBoxCount == 0 &&
+            ReminderCenterComboBoxThemedCount == ReminderCenterComboBoxCount &&
+            ReminderCenterCustomTimeThemed;
 
         public bool AllAttached =>
             Attached.Count == 5 && Attached.All(input => input.Attached);

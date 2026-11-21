@@ -868,8 +868,8 @@ internal sealed class ReminderCenterWindow : Window
             {
                 var beijing = ChinaStandardTime.ToBeijingTime(custom);
                 entry.ViewModel.CustomDate = beijing.Date;
-                entry.ViewModel.CustomHourIndex = beijing.Hour;
-                entry.ViewModel.CustomMinuteIndex = beijing.Minute;
+                entry.ViewModel.CustomTime = new TimeSpan(beijing.Hour, beijing.Minute, 0);
+                entry.ViewModel.HasInvalidCustomTimeInput = false;
             }
 
             entry.ViewModel.ConfirmCustomSnoozeCommand.Execute(null);
@@ -1295,6 +1295,7 @@ internal sealed class ReminderCenterWindow : Window
 
         var item = entry.Item;
         var viewModel = entry.ViewModel;
+        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         var customDate = UiAccessibility.Name(
             new WpfUiDatePicker
             {
@@ -1308,35 +1309,87 @@ internal sealed class ReminderCenterWindow : Window
             nameof(ReminderCenterEntryViewModel.CustomDate),
             viewModel,
             mode: BindingMode.TwoWay);
-        var customHour = UiAccessibility.Name(
-            new ComboBox
-            {
-                Width = 68,
-                Margin = new Thickness(0, 0, 6, 0),
-                ItemsSource = Enumerable.Range(0, 24).Select(static value => value.ToString("00")).ToArray()
-            },
-            $"自定义稍后小时：{item.Source.DisplayText}");
         BindEntry(
-            customHour,
-            Selector.SelectedIndexProperty,
-            nameof(ReminderCenterEntryViewModel.CustomHourIndex),
+            customDate,
+            InputErrorState.HasErrorProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomDateErrorVisible),
+            viewModel);
+        BindEntry(
+            customDate,
+            AutomationProperties.HelpTextProperty,
+            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            viewModel);
+        var customTimeLabel = new TextBlock
+        {
+            Text = "时间",
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, unitSpacing, 0)
+        };
+        customTimeLabel.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
+        customTimeLabel.SetResourceReference(TextBlock.ForegroundProperty, "BodyBrush");
+        var customTime = UiAccessibility.Name(
+            new TextBox(),
+            $"自定义稍后时间：{item.Source.DisplayText}");
+        AutomationProperties.SetAutomationId(customTime, "ReminderEntryCustomSnoozeTime");
+        AutomationProperties.SetLabeledBy(customTime, customTimeLabel);
+        TimeInputBehavior.SetFormat(customTime, TimeInputFormat.HourMinute);
+        TimeInputBehavior.SetIsEnabled(customTime, true);
+        BindEntry(
+            customTime,
+            TimeInputBehavior.ValueProperty,
+            nameof(ReminderCenterEntryViewModel.CustomTime),
             viewModel,
             mode: BindingMode.TwoWay);
-        var unitSpacing = SpacingTokens.Resolve(this, SpacingTokens.Unit);
-        var customMinute = UiAccessibility.Name(
-            new ComboBox
-            {
-                Width = 68,
-                Margin = new Thickness(0, 0, unitSpacing, 0),
-                ItemsSource = Enumerable.Range(0, 60).Select(static value => value.ToString("00")).ToArray()
-            },
-            $"自定义稍后分钟：{item.Source.DisplayText}");
         BindEntry(
-            customMinute,
-            Selector.SelectedIndexProperty,
-            nameof(ReminderCenterEntryViewModel.CustomMinuteIndex),
+            customTime,
+            TimeInputBehavior.HasInvalidTextProperty,
+            nameof(ReminderCenterEntryViewModel.HasInvalidCustomTimeInput),
             viewModel,
             mode: BindingMode.TwoWay);
+        BindEntry(
+            customTime,
+            InputErrorState.HasErrorProperty,
+            nameof(ReminderCenterEntryViewModel.IsCustomTimeErrorVisible),
+            viewModel);
+        BindEntry(
+            customTime,
+            AutomationProperties.HelpTextProperty,
+            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            viewModel);
+        customTime.LostKeyboardFocus += (_, _) => viewModel.ValidateCustomTimeOnBlur();
+        customTime.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Enter &&
+                Keyboard.Modifiers == ModifierKeys.None &&
+                viewModel.ConfirmCustomSnoozeCommand.CanExecute(null))
+            {
+                viewModel.ConfirmCustomSnoozeCommand.Execute(null);
+                args.Handled = true;
+            }
+        };
+        var customTimePlaceholder = new SilentTextBlock
+        {
+            Text = "HH:mm",
+            Margin = new Thickness(12, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Visibility = string.IsNullOrEmpty(customTime.Text) ? Visibility.Visible : Visibility.Collapsed
+        };
+        customTimePlaceholder.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        Typography.SetNumeralAlignment(customTimePlaceholder, FontNumeralAlignment.Tabular);
+        customTime.TextChanged += (_, _) =>
+            customTimePlaceholder.Visibility = string.IsNullOrEmpty(customTime.Text)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        var customTimeSlot = new Grid
+        {
+            Width = 108,
+            Margin = new Thickness(0, 0, unitSpacing, 0)
+        };
+        customTimeSlot.Children.Add(customTime);
+        customTimeSlot.Children.Add(customTimePlaceholder);
         var customConfirm = UiAccessibility.Name(
             new Button
             {
@@ -1361,8 +1414,8 @@ internal sealed class ReminderCenterWindow : Window
             Margin = new Thickness(0, unitSpacing, 0, 0)
         };
         AutomationProperties.SetAutomationId(customTimeRow, "ReminderEntryCustomSnoozeTimeRow");
-        customTimeRow.Children.Add(customHour);
-        customTimeRow.Children.Add(customMinute);
+        customTimeRow.Children.Add(customTimeLabel);
+        customTimeRow.Children.Add(customTimeSlot);
         customTimeRow.Children.Add(customConfirm);
         var customError = new TextBlock
         {
@@ -1392,7 +1445,7 @@ internal sealed class ReminderCenterWindow : Window
         customPanel.Children.Add(customDate);
         customPanel.Children.Add(customTimeRow);
         customPanel.Children.Add(customError);
-        entry.AttachCustomControls(customPanel, customDate, customHour, customMinute, customConfirm, customError);
+        entry.AttachCustomControls(customPanel, customDate, customTime, customConfirm, customError);
         entry.CustomSnoozeSlot.Child = customPanel;
     }
 
@@ -1634,9 +1687,7 @@ internal sealed class ReminderCenterWindow : Window
 
         public DatePicker? CustomDate { get; private set; }
 
-        public ComboBox? CustomHour { get; private set; }
-
-        public ComboBox? CustomMinute { get; private set; }
+        public TextBox? CustomTime { get; private set; }
 
         public Button? CustomConfirm { get; private set; }
 
@@ -1659,15 +1710,13 @@ internal sealed class ReminderCenterWindow : Window
         public void AttachCustomControls(
             StackPanel customPanel,
             DatePicker customDate,
-            ComboBox customHour,
-            ComboBox customMinute,
+            TextBox customTime,
             Button customConfirm,
             TextBlock customError)
         {
             CustomPanel = customPanel;
             CustomDate = customDate;
-            CustomHour = customHour;
-            CustomMinute = customMinute;
+            CustomTime = customTime;
             CustomConfirm = customConfirm;
             CustomError = customError;
         }

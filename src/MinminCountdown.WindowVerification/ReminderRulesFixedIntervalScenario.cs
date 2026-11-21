@@ -383,8 +383,8 @@ internal static class ReminderRulesFixedIntervalScenario
             {
                 FindByAutomationId<ComboBox>(editor, "ReminderRuleMode").SelectedIndex = 1;
                 FindByAutomationId<DatePicker>(editor, "ReminderRuleFirstDueDate").SelectedDate = due.Date;
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour").SelectedIndex = due.Hour;
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute").SelectedIndex = due.Minute;
+                FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime").Text =
+                    due.ToString("HH:mm", CultureInfo.InvariantCulture);
                 FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval").SelectedIndex = 3;
                 var customInterval = FindByAutomationId<TextBox>(editor, "ReminderRuleCustomInterval");
                 customInterval.Text = "30";
@@ -411,8 +411,8 @@ internal static class ReminderRulesFixedIntervalScenario
             {
                 FindByAutomationId<ComboBox>(editor, "ReminderRuleMode").SelectedIndex = 1;
                 FindByAutomationId<DatePicker>(editor, "ReminderRuleFirstDueDate").SelectedDate = due.Date;
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour").SelectedIndex = due.Hour;
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute").SelectedIndex = due.Minute;
+                FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime").Text =
+                    due.ToString("HH:mm", CultureInfo.InvariantCulture);
                 FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval").SelectedIndex = 3;
                 var customInterval = FindByAutomationId<TextBox>(editor, "ReminderRuleCustomInterval");
                 customInterval.Text = "1441";

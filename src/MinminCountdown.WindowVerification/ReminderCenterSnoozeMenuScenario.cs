@@ -115,6 +115,12 @@ internal static class ReminderCenterSnoozeMenuScenario
                 "条目初始状态不得存在独立时长下拉或预创建的自定义时间下拉控件。");
             Require(!VisualDescendants<DatePicker>(center).Any(),
                 "条目初始状态不得预先创建自定义日期选择器控件。");
+            Require(!VisualDescendants<TextBox>(center).Any(box =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(box),
+                        "ReminderEntryCustomSnoozeTime",
+                        StringComparison.Ordinal)),
+                "条目初始状态不得预先创建自定义稍后时间输入框。");
             Require(!VisualDescendants<Button>(center).Any(button =>
                     string.Equals(
                         AutomationProperties.GetAutomationId(button),
@@ -143,32 +149,36 @@ internal static class ReminderCenterSnoozeMenuScenario
 
             var customDate = VisualDescendants<DatePicker>(noteRow)
                 .SingleOrDefault(picker => AutomationProperties.GetName(picker).StartsWith("自定义稍后日期：", StringComparison.Ordinal));
-            var customHour = VisualDescendants<ComboBox>(noteRow)
-                .SingleOrDefault(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后小时：", StringComparison.Ordinal));
-            var customMinute = VisualDescendants<ComboBox>(noteRow)
-                .SingleOrDefault(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后分钟：", StringComparison.Ordinal));
+            var customTime = VisualDescendants<TextBox>(noteRow)
+                .SingleOrDefault(box => string.Equals(
+                    AutomationProperties.GetAutomationId(box),
+                    "ReminderEntryCustomSnoozeTime",
+                    StringComparison.Ordinal));
             var customConfirm = VisualDescendants<Button>(noteRow)
                 .SingleOrDefault(button => string.Equals(
                     AutomationProperties.GetAutomationId(button),
                     "ReminderEntryCustomSnoozeConfirm",
                     StringComparison.Ordinal));
+            Require(!VisualDescendants<ComboBox>(noteRow).Any(),
+                "选择「自定义」后不应再创建旧小时/分钟下拉框。");
             Require(customDate is { IsVisible: true } &&
-                    customHour is { IsVisible: true } &&
-                    customMinute is { IsVisible: true } &&
+                    customTime is { IsVisible: true } &&
                     customConfirm is { IsVisible: true },
-                "首次选择「自定义」后必须懒创建并展开日期、小时、分钟与确认按钮。");
+                "首次选择「自定义」后必须懒创建并展开日期、可键入时间框与确认按钮。");
             Require(!VisualDescendants<DatePicker>(countdownRow).Any() &&
-                    !VisualDescendants<ComboBox>(countdownRow).Any(),
+                    !VisualDescendants<ComboBox>(countdownRow).Any() &&
+                    !VisualDescendants<TextBox>(countdownRow).Any(),
                 "仅选中「自定义」的条目应创建自定义输入，其他条目仍不得预创建。");
 
             // 再次选择「自定义」复用同一批控件实例，不重复创建。
             SelectMenuItemByHeader(center, snoozeButton, snoozeMenu, "自定义");
             Settle(center);
             Require(ReferenceEquals(customDate, VisualDescendants<DatePicker>(noteRow).Single()) &&
-                    ReferenceEquals(customHour, VisualDescendants<ComboBox>(noteRow)
-                        .Single(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后小时：", StringComparison.Ordinal))) &&
-                    ReferenceEquals(customMinute, VisualDescendants<ComboBox>(noteRow)
-                        .Single(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后分钟：", StringComparison.Ordinal))) &&
+                    ReferenceEquals(customTime, VisualDescendants<TextBox>(noteRow)
+                        .Single(box => string.Equals(
+                            AutomationProperties.GetAutomationId(box),
+                            "ReminderEntryCustomSnoozeTime",
+                            StringComparison.Ordinal))) &&
                     ReferenceEquals(customConfirm, VisualDescendants<Button>(noteRow)
                         .Single(button => string.Equals(
                             AutomationProperties.GetAutomationId(button),
@@ -177,10 +187,10 @@ internal static class ReminderCenterSnoozeMenuScenario
                 "再次选择「自定义」应复用已创建的控件，不得重复创建。");
 
             // 自定义区域在 460 与 400 宽下均不裁切、不重叠；未填时间直接确认时错误紧邻输入下方。
-            VerifyCustomControlsGeometry(noteRow, customDate!, customHour!, customMinute!, customConfirm!, "460");
+            VerifyCustomControlsGeometry(noteRow, customDate!, customTime!, customConfirm!, "460");
             center.Width = 400;
             Settle(center);
-            VerifyCustomControlsGeometry(noteRow, customDate!, customHour!, customMinute!, customConfirm!, "400");
+            VerifyCustomControlsGeometry(noteRow, customDate!, customTime!, customConfirm!, "400");
 
             center.Width = 460;
             Settle(center);
@@ -194,7 +204,7 @@ internal static class ReminderCenterSnoozeMenuScenario
             Require(missingError is { IsVisible: true } &&
                     missingError.Text.Contains("请选择完整", StringComparison.Ordinal),
                 "自定义时间不完整时必须在输入区域旁显示错误提示。");
-            VerifyErrorAdjacentBelowCustomInputs(noteRow, customDate!, customHour!, customMinute!, customConfirm!, missingError!);
+            VerifyErrorAdjacentBelowCustomInputs(noteRow, customDate!, customTime!, customConfirm!, missingError!);
         }
         finally
         {
@@ -236,10 +246,11 @@ internal static class ReminderCenterSnoozeMenuScenario
             Settle(center);
 
             var customDate = VisualDescendants<DatePicker>(row).Single();
-            var customHour = VisualDescendants<ComboBox>(row)
-                .Single(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后小时：", StringComparison.Ordinal));
-            var customMinute = VisualDescendants<ComboBox>(row)
-                .Single(combo => AutomationProperties.GetName(combo).StartsWith("自定义稍后分钟：", StringComparison.Ordinal));
+            var customTime = VisualDescendants<TextBox>(row)
+                .Single(box => string.Equals(
+                    AutomationProperties.GetAutomationId(box),
+                    "ReminderEntryCustomSnoozeTime",
+                    StringComparison.Ordinal));
             var customConfirm = VisualDescendants<Button>(row)
                 .Single(button => string.Equals(
                     AutomationProperties.GetAutomationId(button),
@@ -248,8 +259,7 @@ internal static class ReminderCenterSnoozeMenuScenario
 
             var pastBeijing = ChinaStandardTime.ToBeijingTime(dueUtc.AddMinutes(-10));
             customDate.SelectedDate = pastBeijing.Date;
-            customHour.SelectedIndex = pastBeijing.Hour;
-            customMinute.SelectedIndex = pastBeijing.Minute;
+            customTime.Text = pastBeijing.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
             Settle(center);
 
             var beforeSnapshot = SettingsContract.SerializeCanonical(workspace.Snapshot.Settings);
@@ -264,7 +274,7 @@ internal static class ReminderCenterSnoozeMenuScenario
             Require(error is { IsVisible: true } &&
                     string.Equals(error.Text, "自定义稍后时间必须晚于当前北京时间。", StringComparison.Ordinal),
                 $"自定义过去时间未显示预期错误文案，实际为「{error?.Text ?? "<null>"}」。");
-            VerifyErrorAdjacentBelowCustomInputs(row, customDate, customHour, customMinute, customConfirm, error!);
+            VerifyErrorAdjacentBelowCustomInputs(row, customDate, customTime, customConfirm, error!);
             Require(coordinator.ActiveEntryCount == 1 &&
                     center.IsSnoozeEnabled(key) &&
                     SettingsContract.SerializeCanonical(workspace.Snapshot.Settings) == beforeSnapshot,
@@ -277,8 +287,7 @@ internal static class ReminderCenterSnoozeMenuScenario
             // 改为未来时间并确认，立即提交自定义稍后并收起空中心。
             var futureBeijing = ChinaStandardTime.ToBeijingTime(dueUtc.AddMinutes(45));
             customDate.SelectedDate = futureBeijing.Date;
-            customHour.SelectedIndex = futureBeijing.Hour;
-            customMinute.SelectedIndex = futureBeijing.Minute;
+            customTime.Text = futureBeijing.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
             Settle(center);
             Require(WindowValidationInput.InvokeButton(customConfirm), "修正为未来时间后无法点击确认按钮。");
             Settle(center);
@@ -757,8 +766,7 @@ internal static class ReminderCenterSnoozeMenuScenario
     private static void VerifyCustomControlsGeometry(
         Border row,
         DatePicker customDate,
-        ComboBox customHour,
-        ComboBox customMinute,
+        TextBox customTime,
         Button customConfirm,
         string label)
     {
@@ -770,7 +778,7 @@ internal static class ReminderCenterSnoozeMenuScenario
             .Parent as Panel
             ?? throw new InvalidOperationException("找不到卡片内容面板。");
         var contentWidth = contentPanel.ActualWidth;
-        var controls = new FrameworkElement[] { customDate, customHour, customMinute, customConfirm };
+        var controls = new FrameworkElement[] { customDate, customTime, customConfirm };
         var rects = controls.Select(control => Bounds(control, contentPanel)).ToArray();
         for (var i = 0; i < rects.Length; i++)
         {
@@ -790,12 +798,11 @@ internal static class ReminderCenterSnoozeMenuScenario
     private static void VerifyErrorAdjacentBelowCustomInputs(
         Border row,
         DatePicker customDate,
-        ComboBox customHour,
-        ComboBox customMinute,
+        TextBox customTime,
         Button customConfirm,
         TextBlock error)
     {
-        var inputsBottom = new FrameworkElement[] { customDate, customHour, customMinute, customConfirm }
+        var inputsBottom = new FrameworkElement[] { customDate, customTime, customConfirm }
             .Max(control => Bounds(control, row).Bottom);
         var errorBounds = Bounds(error, row);
         Require(errorBounds.Top >= inputsBottom - 0.5 && errorBounds.Top <= inputsBottom + 16,

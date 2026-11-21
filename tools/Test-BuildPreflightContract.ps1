@@ -38,11 +38,16 @@ try {
     $env:COUNTDOWN_DOTNET_EXE = $oldEnv
 }
 
-$required = [System.Version]::new(10, 0, 302)
-$newer = [System.Version]::new(10, 0, 302, 1)
+$required = [System.Version]::new(10, 0, 404)
+$newer = [System.Version]::new(10, 0, 404, 1)
 $olderMajor = [System.Version]::new(9, 0, 400)
 Assert-Preflight (Test-CountdownSdkVersionMatch -Actual $newer -Required $required -RollForward 'latestPatch') 'latestPatch accepts a newer patch in the same feature band'
 Assert-Preflight (-not (Test-CountdownSdkVersionMatch -Actual $olderMajor -Required $required -RollForward 'latestPatch')) 'latestPatch rejects a mismatched SDK'
+
+$globalSdk = Get-CountdownBuildSdkRequirement -RepositoryRoot $root
+$ciWorkflowPath = Join-Path $root '.github\workflows\ci.yml'
+$ciWorkflowText = Get-Content -Raw -LiteralPath $ciWorkflowPath
+Assert-Preflight ($ciWorkflowText.Contains("dotnet-version: '$($globalSdk.VersionText)'")) "CI workflow dotnet-version matches global.json sdk.version ($($globalSdk.VersionText))"
 
 $fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('countdown-build-preflight-' + [guid]::NewGuid().ToString('N'))
 $fixturePolicy = Join-Path $fixtureRoot 'policy.json'

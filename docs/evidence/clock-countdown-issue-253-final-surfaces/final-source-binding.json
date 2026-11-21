@@ -10,15 +10,15 @@
   "candidate_exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-21-v83/manifest.json",
-      "manifest_sha256": "1F168F8D8A3E155D1B95CB4135BF37A1AF4AD6533A87B8465095A51BC1A21EB8",
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-22-v84/manifest.json",
+      "manifest_sha256": "2D043E585A176A8D74F442F3BCBE0DB6E8F6EECD61036D4FC1D02FB9C997091E",
       "aggregate_sha256": "E86BD4E9587FB8B9556415468F9A5CC22A29C4E6C2D2496D98110EE2B55B087E",
       "current_source_files_verified": 23,
       "run_artifact_manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-21-v83/manifest.json",
-      "manifest_sha256": "EDD9E32CA0DF2505DD733D2BF461D77DE241A4490FB73BC5A8B7250D04EF6FED",
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-22-v84/manifest.json",
+      "manifest_sha256": "EA181773643C7F49C795DA65B7A79D421B2E7168DAE08DB77019FB414AD1B86D",
       "aggregate_sha256": "104D3432816BA5DA584D6386F4F6644C93A4E2AC502B5173842FF73A7D1C3898",
       "current_source_files_verified": 28,
       "run_artifact_manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799"
@@ -89,7 +89,7 @@
     "main-window": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
     "floating-window": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json"
   },
-  "current_baseline_version": "2026-11-21-v83",
-  "current_sources_revalidated_at": "2026-11-21",
-  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-21起为v83，由#335悬浮便签日期条UiFontFamily绑定CI修复零像素差重拍；此前v82见PRD #296评审修复、v81见#335、v80见#327、v79见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
+  "current_baseline_version": "2026-11-22-v84",
+  "current_sources_revalidated_at": "2026-11-22",
+  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-22起为v84，由#299 .NET 10.0.404/10.0.15 apphost更新零像素差重签；此前v83见#335 CI修复、v82见PRD #296评审修复、v81见#335、v80见#327、v79见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
 }

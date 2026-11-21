@@ -563,7 +563,20 @@ function Save-DiagnosticConcurrencyFailureEvidence {
         [AllowEmptyCollection()] [object[]] $WorkerOutputs
     )
 
-    $createdumpPath = 'D:\Codex\tools\dotnet\10.0\shared\Microsoft.NETCore.App\10.0.10\createdump.exe'
+    $createdumpRoot = 'D:\Codex\tools\dotnet\10.0\shared\Microsoft.NETCore.App'
+    $createdumpPath = $null
+    if (Test-Path -LiteralPath $createdumpRoot -PathType Container) {
+        $latestCreatedump = Get-ChildItem -LiteralPath $createdumpRoot -Directory |
+            Where-Object { $_.Name -match '^10\.0\.\d+$' } |
+            Sort-Object { [version]$_.Name } -Descending |
+            ForEach-Object { Join-Path $_.FullName 'createdump.exe' } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+            Select-Object -First 1
+        $createdumpPath = $latestCreatedump
+    }
+    if ([string]::IsNullOrWhiteSpace($createdumpPath)) {
+        $createdumpPath = Join-Path $createdumpRoot '10.0.15\createdump.exe'
+    }
     $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-instance-activation-tests\diag-concurrency'
     $runId = '{0}-{1}' -f `
         [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),

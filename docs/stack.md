@@ -88,7 +88,8 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 
 ## 版本与升级策略
 
+- **.NET 10 SDK 与运行时补丁更新节奏（#299，2026-11-22 确立）**：继续停留在 .NET 10 长期支持版（LTS），不随补丁自动升入 .NET 11。当前钉值为 `global.json` 与 `.github/workflows/ci.yml` 同步锁定的 SDK `10.0.404`（对应自包含运行时 `10.0.15`，`rollForward: latestPatch`）。**官方每发布一个标为安全更新的 .NET 10 补丁，须在下一次常规改动合入之前更新 SDK 钉值，在本机受管目录并排安装对应 SDK、执行 Clean + R2R 重建并跑完整低影响套件**（同时核对现役视觉基线、回读产物运行时版本并记录发布包清单与体积变化）。
 - 现行 WPF 与 PowerShell 依赖继续按各项目文件、发布契约和许可证证据管理。
 - Tauri、React、TypeScript、Vite、Rust 或 WebView2 版本只在隔离候选中锁定和验证；生产采用另受视觉、数据、安装和部署门禁约束。
 - `candidate`、`dry-run`、`deployed` 与 `live verified` 分开记录；本地切片、合成探针或 `ValidateOnly` 不得替代办公室验收。
-- 任何改变 `Countdown.ReleaseContract.psm1` `IntegrityHashes` 覆盖文件的提交，按 README 和项目规则更新静态哈希；本票只改文档，不新增覆盖文件。
+- 任何改变 `Countdown.ReleaseContract.psm1` `IntegrityHashes` 覆盖文件的提交，按 README 和项目规则更新静态哈希。

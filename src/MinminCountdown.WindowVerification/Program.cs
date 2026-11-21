@@ -36,6 +36,8 @@ internal static class Program
     internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
+    internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
+    internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -103,6 +105,12 @@ internal static class Program
     private const string MainEmptyAndHighContrastRibbonFactMeaning =
         "管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；" +
         "系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）";
+    private const string OverlaySurfaceBordersFactMeaning =
+        "筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，" +
+        "对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）";
+    private const string FilterMatchModeAndFocusFactMeaning =
+        "筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；" +
+        "「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）";
 
     [STAThread]
     private static int Main()
@@ -137,7 +145,9 @@ internal static class Program
             [FloatingBottomStatusAutomationFactName] = false,
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
-            [MainEmptyAndHighContrastRibbonFactName] = false
+            [MainEmptyAndHighContrastRibbonFactName] = false,
+            [OverlaySurfaceBordersFactName] = false,
+            [FilterMatchModeAndFocusFactName] = false
         };
         var failures = new List<string>();
 
@@ -316,6 +326,18 @@ internal static class Program
                 () => MainWindowAlignmentAndPolishScenario.RunEmptyStateAndHighContrastRibbon(
                     theme,
                     MainEmptyAndHighContrastRibbonFactMeaning));
+            RunFact(
+                OverlaySurfaceBordersFactName,
+                OverlaySurfaceBordersFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunOverlayBordersAndContrast(
+                    theme,
+                    OverlaySurfaceBordersFactMeaning));
+            RunFact(
+                FilterMatchModeAndFocusFactName,
+                FilterMatchModeAndFocusFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunFilterMatchModeAndFocusLifecycle(
+                    theme,
+                    FilterMatchModeAndFocusFactMeaning));
         }
         catch (Exception exception)
         {

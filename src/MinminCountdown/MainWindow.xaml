@@ -2155,7 +2155,7 @@
                            StaysOpen="False" AllowsTransparency="True"
                            focus:PopupMotionBehavior.IsEnabled="True" PopupAnimation="None">
                       <Border x:Name="CountdownPreferencesSurface" Width="444" Margin="0,6,0,0" Padding="18"
-                              Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource PeachLineBrush}"
+                              Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource ControlBorderBrush}"
                               BorderThickness="1" CornerRadius="{DynamicResource RadiusOverlay}">
                         <Grid x:Name="CountdownPreferencesCard">
                           <Grid.ColumnDefinitions>
@@ -2211,20 +2211,27 @@
                       Margin="0,6,0,0"
                       Padding="15"
                       Background="{DynamicResource CanvasBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
+                      BorderBrush="{DynamicResource ControlBorderBrush}"
                       BorderThickness="1"
                       CornerRadius="{DynamicResource RadiusOverlay}">
                 <ScrollViewer MaxHeight="480"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                  <TextBlock Text="标签匹配" FontSize="{DynamicResource TypeCaptionFontSize}" FontWeight="SemiBold" />
-                  <StackPanel Margin="0,7,0,0" Orientation="Horizontal">
-                    <ToggleButton x:Name="AnyTagMode" Content="任一匹配" Style="{DynamicResource FilterOptionButton}" />
-                    <ToggleButton x:Name="AllTagMode" Margin="8,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
-                    <ToggleButton x:Name="UntaggedOnly" Margin="8,0,0,0" Content="无标签" Style="{DynamicResource FilterOptionButton}" />
+                  <TextBlock Text="标签" FontSize="{DynamicResource TypeCaptionFontSize}" FontWeight="SemiBold" />
+                  <WrapPanel x:Name="FilterTagOptions" Margin="0,7,0,0">
+                    <ToggleButton x:Name="UntaggedOnly"
+                                  Margin="0,0,8,8"
+                                  Content="无标签"
+                                  Style="{DynamicResource FilterOptionButton}" />
+                  </WrapPanel>
+                  <StackPanel x:Name="TagMatchModeGroup" Margin="0,1,0,0" Visibility="Collapsed">
+                    <TextBlock Text="匹配方式" FontSize="{DynamicResource TypeCaptionFontSize}" FontWeight="SemiBold" />
+                    <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
+                      <ToggleButton x:Name="AnyTagMode" Content="任一匹配" Style="{DynamicResource FilterOptionButton}" />
+                      <ToggleButton x:Name="AllTagMode" Margin="8,0,0,0" Content="全部匹配" Style="{DynamicResource FilterOptionButton}" />
+                    </StackPanel>
                   </StackPanel>
-                  <WrapPanel x:Name="FilterTagOptions" Margin="0,6,0,0" />
                   <StackPanel x:Name="CountdownFilterOptions" Margin="0,9,0,0">
                     <TextBlock Text="倒计时状态" FontWeight="SemiBold" />
                     <StackPanel Margin="0,6,0,0" Orientation="Horizontal">
@@ -2278,7 +2285,7 @@
                       Margin="0,6,0,0"
                       Padding="15"
                       Background="{DynamicResource CanvasBrush}"
-                      BorderBrush="{DynamicResource PeachLineBrush}"
+                      BorderBrush="{DynamicResource ControlBorderBrush}"
                       BorderThickness="1"
                       CornerRadius="{DynamicResource RadiusOverlay}">
                 <Grid>

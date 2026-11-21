@@ -318,7 +318,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             NotesSegmentHost,
             NotesSegmentIndicatorLayer,
             NotesSegmentIndicator);
-        PopupFocusLifecycle.Attach(FilterPopup, FilterButton, () => AnyTagMode);
+        PopupFocusLifecycle.Attach(FilterPopup, FilterButton, FilterInitialFocusTarget);
         PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
         PopupFocusLifecycle.Attach(PreferencesPopup, PreferencesButton, () => DisplayPrecision);
         PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
@@ -1534,7 +1534,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         UntaggedOnly.Click += (_, _) =>
         {
-            UpdateFilter(filter => filter with { UntaggedOnly = UntaggedOnly.IsChecked == true });
+            var untaggedOnly = UntaggedOnly.IsChecked == true;
+            UpdateFilter(filter => filter with
+            {
+                UntaggedOnly = untaggedOnly,
+                SelectedTagIds = untaggedOnly ? Array.Empty<string>() : filter.SelectedTagIds
+            });
             RenderVisibleWorkspace();
         };
         CountdownAllFilter.Click += (_, _) => SetCountdownFilter(CountdownStatusFilter.All);
@@ -3554,16 +3559,93 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             $"便签提醒规则摘要：{NoteReminderRulesSummary.Text}");
     }
 
+    private UIElement FilterInitialFocusTarget() =>
+        FilterTagOptions.Children
+            .OfType<UIElement>()
+            .FirstOrDefault(child => child.Visibility == Visibility.Visible && child.IsEnabled && child.Focusable)
+        ?? UntaggedOnly;
+
+    private void SyncTagMatchModeVisibility(DesktopWorkspaceFilter filter)
+    {
+        var showMatchMode = !filter.UntaggedOnly && filter.SelectedTagIds.Count >= 2;
+        TagMatchModeGroup.Visibility = showMatchMode ? Visibility.Visible : Visibility.Collapsed;
+        AnyTagMode.IsChecked = filter.MatchMode == TagMatchMode.Any;
+        AllTagMode.IsChecked = filter.MatchMode == TagMatchMode.All;
+        if (!showMatchMode &&
+            FilterPopup.IsOpen &&
+            (AnyTagMode.IsKeyboardFocusWithin || AllTagMode.IsKeyboardFocusWithin))
+        {
+            Keyboard.Focus(FilterInitialFocusTarget());
+        }
+    }
+
     private void RenderFilterTags()
     {
-        FilterTagOptions.Children.Clear();
         var snapshot = _desktopWorkspace.Snapshot;
-        foreach (var tag in snapshot.Settings.Tags)
+        var filter = snapshot.Filter;
+        var tags = snapshot.Settings.Tags;
+        UntaggedOnly.IsChecked = filter.UntaggedOnly;
+        UntaggedOnly.Margin = new Thickness(0, 0, 8, 8);
+
+        if (!FilterTagOptions.Children.Contains(UntaggedOnly))
+        {
+            FilterTagOptions.Children.Insert(0, UntaggedOnly);
+        }
+        else if (!ReferenceEquals(FilterTagOptions.Children[0], UntaggedOnly))
+        {
+            FilterTagOptions.Children.Remove(UntaggedOnly);
+            FilterTagOptions.Children.Insert(0, UntaggedOnly);
+        }
+
+        // 标签集合未增删改名时就地同步勾选态，避免重建芯片导致焦点或悬停状态丢失。
+        var existingConcreteToggles = FilterTagOptions.Children
+            .OfType<ToggleButton>()
+            .Where(toggle => !ReferenceEquals(toggle, UntaggedOnly))
+            .ToArray();
+        var matchesExisting =
+            FilterTagOptions.Children.Count == tags.Count + 1 &&
+            existingConcreteToggles.Length == tags.Count &&
+            tags.Select((tag, index) =>
+                    string.Equals(existingConcreteToggles[index].Uid, tag.Id, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(existingConcreteToggles[index].Content as string, tag.Name, StringComparison.Ordinal))
+                .All(matched => matched);
+
+        if (matchesExisting)
+        {
+            for (var index = 0; index < tags.Count; index++)
+            {
+                existingConcreteToggles[index].IsChecked =
+                    !filter.UntaggedOnly &&
+                    filter.SelectedTagIds.Contains(tags[index].Id, StringComparer.OrdinalIgnoreCase);
+            }
+
+            SyncTagMatchModeVisibility(filter);
+            return;
+        }
+
+        var focusedToggle = Keyboard.FocusedElement as ToggleButton;
+        var focusedTagId = focusedToggle is not null && !ReferenceEquals(focusedToggle, UntaggedOnly)
+            ? focusedToggle.Tag as string
+            : null;
+        var hadKeyboardFocusVisual = focusedToggle is not null &&
+            FocusVisualState.GetIsKeyboardFocusVisible(focusedToggle);
+
+        for (var index = FilterTagOptions.Children.Count - 1; index >= 0; index--)
+        {
+            if (!ReferenceEquals(FilterTagOptions.Children[index], UntaggedOnly))
+            {
+                FilterTagOptions.Children.RemoveAt(index);
+            }
+        }
+
+        ToggleButton? restoreFocus = null;
+        foreach (var tag in tags)
         {
             var option = new ToggleButton
             {
                 Content = tag.Name,
-                IsChecked = snapshot.Filter.SelectedTagIds.Contains(tag.Id),
+                IsChecked = !filter.UntaggedOnly &&
+                    filter.SelectedTagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
                 Tag = tag.Id,
                 Uid = tag.Id,
                 // #152：筛选标签芯片相邻间距向紧凑下限族靠拢（6 → 8，与 #143 相邻命令间距一致）。
@@ -3575,9 +3657,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 if (option.IsChecked == true)
                 {
-                    UpdateFilter(filter => filter with
+                    UpdateFilter(current => current with
                     {
-                        SelectedTagIds = filter.SelectedTagIds
+                        UntaggedOnly = false,
+                        SelectedTagIds = current.SelectedTagIds
                             .Append(tag.Id)
                             .Distinct(StringComparer.OrdinalIgnoreCase)
                             .ToArray()
@@ -3585,9 +3668,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 }
                 else
                 {
-                    UpdateFilter(filter => filter with
+                    UpdateFilter(current => current with
                     {
-                        SelectedTagIds = filter.SelectedTagIds
+                        SelectedTagIds = current.SelectedTagIds
                             .Where(id => !string.Equals(id, tag.Id, StringComparison.OrdinalIgnoreCase))
                             .ToArray()
                     });
@@ -3596,6 +3679,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 RenderVisibleWorkspace();
             };
             FilterTagOptions.Children.Add(option);
+            if (focusedTagId is not null &&
+                string.Equals(focusedTagId, tag.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                restoreFocus = option;
+            }
+        }
+
+        SyncTagMatchModeVisibility(filter);
+
+        if (FilterPopup.IsOpen && restoreFocus is not null)
+        {
+            if (hadKeyboardFocusVisual)
+            {
+                Keyboard.Focus(restoreFocus);
+            }
+            else
+            {
+                KeyboardFocusPolicy.FocusFromPointer(restoreFocus);
+            }
         }
     }
 

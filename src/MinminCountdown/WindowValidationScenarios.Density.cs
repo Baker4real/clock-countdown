@@ -581,8 +581,8 @@ public sealed partial class FloatingWindow
         SettleScrollContextForValidation();
     }
 
-    // 「…」菜单挑一张露在视口里的便签卡打开，弹层贴着可见卡片出现。
-    internal Popup? OpenVisibleNoteOverflowMenuForValidation()
+    // 「…」菜单挑一张露在视口里的便签卡打开，原生菜单贴着可见卡片出现。
+    internal ContextMenu? OpenVisibleNoteOverflowMenuForValidation()
     {
         SettleScrollContextForValidation();
         var viewport = new Rect(0, 0, FloatingBodyScroller.ViewportWidth, FloatingBodyScroller.ViewportHeight);
@@ -590,14 +590,14 @@ public sealed partial class FloatingWindow
             candidate.IsVisible &&
             viewport.Contains(candidate.TransformToAncestor(FloatingBodyScroller)
                 .TransformBounds(new Rect(new Point(0, 0), candidate.RenderSize))));
-        if (trigger is null || NoteRowOverflowMenuBehavior.GetPopup(trigger) is not { } popup)
+        if (trigger is null)
         {
             return null;
         }
 
-        popup.IsOpen = true;
+        trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         SettleScrollContextForValidation();
-        return popup;
+        return _noteOverflowMenu;
     }
 
     private static bool DensityProbeIsDescendantOf(DependencyObject candidate, DependencyObject ancestor)

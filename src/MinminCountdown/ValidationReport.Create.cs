@@ -1371,7 +1371,7 @@ internal static partial class ValidationReport
                 "悬浮展开态底部切换钮为次级「收起」，表单添加为唯一实心粉钮（#149）"),
             ["FloatingNoteOverflowMenuKeyboardWorks"] = Must(
                 floatingWindowScenarios.BottomCommand.NoteMenuKeyboardLifecycle,
-                "悬浮便签…菜单键盘可走完：打开聚焦编辑、Tab 进入删除、Esc 关闭并回触发器（#149）"),
+                "悬浮便签…菜单键盘可走完：打开聚焦编辑、方向键进入删除、Esc 关闭并回触发器（#149/#319）"),
             ["FloatingKeyboardFocusDrawnOnce"] = Must(
                 floatingWindowScenarios.KeyboardFocus.AllPassed,
                 "悬浮窗两个工作区沿 Tab 一圈、便签…菜单与标签选择器弹层里，每个停靠点只亮模板焦点或统一的 2px 暖边、" +

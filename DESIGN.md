@@ -240,12 +240,13 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 便签正文显式消费 `TypeCaptionFontSize`（#237 由 body 随管理窗口降一档），带显式行高 18（`BlockLineHeight`，与悬浮窗 13/18 一致，#153）；多行正文与「下次提醒」摘要之间保持可扫读的间隔，摘要消费 `TypeCaptionFontSize`，不得大于正文（#227，主窗口真实 DIP 直接渲染）。
 - 标签芯片（#153）：芯片文字单行不折字（`NoWrap`），芯片集合由 `WrapPanel` 先折行；单枚芯片最大宽 148 DIP（#237 由 200 设计坐标等比收缩），超长以省略号收尾并通过 `ToolTip` 提供完整标签名；芯片文字对比与配色维持 §2 `TagChipTextBrush` 合同。
 - 管理窗口便签行命令只保留 `编辑`、`删除`，移除重复的 `…`（#227）。两者使用次级按钮权重与 `SecondaryButton` 共享模板的 `RadiusControl` 圆角（#250 文档对齐现役值 9）；`编辑` 文字和铅笔图标用 `InkBrush`，`删除` 文字和垃圾桶图标用 `DangerBrush`，删除边框透明。键盘可依次到达两项，Enter 打开对应记录或安全默认的删除确认，取消确认后焦点返回删除按钮；确认与撤销合同保留。#247：倒计时行与便签行共用同一套次级行内动作，几何与状态语言见 §4「主窗可操作性与紧凑命中」。
-- 悬浮窗的 `…` 菜单继续保留，并与筛选、标签管理、标签选择器共用弹层焦点生命周期：打开聚焦首项、Tab 层内循环、Esc 关闭归还触发按钮。`PopupFocusLifecycle` 在弹层表面统一启用层内 Tab 循环；删除主窗口重复菜单不改变这些弹层的合同。
+- 悬浮窗的 `…` 菜单继续保留，但自 #319 起改为懒创建并跨卡复用的原生 `ContextMenu` / `MenuItem`（消费 `SharedMenuStyles` 与 `PopupMotionBehavior`，详见 §10）；筛选、标签管理、显示设置与标签选择器继续由 `PopupFocusLifecycle` 统一管理弹层焦点生命周期（打开聚焦首项、层内 Tab 循环、Esc 关闭归还触发按钮）。删除主窗口重复菜单不改变这些弹层的合同。
 - 未完成便签按跨日期组的全局可见行索引黄白交替，第一行黄、第二行白；筛选或删除后按新顺序重算，不用记录 ID 决定颜色。已完成卡片统一白底（#227）。
 - 状态与日期已经由上级章节表达，不在无提醒卡片内重复；已完成正文降低到 `MutedBrush` 并保留删除线。
 - 便签页移除只有一个选项的 `按日期分组` 占位下拉，继续按日期分组。搜索位于状态列表区域上方，不属于新增/编辑表单；Ctrl+F 继续聚焦该输入（#227）。#251：搜索与「未完成 / 已完成」分段同处列表卡顶部的固定工具条（分段在左、搜索在右，「搜索便签」标签在输入框左侧），不随列表滚动，见 §4「工作台密度与列表工具条」。编辑已有便签时显示 `编辑便签` 标题，取消后返回新增态；提醒规则摘要与字段列左对齐。
 - 状态区分组标题卡使用 `NoteBrush` 暖黄底，左侧 `PeachRailBrush` 圆点，`M月d日 · 周X` 标题与右侧 `N 条` 数量加展开箭头。
 - 空态与筛选弹层（#153 / #305）：倒计时与便签的空态文案统一允许换行（`TextWrapping=Wrap`），长文案不裁切；筛选弹层的便签日期筛选带可见字段标签 `日期`（`BodyBrush`），不是无名空下拉。筛选、标签管理、显示设置与标签选择四个弹层（含主窗口倒计时/便签两处与悬浮窗快速新增一处标签选择器）的表面边界统一改用 1px `ControlBorderBrush`（对自身底色及各邻近页面/卡片表面均达到 WCAG ≥ 3:1，系统对比度下映射 `WindowText`），保持原有底色（筛选/标签管理/主窗标签选择 `CanvasBrush`、显示设置 `BackgroundBrush`、浮窗标签选择局部 `CanvasBrush`=`CardColor`）与 `RadiusOverlay` 圆角，不添加投影。筛选弹层将「无标签」置于与具体标签芯片相同的 `FilterTagOptions` 芯片组内（保持与具体标签的互斥语义与 `0,0,8,8` 间距），「匹配方式」（`任一匹配` / `全部匹配`，默认 `任一匹配`）仅在已选不少于两个具体标签时显示并可聚焦；已选 0 个、1 个具体标签或选中「无标签」时完全折叠（`Visibility.Collapsed`），不可见且不可经 Tab 或直接聚焦到达；任一匹配、全部匹配与无标签的定义及筛选结果不变。四个弹层均保持打开聚焦首项（筛选弹层首项为标签芯片组首项 `无标签`）、层内 Tab 循环与 Esc 关闭归还触发按钮的焦点生命周期。由独立窗口验证项目产出 `OverlaySurfaceBordersMeetContrastWithoutShadow` 与 `FilterMatchModeDisclosureAndOverlayFocusLifecycle` 验证事实。
+- 标签管理弹层行内改名与删除（#308）：新建标签区块（`新标签名称` 输入框与 `新建` 按钮）保持不变；每个已有标签行移除「保存」按钮，仅保留名称输入框（`TextBox`，上限 30 字符）与行内「删除」按钮（`InlineActionButton` `TagManager`/`Delete`，`DangerButton`，65×39/7 DIP）。改名由名称输入框按 `Enter` 或失焦（`LostKeyboardFocus`）自动提交一次，且仅在去除首尾空白后的名称确实变化时才提交，未变化（含仅增删首尾空白）不产生提交也不重建行；提交成功后同步倒计时行、便签卡、筛选标签与两处标签选择器（#298），并保持键盘焦点落回当前行或目标控件。重名或空名（含纯空白）校验失败时，错误行贴在该标签行输入框正下方（`DangerBrush`、`TypeCaptionFontSize`、上边距 `SpacingUnit`、`TextWrapping=Wrap`、礼貌直播区），来源输入框挂上 `InputErrorState.HasError` 错误边框与同步帮助文本，保留用户输入文本并把键盘焦点放回该输入框；用户修正输入时该行错误与错误边框立即清除。按 `Esc` 关闭弹层前先放弃所有未提交改名与行内错误、归位原标签名再关层并归还焦点给 `TagManagerButton`，不得因关层失焦误提交；点击「删除」保持取消为安全默认的确认框与「只解除关联、不删记录」语义，行内存在未提交或无效编辑时点击删除不陷入焦点循环也不抢先改名。由独立窗口验证项目产出 `TagManagerAutoSaveOnEnterAndBlur` 与 `TagManagerRenameErrorsEscDiscardAndDelete` 验证事实。
 - 列表条目标题层级（#153/#197，#237 管理窗口降档）：管理窗口倒计时列表条目标题消费 `TypeBodyFontSize`（16px）；「新增倒计时」「显示设置」区块标题消费 `TypeH2FontSize`（20px），便签列表组头同样落 body 阶梯。
 
 ### 悬浮窗底部命令区
@@ -292,7 +293,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - **一处数量状态区域**：命令栏数量文字（`N 个待办` / `N 个倒计时`）是唯一的数量 polite 直播区（`AutomationLiveSetting.Polite`），#222 以无框纯文字呈现，不带卡片底、边框或图标；文字只在数值真正变化时更新，分钟级刷新不空播；分段徽章数字、分段名与筛选结果消息不再各自承担数量播报。工作区由页签选中状态与可访问名称表达，切页不再显示或重复播报“当前工作区”；筛选结果和业务操作消息保持各自原有语义。
 - **讲述人播报（#216）**：直播区文本只经 `UiAccessibility.Announce` 更新。文本真正变化后，对该元素的自动化 peer 触发 `LiveRegionChanged`；相同文本不播报。播报级别仍是元素上既有的 `AutomationLiveSetting`：状态消息、字段错误、筛选结果和数量文字为礼貌，提醒送达失败为强制。悬浮窗底部在鼓励语模式下退出自动化树；金额模式与日历状态模式留在树中，可访问名等于当前底部文案。#229 金额隐藏时使用“今日已赚 ¥••••”，提供 Invoke 和键盘操作，但整个自动化子树不得含未遮罩金额。
 - **Ctrl+F 分工**：主窗口便签页 Ctrl+F 聚焦便签搜索（与悬浮窗「Ctrl+F 搜索便签」的记忆一致）；倒计时页没有正文搜索，Ctrl+F 仍打开筛选弹层；悬浮窗 Ctrl+F 保持既有行为（切到便签工作区、展开并聚焦搜索）。
-- **输入与提交（#224）**：管理窗现有 Ctrl+1/2/F/T/M/S、Ctrl+Shift+S 在文本输入焦点下生效；Ctrl+S 按当前工作区保存倒计时或便签。弹层或模态框打开时，全局快捷键不穿透。倒计时名称、截止时刻、新标签名称、月薪及工时单行字段 Enter 提交各自表单；设置与标签弹层使用局部 Enter，仍复用既有校验并聚焦首个无效字段。两窗便签正文 Enter 换行，Ctrl+Enter 提交；主窗正文保持68 DIP输入槽并允许内部纵向滚动，悬浮正文保持88 DIP上限。主要操作按钮 ToolTip 标示真实快捷键。
+- **输入与提交（#224 / #308 / #328）**：管理窗现有 Ctrl+1/2/F/T/M/S、Ctrl+Shift+S 在文本输入焦点下生效；Ctrl+S 按当前工作区保存倒计时或便签。弹层或模态框打开时，全局快捷键不穿透。倒计时名称、截止时刻、新标签名称、月薪及工时单行字段 Enter 提交各自表单；设置与标签弹层使用局部 Enter，仍复用既有校验并聚焦首个无效字段；标签管理行名称输入框取消行内「保存」按钮，按局部 Enter 或失焦在内容确实变化时自动提交一次改名，失败时错误贴在该行、保留输入并归还焦点，Esc 关闭弹层时放弃未提交改名并返焦触发按钮（#308）。两窗便签正文 Enter 换行，Ctrl+Enter 提交；主窗正文保持68 DIP输入槽并允许内部纵向滚动，悬浮正文保持88 DIP上限。主要操作按钮 ToolTip 标示真实快捷键。
 - **行删除与文本编辑（#224）**：管理窗倒计时/便签行和悬浮便签行内控件聚焦时，Delete 进入该记录既有删除确认，取消为安全默认；确认后仍提供撤销。文本焦点 Delete 保留字符编辑，Ctrl+A/C/V/X/Z 保留文本编辑语义；仅离开文本输入且当前窗口无弹层时，Ctrl+Z 才消费删除撤销。
 - **筛选清除的可访问名**：筛选弹层便签日期「清除」按钮的可访问名为「清除便签日期筛选」，不是只读一个「清除」。
 - **窗口复位/贴边入口**：悬浮窗提供两个非拖动入口——托盘菜单「复位窗口位置」与悬浮窗内 `Ctrl+R`；两者共用同一复位实现（隐藏或最小化先恢复为可见正常态，再把窗口夹回工作区；`Reanchor` 只在越界时移动，未越界的手动位置保持不变）。完成任务不依赖拖无边框窗，不做方向键微移。
@@ -468,7 +469,7 @@ App.xaml 控件模板段对基础 WPF 控件提供统一状态语言，全部引
 
 ## 9. Motion 哲学
 
-高频切换与收放保持短促反馈：按钮 hover 颜色以 120ms ease-out 过渡，按下的 `RenderTransform` 缩放到 `0.97` 以 100ms ease-out 完成，不触发重新布局。日历、下拉框、标签选择器和提示框由 `PopupMotionBehavior` 统一消费进入 140ms、退出 90ms token：进入从透明、触发点一侧 4px 处移入，退出朝触发点一侧收回 4px 并淡出（方向见下文 #244）；退出期间保留弹层打开，使打开中的关闭可以从当前值反向。所有动效时长和缓动集中在资源 token，并由 `ApplicationTheme.ClientAreaAnimationEnabled` 控制；系统关闭动画时 token 有效时长为 0，状态立即到达目标值。允许的属性只有颜色、透明度和 `RenderTransform`，单段上限 200ms；动画使用 `SnapshotAndReplace` 从当前值继续，快速 hover / 按下或弹层反向可被打断而不会闪回起点。键盘焦点反馈不增加额外动画。
+高频切换与收放保持短促反馈：按钮 hover 颜色以 120ms ease-out 过渡，按下的 `RenderTransform` 缩放到 `0.97` 以 100ms ease-out 完成，不触发重新布局。日历、下拉框、标签选择器、提示框与悬浮便签 `…` 原生菜单（#319）由 `PopupMotionBehavior` 统一消费进入 140ms、退出 90ms token：进入从透明、触发点一侧 4px 处移入，退出朝触发点一侧收回 4px 并淡出（方向见下文 #244）；退出期间保留弹层打开，使打开中的关闭可以从当前值反向。所有动效时长和缓动集中在资源 token，并由 `ApplicationTheme.ClientAreaAnimationEnabled` 控制；系统关闭动画时 token 有效时长为 0，状态立即到达目标值。允许的属性只有颜色、透明度和 `RenderTransform`，单段上限 200ms；动画使用 `SnapshotAndReplace` 从当前值继续，快速 hover / 按下或弹层反向可被打断而不会闪回起点。键盘焦点反馈不增加额外动画。
 
 展开箭头反馈（#253）：倒计时新增/编辑选项与便签日期分组只在指针操作时消费既有 `MotionPressDuration`（100ms）与 `MotionEaseOut`，只旋转原箭头的 `RenderTransform`；面板显隐、列表布局和窗口尺寸即时改变、不挂动画。快速反向先读当前呈现角度，再用 `SnapshotAndReplace` 续接；初始构造、刷新、程序移交、键盘 Space/Enter 与系统关闭客户区动画均直接写入终态并移除旧时钟。`DisclosureMotion` 统一处理这两个入口的局部路由输入与角度变化，不读取最近输入设备；`DisclosureArrowMotionBehavior` 必须观察实际 Rendering 中间帧、反向首帧、键盘与减弱动画等价，不能仅查看源代码或动画时钟。活动旋转只在其生命周期内订阅既有配色/系统偏好通知，旋转中关闭客户区动画会立刻撤销时钟并落到基础终值；启用动画时的普通配色刷新不重启动画。自然完成、即时调用、快速反向与窗口卸载统一解绑。键盘先操作的 Space/Enter、稳定分钟刷新和运行中关闭动画均有真实窗口回归；断开偏好通知的负例必须单独报红。箭头新增的键盘即时规则独立于下文 #242 对原生弹层的既有边界。
 
@@ -486,8 +487,8 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | --- | ---: | --- | --- |
 | `MotionHoverDuration` | 120ms | `MotionEaseOut`（quartic） | 按钮与分段控件 hover 颜色；共享滚动条悬停/拖动展开与收起（#306） |
 | `MotionPressDuration` | 100ms | `MotionEaseOut`（quartic） | 按钮与分段控件按下缩放；展开/收起箭头旋转 |
-| `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip 进入 |
-| `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip 退出 |
+| `MotionPopupEnterDuration` | 140ms | `MotionEaseOut`（quartic） | Popup / ToolTip / 悬浮便签 `…` 原生菜单（#319）进入 |
+| `MotionPopupExitDuration` | 90ms | `MotionEaseOut`（quartic） | Popup / ToolTip / 悬浮便签 `…` 原生菜单（#319）退出 |
 | `MotionIndicatorDuration` | 160ms | `MotionEaseOut`（quartic） | 页签/分段指示条 |
 | `MotionNoteCompletionExitDuration` | 160ms | `MotionEaseOut`（quartic） | 完成便签卡片离场 |
 
@@ -534,7 +535,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 - 便签列表滚动内容以 `12 DIP` 尾随内边距收尾（#149）：滚到底时末卡与底部状态行、命令区之间保留稳定空隙，不视觉顶住。
 - 便签卡底也参与轮换：暖黄 `NoteBrush` 与白纸 `NoteWhiteBrush` 交替，形成条带节奏。
 - 日期印记只帮助扫读，不是侧栏、筛选器或新导航；它不可点击、不可聚焦，也不能覆盖复选框、正文、提醒或 `…` 菜单。
-- 每条便签右侧独立 `…` 菜单，提供 `编辑` / `删除`，复用主窗口编辑流程。菜单接入与筛选 / 标签选择器同一套弹层焦点生命周期（#149）：打开聚焦首项「编辑」，Tab 在层内循环走完「编辑 / 删除」，Esc 关闭并把焦点归还触发按钮。
+- 每条便签右侧保留 `36 × 36` 的 `…` 触发按钮，不再为每张便签卡预先创建弹层与菜单按钮（#319）；首次打开时懒创建并跨卡复用单一原生 `ContextMenu`（`MotionContextMenu`）及两项 `MenuItem`（`编辑` / `删除`），经 `SharedMenuStyles.Apply`（#309）套用共享暖粉样式（表面圆角 `RadiusOverlay`、项高亮圆角 `RadiusControl`、`删除` 常态消费 `SharedDangerMenuItemStyle` 的 `DangerBrush`、高亮与键盘焦点切到 `MainActionBrush` / `MainActionTextBrush`、打开期间跟随系统高对比度切换，且关闭原生 `MenuPopupAnimationKey` 避免叠加动效）。自动化角色为原生 `Menu` 与 `MenuItem`，名称随当前目标便签同步更新并包含动作与对象（「更多操作：编辑或删除便签 {正文}」/「编辑便签 {正文}」/「删除便签 {正文}」）。方向键上下移动，Enter 或空格激活（`编辑` 复用主窗口编辑流程；`删除` 仍走以取消为安全默认的 `ConfirmationDialog` 与 10 秒撤销；卡片上按 `Delete` 行为不变且菜单打开时不穿透），Esc 立即关闭并把焦点归还触发按钮，点击外部关闭。指针打开消费既有 `PopupMotionBehavior` 进入（140ms）与退出（90ms）动效，键盘打开（Enter / 空格 / Down）、Esc 关闭及系统关闭客户区动画时直接到位；切换工作区或重建列表时自动关闭并清空 `PlacementTarget`。由独立窗口验证项目产出 `FloatingNoteOverflowMenuNativeAndLazy` 与 `FloatingNoteOverflowMenuInteractionsAndMotion` 验证事实。
 - 正文和提醒允许自然换行；列表与便签正文继续只使用既有 `FloatingBodyScroller`，不新增内部滚动容器。快速新增输入框允许内部滚动；快速新增展开态字段区的滚动容器（`FloatingNotesCommandScroller`）同为该条例外。
 - 悬浮便签正文和提醒摘要均消费 `TypeCaptionFontSize`（当前 `13 DIP`）；正文行高为 `18 DIP`、提醒摘要行高为 `17 DIP`，均使用显式 `BlockLineHeight`，不得继承主窗口的正文排版尺寸。
 - 快速新增区使用便签黄纸面、`6px` 圆角和珊瑚短标，保留正文、日期、标签、添加、搜索按钮以及紧凑“提醒规则”入口；可见性与展开行为见 §4「悬浮窗底部命令区」。
@@ -756,7 +757,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 #250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉/日期框箭头区 `0,9,9,0`（#312）；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8；提醒中心与规则编辑器外壳自 #324 起改为不透明无边框窗口并交由 DWM 绘制系统圆角与投影，内容根 `Border` 保持直角 0 以避免回退时出现死角。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片、次级窗口外壳（0）、控件、芯片核对，任一样本不在对应口径上即报出元素名与实际值。
 
-#232/#303/#309/#320：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；提醒中心「稍后提醒」菜单（#320）直接消费该共享默认圆角与样式。悬浮窗快速新增局部背景仍使用浮窗色板，输入焦点使用应用 `MainActionFocusBrush`、非输入焦点与按压使用 `ActiveBrush`、悬停使用 `ActiveHoverBrush`，危险操作与出错字段独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
+#232/#303/#309/#319/#320：原生菜单的共享 `ContextMenu` / `MenuItem` 样式独立放在 `SharedMenuStyles.xaml`，由 `SharedMenuStyles.Apply` 接线，不改 `App.xaml` 与双窗 `sourceBinding`。表面、边界、文字、危险项（`SharedDangerMenuItemStyle` 消费 `DangerBrush`）、高亮与系统对比度禁用色消费应用主题画刷；正文使用 `TypeBodyFontSize` 与 `UiFontFamily`，菜单表面和项高亮分别消费 `RadiusOverlay` / `RadiusControl`，`FocusVisualStyle` 置空、键盘焦点沿用原生菜单高亮；打开期间跟随配色变化。托盘四项、顺序、文案和单击恢复不变，并在自己的资源作用域把这两项圆角覆盖为现役直角值 `0`，以保持本票要求的改前后实拍一致；提醒中心「稍后提醒」菜单（#320）与悬浮窗便签「…」菜单（#319）直接消费该共享默认圆角与样式。悬浮窗快速新增局部背景仍使用浮窗色板，输入焦点使用应用 `MainActionFocusBrush`、非输入焦点与按压使用 `ActiveBrush`、悬停使用 `ActiveHoverBrush`，危险操作与出错字段独立使用 `DangerBrush`。悬浮窗视觉基线绑定包括底部状态和节假日日历源码，遗漏或旧 hash 均拒绝。
 
 ### 13.3.1 动效 token 与系统开关
 

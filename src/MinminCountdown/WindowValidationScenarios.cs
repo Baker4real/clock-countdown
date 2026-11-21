@@ -3809,12 +3809,28 @@ public sealed partial class FloatingWindow
                 samples.Add(new SurfaceRadiusSample("Card", "FloatingNoteCard", card.CornerRadius));
             }
 
-            foreach (var trigger in NoteOverflowTriggersForValidation())
+            if (NoteOverflowTriggersForValidation().FirstOrDefault() is { } trigger)
             {
-                samples.Add(new SurfaceRadiusSample(
-                    "Section",
-                    "FloatingNoteOverflowMenu",
-                    (NoteRowOverflowMenuBehavior.GetPopup(trigger)?.Child as Border)?.CornerRadius));
+                try
+                {
+                    trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    WindowValidationInput.Pump(Dispatcher);
+                    if (_noteOverflowMenu is { IsOpen: true } menu)
+                    {
+                        menu.ApplyTemplate();
+                        menu.UpdateLayout();
+                        var menuBorder = ValidationDescendants<Border>(menu).FirstOrDefault();
+                        samples.Add(new SurfaceRadiusSample(
+                            "Section",
+                            "FloatingNoteOverflowMenu",
+                            menuBorder?.CornerRadius));
+                    }
+                }
+                finally
+                {
+                    CloseNoteOverflowMenu(immediate: true);
+                    WindowValidationInput.Pump(Dispatcher);
+                }
             }
         }
         finally
@@ -3852,19 +3868,20 @@ public sealed partial class FloatingWindow
         WindowValidationInput.Pump(Dispatcher);
     }
 
-    internal Popup? OpenFirstNoteOverflowMenuForValidation()
+    internal ContextMenu? ActiveNoteOverflowMenuForValidation => _noteOverflowMenu;
+
+    internal ContextMenu? OpenFirstNoteOverflowMenuForValidation()
     {
         ShowWorkspace(WorkspaceKind.Notes);
         WindowValidationInput.Pump(Dispatcher);
-        if (NoteOverflowTriggersForValidation().FirstOrDefault() is not { } trigger ||
-            NoteRowOverflowMenuBehavior.GetPopup(trigger) is not { } popup)
+        if (NoteOverflowTriggersForValidation().FirstOrDefault() is not { } trigger)
         {
             return null;
         }
 
-        popup.IsOpen = true;
+        trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         WindowValidationInput.Pump(Dispatcher);
-        return popup;
+        return _noteOverflowMenu;
     }
 
     internal FloatingThemeExerciseResult RunThemeMigrationFixture() => RunDayThemeExercise();
@@ -5024,25 +5041,17 @@ public sealed partial class FloatingWindow
                     string.Equals(button.Tag as string, addedNote.Id, StringComparison.Ordinal));
                 if (trigger is not null)
                 {
-                    var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger);
-                    var menuEdit = popup?.Child is { } keyboardRoot
-                        ? ValidationDescendants<Button>(keyboardRoot).FirstOrDefault(button =>
-                            string.Equals(button.Content as string, "编辑", StringComparison.Ordinal))
-                        : null;
-                    // #149：先走键盘路径——打开聚焦「编辑」，Tab 进入「删除」，Esc 关闭并回到触发器。
-                    if (popup is not null && menuEdit is not null)
-                    {
-                        noteMenuKeyboardLifecycle = ProbeNoteOverflowMenuKeyboard(
-                            trigger,
-                            popup,
-                            menuEdit);
-                    }
+                    // #149/#319：先走键盘路径——打开聚焦「编辑」，方向键进入「删除」，Esc 关闭并回到触发器。
+                    noteMenuKeyboardLifecycle = ProbeNoteOverflowMenuKeyboard(trigger);
 
                     trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                     WindowValidationInput.Pump(Dispatcher);
-                    if (popup is { IsOpen: true } && menuEdit is not null)
+                    var menu = _noteOverflowMenu;
+                    var menuEdit = menu?.Items.OfType<MenuItem>().FirstOrDefault(item =>
+                        string.Equals(item.Header as string, "编辑", StringComparison.Ordinal));
+                    if (menu is { IsOpen: true } && menuEdit is not null)
                     {
-                        menuEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        menuEdit.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
                         WindowValidationInput.Pump(Dispatcher);
                         UpdateLayout();
                         if (_manager is MainWindow revealedMain)
@@ -5060,16 +5069,12 @@ public sealed partial class FloatingWindow
                             WindowValidationInput.Pump(Dispatcher);
                         }
 
-                        noteMenuProvidesEdit = noteMenuProvidesEdit && !popup.IsOpen;
+                        noteMenuProvidesEdit = noteMenuProvidesEdit && !menu.IsOpen;
                     }
 
-                    if (popup is not null)
-                    {
-                        noteMenuDeleteConfirms = ProbeNoteOverflowMenuDelete(
-                            trigger,
-                            popup,
-                            addedNote.Id);
-                    }
+                    noteMenuDeleteConfirms = ProbeNoteOverflowMenuDelete(
+                        trigger,
+                        addedNote.Id);
                 }
             }
 
@@ -5324,9 +5329,9 @@ public sealed partial class FloatingWindow
             IReadOnlyList<string> overflowMenuFailures = ["没有便签「…」触发按钮"];
             var trigger = ValidationDescendants<Button>(FloatingRows).FirstOrDefault(button =>
                 Equals(button.GetValue(NoteControlRoleProperty), NoteControlRoleOverflow));
-            if (trigger is not null && NoteRowOverflowMenuBehavior.GetPopup(trigger) is { } overflowMenu)
+            if (trigger is not null)
             {
-                overflowMenuFailures = OpenFromKeyboardAndTraverse(trigger, overflowMenu, "「…」菜单");
+                overflowMenuFailures = ProbeOverflowContextMenuKeyboardFocus(trigger);
             }
 
             var tagSelectorFailures = OpenFromKeyboardAndTraverse(
@@ -5357,6 +5362,83 @@ public sealed partial class FloatingWindow
             UpdateLayout();
         }
 
+        IReadOnlyList<string> ProbeOverflowContextMenuKeyboardFocus(Button opener)
+        {
+            var failures = new List<string>();
+            IDisposable? menuInput = null;
+            try
+            {
+                CloseNoteOverflowMenu(immediate: true);
+                Activate();
+                Keyboard.Focus(opener);
+                WindowValidationInput.Pump(Dispatcher);
+                WindowValidationInput.RaiseKey(opener, Key.Enter);
+                WindowValidationInput.Pump(Dispatcher);
+                if (_noteOverflowMenu is not { IsOpen: true } menu)
+                {
+                    return ["「…」菜单没有从键盘打开"];
+                }
+
+                var items = menu.Items.OfType<MenuItem>().ToArray();
+                if (items.Length != 2)
+                {
+                    return ["「…」菜单项数量不是 2"];
+                }
+
+                menuInput = WindowValidationInput.AcquireContextMenuInputForValidation(menu);
+                if (!items[0].IsKeyboardFocused)
+                {
+                    Keyboard.Focus(menu);
+                    WindowValidationInput.Pump(Dispatcher);
+                    WindowValidationInput.RaiseKey(menu, Key.Down);
+                    WindowValidationInput.Pump(Dispatcher);
+                }
+
+                var expectedHighlight = (Application.Current.FindResource("MainActionBrush") as SolidColorBrush)?.Color;
+                var expectedText = (Application.Current.FindResource("MainActionTextBrush") as SolidColorBrush)?.Color;
+                for (var index = 0; index < items.Length; index++)
+                {
+                    var item = items[index];
+                    if (index > 0)
+                    {
+                        WindowValidationInput.RaiseKey(items[index - 1], Key.Down);
+                        WindowValidationInput.Pump(Dispatcher);
+                    }
+
+                    if (!item.IsKeyboardFocused || !item.IsHighlighted)
+                    {
+                        failures.Add($"「{item.Header}」未获得原生菜单键盘高亮");
+                    }
+
+                    if (item.FocusVisualStyle is not null)
+                    {
+                        failures.Add($"「{item.Header}」挂了默认系统 FocusVisualStyle");
+                    }
+
+                    if ((item.Background as SolidColorBrush)?.Color != expectedHighlight ||
+                        (item.Foreground as SolidColorBrush)?.Color != expectedText)
+                    {
+                        failures.Add($"「{item.Header}」高亮色未使用共享主行动色");
+                    }
+                }
+
+                WindowValidationInput.RaiseKey(items[^1], Key.Escape);
+                WindowValidationInput.Pump(Dispatcher);
+                if (menu.IsOpen || !KeyboardFocusPolicy.KeyboardFocusDrawnOnce(opener))
+                {
+                    failures.Add("Esc 关闭「…」菜单后未恢复触发器单层焦点环");
+                }
+
+                return failures;
+            }
+            finally
+            {
+                CloseNoteOverflowMenu(immediate: true);
+                menuInput?.Dispose();
+                WindowValidationInput.Pump(Dispatcher);
+            }
+        }
+
         IReadOnlyList<string> OpenFromKeyboardAndTraverse(Button opener, Popup popup, string name)
         {
             try
@@ -5380,17 +5462,17 @@ public sealed partial class FloatingWindow
     }
 
     /// <summary>“…”菜单删除：确认弹层取消则保留便签，确认则删除；弹层经 Dispatcher 队列驱动。</summary>
-    private bool ProbeNoteOverflowMenuDelete(Button trigger, Popup popup, string noteId)
+    private bool ProbeNoteOverflowMenuDelete(Button trigger, string noteId)
     {
         bool OpenMenuAndDriveDialog(Func<ConfirmationDialog?, bool> drive)
         {
-            if (!popup.IsOpen)
+            if (_noteOverflowMenu is not { IsOpen: true })
             {
                 trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                 WindowValidationInput.Pump(Dispatcher);
             }
 
-            if (!popup.IsOpen)
+            if (_noteOverflowMenu is not { IsOpen: true } menu)
             {
                 return false;
             }
@@ -5401,9 +5483,9 @@ public sealed partial class FloatingWindow
                 dialog = visibleDialog;
                 return drive(dialog);
             });
-            var menuDelete = ValidationDescendants<Button>(popup.Child).FirstOrDefault(button =>
-                string.Equals(button.Content as string, "删除", StringComparison.Ordinal));
-            menuDelete?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            var menuDelete = menu.Items.OfType<MenuItem>().FirstOrDefault(item =>
+                string.Equals(item.Header as string, "删除", StringComparison.Ordinal));
+            menuDelete?.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             WindowValidationInput.Pump(Dispatcher);
             UpdateLayout();
             return dialog is not null;
@@ -5430,45 +5512,63 @@ public sealed partial class FloatingWindow
     }
 
     /// <summary>
-    ///     #149：悬浮便签 `…` 菜单键盘生命周期——打开聚焦首项「编辑」，Tab 进入「删除」，
-    ///     Esc 关闭并把焦点还给触发按钮（与筛选 / 标签选择器同一套弹层焦点生命周期）。
+    ///     #149/#319：悬浮便签 `…` 原生菜单键盘生命周期——打开聚焦首项「编辑」，方向键进入「删除」，
+    ///     Esc 立即关闭并把焦点还给触发按钮。
     /// </summary>
-    private bool ProbeNoteOverflowMenuKeyboard(Button trigger, Popup popup, Button menuEdit)
+    private bool ProbeNoteOverflowMenuKeyboard(Button trigger)
     {
+        IDisposable? menuInput = null;
         try
         {
-            WindowValidationInput.ClosePopupForCleanup(popup);
+            CloseNoteOverflowMenu(immediate: true);
             Window.GetWindow(trigger)?.Activate();
             Keyboard.Focus(trigger);
             WindowValidationInput.Pump(Dispatcher);
-            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.RaiseKey(trigger, Key.Enter);
             WindowValidationInput.Pump(Dispatcher);
             WindowValidationInput.Pump(Dispatcher);
+            if (_noteOverflowMenu is not { IsOpen: true } menu)
+            {
+                return false;
+            }
+
+            var items = menu.Items.OfType<MenuItem>().ToArray();
+            if (items.Length != 2)
+            {
+                return false;
+            }
+
+            var menuEdit = items[0];
+            var menuDelete = items[1];
+            menuInput = WindowValidationInput.AcquireContextMenuInputForValidation(menu);
+            if (!menuEdit.IsKeyboardFocused)
+            {
+                Keyboard.Focus(menu);
+                WindowValidationInput.Pump(Dispatcher);
+                WindowValidationInput.RaiseKey(menu, Key.Down);
+                WindowValidationInput.Pump(Dispatcher);
+            }
+
             var openedWithFocusOnEdit =
-                popup.IsOpen &&
+                menu.IsOpen &&
                 ReferenceEquals(Keyboard.FocusedElement, menuEdit);
-            menuEdit.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            WindowValidationInput.RaiseKey(menuEdit, Key.Down);
             WindowValidationInput.Pump(Dispatcher);
-            var deleteButton = popup.Child is { } root
-                ? ValidationDescendants<Button>(root).FirstOrDefault(button =>
-                    string.Equals(button.Content as string, "删除", StringComparison.Ordinal))
-                : null;
-            var tabReachesDelete =
-                deleteButton is not null &&
-                ReferenceEquals(Keyboard.FocusedElement, deleteButton);
-            var escapeHandled = deleteButton is not null &&
-                WindowValidationInput.RaisePreviewKey(deleteButton, Key.Escape);
+            var arrowReachesDelete = ReferenceEquals(Keyboard.FocusedElement, menuDelete);
+            WindowValidationInput.RaiseKey(menuDelete, Key.Escape);
+            WindowValidationInput.Pump(Dispatcher);
             WindowValidationInput.Pump(Dispatcher);
             var closedBackToTrigger =
-                escapeHandled &&
-                WindowValidationInput.WaitForPopupClosed(popup) &&
+                !menu.IsOpen &&
                 (trigger.IsKeyboardFocusWithin ||
                  ReferenceEquals(FocusManager.GetFocusedElement(this), trigger));
-            return openedWithFocusOnEdit && tabReachesDelete && closedBackToTrigger;
+            return openedWithFocusOnEdit && arrowReachesDelete && closedBackToTrigger;
         }
         finally
         {
-            WindowValidationInput.ClosePopupForCleanup(popup);
+            CloseNoteOverflowMenu(immediate: true);
+            menuInput?.Dispose();
+            WindowValidationInput.Pump(Dispatcher);
         }
     }
 

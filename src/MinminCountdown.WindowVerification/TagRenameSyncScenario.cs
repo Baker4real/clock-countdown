@@ -332,10 +332,11 @@ internal static class TagRenameSyncScenario
         var rows = Required<Panel>(main, "TagManagerRows");
         var input = LogicalDescendants<TextBox>(rows)
             .Single(box => string.Equals(AutomationProperties.GetName(box), $"标签名称 {currentName}", StringComparison.Ordinal));
-        var save = LogicalDescendants<Button>(rows)
-            .Single(button => string.Equals(AutomationProperties.GetName(button), $"保存标签 {currentName}", StringComparison.Ordinal));
         input.Text = newName;
-        save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        if (!WindowValidationInput.RaisePreviewKey(input, Key.Enter))
+        {
+            throw new InvalidOperationException($"标签管理名称输入框按 Enter 未提交改名：{currentName} -> {newName}");
+        }
         SettleLayout(main);
     }
 

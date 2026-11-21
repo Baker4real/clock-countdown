@@ -39,9 +39,6 @@ public static class PopupValidationContractHarness
         var initial = new Button { Content = "Synthetic note action" };
         var surface = new Border { Child = initial };
         var popup = new Popup { PlacementTarget = trigger, Child = surface };
-        application.GetType("MinminCountdown.NoteRowOverflowMenuBehavior", true)
-            .GetMethod("SetPopup", BindingFlags.Public | BindingFlags.Static)
-            .Invoke(null, new object[] { trigger, popup });
         if (attach)
         {
             var attachMethod = lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static);
@@ -86,14 +83,20 @@ public static class PopupValidationContractHarness
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static WeakReference[] CaptureNoteMenus(DependencyObject root, MethodInfo getPopup)
+    private static WeakReference[] CaptureNoteOverflowTriggers(
+        DependencyObject root, DependencyProperty roleProperty, string overflowRole)
     {
         var references = new List<WeakReference>();
         void Visit(DependencyObject item)
         {
-            if (item is Button button && getPopup.Invoke(null, new object[] { button }) is Popup popup)
+            if (item is Popup)
+                throw new InvalidOperationException("Note cards must not pre-create Popup elements.");
+            if (item is Button button && Equals(button.GetValue(roleProperty), overflowRole))
             {
-                references.Add(new WeakReference(popup));
+                if (button.ContextMenu != null)
+                    throw new InvalidOperationException("Note overflow triggers must not pre-create ContextMenu.");
+                var card = VisualTreeHelper.GetParent(VisualTreeHelper.GetParent(button)) ?? (DependencyObject)button;
+                references.Add(new WeakReference(card));
                 references.Add(new WeakReference(button));
             }
             for (int index = 0; index < VisualTreeHelper.GetChildrenCount(item); index++)
@@ -101,6 +104,16 @@ public static class PopupValidationContractHarness
         }
         Visit(root);
         return references.ToArray();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void OpenOverflowTriggerOnce(WeakReference triggerRef, Dispatcher dispatcher, MethodInfo pump)
+    {
+        if (triggerRef.Target is Button trigger)
+        {
+            trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            pump.Invoke(null, new object[] { dispatcher });
+        }
     }
 
     public static object CheckFloatingNoteWorkspaceCollectibility(string assemblyPath)
@@ -137,8 +150,10 @@ public static class PopupValidationContractHarness
             BindingFlags.NonPublic | BindingFlags.Instance, null,
             new object[] { workspace, calendar, null, root, true }, null);
         var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+        var staticFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
         var pump = AppType("WindowValidationInput").GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
-        var getPopup = AppType("NoteRowOverflowMenuBehavior").GetMethod("GetPopup");
+        var roleProperty = (DependencyProperty)windowType.GetField("NoteControlRoleProperty", staticFlags).GetValue(null);
+        var overflowRole = (string)windowType.GetField("NoteControlRoleOverflow", staticFlags).GetValue(null);
         var retired = new List<WeakReference>();
         const int cycles = 64;
         try
@@ -153,16 +168,20 @@ public static class PopupValidationContractHarness
             var rows = (DependencyObject)window.FindName("FloatingRows");
             for (int index = 0; index < cycles; index++)
             {
-                var batch = CaptureNoteMenus(rows, getPopup);
+                var batch = CaptureNoteOverflowTriggers(rows, roleProperty, overflowRole);
                 if (batch.Length != notes.Length * 2)
-                    throw new InvalidOperationException("Expected two live note menus.");
+                    throw new InvalidOperationException("Expected two live note overflow triggers.");
+                if (index == 0)
+                {
+                    OpenOverflowTriggerOnce(batch[1], window.Dispatcher, pump);
+                }
                 retired.AddRange(batch);
                 // Stable ticks intentionally reuse note rows. A real workspace
                 // switch retires the tree without editing or saving settings.
                 showWorkspace.Invoke(window, new[] { countdownsWorkspace });
                 pump.Invoke(null, new object[] { window.Dispatcher });
-                if (CaptureNoteMenus(rows, getPopup).Length != 0)
-                    throw new InvalidOperationException("Note menus remained after switching workspace.");
+                if (CaptureNoteOverflowTriggers(rows, roleProperty, overflowRole).Length != 0)
+                    throw new InvalidOperationException("Note triggers remained after switching workspace.");
                 showWorkspace.Invoke(window, new[] { notesWorkspace });
                 pump.Invoke(null, new object[] { window.Dispatcher });
             }

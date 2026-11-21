@@ -128,6 +128,7 @@ internal static class SpacingTokenWiringScenario
                      {
                          "CountdownNameError",
                          "CountdownDateError",
+                         "CountdownTimeError",
                          "CountdownMessage",
                          "NoteTextError",
                          "NoteDateError",

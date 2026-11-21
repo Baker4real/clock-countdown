@@ -39,9 +39,11 @@ foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
-Assert-Equal 109 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure, including shared native menu resources, #330 numeric input behavior and #333 CsWin32 NativeMethods.txt, separate from repository-only window verification sources'
+Assert-Equal 110 @($releaseContract.SourceBuildFiles).Count 'Release contract keeps the product MSBuild closure, including shared native menu resources, #328 time input behavior, #330 numeric input behavior and #333 CsWin32 NativeMethods.txt, separate from repository-only window verification sources'
 Assert-Equal $true ('src\MinminCountdown\NumericInputBehavior.cs' -in @($releaseContract.SourceBuildFiles)) '#330 source-build closure contains the reusable numeric input behavior'
 Assert-Equal $true ('src\MinminCountdown\NumericInputBehavior.cs' -in @($releaseContract.BuildInputFiles)) '#330 deploy identity contains the reusable numeric input behavior'
+Assert-Equal $true ('src\MinminCountdown\TimeInputBehavior.cs' -in @($releaseContract.SourceBuildFiles)) '#328 source-build closure contains the reusable time input behavior'
+Assert-Equal $true ('src\MinminCountdown\TimeInputBehavior.cs' -in @($releaseContract.BuildInputFiles)) '#328 deploy identity contains the reusable time input behavior'
 $csWin32NativeMethodsInput = 'src\MinminCountdown\NativeMethods.txt'
 Assert-Equal $true ($csWin32NativeMethodsInput -in @($releaseContract.SourceBuildFiles)) '#333 source-build closure contains the CsWin32 NativeMethods.txt manifest'
 Assert-Equal $true ($csWin32NativeMethodsInput -in @($releaseContract.BuildInputFiles)) '#333 deploy identity contains the CsWin32 NativeMethods.txt manifest'
@@ -84,6 +86,7 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorCopyAndPreviewScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesFixedIntervalScenario.cs',
+    'src\MinminCountdown.WindowVerification\ExtendedNumericInputsScenario.cs',
     'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',
     'src\MinminCountdown.WindowVerification\TagRenameSyncScenario.cs',
     'src\MinminCountdown.WindowVerification\TagManagerAutoSaveScenario.cs',
@@ -95,8 +98,10 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\DisabledStateScenario.cs',
     'src\MinminCountdown.WindowVerification\DatePickerSingleBoxScenario.cs',
     'src\MinminCountdown.WindowVerification\SpacingTokenWiringScenario.cs',
-    'src\MinminCountdown.WindowVerification\IconGeometryAndVectorIconsScenario.cs')) {
-    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#298/#302/#303/#304/#305/#306/#307/#310/#311/#312/#315/#316/#317/#318/#320/#321/#322/#323/#324 build identity contains the window verification input: $windowVerificationInput"
+    'src\MinminCountdown.WindowVerification\IconGeometryAndVectorIconsScenario.cs',
+    'src\MinminCountdown.WindowVerification\CountdownDeadlineTimeInputScenario.cs',
+    'src\MinminCountdown.WindowVerification\TimeInputSpreadScenario.cs')) {
+    Assert-Equal $true ($windowVerificationInput -in @($releaseContract.BuildInputFiles)) "#273/#274/#297/#298/#302/#303/#304/#305/#306/#307/#310/#311/#312/#315/#316/#317/#318/#320/#321/#322/#323/#324/#328/#329 build identity contains the window verification input: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.SourceBuildFiles)) "#273/#274 window verification stays outside the product closure: $windowVerificationInput"
     Assert-Equal $false ($windowVerificationInput -in @($releaseContract.PackageFiles)) "#273/#274 window verification stays out of the office package: $windowVerificationInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($windowVerificationInput) "#273/#274 window verification source is not statically pinned: $windowVerificationInput"
@@ -301,7 +306,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 141 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #302 main refresh scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #307 icon geometry & vectorization scenario, #308 tag-manager auto-save scenario, #310 disabled-state scenario, #311 spacing-token scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #319 floating note overflow menu scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330 rule editor scenarios, #324 secondary DWM chrome scenario and #333 CsWin32 NativeMethods.txt to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 145 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #302 main refresh scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #307 icon geometry & vectorization scenario, #308 tag-manager auto-save scenario, #310 disabled-state scenario, #311 spacing-token scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #319 floating note overflow menu scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330/#331 rule editor and numeric-input scenarios, #324 secondary DWM chrome scenario, #328 countdown deadline time input behavior & scenario, #329 time input spread scenario and #333 CsWin32 NativeMethods.txt to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `

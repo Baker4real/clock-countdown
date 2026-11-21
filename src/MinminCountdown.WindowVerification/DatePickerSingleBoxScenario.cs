@@ -371,16 +371,16 @@ internal static class DatePickerSingleBoxScenario
             }
         }
 
-        // 4) 规则编辑器日期框与紧邻小时下拉框之间有干净间距、不重叠
-        if (site.Name == "ReminderRules.FirstDueDate" && site.ReferenceCombo is not null)
+        // 4) 规则编辑器日期框与紧邻时刻输入框之间有干净间距、不重叠
+        if (site.Name == "ReminderRules.FirstDueDate" && site.LayoutShiftSibling is not null)
         {
             var root = (Visual)site.HostWindow.Content;
             var dateBounds = Bounds(picker, root);
-            var hourBounds = Bounds(site.ReferenceCombo, root);
-            var gap = hourBounds.Left - dateBounds.Right;
+            var timeBounds = Bounds(site.LayoutShiftSibling, root);
+            var gap = timeBounds.Left - dateBounds.Right;
             if (gap < 4.0)
             {
-                failures.Add($"ReminderRules.FirstDueDate 与小时下拉框间距过窄或碰撞：gap={gap:0.##}。");
+                failures.Add($"ReminderRules.FirstDueDate 与时刻框间距过窄或碰撞：gap={gap:0.##}。");
             }
         }
 
@@ -988,10 +988,8 @@ internal static class DatePickerSingleBoxScenario
             SettleWindow(reminderCenter);
 
             var probe = new MainWindowEmptyStateProbe(main);
-            var countdownExpand = Required<Button>(main, "CountdownEditorExpandButton");
             var countdownName = Required<TextBox>(main, "CountdownName");
             var countdownDate = Required<DatePicker>(main, "CountdownDate");
-            var countdownHour = Required<ComboBox>(main, "CountdownHour");
             var saveCountdown = Required<Button>(main, "SaveCountdownButton");
 
             var noteText = Required<TextBox>(main, "NoteText");
@@ -1010,12 +1008,9 @@ internal static class DatePickerSingleBoxScenario
 
             var ruleMode = FindByAutomationId<ComboBox>(rulesEditor, "ReminderRuleMode");
             var ruleDate = FindByAutomationId<DatePicker>(rulesEditor, "ReminderRuleFirstDueDate");
-            var ruleHour = FindByAutomationId<ComboBox>(rulesEditor, "ReminderRuleFirstDueHour");
+            var ruleTime = FindByAutomationId<TextBox>(rulesEditor, "ReminderRuleFirstDueTime");
 
             var centerDate = VisualDescendants<DatePicker>(reminderCenter).Single();
-            var centerHour = VisualDescendants<ComboBox>(reminderCenter)
-                .First(combo => (AutomationProperties.GetName(combo) ?? string.Empty)
-                    .StartsWith("自定义稍后小时：", StringComparison.Ordinal));
             var centerConfirm = FindByAutomationId<Button>(reminderCenter, "ReminderEntryCustomSnoozeConfirm");
 
             var sites = new DatePickerSite[]
@@ -1024,7 +1019,7 @@ internal static class DatePickerSingleBoxScenario
                     "Main.CountdownDate",
                     main,
                     countdownDate,
-                    countdownHour,
+                    ReferenceCombo: null,
                     ExpectedHeight: 41.0,
                     LayoutShiftSibling: saveCountdown,
                     PreviousTabElement: countdownName,
@@ -1032,10 +1027,6 @@ internal static class DatePickerSingleBoxScenario
                     {
                         filterPopup.IsOpen = false;
                         probe.ShowWorkspace(WorkspaceKind.Countdowns);
-                        if (!countdownHour.IsVisible)
-                        {
-                            countdownExpand.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                        }
                         SettleWindow(main);
                     },
                     CleanupVisible: () =>
@@ -1112,9 +1103,9 @@ internal static class DatePickerSingleBoxScenario
                     "ReminderRules.FirstDueDate",
                     rulesEditor,
                     ruleDate,
-                    ruleHour,
-                    ExpectedHeight: ruleHour.ActualHeight,
-                    LayoutShiftSibling: ruleHour,
+                    ruleMode,
+                    ExpectedHeight: ruleMode.ActualHeight,
+                    LayoutShiftSibling: ruleTime,
                     PreviousTabElement: ruleMode,
                     PrepareVisible: () => SettleWindow(rulesEditor),
                     CleanupVisible: () =>
@@ -1132,8 +1123,8 @@ internal static class DatePickerSingleBoxScenario
                     "ReminderCenter.CustomSnoozeDate",
                     reminderCenter,
                     centerDate,
-                    centerHour,
-                    ExpectedHeight: centerHour.ActualHeight,
+                    ReferenceCombo: null,
+                    ExpectedHeight: defaultCombo.ActualHeight,
                     LayoutShiftSibling: centerConfirm,
                     PreviousTabElement: null,
                     PrepareVisible: () => SettleWindow(reminderCenter),

@@ -508,7 +508,7 @@ internal static partial class ValidationReport
         var mainThemeTemplate =
             HasTemplate(Required<Button>(main, "SaveCountdownButton")) &&
             HasTemplate(Required<TextBox>(main, "CountdownName")) &&
-            HasTemplate(Required<ComboBox>(main, "CountdownHour")) &&
+            HasTemplate(Required<ComboBox>(main, "DisplayPrecision")) &&
             HasTemplate(datePicker);
         var themeInventory =
             HasApplicationStyle(typeof(Button)) &&
@@ -521,7 +521,7 @@ internal static partial class ValidationReport
             HasApplicationStyle(typeof(ScrollBar)) &&
             HasApplicationStyle(typeof(ToolTip));
         var comboThemed =
-            HasTemplate(Required<ComboBox>(main, "CountdownHour")) &&
+            HasTemplate(Required<ComboBox>(main, "DisplayPrecision")) &&
             HasApplicationStyle(typeof(ComboBoxItem)) &&
             HasApplicationStyle(typeof(ScrollBar));
         var dateFamilyThemed =
@@ -1100,9 +1100,7 @@ internal static partial class ValidationReport
 
         var countdownName = Required<TextBox>(main, "CountdownName");
         var countdownDate = Required<DatePicker>(main, "CountdownDate");
-        var countdownHour = Required<ComboBox>(main, "CountdownHour");
-        var countdownMinute = Required<ComboBox>(main, "CountdownMinute");
-        var countdownSecond = Required<ComboBox>(main, "CountdownSecond");
+        var countdownTime = Required<TextBox>(main, "CountdownTime");
         var displayPrecision = Required<ComboBox>(main, "DisplayPrecision");
         var monthlySalary = Required<TextBox>(main, "MonthlySalary");
         var workStart = Required<TextBox>(main, "WorkStart");
@@ -1117,19 +1115,16 @@ internal static partial class ValidationReport
         // 管理窗等比收缩（1165→864，×0.74）：宽度区间与 56→41 的高度窗随之换算；
         // 偏好字段的宽度下限是内容兜底，不随缩放。日期框例外（#237）：共享模板的 38 DIP 下拉列不缩，
         // 完整中文日期连同 36/12 留白约需 237 DIP，区间按 242 而不是按比例的 222 收。
+        // #328：截止时刻收口为单一可键入 HH:mm:ss 文本框（宽 200 DIP，高 41 DIP）。
         var compactSelection =
             countdownDate.Width is >= 237 and <= 250 &&
-            countdownHour.Width is >= 133 and <= 152 &&
-            countdownMinute.Width is >= 133 and <= 152 &&
-            countdownSecond.Width is >= 133 and <= 152 &&
+            countdownTime.Width is >= 160 and <= 242 &&
             displayPrecision.ActualWidth is >= 185 and <= 208 &&
             new Control[]
             {
                 countdownName,
                 countdownDate,
-                countdownHour,
-                countdownMinute,
-                countdownSecond
+                countdownTime
             }.All(control => control.IsVisible && control.ActualHeight is >= 40 and <= 42);
         var compactPreferences =
             displayPrecision.ActualWidth >= 96 &&
@@ -1169,9 +1164,7 @@ internal static partial class ValidationReport
             {
                 countdownName,
                 countdownDate,
-                countdownHour,
-                countdownMinute,
-                countdownSecond,
+                countdownTime,
                 displayPrecision,
                 monthlySalary,
                 workStart,
@@ -1183,14 +1176,15 @@ internal static partial class ValidationReport
                 ReferenceEquals(control.BorderBrush, Application.Current.FindResource("ControlBorderBrush")) &&
                 ReferenceEquals(control.Foreground, Application.Current.FindResource("InkBrush")));
         countdownDate.ApplyTemplate();
-        // 内部横向留白 16→12、前导图标位 48→36（管理窗等比收缩）。
+        // 内部横向留白 16→12、前导图标位 48→36（管理窗等比收缩；#328 截止时刻同步带时钟图标位 36）。
         var compactInputHorizontalPaddingAligned =
             new[] { monthlySalary, workStart, workEnd }
                 .All(textBox => textBox.Padding.Left == 12 && textBox.Padding.Right == 12) &&
             countdownName.Padding.Left == 36 &&
             countdownName.Padding.Right == 12 &&
-            new[] { countdownHour, countdownMinute, countdownSecond, displayPrecision }
-                .All(comboBox => comboBox.Padding.Left == 12) &&
+            countdownTime.Padding.Left == 36 &&
+            countdownTime.Padding.Right == 12 &&
+            displayPrecision.Padding.Left == 12 &&
             countdownDate.Template?.FindName("PART_TextBox", countdownDate) is TextBox dateInputTextBox &&
             dateInputTextBox.Padding.Left == 36 &&
             dateInputTextBox.Padding.Right == 12;
@@ -1265,17 +1259,13 @@ internal static partial class ValidationReport
             ["CountdownPreferenceInputHeight"] = displayPrecision.ActualHeight,
             ["CountdownNameWidth"] = countdownName.ActualWidth,
             ["TargetDateWidth"] = countdownDate.Width,
-            ["TargetHourWidth"] = countdownHour.Width,
-            ["TargetMinuteWidth"] = countdownMinute.Width,
-            ["TargetSecondWidth"] = countdownSecond.Width,
+            ["TargetTimeWidth"] = countdownTime.Width,
             ["DisplayPrecisionWidth"] = displayPrecision.ActualWidth,
             ["MonthlySalaryWidth"] = monthlySalary.ActualWidth,
             ["WorkStartWidth"] = workStart.ActualWidth,
             ["WorkEndWidth"] = workEnd.ActualWidth,
-            ["ExpandedTargetDateWidth"] = Required<DatePicker>(main, "CountdownDate").Width,
-            ["ExpandedTargetHourWidth"] = Required<ComboBox>(main, "CountdownHour").Width,
-            ["ExpandedTargetMinuteWidth"] = Required<ComboBox>(main, "CountdownMinute").Width,
-            ["ExpandedTargetSecondWidth"] = Required<ComboBox>(main, "CountdownSecond").Width,
+            ["ExpandedTargetDateWidth"] = countdownDate.Width,
+            ["ExpandedTargetTimeWidth"] = countdownTime.Width,
             ["ExpandedDisplayPrecisionWidth"] = Required<ComboBox>(main, "DisplayPrecision").ActualWidth,
             ["ExpandedMonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
             ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
@@ -1683,8 +1673,6 @@ internal static partial class ValidationReport
                 productionDatePickers.UnattachedNegativeTextDoesNotOpen,
             ["ReminderCenterComboBoxesUseThemedDropDowns"] =
                 productionDatePickers.ReminderCenterComboBoxesUseThemedDropDowns,
-            ["TimeDropDowns"] = 3,
-            ["TimeOptionCounts"] = main.TimeOptionCounts,
             ["HasCountdownReminderModeRadios"] = Must(
                 mainStructure.CountdownReminderModeRadiosPresent,
                 "倒计时提醒模式单选组存在（#129 自 U1 迁移）"),
@@ -1771,11 +1759,6 @@ internal static partial class ValidationReport
                 floating.Height <= 391 &&
                 floatingStructure.ReminderRulesEntryCompact,
                 "悬浮窗提醒规则入口保持 520 x 390 紧凑表面"),
-            ["NoteReminderTimeOptionCounts"] = new[]
-            {
-                productionDatePickers.ReminderHourOptionCount,
-                productionDatePickers.ReminderMinuteOptionCount
-            },
             ["CrossDayReminderSelectionWorks"] = Must(crossDayReminderBehavior, "便签提醒支持跨天选择并按北京时间触发"),
             ["ReminderSummaryAdvancesAfterFirstDue"] = Must(reminderSummaryAdvances, "首次提醒到期后主窗口摘要显示下一循环时间"),
             ["OneTimeReminderLifecycleWorks"] = Must(oneTimeReminderBehavior, "一次性提醒支持离线补发并在送达后跨重启去重"),

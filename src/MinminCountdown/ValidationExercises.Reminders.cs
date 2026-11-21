@@ -101,9 +101,9 @@ internal static partial class ValidationExercises
             draftEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var draftName = (TextBox)main.FindName("CountdownName");
             draftName.Text = "未保存的倒计时草稿";
-            var draftSecond = (ComboBox)main.FindName("CountdownSecond");
-            draftSecond.SelectedIndex = (draftSecond.SelectedIndex + 7) % 60;
-            var expectedDraftSecond = draftSecond.SelectedIndex;
+            var draftTime = (TextBox)main.FindName("CountdownTime");
+            draftTime.Text = "11:22:33";
+            var expectedDraftTime = draftTime.Text;
             ((ToggleButton)main.FindName("CountdownExpiredFilter"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
@@ -121,7 +121,7 @@ internal static partial class ValidationExercises
                 main.CurrentWorkspace == WorkspaceKind.Countdowns &&
                 main.EditingCountdownId == draftCountdown.Id &&
                 string.Equals(draftName.Text, "未保存的倒计时草稿", StringComparison.Ordinal) &&
-                draftSecond.SelectedIndex == expectedDraftSecond &&
+                string.Equals(draftTime.Text, expectedDraftTime, StringComparison.Ordinal) &&
                 string.Equals(
                     ((TextBlock)main.FindName("CountdownReminderRulesSummary")).Text,
                     "不提醒",
@@ -951,8 +951,7 @@ internal static partial class ValidationExercises
                 "无效自定义稍后没有在来源控件显示错误或改变了状态。");
             Must(
                 FindReminderEntryControl<DatePicker>(center, key, "自定义稍后日期：").IsVisible &&
-                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后小时：").IsVisible &&
-                FindReminderEntryControl<ComboBox>(center, key, "自定义稍后分钟：").IsVisible,
+                FindReminderEntryControl<TextBox>(center, key, "自定义稍后时间：").IsVisible,
                 "无效自定义稍后的来源控件未真实展开。");
             Must(center.RequestSnooze(key, ReminderSnoozeOption.TenMinutes),
                 "更正后无法点击 10 分钟稍后控件。");

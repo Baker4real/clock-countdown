@@ -395,9 +395,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal string? EditingCountdownId => _editingCountdownId;
 
-    internal IReadOnlyList<int> TimeOptionCounts =>
-        new[] { CountdownHour.Items.Count, CountdownMinute.Items.Count, CountdownSecond.Items.Count };
-
     internal bool CompletedNotesAreCollapsed => !_completedSegmentSelected;
 
     internal bool SegmentIndicatorGeometryMatchesForValidation =>
@@ -460,8 +457,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen &&
-        !CountdownDate.IsDropDownOpen && !NoteDate.IsDropDownOpen &&
-        !CountdownHour.IsDropDownOpen && !CountdownMinute.IsDropDownOpen && !CountdownSecond.IsDropDownOpen;
+        !CountdownDate.IsDropDownOpen && !NoteDate.IsDropDownOpen;
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
@@ -1239,7 +1235,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     [
         MinimizeButton, CloseButton,
         CountdownTab, NotesTab, PreferencesButton, FilterButton, TagManagerButton,
-        CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
+        CountdownName, CountdownDate, CountdownTime,
         CountdownTags.PopupTrigger, CountdownReminderHelp,
         CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
         CancelCountdownEdit, CountdownEditorExpandButton, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
@@ -1251,19 +1247,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ConfigureControls()
     {
-        for (var hour = 0; hour < 24; hour++)
-        {
-            var text = hour.ToString("D2", CultureInfo.InvariantCulture);
-            CountdownHour.Items.Add(text);
-        }
-
-        for (var value = 0; value < 60; value++)
-        {
-            var text = value.ToString("D2", CultureInfo.InvariantCulture);
-            CountdownMinute.Items.Add(text);
-            CountdownSecond.Items.Add(text);
-        }
-
         DisplayPrecision.Items.Add("天");
         DisplayPrecision.Items.Add("小时");
         DisplayPrecision.Items.Add("分钟");
@@ -1324,9 +1307,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (CloseButton, "CloseButton"),
             (CountdownName, "CountdownName"),
             (CountdownDate, "CountdownDate"),
-            (CountdownHour, "CountdownHour"),
-            (CountdownMinute, "CountdownMinute"),
-            (CountdownSecond, "CountdownSecond"),
+            (CountdownTime, "CountdownTime"),
             (CountdownTags.PopupTrigger, "CountdownTags"),
             (CountdownReminderHelp, "CountdownReminderHelp"),
             (CountdownReminderNoRadio, "CountdownReminderNoRadio"),
@@ -1367,11 +1348,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.MarkLive(CountdownNameError);
         AutomationProperties.SetAutomationId(CountdownNameError, "CountdownNameError");
         UiAccessibility.MarkLive(CountdownDateError);
+        UiAccessibility.MarkLive(CountdownTimeError);
+        AutomationProperties.SetAutomationId(CountdownTimeError, "CountdownTimeError");
         UiAccessibility.MarkLive(NoteTextError);
         UiAccessibility.MarkLive(NoteDateError);
         UiAccessibility.MarkLive(MonthlySalaryError);
+        AutomationProperties.SetAutomationId(MonthlySalaryError, "MonthlySalaryError");
         UiAccessibility.MarkLive(WorkStartError);
+        AutomationProperties.SetAutomationId(WorkStartError, "WorkStartError");
         UiAccessibility.MarkLive(WorkEndError);
+        AutomationProperties.SetAutomationId(WorkEndError, "WorkEndError");
         UiAccessibility.MarkLive(NoteMessage);
         UiAccessibility.MarkLive(TagManagerMessage);
     }
@@ -1478,11 +1464,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownReminderTimeRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.AtDeadline);
         CountdownReminderCustomRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.Custom);
         CountdownDate.SelectedDateChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownHour.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownMinute.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownSecond.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
+        CountdownTime.TextChanged += (_, _) => OnCountdownTimeTextChanged();
+        CountdownTime.LostKeyboardFocus += (_, _) => ValidateCountdownTimeOnBlur();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         AttachSingleLineSubmit(CountdownName, SaveCountdown, () => MainShortcutScopeIsSafe);
+        AttachSingleLineSubmit(CountdownTime, SaveCountdown, () => MainShortcutScopeIsSafe);
         PreferencesButton.Click += (_, _) => PreferencesPopup.IsOpen = !PreferencesPopup.IsOpen;
         DisclosureMotion.Bind(CountdownEditorExpandButton, animate =>
             SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible, animate));
@@ -1494,25 +1480,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // #151：字段值修正后立即清除对应字段错误（镜像悬浮窗快速新增）。
         CountdownName.TextChanged += (_, _) => ClearCountdownFieldError(CountdownNameError);
         CountdownDate.SelectedDateChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownHour.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownMinute.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownSecond.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
         DisplayPrecision.SelectionChanged += (_, _) => MarkSettingsDraftDirty();
+        ConfigureMonthlySalaryNumericInput();
         MonthlySalary.TextChanged += (_, _) =>
         {
             MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(MonthlySalaryError);
+            ValidateMonthlySalaryImmediate();
         };
-        WorkStart.TextChanged += (_, _) =>
-        {
-            MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(WorkStartError);
-        };
-        WorkEnd.TextChanged += (_, _) =>
-        {
-            MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(WorkEndError);
-        };
+        WorkStart.TextChanged += (_, _) => OnWorkStartTextChanged();
+        WorkStart.LostKeyboardFocus += (_, _) => ValidateWorkStartOnBlur();
+        WorkEnd.TextChanged += (_, _) => OnWorkEndTextChanged();
+        WorkEnd.LostKeyboardFocus += (_, _) => ValidateWorkEndOnBlur();
         SaveNoteButton.Click += (_, _) => SaveNote();
         CancelNoteEdit.Click += (_, _) => ResetNoteEditor();
         AddEmptyNoteButton.Click += (_, _) => FocusNoteTextFromEmptyState();
@@ -2943,9 +2921,37 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             : $"下次 {DateDisplay.Deadline(nextReminder.Value)} · {summary}";
     }
 
+    private const string CountdownTimeFormatErrorMessage = "截止时刻请使用 HH:mm:ss。";
+
+    private void OnCountdownTimeTextChanged()
+    {
+        OnCountdownTargetFieldsChanged();
+        if (TimeInputBehavior.TryParseStrict(CountdownTime.Text, TimeInputFormat.HourMinuteSecond, out _))
+        {
+            ClearCountdownFieldError(CountdownTimeError);
+        }
+    }
+
+    private void ValidateCountdownTimeOnBlur()
+    {
+        if (_loadingCountdownEditor || !CountdownTime.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(CountdownTime.Text, TimeInputFormat.HourMinuteSecond, out _))
+        {
+            ShowCountdownValidationError(CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime);
+        }
+        else
+        {
+            ClearCountdownFieldError(CountdownTimeError);
+        }
+    }
+
     private void SaveCountdown()
     {
-        // #151：校验按字段拆开；错误完整出现在对应字段旁并聚焦第一个无效控件；
+        // #151/#328：校验按字段拆开；错误完整出现在对应字段下方并聚焦第一个无效控件；
         // 唯一错误行不再固定高度裁切或省略（XAML 侧已去除 MaxHeight/TextTrimming）。
         ClearCountdownFieldErrors();
         var validations = new List<(TextBlock Error, string Message, Control Source)>();
@@ -2959,8 +2965,22 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             validations.Add((CountdownDateError, "请选择截止日期。", CountdownDate));
         }
 
+        var hasValidTime = TimeInputBehavior.TryParseStrict(
+            CountdownTime.Text,
+            TimeInputFormat.HourMinuteSecond,
+            out var targetTime);
+        if (!hasValidTime)
+        {
+            validations.Add((CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime));
+        }
+
         if (validations.Count > 0)
         {
+            if (!hasValidTime)
+            {
+                SetCountdownEditorExpanded(true);
+            }
+
             foreach (var (error, message, source) in validations)
             {
                 ShowCountdownValidationError(error, message, source);
@@ -2971,19 +2991,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        if (GetCountdownTargetUtc() is not { } target)
-        {
-            SetCountdownEditorExpanded(true);
-            var invalidTime = new[] { CountdownHour, CountdownMinute, CountdownSecond }
-                .First(control => control.SelectedIndex < 0 || control.SelectedIndex >= control.Items.Count);
-            ShowCountdownValidationError(
-                CountdownDateError,
-                "请先选择完整的倒计时截止时间。",
-                invalidTime);
-            SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
-            invalidTime.Focus();
-            return;
-        }
+        var target = CountdownFormatting.ToUtc(
+            CountdownDate.SelectedDate!.Value,
+            targetTime.Hours,
+            targetTime.Minutes,
+            targetTime.Seconds);
 
         var result = _desktopWorkspace.Apply(new SaveCountdownChange(
             _editingCountdownId,
@@ -3068,39 +3080,172 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ResetNoteEditor();
     }
 
+    private const string InvalidMonthlySalaryFormatError = "月薪格式无效。";
+    private const string NegativeMonthlySalaryError = "月薪不能小于 0。";
+    private const string WorkStartFormatErrorMessage = "上班时间请使用 HH:mm。";
+    private const string WorkEndFormatErrorMessage = "下班时间请使用 HH:mm。";
+    private const string WorkTimeOrderErrorMessage = "下班时间必须晚于上班时间。";
+
+    private void ConfigureMonthlySalaryNumericInput()
+    {
+        DecimalNumericInputBehavior.SetMinimum(MonthlySalary, 0m);
+        DecimalNumericInputBehavior.SetMaximum(MonthlySalary, decimal.MaxValue);
+        DecimalNumericInputBehavior.SetStep(MonthlySalary, 1m);
+        DecimalNumericInputBehavior.SetDecimalPlaces(MonthlySalary, 2);
+        DecimalNumericInputBehavior.SetFormatString(MonthlySalary, "N2");
+        DecimalNumericInputBehavior.SetRequireFocusForMouseWheel(MonthlySalary, true);
+        DecimalNumericInputBehavior.SetFormatOnLostFocus(MonthlySalary, true);
+        DecimalNumericInputBehavior.SetIsEnabled(MonthlySalary, true);
+    }
+
+    private void ValidateMonthlySalaryImmediate()
+    {
+        if (_loadingPreferences || string.IsNullOrEmpty(MonthlySalary.Text))
+        {
+            ClearPreferenceFieldError(MonthlySalaryError);
+            return;
+        }
+
+        if (!DecimalNumericInputBehavior.TryParseDecimal(MonthlySalary.Text, out var salary))
+        {
+            ShowPreferenceFieldError(MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary);
+            return;
+        }
+
+        if (salary < 0m)
+        {
+            ShowPreferenceFieldError(MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary);
+            return;
+        }
+
+        ClearPreferenceFieldError(MonthlySalaryError);
+    }
+
+    private void OnWorkStartTextChanged()
+    {
+        MarkSettingsDraftDirty();
+        if (TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var start))
+        {
+            ClearPreferenceFieldError(WorkStartError);
+            if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var end) &&
+                end > start &&
+                string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void OnWorkEndTextChanged()
+    {
+        MarkSettingsDraftDirty();
+        if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var end))
+        {
+            if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var start) ||
+                end > start ||
+                !string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void ValidateWorkStartOnBlur()
+    {
+        if (_loadingPreferences ||
+            !PreferencesPopup.IsOpen ||
+            PopupMotionBehavior.IsClosing(PreferencesPopup) ||
+            !WorkStart.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart))
+        {
+            ShowPreferenceFieldError(WorkStartError, WorkStartFormatErrorMessage, WorkStart);
+            return;
+        }
+
+        ClearPreferenceFieldError(WorkStartError);
+        if (TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
+        {
+            if (workEnd <= workStart)
+            {
+                ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            }
+            else if (string.Equals(WorkEndError.Text, WorkTimeOrderErrorMessage, StringComparison.Ordinal))
+            {
+                ClearPreferenceFieldError(WorkEndError);
+            }
+        }
+    }
+
+    private void ValidateWorkEndOnBlur()
+    {
+        if (_loadingPreferences ||
+            !PreferencesPopup.IsOpen ||
+            PopupMotionBehavior.IsClosing(PreferencesPopup) ||
+            !WorkEnd.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkEndFormatErrorMessage, WorkEnd);
+            return;
+        }
+
+        if (TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart) &&
+            workEnd <= workStart)
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            return;
+        }
+
+        ClearPreferenceFieldError(WorkEndError);
+    }
+
     private void SavePreferences()
     {
-        // #151：偏好格式错误出现在对应字段下方并同时镜像到底栏；不再只出现在窗口底栏。
+        // #151/#329：偏好格式与上下班顺序错误出现在对应字段下方、挂接错误边框并同时镜像到底栏。
         ClearPreferenceFieldErrors();
-        if (!decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var salary) &&
-            !decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out salary))
+        if (!DecimalNumericInputBehavior.TryParseDecimal(MonthlySalary.Text, out var salary))
         {
-            ShowPreferenceFieldError(MonthlySalaryError, "月薪格式无效。", MonthlySalary);
-            SetMessage(StatusText, "月薪格式无效。", true);
+            ShowPreferenceFieldError(MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary);
+            SetMessage(StatusText, InvalidMonthlySalaryFormatError, true);
             MonthlySalary.Focus();
             return;
         }
 
-        if (salary < 0)
+        if (salary < 0m)
         {
-            ShowPreferenceFieldError(MonthlySalaryError, "月薪不能小于 0。", MonthlySalary);
-            SetMessage(StatusText, "月薪不能小于 0。", true);
+            ShowPreferenceFieldError(MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary);
+            SetMessage(StatusText, NegativeMonthlySalaryError, true);
             MonthlySalary.Focus();
             return;
         }
 
-        if (!TimeSpan.TryParseExact(WorkStart.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workStart))
+        if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart))
         {
-            ShowPreferenceFieldError(WorkStartError, "上班时间请使用 HH:mm。", WorkStart);
-            SetMessage(StatusText, "上班时间请使用 HH:mm。", true);
+            ShowPreferenceFieldError(WorkStartError, WorkStartFormatErrorMessage, WorkStart);
+            SetMessage(StatusText, WorkStartFormatErrorMessage, true);
             WorkStart.Focus();
             return;
         }
 
-        if (!TimeSpan.TryParseExact(WorkEnd.Text, @"hh\:mm", CultureInfo.InvariantCulture, out var workEnd))
+        if (!TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
         {
-            ShowPreferenceFieldError(WorkEndError, "下班时间请使用 HH:mm。", WorkEnd);
-            SetMessage(StatusText, "下班时间请使用 HH:mm。", true);
+            ShowPreferenceFieldError(WorkEndError, WorkEndFormatErrorMessage, WorkEnd);
+            SetMessage(StatusText, WorkEndFormatErrorMessage, true);
+            WorkEnd.Focus();
+            return;
+        }
+
+        if (workEnd <= workStart)
+        {
+            ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
+            SetMessage(StatusText, WorkTimeOrderErrorMessage, true);
             WorkEnd.Focus();
             return;
         }
@@ -3148,9 +3293,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _editingCountdownId = record.Id;
             CountdownName.Text = record.Name;
             CountdownDate.SelectedDate = beijing.Date;
-            CountdownHour.SelectedIndex = beijing.Hour;
-            CountdownMinute.SelectedIndex = beijing.Minute;
-            CountdownSecond.SelectedIndex = beijing.Second;
+            TimeInputBehavior.SetValue(CountdownTime, new TimeSpan(beijing.Hour, beijing.Minute, beijing.Second));
             CountdownTags.SetSelection(record.TagIds);
             _countdownReminderRules = Array.AsReadOnly(record.ReminderRules.ToArray());
             SyncCountdownReminderModeFromRules();
@@ -3396,9 +3539,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void SetCountdownTarget(DateTimeOffset beijing)
     {
         CountdownDate.SelectedDate = beijing.Date;
-        CountdownHour.SelectedIndex = beijing.Hour;
-        CountdownMinute.SelectedIndex = beijing.Minute;
-        CountdownSecond.SelectedIndex = beijing.Second;
+        TimeInputBehavior.SetValue(CountdownTime, new TimeSpan(beijing.Hour, beijing.Minute, beijing.Second));
     }
 
     private void MarkSettingsDraftDirty()
@@ -3459,8 +3600,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             DisplayPrecision.SelectedIndex = PrecisionIndex(preferences.DisplayPrecision);
             MonthlySalary.Text = FormatMonthlySalary(preferences.MonthlySalary);
-            WorkStart.Text = CountdownFormatting.FormatWorkTime(preferences.WorkStart);
-            WorkEnd.Text = CountdownFormatting.FormatWorkTime(preferences.WorkEnd);
+            TimeInputBehavior.SetValue(WorkStart, preferences.WorkStart);
+            TimeInputBehavior.SetValue(WorkEnd, preferences.WorkEnd);
         }
         finally
         {
@@ -3571,15 +3712,26 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void FocusCountdownDatePrerequisite()
     {
-        const string message = "请先选择完整的倒计时截止时间。";
-        ShowCountdownValidationError(CountdownDateError, message, CountdownDate);
-        SetMessage(CountdownMessage, message, true);
-        // DatePickerTextBoxStyle deliberately disables the inner PART_TextBox;
-        // focus the DatePicker owner so keyboard focus remains reachable.
-        var target = (Control)CountdownDate;
+        if (CountdownDate.SelectedDate is null)
+        {
+            const string message = "请先选择完整的倒计时截止时间。";
+            ShowCountdownValidationError(CountdownDateError, message, CountdownDate);
+            SetMessage(CountdownMessage, message, true);
+            // DatePickerTextBoxStyle deliberately disables the inner PART_TextBox;
+            // focus the DatePicker owner so keyboard focus remains reachable.
+            var target = (Control)CountdownDate;
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() => Keyboard.Focus(target)));
+            return;
+        }
+
+        SetCountdownEditorExpanded(true);
+        ShowCountdownValidationError(CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime);
+        SetMessage(CountdownMessage, CountdownTimeFormatErrorMessage, true);
         Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
-            new Action(() => Keyboard.Focus(target)));
+            new Action(() => Keyboard.Focus(CountdownTime)));
     }
 
     private void EnsureCountdownReminderModeRadio(CountdownReminderMode mode)
@@ -3652,18 +3804,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private DateTimeOffset? GetCountdownTargetUtc()
     {
         if (CountdownDate.SelectedDate is null ||
-            CountdownHour.SelectedIndex is < 0 or > 23 ||
-            CountdownMinute.SelectedIndex is < 0 or > 59 ||
-            CountdownSecond.SelectedIndex is < 0 or > 59)
+            !TimeInputBehavior.TryParseStrict(
+                CountdownTime.Text,
+                TimeInputFormat.HourMinuteSecond,
+                out var timeOfDay))
         {
             return null;
         }
 
         return CountdownFormatting.ToUtc(
             CountdownDate.SelectedDate.Value,
-            CountdownHour.SelectedIndex,
-            CountdownMinute.SelectedIndex,
-            CountdownSecond.SelectedIndex);
+            timeOfDay.Hours,
+            timeOfDay.Minutes,
+            timeOfDay.Seconds);
     }
 
     private void UpdateCountdownReminderRulesSummary()
@@ -4408,9 +4561,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         yield return CountdownName;
         yield return CountdownDate;
-        yield return CountdownHour;
-        yield return CountdownMinute;
-        yield return CountdownSecond;
+        yield return CountdownTime;
         yield return CountdownReminderHelp;
         yield return CountdownReminderNoRadio;
         yield return CountdownReminderTimeRadio;
@@ -4444,9 +4595,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         LabelFor(CountdownNameLabel, CountdownName);
         LabelFor(CountdownDateLabel, CountdownDate);
-        LabelFor(CountdownHourLabel, CountdownHour);
-        LabelFor(CountdownMinuteLabel, CountdownMinute);
-        LabelFor(CountdownSecondLabel, CountdownSecond);
+        LabelFor(CountdownTimeLabel, CountdownTime);
         LabelFor(DisplayPrecisionLabel, DisplayPrecision, "悬浮窗显示精度");
         LabelFor(MonthlySalaryLabel, MonthlySalary);
         LabelFor(WorkStartLabel, WorkStart);
@@ -4483,16 +4632,18 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
-    private void ShowPreferenceFieldError(TextBlock field, string message, Control source)
+    private static void ShowPreferenceFieldError(TextBlock field, string message, Control source)
     {
         SetFieldError(field, message);
         AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void ClearCountdownFieldErrors()
     {
         ClearCountdownFieldError(CountdownNameError);
         ClearCountdownFieldError(CountdownDateError);
+        ClearCountdownFieldError(CountdownTimeError);
     }
 
     private void ShowNoteValidationError(TextBlock field, string message, Control source)
@@ -4560,7 +4711,44 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
-    private void ClearPreferenceFieldError(TextBlock field) => SetFieldError(field, string.Empty);
+    private void ClearPreferenceFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetFieldError(field, string.Empty);
+        var source = PreferenceValidationControl(field);
+        if (source is not null)
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(source),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(source, string.Empty);
+            }
+
+            InputErrorState.SetHasError(source, false);
+        }
+    }
+
+    private Control? PreferenceValidationControl(TextBlock field)
+    {
+        if (ReferenceEquals(field, MonthlySalaryError))
+        {
+            return MonthlySalary;
+        }
+
+        if (ReferenceEquals(field, WorkStartError))
+        {
+            return WorkStart;
+        }
+
+        if (ReferenceEquals(field, WorkEndError))
+        {
+            return WorkEnd;
+        }
+
+        return null;
+    }
 
     private static void SetFieldError(TextBlock field, string message)
     {
@@ -4581,10 +4769,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             yield break;
         }
 
+        if (ReferenceEquals(field, CountdownTimeError))
+        {
+            yield return CountdownTime;
+            yield break;
+        }
+
         yield return CountdownDate;
-        yield return CountdownHour;
-        yield return CountdownMinute;
-        yield return CountdownSecond;
     }
 
     private IEnumerable<Control> NoteValidationControls()

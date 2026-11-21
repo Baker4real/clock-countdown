@@ -687,47 +687,49 @@ internal static partial class ValidationExercises
             var snoozeButton = FindReminderEntryButton(window, key, "稍后提醒：");
             var snoozeMenu = snoozeButton.ContextMenu
                 ?? throw new InvalidOperationException("稍后提醒按钮缺少稍后菜单。");
-            // #320：条目不再预先创建自定义时间输入控件，直到首次选「自定义」才创建。
+            // #320/#329：条目不再预先创建自定义时间输入控件，直到首次选「自定义」才创建。
             Must(
                 !VisualDescendants<DatePicker>(window).Any() &&
                 !VisualDescendants<ComboBox>(window).Any() &&
+                !VisualDescendants<TextBox>(window).Any(box =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(box),
+                        "ReminderEntryCustomSnoozeTime",
+                        StringComparison.Ordinal)) &&
                 !VisualDescendants<Button>(window).Any(button =>
                     string.Equals(
                         AutomationProperties.GetAutomationId(button),
                         "ReminderEntryCustomSnoozeConfirm",
                         StringComparison.Ordinal)),
-                "初始状态下不得预先创建自定义稍后的日期、时间下拉或确认按钮。");
+                "初始状态下不得预先创建自定义稍后的日期、时间输入或确认按钮。");
 
             SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.Custom);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             var customDate = FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：");
-            var customHour = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后小时：");
-            var customMinute = FindReminderEntryControl<ComboBox>(window, key, "自定义稍后分钟：");
+            var customTime = FindReminderEntryControl<TextBox>(window, key, "自定义稍后时间：");
             var customConfirm = FindReminderEntryButton(window, key, "确认自定义稍后：");
             var customPanel = customDate.Parent as StackPanel
                 ?? throw new InvalidOperationException("自定义稍后日期不在自定义稍后容器内。");
-            var customTimeRow = customHour.Parent as WrapPanel
-                ?? throw new InvalidOperationException("自定义稍后小时不在自定义稍后时间行内。");
+            var customTimeRow = customConfirm.Parent as WrapPanel
+                ?? throw new InvalidOperationException("自定义稍后确认按钮不在自定义稍后时间行内。");
             Must(
-                ReferenceEquals(customMinute.Parent, customTimeRow) &&
-                ReferenceEquals(customConfirm.Parent, customTimeRow) &&
+                !VisualDescendants<ComboBox>(window).Any() &&
+                customTimeRow.IsAncestorOf(customTime) &&
                 ReferenceEquals(customTimeRow.Parent, customPanel),
-                "自定义稍后小时、分钟与确认按钮必须与日期共用同一自定义稍后容器。");
+                "自定义稍后可键入时间框与确认按钮必须与日期共用同一自定义稍后容器，且不再存在旧时/分下拉框。");
             Must(
                 customPanel.Visibility == Visibility.Visible &&
                 customDate.IsVisible &&
-                customHour.IsVisible &&
-                customMinute.IsVisible &&
+                customTime.IsVisible &&
                 customConfirm.IsVisible,
-                "选择「自定义」后自定义稍后日期、小时、分钟与确认按钮必须懒创建并真实展开。");
+                "选择「自定义」后自定义稍后日期、可键入时间框与确认按钮必须懒创建并真实展开。");
 
             SelectReminderSnoozeMenuItem(window, snoozeButton, snoozeMenu, ReminderSnoozeOption.TenMinutes);
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 customPanel.Visibility == Visibility.Collapsed &&
                 !customDate.IsVisible &&
-                !customHour.IsVisible &&
-                !customMinute.IsVisible &&
+                !customTime.IsVisible &&
                 !customConfirm.IsVisible,
                 "选回预设档位后自定义稍后控件必须随容器收起。");
 
@@ -735,10 +737,10 @@ internal static partial class ValidationExercises
             WindowValidationInput.Pump(Dispatcher.CurrentDispatcher);
             Must(
                 customDate.IsVisible &&
-                customHour.IsVisible &&
-                customMinute.IsVisible &&
+                customTime.IsVisible &&
                 customConfirm.IsVisible &&
-                ReferenceEquals(customDate, FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：")),
+                ReferenceEquals(customDate, FindReminderEntryControl<DatePicker>(window, key, "自定义稍后日期：")) &&
+                ReferenceEquals(customTime, FindReminderEntryControl<TextBox>(window, key, "自定义稍后时间：")),
                 "再次选择「自定义」后必须复用同一批控件并重新可见。");
             return true;
         }

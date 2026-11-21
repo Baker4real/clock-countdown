@@ -727,7 +727,7 @@ internal static partial class ValidationExercises
             main.UpdateLayout();
             var list = (ScrollViewer)main.FindName("CountdownListRegion");
             var rows = (Panel)main.FindName("CountdownRows");
-            Must(!((FrameworkElement)main.FindName("CountdownHour")).IsVisible &&
+            Must(!((FrameworkElement)main.FindName("CountdownTime")).IsVisible &&
                  ((Button)main.FindName("SaveCountdownButton")).IsVisible &&
                  ((TextBox)main.FindName("CountdownName")).IsVisible &&
                  ((DatePicker)main.FindName("CountdownDate")).IsVisible &&
@@ -818,13 +818,15 @@ internal static partial class ValidationExercises
                 "#224：原生日历下拉打开时全局Ctrl快捷键仍被屏蔽。");
             countdownDate.IsDropDownOpen = false;
             ((Button)main.FindName("CountdownEditorExpandButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            var hour = (ComboBox)main.FindName("CountdownHour");
-            hour.IsDropDownOpen = true;
+            var time = (TextBox)main.FindName("CountdownTime");
+            Keyboard.Focus(time);
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(hour.IsDropDownOpen && !WindowValidationInput.RaisePreviewKey(hour, Key.D2, ModifierKeys.Control) &&
-                 main.CurrentWorkspace == WorkspaceKind.Countdowns,
-                "#224：时间下拉打开时全局Ctrl快捷键仍被屏蔽。");
-            hour.IsDropDownOpen = false;
+            Must(time.IsVisible && time.IsKeyboardFocused &&
+                 !WindowValidationInput.RaisePreviewKey(time, Key.Z, ModifierKeys.Control) &&
+                 WindowValidationInput.RaisePreviewKey(time, Key.D2, ModifierKeys.Control) &&
+                 main.CurrentWorkspace == WorkspaceKind.Notes,
+                "#224：截止时刻输入焦点下保留文本编辑并允许全局Ctrl+2切页。");
+            main.ShowWorkspace(WorkspaceKind.Countdowns);
             foreach (var (id, shortcut) in new[]
             {
                 ("CountdownTab", "Ctrl+1"), ("NotesTab", "Ctrl+2"), ("MinimizeButton", "Ctrl+M"),
@@ -1388,44 +1390,44 @@ internal static partial class ValidationExercises
             main.Activate();
             WindowValidationInput.Pump(main.Dispatcher);
             var name = (TextBox)main.FindName("CountdownName");
-            var hour = (ComboBox)main.FindName("CountdownHour");
+            var time = (TextBox)main.FindName("CountdownTime");
             var toggle = (Button)main.FindName("CountdownEditorExpandButton");
             var rows = (Panel)main.FindName("CountdownRows");
             toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(hour.IsVisible, "#221：展开新增应显示时分秒、标签及提醒规则。");
+            Must(time.IsVisible, "#221/#328：展开新增应显示截止时刻、标签及提醒规则。");
             name.Text = "未保存草稿";
-            hour.SelectedIndex = 7;
+            time.Text = "07:08:09";
             toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             main.ShowWorkspace(WorkspaceKind.Notes);
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(name.Text == "未保存草稿" && hour.SelectedIndex == 7 && !hour.IsVisible,
+            Must(name.Text == "未保存草稿" && time.Text == "07:08:09" && !time.IsVisible,
                 "#221：收起和切页须保留新增草稿。");
             var edit = VisualDescendants<Button>(rows).First(button => Equals(button.Content, "编辑"));
             edit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(hour.IsVisible && ((TextBlock)main.FindName("CountdownEditorTitle")).Text == "编辑倒计时" &&
+            Must(time.IsVisible && ((TextBlock)main.FindName("CountdownEditorTitle")).Text == "编辑倒计时" &&
                  ((Button)main.FindName("CancelCountdownEdit")).IsVisible,
                 "#221：编辑现有倒计时应自动展开并显示编辑标题和取消。");
             ((Button)main.FindName("CancelCountdownEdit")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(!hour.IsVisible && name.Text.Length == 0 && main.EditingCountdownId is null,
+            Must(!time.IsVisible && name.Text.Length == 0 && main.EditingCountdownId is null,
                 "#221：取消编辑返回折叠新增，不写入或删除记录。");
             Must(DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Single().Name == "编辑展开",
                 "#221：取消编辑不得改变持久记录。");
             toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             name.Text = "无效时间草稿";
-            hour.SelectedIndex = -1;
+            time.Text = "25:00:00";
             toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(hour.IsVisible && hour.IsKeyboardFocusWithin && name.Text == "无效时间草稿" &&
+            Must(time.IsVisible && time.IsKeyboardFocusWithin && name.Text == "无效时间草稿" &&
                  ((TextBlock)main.FindName("CountdownMessage")).IsVisible &&
                  !string.IsNullOrEmpty(((TextBlock)main.FindName("CountdownMessage")).Text) &&
                  DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
                 "#221：收起后的非法时间草稿提交必须重新展开并聚焦无效时间，保留草稿且不写入。");
-            hour.SelectedIndex = 7;
+            time.Text = "07:08:09";
             ((DatePicker)main.FindName("CountdownDate")).SelectedDate = DateTime.Today.AddDays(-1);
             ((RadioButton)main.FindName("CountdownReminderTimeRadio")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             toggle.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
@@ -1447,7 +1449,7 @@ internal static partial class ValidationExercises
             }));
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
-            Must(hour.IsVisible && reminderErrorFocused && name.Text == "无效时间草稿" &&
+            Must(time.IsVisible && reminderErrorFocused && name.Text == "无效时间草稿" &&
                  DesktopWorkspace.Load(path).Snapshot.Settings.Countdowns.Count == 1,
                 "#221：收起后的非法提醒提交必须展开提醒区域并在规则窗口聚焦错误，取消后保留草稿。");
             return true;

@@ -660,12 +660,15 @@ internal static class IconGeometryAndVectorIconsScenario
             CheckShared(failures, "Main.CloseButton", FirstPath(Required<Button>(main, "CloseButton")), expected["IconCloseGeometry"]);
             CheckShared(failures, "Floating.CloseFloatingButton", FirstPath(Required<Button>(floating, "CloseFloatingButton")), expected["IconCloseGeometry"]);
 
-            // 3. Dropdown Triangle (×2: ComboBox, DatePicker)
+            // 3. Dropdown Triangle (×2: ComboBox, DatePicker) & expanded CountdownTime clock (#328)
             var expandButton = Required<Button>(main, "CountdownEditorExpandButton");
             expandButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             SettleLayout(main);
-            var combo = Required<ComboBox>(main, "CountdownHour");
+            var countdownTimeHost = Required<FrameworkElement>(main, "CountdownTime").Parent as DependencyObject;
+            CheckShared(failures, "Main.CountdownTimeClock", DirectChildPath(countdownTimeHost), expected["IconClockGeometry"]);
+            var combo = Required<ComboBox>(main, "DisplayPrecision");
             combo.ApplyTemplate();
+            PickerTemplateParts.GetArrowToggle(combo)?.ApplyTemplate();
             var datePicker = Required<DatePicker>(main, "CountdownDate");
             datePicker.ApplyTemplate();
             CheckShared(failures, "ComboBox.DropdownArrow", FirstPath(combo), expected["IconDropdownTriangleGeometry"]);

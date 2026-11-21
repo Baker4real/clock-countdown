@@ -241,7 +241,19 @@ public sealed partial class MainWindow
                 DeriveCountdownReminderMode(_countdownReminderRules, atDeadlineTarget) ==
                     CountdownReminderMode.AtDeadline;
 
-            CountdownSecond.SelectedIndex = (CountdownSecond.SelectedIndex + 7) % 60;
+            var currentTargetTime = TimeInputBehavior.TryParseStrict(
+                CountdownTime.Text,
+                TimeInputFormat.HourMinuteSecond,
+                out var parsedTargetTime)
+                ? parsedTargetTime
+                : TimeSpan.Zero;
+            TimeInputBehavior.SetValue(
+                CountdownTime,
+                TimeInputBehavior.ComputeStepped(
+                    currentTargetTime,
+                    TimeInputSegment.Second,
+                    7,
+                    TimeInputFormat.HourMinuteSecond));
             WindowValidationInput.Pump(Dispatcher);
             var shiftedTarget = GetCountdownTargetUtc();
             var targetShiftKeepsAtDeadlineOnce =
@@ -1866,9 +1878,7 @@ public sealed partial class MainWindow
         var originalWorkspace = _workspace;
         var originalName = CountdownName.Text;
         var originalDate = CountdownDate.SelectedDate;
-        var originalHour = CountdownHour.SelectedIndex;
-        var originalMinute = CountdownMinute.SelectedIndex;
-        var originalSecond = CountdownSecond.SelectedIndex;
+        var originalTime = CountdownTime.Text;
         var originalSalary = MonthlySalary.Text;
         var originalWorkStart = WorkStart.Text;
         var originalWorkEnd = WorkEnd.Text;
@@ -2003,7 +2013,7 @@ public sealed partial class MainWindow
             var inputSurfacesWhitePaper =
                 ReferenceEquals(CountdownName.Background, FindResource("PanelBrush")) &&
                 ReferenceEquals(MonthlySalary.Background, FindResource("PanelBrush")) &&
-                ReferenceEquals(CountdownHour.Background, FindResource("PanelBrush")) &&
+                ReferenceEquals(CountdownTime.Background, FindResource("PanelBrush")) &&
                 ReferenceEquals(DisplayPrecision.Background, FindResource("PanelBrush")) &&
                 ReferenceEquals(CountdownDate.Background, FindResource("PanelBrush")) &&
                 dateSurface is not null &&
@@ -2102,9 +2112,7 @@ public sealed partial class MainWindow
         {
             CountdownName.Text = originalName;
             CountdownDate.SelectedDate = originalDate;
-            CountdownHour.SelectedIndex = originalHour;
-            CountdownMinute.SelectedIndex = originalMinute;
-            CountdownSecond.SelectedIndex = originalSecond;
+            CountdownTime.Text = originalTime;
             MonthlySalary.Text = originalSalary;
             WorkStart.Text = originalWorkStart;
             WorkEnd.Text = originalWorkEnd;

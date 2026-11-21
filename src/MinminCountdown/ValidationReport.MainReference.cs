@@ -246,14 +246,10 @@ internal static partial class ValidationReport
         var originalHeight = main.Height;
         var originalOpacity = main.Opacity;
         var countdownDate = Required<DatePicker>(main, "CountdownDate");
-        var countdownHour = Required<ComboBox>(main, "CountdownHour");
-        var countdownMinute = Required<ComboBox>(main, "CountdownMinute");
-        var countdownSecond = Required<ComboBox>(main, "CountdownSecond");
+        var countdownTime = Required<TextBox>(main, "CountdownTime");
         var noteDate = Required<DatePicker>(main, "NoteDate");
         var originalCountdownDate = countdownDate.SelectedDate;
-        var originalCountdownHour = countdownHour.SelectedItem;
-        var originalCountdownMinute = countdownMinute.SelectedItem;
-        var originalCountdownSecond = countdownSecond.SelectedItem;
+        var originalCountdownTime = countdownTime.Text;
         var originalNoteDate = noteDate.SelectedDate;
         try
         {
@@ -266,9 +262,7 @@ internal static partial class ValidationReport
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             main.UpdateTime(countdownCaptureBeijingTime);
             countdownDate.SelectedDate = new DateTime(2026, 7, 30);
-            countdownHour.SelectedItem = "08";
-            countdownMinute.SelectedItem = "56";
-            countdownSecond.SelectedItem = "11";
+            countdownTime.Text = "08:56:11";
             PumpDispatcher();
             CloseMainDatePickerDropdowns(main);
             ArrangeForReferenceCapture(root, captureWidth, captureHeight);
@@ -375,9 +369,7 @@ internal static partial class ValidationReport
             main.Height = originalHeight;
             main.Opacity = originalOpacity;
             countdownDate.SelectedDate = originalCountdownDate;
-            countdownHour.SelectedItem = originalCountdownHour;
-            countdownMinute.SelectedItem = originalCountdownMinute;
-            countdownSecond.SelectedItem = originalCountdownSecond;
+            countdownTime.Text = originalCountdownTime;
             noteDate.SelectedDate = originalNoteDate;
             main.UpdateTime(ChinaStandardTime.ToBeijingTime(workspaceSnapshot.UtcNow));
             main.ShowWorkspace(originalWorkspace);

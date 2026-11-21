@@ -1354,29 +1354,56 @@
                             <ColumnDefinition Width="15" />
                             <ColumnDefinition Width="286" />
                           </Grid.ColumnDefinitions>
-                          <UniformGrid x:Name="MainCountdownTimeFields" Columns="3">
-                            <StackPanel>
-                              <TextBlock x:Name="CountdownHourLabel" Text="时" Style="{StaticResource MainCompactFieldLabel}" />
-                              <ComboBox x:Name="CountdownHour"
-                                        Width="145"
-                                        Margin="0,3,0,0"
-                                        Style="{StaticResource MainCompactSelectionInput}" />
-                            </StackPanel>
-                            <StackPanel>
-                              <TextBlock x:Name="CountdownMinuteLabel" Text="分" Style="{StaticResource MainCompactFieldLabel}" />
-                              <ComboBox x:Name="CountdownMinute"
-                                        Width="139"
-                                        Margin="0,3,0,0"
-                                        Style="{StaticResource MainCompactSelectionInput}" />
-                            </StackPanel>
-                            <StackPanel>
-                              <TextBlock x:Name="CountdownSecondLabel" Text="秒" Style="{StaticResource MainCompactFieldLabel}" />
-                              <ComboBox x:Name="CountdownSecond"
-                                        Width="139"
-                                        Margin="0,3,0,0"
-                                        Style="{StaticResource MainCompactSelectionInput}" />
-                            </StackPanel>
-                          </UniformGrid>
+                          <StackPanel x:Name="MainCountdownTimeFields" Grid.Column="0">
+                            <TextBlock x:Name="CountdownTimeLabel" Text="截止时刻" Style="{StaticResource MainCompactFieldLabel}" />
+                            <Grid Margin="0,3,0,0" HorizontalAlignment="Left">
+                              <TextBox x:Name="CountdownTime"
+                                       Width="200"
+                                       Style="{StaticResource MainCompactTextInput}"
+                                       Padding="36,0,12,0"
+                                       local:TimeInputBehavior.IsEnabled="True"
+                                       local:TimeInputBehavior.Format="HourMinuteSecond" />
+                              <Path Width="13.6"
+                                    Height="13.6"
+                                    Margin="12.7,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Stretch="Uniform"
+                                    Data="{StaticResource IconClockGeometry}"
+                                    Stroke="{DynamicResource MutedBrush}"
+                                    StrokeThickness="1.6"
+                                    StrokeStartLineCap="Round"
+                                    StrokeEndLineCap="Round"
+                                    StrokeLineJoin="Round"
+                                    IsHitTestVisible="False" />
+                              <TextBlock Margin="36,0,0,0"
+                                         Height="21"
+                                         HorizontalAlignment="Left"
+                                         VerticalAlignment="Center"
+                                         FontSize="{DynamicResource TypeBodyFontSize}"
+                                         Foreground="{DynamicResource MutedBrush}"
+                                         Typography.NumeralAlignment="Tabular"
+                                         IsHitTestVisible="False"
+                                         Text="HH:mm:ss">
+                                <TextBlock.Style>
+                                  <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=CountdownTime}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </TextBlock.Style>
+                              </TextBlock>
+                            </Grid>
+                            <TextBlock x:Name="CountdownTimeError"
+                                       Margin="{local:SpacingThickness Top=SpacingUnit}"
+                                       FontSize="{StaticResource TypeCaptionFontSize}"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       TextWrapping="Wrap"
+                                       Visibility="Collapsed" />
+                          </StackPanel>
                           <StackPanel Grid.Column="2">
                             <TextBlock x:Name="CountdownTagsLabel" Text="设置标签" Style="{StaticResource MainCompactFieldLabel}" />
                             <local:TagSelector x:Name="CountdownTags"
@@ -2221,13 +2248,61 @@
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,12,6,0">
                             <TextBlock x:Name="WorkStartLabel" Text="上班时间" Style="{StaticResource MainCompactFieldLabel}" />
-                            <TextBox x:Name="WorkStart" Margin="0,3,0,0" Style="{StaticResource MainCompactTextInput}" />
+                            <Grid Margin="0,3,0,0">
+                              <TextBox x:Name="WorkStart"
+                                       Style="{StaticResource MainCompactTextInput}"
+                                       local:TimeInputBehavior.IsEnabled="True"
+                                       local:TimeInputBehavior.Format="HourMinute" />
+                              <local:SilentTextBlock Margin="12,0,0,0"
+                                                     HorizontalAlignment="Left"
+                                                     VerticalAlignment="Center"
+                                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                                     Foreground="{DynamicResource MutedBrush}"
+                                                     Typography.NumeralAlignment="Tabular"
+                                                     IsHitTestVisible="False"
+                                                     Text="HH:mm">
+                                <local:SilentTextBlock.Style>
+                                  <Style TargetType="{x:Type local:SilentTextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=WorkStart}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </local:SilentTextBlock.Style>
+                              </local:SilentTextBlock>
+                            </Grid>
                             <TextBlock x:Name="WorkStartError" Margin="{local:SpacingThickness Top=SpacingUnit}" FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
                           </StackPanel>
                           <StackPanel Grid.Row="2" Grid.Column="1" Margin="6,12,0,0">
                             <TextBlock x:Name="WorkEndLabel" Text="下班时间" Style="{StaticResource MainCompactFieldLabel}" />
-                            <TextBox x:Name="WorkEnd" Margin="0,3,0,0" Style="{StaticResource MainCompactTextInput}" />
+                            <Grid Margin="0,3,0,0">
+                              <TextBox x:Name="WorkEnd"
+                                       Style="{StaticResource MainCompactTextInput}"
+                                       local:TimeInputBehavior.IsEnabled="True"
+                                       local:TimeInputBehavior.Format="HourMinute" />
+                              <local:SilentTextBlock Margin="12,0,0,0"
+                                                     HorizontalAlignment="Left"
+                                                     VerticalAlignment="Center"
+                                                     FontSize="{DynamicResource TypeBodyFontSize}"
+                                                     Foreground="{DynamicResource MutedBrush}"
+                                                     Typography.NumeralAlignment="Tabular"
+                                                     IsHitTestVisible="False"
+                                                     Text="HH:mm">
+                                <local:SilentTextBlock.Style>
+                                  <Style TargetType="{x:Type local:SilentTextBlock}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                      <DataTrigger Binding="{Binding Text, ElementName=WorkEnd}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                      </DataTrigger>
+                                    </Style.Triggers>
+                                  </Style>
+                                </local:SilentTextBlock.Style>
+                              </local:SilentTextBlock>
+                            </Grid>
                             <TextBlock x:Name="WorkEndError" Margin="{local:SpacingThickness Top=SpacingUnit}" FontSize="{StaticResource TypeCaptionFontSize}"
                                        Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Visibility="Collapsed" />
                           </StackPanel>

@@ -264,7 +264,8 @@ internal static class InlineActionButton
                 if (intent == InlineActionIntent.Edit)
                 {
                     button.ContentTemplate = CreateGlyphButtonTemplate(
-                        "M 2.5,13.2 L 3.2,10.4 L 11.6,2 C 12.2,1.4 13.2,1.4 13.8,2 C 14.4,2.6 14.4,3.6 13.8,4.2 L 5.4,12.6 L 2.5,13.2 Z",
+                        scope,
+                        IconGeometries.Pencil,
                         "InkBrush");
                 }
                 else
@@ -272,7 +273,8 @@ internal static class InlineActionButton
                     button.SetResourceReference(Control.ForegroundProperty, "DangerBrush");
                     button.BorderBrush = Brushes.Transparent;
                     button.ContentTemplate = CreateGlyphButtonTemplate(
-                        "M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5",
+                        scope,
+                        IconGeometries.Trash,
                         "DangerBrush");
                 }
                 break;
@@ -298,8 +300,11 @@ internal static class InlineActionButton
         return button;
     }
 
-    // 主行 Content 仍是可见字符串；铅笔/垃圾桶只经 ContentTemplate 注入，几何和笔画保持 #247 原值。
-    private static DataTemplate CreateGlyphButtonTemplate(string glyphData, string glyphBrushKey)
+    // 主行 Content 仍是可见字符串；铅笔/垃圾桶只经 ContentTemplate 注入，共享冻结几何（#307）与 #247 笔画保持一致。
+    private static DataTemplate CreateGlyphButtonTemplate(
+        FrameworkElement scope,
+        string geometryKey,
+        string glyphBrushKey)
     {
         var row = new FrameworkElementFactory(typeof(StackPanel));
         row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
@@ -307,7 +312,7 @@ internal static class InlineActionButton
         glyph.Name = "Glyph";
         glyph.SetValue(WpfPath.WidthProperty, 12.0);
         glyph.SetValue(WpfPath.HeightProperty, 12.0);
-        glyph.SetValue(WpfPath.DataProperty, Geometry.Parse(glyphData));
+        glyph.SetValue(WpfPath.DataProperty, IconGeometries.Resolve(scope, geometryKey));
         glyph.SetValue(WpfPath.StretchProperty, Stretch.Uniform);
         glyph.SetValue(WpfPath.StrokeThicknessProperty, 1.6);
         glyph.SetValue(WpfPath.StrokeStartLineCapProperty, PenLineCap.Round);
@@ -703,8 +708,7 @@ internal sealed class TagSelector : Grid
         {
             Width = 20,
             Height = 20,
-            Data = Geometry.Parse(
-                "M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7"),
+            Data = IconGeometries.Resolve(this, IconGeometries.Tag),
             StrokeThickness = 1.6,
             StrokeLineJoin = PenLineJoin.Round,
             StrokeStartLineCap = PenLineCap.Round,
@@ -2000,6 +2004,52 @@ internal static class DisabledStateBehavior
             _appliedContrastBrushes.Clear();
         }
     }
+}
+
+// #307：全部图标共享冻结 Geometry（App.xaml 的 StreamGeometry 资源）的统一读取入口。
+// XAML 与 C# 复用同一冻结实例，不再在代码里手写 Geometry.Parse 副本；缺失或未冻结时失败闭锁。
+internal static class IconGeometries
+{
+    public const string Minimize = "IconMinimizeGeometry";
+    public const string Close = "IconCloseGeometry";
+    public const string DropdownTriangle = "IconDropdownTriangleGeometry";
+    public const string Calendar = "IconCalendarGeometry";
+    public const string ChevronDown = "IconChevronDownGeometry";
+    public const string Clock = "IconClockGeometry";
+    public const string Tag = "IconTagGeometry";
+    public const string Pencil = "IconPencilGeometry";
+    public const string Checkmark = "IconCheckmarkGeometry";
+    public const string MainGear = "IconMainGearGeometry";
+    public const string FloatingGearOutline = "IconFloatingGearOutlineGeometry";
+    public const string Plus = "IconPlusGeometry";
+    public const string Home = "IconHomeGeometry";
+    public const string TitleHeart = "IconTitleHeartGeometry";
+    public const string TitleHouse = "IconTitleHouseGeometry";
+    public const string FilterFunnel = "IconFilterFunnelGeometry";
+    public const string UpArrow = "IconUpArrowGeometry";
+    public const string BellOutline = "IconBellOutlineGeometry";
+    public const string BellFilled = "IconBellFilledGeometry";
+    public const string StickyNote = "IconStickyNoteGeometry";
+    public const string ReminderNoteDocument = "IconReminderNoteDocumentGeometry";
+    public const string Search = "IconSearchGeometry";
+    public const string Trash = "IconTrashGeometry";
+    public const string ExternalLink = "IconExternalLinkGeometry";
+    public const string OverflowDots = "IconOverflowDotsGeometry";
+
+    public static Geometry Resolve(FrameworkElement element, string resourceKey) =>
+        element.TryFindResource(resourceKey) is Geometry elementGeometry
+            ? EnsureFrozen(resourceKey, elementGeometry)
+            : Resolve(resourceKey);
+
+    public static Geometry Resolve(string resourceKey) =>
+        Application.Current?.TryFindResource(resourceKey) is Geometry appGeometry
+            ? EnsureFrozen(resourceKey, appGeometry)
+            : throw new InvalidOperationException($"缺少共享图标几何资源 {resourceKey}。");
+
+    private static Geometry EnsureFrozen(string resourceKey, Geometry geometry) =>
+        geometry.IsFrozen
+            ? geometry
+            : throw new InvalidOperationException($"共享图标几何资源 {resourceKey} 未冻结。");
 }
 
 // #311：间距 token（App.xaml 的 sys:Double 资源）的统一读取入口与 XAML 包装扩展。

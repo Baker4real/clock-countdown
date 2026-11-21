@@ -3908,6 +3908,8 @@ exit 23
         RuleEditorTimeInputTypingValidationAndPreview = '规则编辑器首次提醒与日历本地时刻改为单一可键入 HH:mm 文本框：支持直接键入与上下键分段步进、失焦与提交校验、暖金/危险边框不挤布局、实时规则预览同步与精确持久化领域值，保留 LabeledBy 标签关系并适配系统对比度（#329）'
         ReminderCenterCustomSnoozeTypeableTimeInput = '提醒中心懒创建自定义稍后时间改为单一可键入 HH:mm 文本框：保留懒创建与默认值、支持直接键入与上下键步进、非法格式与不晚于当前北京时间错误紧贴下方且带错误边框、合法稍后精确持久化，保留 LabeledBy 与系统对比度（#329）'
         MainWorkHoursTypeableTimeInputAndValidation = '管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）'
+        SharedIconGeometriesFrozenAndDeduplicated = '全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）'
+        VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry = '日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -5401,25 +5403,18 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="NoteDateFilterLabel"') '筛选弹层便签日期带可见标签元素（#153 源码契约）'
     # #274：空态换行改由 WindowVerification 在真实 TextBlock.TextWrapping 上判定，不再匹配 XAML 源码文本。
-    # #154 视觉铬源码契约：漏斗填充与摘要刷新不替换内容、无重复搜索镜、矢量窗铬几何与悬浮窗一致、
-    # 胶囊全圆角、手写体装饰层落点、悬浮去投影、方角窗铬；运行态由 8 个新键探针共同钉住。
+    # #154/#307：漏斗填充、输入框搜索镜、管理窗与悬浮窗最小/关闭矢量路径均已收口为 App.xaml 冻结共享 Geometry，
+    # 由运行态事实（FilterFunnelIconSurvivesAliasedCapture、NotesSearchDuplicateMagnifierRemoved、
+    # MainWindowChromeButtonsUseVectorPaths 与独立窗口验证 SharedIconGeometriesFrozenAndDeduplicated）共同钉住，
+    # 不再按旧内联 Data="M ..." 源码正则断言。
     $floatingXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml') -Raw -Encoding UTF8
-    Assert-Equal $true (
-        $mainWindowXamlSource -match '(?s)x:Name="FilterButton".*?L 9\.82,8\.36.*?Fill="\{DynamicResource InkBrush\}"') '筛选漏斗为实心填充（InkBrush），不再是纯描边（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowNotesSource -match 'FilterButtonText\.Text = count == 0 \? "筛选"') '筛选摘要刷新只更新具名文字、不再整体替换 Button.Content 销毁漏斗图标（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowNotesSource -notmatch 'FilterButton\.Content\s*=') '不存在 FilterButton.Content 字符串赋值（#154 源码契约）'
     Assert-Equal $false (
         $mainWindowXamlSource.Contains('M 8,2.5 C 11,2.5 13.5,5 13.5,8')) '便签页标签旁重复搜索镜已移除（#154 源码契约）'
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'M 10\.12,6 A 4\.12,4\.12 0 1 0 1\.88,6 A 4\.12,4\.12 0 1 0 10\.12,6 M 9\.45,9\.45 L 12\.38,12\.38') '输入框内搜索镜为描边圆环+手柄几何（#154 源码契约）'
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'Data="M 2,10 L 12,10"' -and
-        $floatingXamlSource -match 'Data="M 2,10 L 12,10"' -and
-        $mainWindowXamlSource -match 'Data="M 2,2 L 12,12 M 12,2 L 2,12"' -and
-        $floatingXamlSource -match 'Data="M 2,2 L 12,12 M 12,2 L 2,12"') '管理窗与悬浮窗最小/关闭窗铬同一矢量路径几何（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowXamlSource -notmatch 'Content="−"' -and
         $mainWindowXamlSource -notmatch 'Content="×"') '管理窗窗铬不再是文本字形（#154 源码契约）'

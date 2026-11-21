@@ -269,6 +269,7 @@ $script:buildScriptInputFiles = @(
     'src\MinminCountdown.WindowVerification\DisabledStateScenario.cs',
     'src\MinminCountdown.WindowVerification\DatePickerSingleBoxScenario.cs',
     'src\MinminCountdown.WindowVerification\SpacingTokenWiringScenario.cs',
+    'src\MinminCountdown.WindowVerification\IconGeometryAndVectorIconsScenario.cs',
     'src\MinminCountdown.WindowVerification\CountdownDeadlineTimeInputScenario.cs',
     'src\MinminCountdown.WindowVerification\TimeInputSpreadScenario.cs',
     'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',

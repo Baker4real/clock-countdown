@@ -57,6 +57,8 @@ internal static class Program
     internal const string RuleEditorTimeInputFactName = "RuleEditorTimeInputTypingValidationAndPreview";
     internal const string ReminderCenterCustomSnoozeTimeInputFactName = "ReminderCenterCustomSnoozeTypeableTimeInput";
     internal const string MainWorkHoursTimeInputFactName = "MainWorkHoursTypeableTimeInputAndValidation";
+    internal const string SharedIconGeometriesFactName = "SharedIconGeometriesFrozenAndDeduplicated";
+    internal const string VectorizedTextGlyphIconsFactName = "VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -180,6 +182,10 @@ internal static class Program
     private const string MainWorkHoursTimeInputFactMeaning =
         "管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、" +
         "保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）";
+    private const string SharedIconGeometriesFactMeaning =
+        "全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）";
+    private const string VectorizedTextGlyphIconsFactMeaning =
+        "日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）";
 
     [STAThread]
     private static int Main()
@@ -235,7 +241,9 @@ internal static class Program
             [MonthlySalaryDecimalAndDownstreamFactName] = false,
             [RuleEditorTimeInputFactName] = false,
             [ReminderCenterCustomSnoozeTimeInputFactName] = false,
-            [MainWorkHoursTimeInputFactName] = false
+            [MainWorkHoursTimeInputFactName] = false,
+            [SharedIconGeometriesFactName] = false,
+            [VectorizedTextGlyphIconsFactName] = false
         };
         var failures = new List<string>();
 
@@ -524,6 +532,16 @@ internal static class Program
                 MainWorkHoursTimeInputFactMeaning,
                 () => TimeInputSpreadScenario.RunWorkHoursTimeInput(
                     MainWorkHoursTimeInputFactMeaning));
+            RunFact(
+                SharedIconGeometriesFactName,
+                SharedIconGeometriesFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunSharedGeometries(
+                    SharedIconGeometriesFactMeaning));
+            RunFact(
+                VectorizedTextGlyphIconsFactName,
+                VectorizedTextGlyphIconsFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunVectorizedTextGlyphIcons(
+                    VectorizedTextGlyphIconsFactMeaning));
         }
         catch (Exception exception)
         {

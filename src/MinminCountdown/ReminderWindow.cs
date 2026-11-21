@@ -1483,7 +1483,7 @@ internal sealed class ReminderCenterWindow : Window
             Margin = new Thickness(6, 1, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             IsHitTestVisible = false,
-            Data = Geometry.Parse("M 1,1.5 L 4.5,5 L 8,1.5"),
+            Data = IconGeometries.Resolve(IconGeometries.ChevronDown),
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -1504,7 +1504,12 @@ internal sealed class ReminderCenterWindow : Window
         circle.SetResourceReference(Shape.StrokeProperty, strokeKey);
         var tick = new Path
         {
-            Data = Geometry.Parse("M 4.4,7.9 L 6.9,10.4 L 10.9,5.2"),
+            Width = 8.2,
+            Height = 6.9,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Data = IconGeometries.Resolve(IconGeometries.Checkmark),
             StrokeThickness = 1.7,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
@@ -1525,11 +1530,7 @@ internal sealed class ReminderCenterWindow : Window
             Width = 14,
             Height = 14,
             Stretch = Stretch.Uniform,
-            Data = Geometry.Parse(
-                "M 12,22 C 13.1,22 14,21.1 14,20 L 10,20 C 10,21.1 10.9,22 12,22 Z " +
-                "M 18,16 L 18,11 C 18,7.93 16.37,5.36 13.5,4.68 L 13.5,4 " +
-                "C 13.5,3.17 12.83,2.5 12,2.5 C 11.17,2.5 10.5,3.17 10.5,4 L 10.5,4.68 " +
-                "C 7.64,5.36 6,7.92 6,11 L 6,16 L 4,18 L 4,19 L 20,19 L 20,18 Z")
+            Data = IconGeometries.Resolve(IconGeometries.BellFilled)
         };
         path.SetResourceReference(Shape.FillProperty, fillKey);
         return path;
@@ -1542,7 +1543,7 @@ internal sealed class ReminderCenterWindow : Window
             Width = 13,
             Height = 13,
             Stretch = Stretch.Uniform,
-            Data = Geometry.Parse("M 2.5,12 L 21.5,12"),
+            Data = IconGeometries.Resolve(IconGeometries.Minimize),
             StrokeThickness = 2,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round
@@ -1553,38 +1554,26 @@ internal sealed class ReminderCenterWindow : Window
 
     private static FrameworkElement CreateClockIcon(string strokeKey, double size)
     {
-        var circle = new Ellipse
+        var clock = new Path
         {
             Width = size,
             Height = size,
-            StrokeThickness = 1.6
-        };
-        circle.SetResourceReference(Shape.StrokeProperty, strokeKey);
-        var center = size / 2;
-        var hands = new Path
-        {
-            Data = Geometry.Parse(FormattableString.Invariant(
-                $"M {center},{center - size * 0.22} L {center},{center} L {center + size * 0.18},{center + size * 0.12}")),
+            Stretch = Stretch.Uniform,
+            Data = IconGeometries.Resolve(IconGeometries.Clock),
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
-            StrokeEndLineCap = PenLineCap.Round
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round
         };
-        hands.SetResourceReference(Shape.StrokeProperty, strokeKey);
-        return new Grid
-        {
-            Width = size,
-            Height = size,
-            Children = { circle, hands }
-        };
+        clock.SetResourceReference(Shape.StrokeProperty, strokeKey);
+        return clock;
     }
 
     private static FrameworkElement CreateExternalLinkIcon(string strokeKey)
     {
         var path = new Path
         {
-            Data = Geometry.Parse(
-                "M 6.5,3.5 L 3.5,3.5 L 3.5,12.5 L 12.5,12.5 L 12.5,9.5 " +
-                "M 8.2,7.8 L 13.5,2.5 M 9.5,2.5 L 13.5,2.5 L 13.5,6.5"),
+            Data = IconGeometries.Resolve(IconGeometries.ExternalLink),
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -1598,9 +1587,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         var path = new Path
         {
-            Data = Geometry.Parse(
-                "M 4,2.2 L 9.2,2.2 L 12,5 L 12,13.8 L 4,13.8 Z " +
-                "M 9,2.4 L 9,5.2 L 11.8,5.2 M 6.2,8 L 9.8,8 M 6.2,10.4 L 9.8,10.4"),
+            Data = IconGeometries.Resolve(IconGeometries.ReminderNoteDocument),
             StrokeThickness = 1.5,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,

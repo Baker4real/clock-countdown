@@ -48,7 +48,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 | `BodyBrush` | 正文、卡片副标题、字段标签 |
 | `MutedBrush` | 辅助文字、占位文、单位字、时间戳、数量；#198 调深以满足暖色背景上的文字对比 |
 | `PeachLineBrush` | 1px 结构边界、区块分隔线 |
-| `ControlBorderBrush` | 控件常态边界（#217）；复选框、单选圈、输入控件、滚动条和次级按钮消费，对 Background、Canvas、Card、Note、NoteWhite 均达到 3:1；次级按钮常态底为 CardAlt |
+| `ControlBorderBrush` | 控件常态边界（#217/#305）；复选框、单选圈、输入控件、滚动条、次级按钮，以及筛选、标签管理、显示设置与标签选择四个弹层的 1px 表面边界消费，对自身底色与 Background、Canvas、Card、Panel、CardAlt、Note、NoteWhite、StatusBar、CharacterPanel、PinkTintSoft、CanvasDeep 均达到 3:1（系统对比度下映射 `WindowText`）；次级按钮常态底为 CardAlt |
 | `ActiveBrush` | 悬停与按压反馈、非输入控件的键盘焦点边界、复选与单选的选中图形 |
 | `ActiveHoverBrush` | 未选中控件及文本框、下拉框、日期框悬停时替换桃色结构线的更深暖边（§4「基础控件状态契约」） |
 | `SelectionBrush` | 文本选区高亮（独立语义色，#151）：按 `0.4` SelectionOpacity 合成在白纸输入面上肉眼可辨；不得复用 1px 结构线色 |
@@ -244,7 +244,7 @@ intent: 固化单一日间暖粉方向的视觉、组件和主题契约，作为
 - 状态与日期已经由上级章节表达，不在无提醒卡片内重复；已完成正文降低到 `MutedBrush` 并保留删除线。
 - 便签页移除只有一个选项的 `按日期分组` 占位下拉，继续按日期分组。搜索位于状态列表区域上方，不属于新增/编辑表单；Ctrl+F 继续聚焦该输入（#227）。#251：搜索与「未完成 / 已完成」分段同处列表卡顶部的固定工具条（分段在左、搜索在右，「搜索便签」标签在输入框左侧），不随列表滚动，见 §4「工作台密度与列表工具条」。编辑已有便签时显示 `编辑便签` 标题，取消后返回新增态；提醒规则摘要与字段列左对齐。
 - 状态区分组标题卡使用 `NoteBrush` 暖黄底，左侧 `PeachRailBrush` 圆点，`M月d日 · 周X` 标题与右侧 `N 条` 数量加展开箭头。
-- 空态与筛选弹层（#153）：倒计时与便签的空态文案统一允许换行（`TextWrapping=Wrap`），长文案不裁切；筛选弹层的便签日期筛选带可见字段标签 `日期`（`BodyBrush`），不是无名空下拉。
+- 空态与筛选弹层（#153 / #305）：倒计时与便签的空态文案统一允许换行（`TextWrapping=Wrap`），长文案不裁切；筛选弹层的便签日期筛选带可见字段标签 `日期`（`BodyBrush`），不是无名空下拉。筛选、标签管理、显示设置与标签选择四个弹层（含主窗口倒计时/便签两处与悬浮窗快速新增一处标签选择器）的表面边界统一改用 1px `ControlBorderBrush`（对自身底色及各邻近页面/卡片表面均达到 WCAG ≥ 3:1，系统对比度下映射 `WindowText`），保持原有底色（筛选/标签管理/主窗标签选择 `CanvasBrush`、显示设置 `BackgroundBrush`、浮窗标签选择局部 `CanvasBrush`=`CardColor`）与 `RadiusOverlay` 圆角，不添加投影。筛选弹层将「无标签」置于与具体标签芯片相同的 `FilterTagOptions` 芯片组内（保持与具体标签的互斥语义与 `0,0,8,8` 间距），「匹配方式」（`任一匹配` / `全部匹配`，默认 `任一匹配`）仅在已选不少于两个具体标签时显示并可聚焦；已选 0 个、1 个具体标签或选中「无标签」时完全折叠（`Visibility.Collapsed`），不可见且不可经 Tab 或直接聚焦到达；任一匹配、全部匹配与无标签的定义及筛选结果不变。四个弹层均保持打开聚焦首项（筛选弹层首项为标签芯片组首项 `无标签`）、层内 Tab 循环与 Esc 关闭归还触发按钮的焦点生命周期。由独立窗口验证项目产出 `OverlaySurfaceBordersMeetContrastWithoutShadow` 与 `FilterMatchModeDisclosureAndOverlayFocusLifecycle` 验证事实。
 - 列表条目标题层级（#153/#197，#237 管理窗口降档）：管理窗口倒计时列表条目标题消费 `TypeBodyFontSize`（16px）；「新增倒计时」「显示设置」区块标题消费 `TypeH2FontSize`（20px），便签列表组头同样落 body 阶梯。
 
 ### 悬浮窗底部命令区
@@ -778,7 +778,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | `BodyColor` | `#6B4A3C` | 全浅色表面最差（`PinkTintBrush`） | 6.22 | 4.5 | text | PASS | 正文 |
 | `BodyColor` | `#6B4A3C` | `CanvasBrush` | 7.19 | 7.0 | text-7.0 | PASS | 正文 7:1 目标（对 `NoteBrush` 7.23） |
 | `MutedColor` | `#82665F` | `CanvasBrush` | 4.78 | 4.5 | text | PASS | 辅助文字（对 `NoteBrush` 4.81） |
-| `ControlBorderColor` | `#A87866` | 五种浅色表面最差（`BackgroundBrush`） | 3.38 | 3.0 | graphic | PASS | #217 控件常态边界；真实未聚焦输入框同时检查五种表面及自身输入底色 |
+| `ControlBorderColor` | `#A87866` | 五种浅色表面最差（`BackgroundBrush`） | 3.38 | 3.0 | graphic | PASS | #217 控件常态边界；#305 扩展至筛选/标签管理/显示设置/标签选择四弹层 1px 边界（无投影、保持原底色与 `RadiusOverlay`），逐表面复算：Background 3.38、Canvas 3.46、Card 3.70、Panel 3.74、CardAlt 3.62、Note 3.48、NoteWhite 3.73、StatusBar 3.65、CharacterPanel 3.56、PinkTintSoft 3.42、CanvasDeep 3.20，均 ≥3:1 |
 | `DangerColor` | `#B74C39` | `BackgroundBrush` | 4.57 | 4.5 | text | PASS | #217 删除/错误六底复核：Canvas 4.68、Card 5.00、Note 4.70、StatusBar 4.92、ReminderCard 4.85 |
 | `SuccessColor` | `#266B5E` | `CanvasBrush` | 5.74 | 4.5 | text | PASS | #132 由 `#529F8C`（2.87）调深 |
 | `WarningAccentColor` | `#AD4A10` | `WarningTintBrush` | 4.86 | 4.5 | text | PASS | #132 由 `#DC6922`（3.00）调深 |

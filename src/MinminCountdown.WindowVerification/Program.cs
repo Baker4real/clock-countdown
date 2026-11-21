@@ -45,6 +45,8 @@ internal static class Program
     internal const string DatePickerSingleBoxInteractionFactName = "DatePickerSingleBoxInteractionAndLongestDateFit";
     internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
     internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
+    internal const string TagManagerAutoSaveFactName = "TagManagerAutoSaveOnEnterAndBlur";
+    internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -136,6 +138,10 @@ internal static class Program
         "搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）";
     private const string MainHiddenDeferRefreshFactMeaning =
         "管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）";
+    private const string TagManagerAutoSaveFactMeaning =
+        "标签管理行移除“保存”按钮并保留“删除”与新建流程；名称输入框按 Enter 与失焦各提交一次改名并同步四处界面，内容未变化（含仅首尾空白）不产生提交也不重建行（#308）";
+    private const string TagManagerErrorsEscDeleteFactMeaning =
+        "标签管理重名或空名失败时错误贴在该行、保留用户输入并把焦点放回该输入框，修正即清；Esc 放弃未提交改名并关闭弹层返焦，删除标签保持取消默认确认与只解除关联、不删记录语义（#308）";
 
     [STAThread]
     private static int Main()
@@ -179,7 +185,9 @@ internal static class Program
             [DatePickerSingleBoxGeometryFactName] = false,
             [DatePickerSingleBoxInteractionFactName] = false,
             [MainNoteSearchCoalesceFactName] = false,
-            [MainHiddenDeferRefreshFactName] = false
+            [MainHiddenDeferRefreshFactName] = false,
+            [TagManagerAutoSaveFactName] = false,
+            [TagManagerErrorsEscDeleteFactName] = false
         };
         var failures = new List<string>();
 
@@ -407,6 +415,16 @@ internal static class Program
                 MainHiddenDeferRefreshFactMeaning,
                 () => MainWindowRefreshScenario.RunHiddenDeferAndFirstFrameRefresh(
                     MainHiddenDeferRefreshFactMeaning));
+            RunFact(
+                TagManagerAutoSaveFactName,
+                TagManagerAutoSaveFactMeaning,
+                () => TagManagerAutoSaveScenario.RunAutoSaveOnEnterAndBlur(
+                    TagManagerAutoSaveFactMeaning));
+            RunFact(
+                TagManagerErrorsEscDeleteFactName,
+                TagManagerErrorsEscDeleteFactMeaning,
+                () => TagManagerAutoSaveScenario.RunErrorsEscDiscardAndDelete(
+                    TagManagerErrorsEscDeleteFactMeaning));
         }
         catch (Exception exception)
         {

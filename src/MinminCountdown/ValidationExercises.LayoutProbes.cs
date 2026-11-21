@@ -327,9 +327,6 @@ internal static partial class ValidationExercises
             (InlineActionSurface.MainRow, InlineActionIntent.Delete, "note-delete",
                 "删除便签 第一行", "删除便签 第一行", "删除", "删除便签（Delete）",
                 "便签", 53d, 33d, 4d, true, true),
-            (InlineActionSurface.TagManager, InlineActionIntent.Save, "tag-save",
-                "保存标签 工作", "保存标签 工作", "保存", "保存标签 工作",
-                (string?)null, 65d, 39d, 7d, false, false),
             (InlineActionSurface.TagManager, InlineActionIntent.Delete, "tag-delete",
                 "删除标签 工作", "删除标签 工作", "删除", "删除标签 工作",
                 (string?)null, 65d, 39d, 7d, false, true),
@@ -366,7 +363,7 @@ internal static partial class ValidationExercises
                 var expectedStyle = item.Surface switch
                 {
                     InlineActionSurface.MainRow => secondaryStyle,
-                    InlineActionSurface.TagManager => item.Danger ? dangerStyle : secondaryStyle,
+                    InlineActionSurface.TagManager => dangerStyle,
                     _ => item.Danger ? dangerStyle : defaultStyle
                 };
                 var dangerPresentation = !item.Danger ||

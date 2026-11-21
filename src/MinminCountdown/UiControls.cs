@@ -195,11 +195,10 @@ internal enum InlineActionIntent
 {
     Edit,
     Copy,
-    Save,
     Delete
 }
 
-// #257：三种既有表面共用一份行内动作契约。调用方只提供表面、动作和记录上下文；
+// #257/#308：三种既有表面共用一份行内动作契约。调用方只提供表面、动作和记录上下文；
 // Content、Name/HelpText、样式、危险语义、焦点资格与 ToolTip 不再分别补齐。
 internal static class InlineActionButton
 {
@@ -218,7 +217,7 @@ internal static class InlineActionButton
         var supported = surface switch
         {
             InlineActionSurface.MainRow => intent is InlineActionIntent.Edit or InlineActionIntent.Delete,
-            InlineActionSurface.TagManager => intent is InlineActionIntent.Save or InlineActionIntent.Delete,
+            InlineActionSurface.TagManager => intent == InlineActionIntent.Delete,
             InlineActionSurface.ReminderRule => intent is InlineActionIntent.Edit or InlineActionIntent.Copy or InlineActionIntent.Delete,
             _ => false
         };
@@ -236,7 +235,6 @@ internal static class InlineActionButton
         {
             InlineActionIntent.Edit => "编辑",
             InlineActionIntent.Copy => "复制",
-            InlineActionIntent.Save => "保存",
             InlineActionIntent.Delete => "删除",
             _ => throw new ArgumentOutOfRangeException(nameof(intent), intent, "未知行内动作。")
         };
@@ -472,7 +470,8 @@ internal static class PopupFocusLifecycle
     public static void Attach(
         Popup popup,
         UIElement trigger,
-        Func<IInputElement?> initialFocus)
+        Func<IInputElement?> initialFocus,
+        Action? onEscapeBeforeClose = null)
     {
         ArgumentNullException.ThrowIfNull(popup);
         ArgumentNullException.ThrowIfNull(trigger);
@@ -525,6 +524,11 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
+                if (popup.IsOpen)
+                {
+                    onEscapeBeforeClose?.Invoke();
+                }
+
                 // #242：Esc 是应用处理的键盘路径，立即关闭、不保留退出阶段。
                 PopupMotionBehavior.Close(popup, immediate: true);
                 eventArgs.Handled = true;
@@ -567,6 +571,7 @@ internal static class PopupFocusLifecycle
                     return;
                 }
 
+                onEscapeBeforeClose?.Invoke();
                 PopupMotionBehavior.Close(popup, immediate: true);
                 eventArgs.Handled = true;
                 trigger.Dispatcher.BeginInvoke(

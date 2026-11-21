@@ -848,6 +848,7 @@ public sealed partial class MainWindow
             if (_desktopWorkspace.Snapshot.Settings.Notes.Count > 0)
             {
                 NoteSearch.Text = $"__validation_no_results_{Guid.NewGuid():N}";
+                WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
                 WindowValidationInput.Pump(Dispatcher);
                 noResultsResetWorks =
                     EmptyNotesMessage.Visibility == Visibility.Visible &&

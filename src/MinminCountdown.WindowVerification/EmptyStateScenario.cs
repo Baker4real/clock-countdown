@@ -272,7 +272,9 @@ internal static class EmptyStateScenario
                 !Required<Panel>(main, "CountdownEmptyStateContent").IsVisible;
 
             probe.ShowWorkspace(WorkspaceKind.Notes);
-            Required<TextBox>(main, "NoteSearch").Text = NoMatchSearch;
+            var noteSearch = Required<TextBox>(main, "NoteSearch");
+            noteSearch.Text = NoMatchSearch;
+            WindowValidationInput.RaisePreviewKey(noteSearch, Key.Enter);
             var noteFiltered = Read(WorkspaceKind.Notes, "便签筛选无结果");
             Click(main, "ResetEmptyNotesFiltersButton");
             SettleLayout(main);

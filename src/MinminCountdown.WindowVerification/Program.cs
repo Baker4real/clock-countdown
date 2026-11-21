@@ -34,6 +34,8 @@ internal static class Program
     internal const string SharedScrollBarMotionFactName = "SharedScrollBarMotionAndInteractionsWork";
     internal const string FloatingBottomStatusAutomationFactName = "FloatingBottomStatusPublicAutomationTree";
     internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
+    internal const string RuleEditorFixedIntervalNumericFactName = "ReminderRulesEditorFixedIntervalNumericInput";
+    internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -95,6 +97,10 @@ internal static class Program
         "遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）";
     private const string DisabledStateUnifiedFactMeaning =
         "全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）";
+    private const string RuleEditorFixedIntervalNumericFactMeaning =
+        "规则编辑器固定间隔支持上下键与滚轮在 1 到 1440 整数范围内增减、超出范围或非法输入当场提示且错误文案不变；ViewModel 属性为可空数值且对外保存、脏态与预览行为不变（#330）";
+    private const string RuleEditorFixedIntervalVisualFactMeaning =
+        "规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）";
 
     [STAThread]
     private static int Main()
@@ -127,7 +133,9 @@ internal static class Program
             [SharedScrollBarGeometryFactName] = false,
             [SharedScrollBarMotionFactName] = false,
             [FloatingBottomStatusAutomationFactName] = false,
-            [DisabledStateUnifiedFactName] = false
+            [DisabledStateUnifiedFactName] = false,
+            [RuleEditorFixedIntervalNumericFactName] = false,
+            [RuleEditorFixedIntervalVisualFactName] = false
         };
         var failures = new List<string>();
 
@@ -295,6 +303,16 @@ internal static class Program
                 () => DisabledStateScenario.Run(
                     theme,
                     DisabledStateUnifiedFactMeaning));
+            RunFact(
+                RuleEditorFixedIntervalNumericFactName,
+                RuleEditorFixedIntervalNumericFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalNumericInput(
+                    RuleEditorFixedIntervalNumericFactMeaning));
+            RunFact(
+                RuleEditorFixedIntervalVisualFactName,
+                RuleEditorFixedIntervalVisualFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalVisualAndIsolation(
+                    RuleEditorFixedIntervalVisualFactMeaning));
         }
         catch (Exception exception)
         {

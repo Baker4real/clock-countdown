@@ -295,7 +295,14 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_firstDueHour, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueHourIndex), _viewModel, BindingMode.TwoWay);
         Bind(_firstDueMinute, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueMinuteIndex), _viewModel, BindingMode.TwoWay);
         Bind(_interval, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.IntervalIndex), _viewModel, BindingMode.TwoWay);
-        BindText(_customInterval, nameof(ReminderRulesEditorViewModel.CustomIntervalMinutes));
+        NumericInputBehavior.SetMinimum(_customInterval, ReminderRulesEditorViewModel.MinimumFixedIntervalMinutes);
+        NumericInputBehavior.SetMaximum(_customInterval, ReminderRulesEditorViewModel.MaximumFixedIntervalMinutes);
+        NumericInputBehavior.SetStep(_customInterval, 1);
+        NumericInputBehavior.SetIsEnabled(_customInterval, true);
+        Bind(_customInterval, NumericInputBehavior.ValueProperty, nameof(ReminderRulesEditorViewModel.CustomIntervalMinutes), _viewModel, BindingMode.TwoWay);
+        Bind(_customInterval, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidCustomIntervalInput), _viewModel, BindingMode.TwoWay);
+        Bind(_customInterval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsIntervalErrorVisible), _viewModel);
+        Bind(_interval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsIntervalComboErrorVisible), _viewModel);
         BindText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetMinutes));
         Bind(_calendarFrequency, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarFrequencyIndex), _viewModel, BindingMode.TwoWay);
         BindText(_calendarInterval, nameof(ReminderRulesEditorViewModel.CalendarInterval));
@@ -407,8 +414,10 @@ internal sealed class ReminderRulesEditorWindow : Window
         AddFormRow(form, 0, "规则类型", _mode, _modeError);
         _firstDueLabel = AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError,
             nameof(ReminderRulesEditorViewModel.IsFirstDueVisible));
-        AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError,
+        var intervalLabel = AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError,
             nameof(ReminderRulesEditorViewModel.IsIntervalVisible));
+        AutomationProperties.SetLabeledBy(_interval, intervalLabel);
+        AutomationProperties.SetLabeledBy(_customInterval, intervalLabel);
         AddFormRow(form, 3, "提前分钟", _relativeOffset, _relativeOffsetError,
             nameof(ReminderRulesEditorViewModel.IsRelativeVisible));
         AddFormRow(form, 4, "重复周期", _calendarFrequency, ErrorText(),

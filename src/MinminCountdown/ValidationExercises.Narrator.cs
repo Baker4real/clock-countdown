@@ -82,9 +82,7 @@ internal static partial class ValidationExercises
 
             ((TextBox)main.FindName("CountdownName")).Text = "讲述人保存探针";
             ((DatePicker)main.FindName("CountdownDate")).SelectedDate = new DateTime(2038, 8, 1);
-            ((ComboBox)main.FindName("CountdownHour")).SelectedIndex = 9;
-            ((ComboBox)main.FindName("CountdownMinute")).SelectedIndex = 0;
-            ((ComboBox)main.FindName("CountdownSecond")).SelectedIndex = 0;
+            ((TextBox)main.FindName("CountdownTime")).Text = "09:00:00";
             ((Button)main.FindName("SaveCountdownButton")).RaiseEvent(
                 new RoutedEventArgs(ButtonBase.ClickEvent));
             FlushNarrator(main.Dispatcher);
@@ -539,9 +537,7 @@ internal static partial class ValidationExercises
             {
                 ("CountdownName", "CountdownNameLabel", null),
                 ("CountdownDate", "CountdownDateLabel", null),
-                ("CountdownHour", "CountdownHourLabel", null),
-                ("CountdownMinute", "CountdownMinuteLabel", null),
-                ("CountdownSecond", "CountdownSecondLabel", null),
+                ("CountdownTime", "CountdownTimeLabel", null),
                 ("DisplayPrecision", "DisplayPrecisionLabel", "悬浮窗显示精度"),
                 ("MonthlySalary", "MonthlySalaryLabel", null),
                 ("WorkStart", "WorkStartLabel", null),

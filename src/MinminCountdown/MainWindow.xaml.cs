@@ -395,9 +395,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal string? EditingCountdownId => _editingCountdownId;
 
-    internal IReadOnlyList<int> TimeOptionCounts =>
-        new[] { CountdownHour.Items.Count, CountdownMinute.Items.Count, CountdownSecond.Items.Count };
-
     internal bool CompletedNotesAreCollapsed => !_completedSegmentSelected;
 
     internal bool SegmentIndicatorGeometryMatchesForValidation =>
@@ -460,8 +457,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         !TagManagerPopup.IsOpen &&
         !CountdownTags.IsPopupOpen &&
         !NoteTags.IsPopupOpen &&
-        !CountdownDate.IsDropDownOpen && !NoteDate.IsDropDownOpen &&
-        !CountdownHour.IsDropDownOpen && !CountdownMinute.IsDropDownOpen && !CountdownSecond.IsDropDownOpen;
+        !CountdownDate.IsDropDownOpen && !NoteDate.IsDropDownOpen;
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
@@ -1239,7 +1235,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     [
         MinimizeButton, CloseButton,
         CountdownTab, NotesTab, PreferencesButton, FilterButton, TagManagerButton,
-        CountdownName, CountdownDate, CountdownHour, CountdownMinute, CountdownSecond,
+        CountdownName, CountdownDate, CountdownTime,
         CountdownTags.PopupTrigger, CountdownReminderHelp,
         CountdownReminderNoRadio, CountdownReminderTimeRadio, CountdownReminderCustomRadio,
         CancelCountdownEdit, CountdownEditorExpandButton, DisplayPrecision, MonthlySalary, AddEmptyCountdownButton,
@@ -1251,19 +1247,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ConfigureControls()
     {
-        for (var hour = 0; hour < 24; hour++)
-        {
-            var text = hour.ToString("D2", CultureInfo.InvariantCulture);
-            CountdownHour.Items.Add(text);
-        }
-
-        for (var value = 0; value < 60; value++)
-        {
-            var text = value.ToString("D2", CultureInfo.InvariantCulture);
-            CountdownMinute.Items.Add(text);
-            CountdownSecond.Items.Add(text);
-        }
-
         DisplayPrecision.Items.Add("天");
         DisplayPrecision.Items.Add("小时");
         DisplayPrecision.Items.Add("分钟");
@@ -1324,9 +1307,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             (CloseButton, "CloseButton"),
             (CountdownName, "CountdownName"),
             (CountdownDate, "CountdownDate"),
-            (CountdownHour, "CountdownHour"),
-            (CountdownMinute, "CountdownMinute"),
-            (CountdownSecond, "CountdownSecond"),
+            (CountdownTime, "CountdownTime"),
             (CountdownTags.PopupTrigger, "CountdownTags"),
             (CountdownReminderHelp, "CountdownReminderHelp"),
             (CountdownReminderNoRadio, "CountdownReminderNoRadio"),
@@ -1367,6 +1348,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.MarkLive(CountdownNameError);
         AutomationProperties.SetAutomationId(CountdownNameError, "CountdownNameError");
         UiAccessibility.MarkLive(CountdownDateError);
+        UiAccessibility.MarkLive(CountdownTimeError);
+        AutomationProperties.SetAutomationId(CountdownTimeError, "CountdownTimeError");
         UiAccessibility.MarkLive(NoteTextError);
         UiAccessibility.MarkLive(NoteDateError);
         UiAccessibility.MarkLive(MonthlySalaryError);
@@ -1479,11 +1462,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownReminderTimeRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.AtDeadline);
         CountdownReminderCustomRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.Custom);
         CountdownDate.SelectedDateChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownHour.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownMinute.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
-        CountdownSecond.SelectionChanged += (_, _) => OnCountdownTargetFieldsChanged();
+        CountdownTime.TextChanged += (_, _) => OnCountdownTimeTextChanged();
+        CountdownTime.LostKeyboardFocus += (_, _) => ValidateCountdownTimeOnBlur();
         SaveCountdownButton.Click += (_, _) => SaveCountdown();
         AttachSingleLineSubmit(CountdownName, SaveCountdown, () => MainShortcutScopeIsSafe);
+        AttachSingleLineSubmit(CountdownTime, SaveCountdown, () => MainShortcutScopeIsSafe);
         PreferencesButton.Click += (_, _) => PreferencesPopup.IsOpen = !PreferencesPopup.IsOpen;
         DisclosureMotion.Bind(CountdownEditorExpandButton, animate =>
             SetCountdownEditorExpanded(MainCountdownTimeTagRow.Visibility != Visibility.Visible, animate));
@@ -1495,9 +1478,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         // #151：字段值修正后立即清除对应字段错误（镜像悬浮窗快速新增）。
         CountdownName.TextChanged += (_, _) => ClearCountdownFieldError(CountdownNameError);
         CountdownDate.SelectedDateChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownHour.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownMinute.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
-        CountdownSecond.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
         DisplayPrecision.SelectionChanged += (_, _) => MarkSettingsDraftDirty();
         ConfigureMonthlySalaryNumericInput();
         MonthlySalary.TextChanged += (_, _) =>
@@ -2945,9 +2925,37 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             : $"下次 {DateDisplay.Deadline(nextReminder.Value)} · {summary}";
     }
 
+    private const string CountdownTimeFormatErrorMessage = "截止时刻请使用 HH:mm:ss。";
+
+    private void OnCountdownTimeTextChanged()
+    {
+        OnCountdownTargetFieldsChanged();
+        if (TimeInputBehavior.TryParseStrict(CountdownTime.Text, TimeInputFormat.HourMinuteSecond, out _))
+        {
+            ClearCountdownFieldError(CountdownTimeError);
+        }
+    }
+
+    private void ValidateCountdownTimeOnBlur()
+    {
+        if (_loadingCountdownEditor || !CountdownTime.IsVisible)
+        {
+            return;
+        }
+
+        if (!TimeInputBehavior.TryParseStrict(CountdownTime.Text, TimeInputFormat.HourMinuteSecond, out _))
+        {
+            ShowCountdownValidationError(CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime);
+        }
+        else
+        {
+            ClearCountdownFieldError(CountdownTimeError);
+        }
+    }
+
     private void SaveCountdown()
     {
-        // #151：校验按字段拆开；错误完整出现在对应字段旁并聚焦第一个无效控件；
+        // #151/#328：校验按字段拆开；错误完整出现在对应字段下方并聚焦第一个无效控件；
         // 唯一错误行不再固定高度裁切或省略（XAML 侧已去除 MaxHeight/TextTrimming）。
         ClearCountdownFieldErrors();
         var validations = new List<(TextBlock Error, string Message, Control Source)>();
@@ -2961,8 +2969,22 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             validations.Add((CountdownDateError, "请选择截止日期。", CountdownDate));
         }
 
+        var hasValidTime = TimeInputBehavior.TryParseStrict(
+            CountdownTime.Text,
+            TimeInputFormat.HourMinuteSecond,
+            out var targetTime);
+        if (!hasValidTime)
+        {
+            validations.Add((CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime));
+        }
+
         if (validations.Count > 0)
         {
+            if (!hasValidTime)
+            {
+                SetCountdownEditorExpanded(true);
+            }
+
             foreach (var (error, message, source) in validations)
             {
                 ShowCountdownValidationError(error, message, source);
@@ -2973,19 +2995,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        if (GetCountdownTargetUtc() is not { } target)
-        {
-            SetCountdownEditorExpanded(true);
-            var invalidTime = new[] { CountdownHour, CountdownMinute, CountdownSecond }
-                .First(control => control.SelectedIndex < 0 || control.SelectedIndex >= control.Items.Count);
-            ShowCountdownValidationError(
-                CountdownDateError,
-                "请先选择完整的倒计时截止时间。",
-                invalidTime);
-            SetMessage(CountdownMessage, "请先选择完整的倒计时截止时间。", true);
-            invalidTime.Focus();
-            return;
-        }
+        var target = CountdownFormatting.ToUtc(
+            CountdownDate.SelectedDate!.Value,
+            targetTime.Hours,
+            targetTime.Minutes,
+            targetTime.Seconds);
 
         var result = _desktopWorkspace.Apply(new SaveCountdownChange(
             _editingCountdownId,
@@ -3187,9 +3201,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _editingCountdownId = record.Id;
             CountdownName.Text = record.Name;
             CountdownDate.SelectedDate = beijing.Date;
-            CountdownHour.SelectedIndex = beijing.Hour;
-            CountdownMinute.SelectedIndex = beijing.Minute;
-            CountdownSecond.SelectedIndex = beijing.Second;
+            TimeInputBehavior.SetValue(CountdownTime, new TimeSpan(beijing.Hour, beijing.Minute, beijing.Second));
             CountdownTags.SetSelection(record.TagIds);
             _countdownReminderRules = Array.AsReadOnly(record.ReminderRules.ToArray());
             SyncCountdownReminderModeFromRules();
@@ -3435,9 +3447,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void SetCountdownTarget(DateTimeOffset beijing)
     {
         CountdownDate.SelectedDate = beijing.Date;
-        CountdownHour.SelectedIndex = beijing.Hour;
-        CountdownMinute.SelectedIndex = beijing.Minute;
-        CountdownSecond.SelectedIndex = beijing.Second;
+        TimeInputBehavior.SetValue(CountdownTime, new TimeSpan(beijing.Hour, beijing.Minute, beijing.Second));
     }
 
     private void MarkSettingsDraftDirty()
@@ -3610,15 +3620,26 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void FocusCountdownDatePrerequisite()
     {
-        const string message = "请先选择完整的倒计时截止时间。";
-        ShowCountdownValidationError(CountdownDateError, message, CountdownDate);
-        SetMessage(CountdownMessage, message, true);
-        // DatePickerTextBoxStyle deliberately disables the inner PART_TextBox;
-        // focus the DatePicker owner so keyboard focus remains reachable.
-        var target = (Control)CountdownDate;
+        if (CountdownDate.SelectedDate is null)
+        {
+            const string message = "请先选择完整的倒计时截止时间。";
+            ShowCountdownValidationError(CountdownDateError, message, CountdownDate);
+            SetMessage(CountdownMessage, message, true);
+            // DatePickerTextBoxStyle deliberately disables the inner PART_TextBox;
+            // focus the DatePicker owner so keyboard focus remains reachable.
+            var target = (Control)CountdownDate;
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Input,
+                new Action(() => Keyboard.Focus(target)));
+            return;
+        }
+
+        SetCountdownEditorExpanded(true);
+        ShowCountdownValidationError(CountdownTimeError, CountdownTimeFormatErrorMessage, CountdownTime);
+        SetMessage(CountdownMessage, CountdownTimeFormatErrorMessage, true);
         Dispatcher.BeginInvoke(
             DispatcherPriority.Input,
-            new Action(() => Keyboard.Focus(target)));
+            new Action(() => Keyboard.Focus(CountdownTime)));
     }
 
     private void EnsureCountdownReminderModeRadio(CountdownReminderMode mode)
@@ -3691,18 +3712,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private DateTimeOffset? GetCountdownTargetUtc()
     {
         if (CountdownDate.SelectedDate is null ||
-            CountdownHour.SelectedIndex is < 0 or > 23 ||
-            CountdownMinute.SelectedIndex is < 0 or > 59 ||
-            CountdownSecond.SelectedIndex is < 0 or > 59)
+            !TimeInputBehavior.TryParseStrict(
+                CountdownTime.Text,
+                TimeInputFormat.HourMinuteSecond,
+                out var timeOfDay))
         {
             return null;
         }
 
         return CountdownFormatting.ToUtc(
             CountdownDate.SelectedDate.Value,
-            CountdownHour.SelectedIndex,
-            CountdownMinute.SelectedIndex,
-            CountdownSecond.SelectedIndex);
+            timeOfDay.Hours,
+            timeOfDay.Minutes,
+            timeOfDay.Seconds);
     }
 
     private void UpdateCountdownReminderRulesSummary()
@@ -4447,9 +4469,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         yield return CountdownName;
         yield return CountdownDate;
-        yield return CountdownHour;
-        yield return CountdownMinute;
-        yield return CountdownSecond;
+        yield return CountdownTime;
         yield return CountdownReminderHelp;
         yield return CountdownReminderNoRadio;
         yield return CountdownReminderTimeRadio;
@@ -4483,9 +4503,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         LabelFor(CountdownNameLabel, CountdownName);
         LabelFor(CountdownDateLabel, CountdownDate);
-        LabelFor(CountdownHourLabel, CountdownHour);
-        LabelFor(CountdownMinuteLabel, CountdownMinute);
-        LabelFor(CountdownSecondLabel, CountdownSecond);
+        LabelFor(CountdownTimeLabel, CountdownTime);
         LabelFor(DisplayPrecisionLabel, DisplayPrecision, "悬浮窗显示精度");
         LabelFor(MonthlySalaryLabel, MonthlySalary);
         LabelFor(WorkStartLabel, WorkStart);
@@ -4533,6 +4551,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         ClearCountdownFieldError(CountdownNameError);
         ClearCountdownFieldError(CountdownDateError);
+        ClearCountdownFieldError(CountdownTimeError);
     }
 
     private void ShowNoteValidationError(TextBlock field, string message, Control source)
@@ -4658,10 +4677,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             yield break;
         }
 
+        if (ReferenceEquals(field, CountdownTimeError))
+        {
+            yield return CountdownTime;
+            yield break;
+        }
+
         yield return CountdownDate;
-        yield return CountdownHour;
-        yield return CountdownMinute;
-        yield return CountdownSecond;
     }
 
     private IEnumerable<Control> NoteValidationControls()

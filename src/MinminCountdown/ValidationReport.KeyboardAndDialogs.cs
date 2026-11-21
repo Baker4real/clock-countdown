@@ -117,16 +117,12 @@ internal static partial class ValidationReport
 
             var probeCountdownName = Required<TextBox>(main, "CountdownName");
             var probeCountdownDate = Required<DatePicker>(main, "CountdownDate");
-            var probeCountdownHour = Required<ComboBox>(main, "CountdownHour");
-            var probeCountdownMinute = Required<ComboBox>(main, "CountdownMinute");
-            var probeCountdownSecond = Required<ComboBox>(main, "CountdownSecond");
+            var probeCountdownTime = Required<TextBox>(main, "CountdownTime");
             var probeTarget = workspace.Snapshot.BeijingNow.AddDays(30);
             var probeName = $"快捷键保存-{Guid.NewGuid():N}"[..30];
             probeCountdownName.Text = probeName;
             probeCountdownDate.SelectedDate = probeTarget.Date;
-            probeCountdownHour.SelectedItem = probeTarget.ToString("HH", CultureInfo.InvariantCulture);
-            probeCountdownMinute.SelectedItem = probeTarget.ToString("mm", CultureInfo.InvariantCulture);
-            probeCountdownSecond.SelectedItem = probeTarget.ToString("ss", CultureInfo.InvariantCulture);
+            probeCountdownTime.Text = probeTarget.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
             Keyboard.Focus(probeCountdownName);
             var countdownHandled = WindowValidationInput.RaisePreviewKey(probeCountdownName, Key.S, ModifierKeys.Control);
             var savedCountdown = workspace.Snapshot.Settings.Countdowns.SingleOrDefault(item =>
@@ -319,17 +315,17 @@ internal static partial class ValidationReport
             WindowValidationInput.RaisePreviewKey(countdownDateInput, Key.D2, ModifierKeys.Control) &&
             main.CurrentWorkspace == WorkspaceKind.Notes && !countdownDateInput.IsDropDownOpen;
         main.ShowWorkspace(WorkspaceKind.Countdowns);
-        var countdownHourInput = Required<ComboBox>(main, "CountdownHour");
+        var countdownTimeInput = Required<TextBox>(main, "CountdownTime");
         var editorWasExpanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
         if (!editorWasExpanded)
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         PumpDispatcher();
-        var comboBoxFocused = countdownHourInput.Focus();
+        var comboBoxFocused = countdownTimeInput.Focus();
         PumpDispatcher();
         var comboBoxGuarded =
-            comboBoxFocused && countdownHourInput.IsKeyboardFocusWithin &&
-            !WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.A, ModifierKeys.None) &&
-            WindowValidationInput.RaisePreviewKey(countdownHourInput, Key.D2, ModifierKeys.Control) &&
+            comboBoxFocused && countdownTimeInput.IsKeyboardFocusWithin &&
+            !WindowValidationInput.RaisePreviewKey(countdownTimeInput, Key.A, ModifierKeys.None) &&
+            WindowValidationInput.RaisePreviewKey(countdownTimeInput, Key.D2, ModifierKeys.Control) &&
             main.CurrentWorkspace == WorkspaceKind.Notes;
         main.ShowWorkspace(WorkspaceKind.Countdowns);
         var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
@@ -419,8 +415,8 @@ internal static partial class ValidationReport
             {
                 "TopmostCheck", "MinimizeButton", "CloseButton",
                 "CountdownTab", "NotesTab", "PreferencesButton", "FilterButton", "TagManagerButton",
-                "CountdownName", "CountdownDate", "SaveCountdownButton", "CountdownEditorExpandButton", "CountdownHour", "CountdownMinute",
-                "CountdownSecond", "CountdownTags", "CountdownReminderHelp",
+                "CountdownName", "CountdownDate", "SaveCountdownButton", "CountdownEditorExpandButton", "CountdownTime",
+                "CountdownTags", "CountdownReminderHelp",
                 "CountdownReminderNoRadio", "CountdownReminderTimeRadio",
                 "CountdownReminderCustomRadio", "CancelCountdownEdit",
                 "CountdownListRegion", "StatusText"

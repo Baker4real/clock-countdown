@@ -988,10 +988,8 @@ internal static class DatePickerSingleBoxScenario
             SettleWindow(reminderCenter);
 
             var probe = new MainWindowEmptyStateProbe(main);
-            var countdownExpand = Required<Button>(main, "CountdownEditorExpandButton");
             var countdownName = Required<TextBox>(main, "CountdownName");
             var countdownDate = Required<DatePicker>(main, "CountdownDate");
-            var countdownHour = Required<ComboBox>(main, "CountdownHour");
             var saveCountdown = Required<Button>(main, "SaveCountdownButton");
 
             var noteText = Required<TextBox>(main, "NoteText");
@@ -1024,7 +1022,7 @@ internal static class DatePickerSingleBoxScenario
                     "Main.CountdownDate",
                     main,
                     countdownDate,
-                    countdownHour,
+                    ReferenceCombo: null,
                     ExpectedHeight: 41.0,
                     LayoutShiftSibling: saveCountdown,
                     PreviousTabElement: countdownName,
@@ -1032,10 +1030,6 @@ internal static class DatePickerSingleBoxScenario
                     {
                         filterPopup.IsOpen = false;
                         probe.ShowWorkspace(WorkspaceKind.Countdowns);
-                        if (!countdownHour.IsVisible)
-                        {
-                            countdownExpand.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-                        }
                         SettleWindow(main);
                     },
                     CleanupVisible: () =>

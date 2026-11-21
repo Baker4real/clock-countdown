@@ -50,6 +50,8 @@ internal static class Program
     internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
     internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
     internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
+    internal const string CountdownDeadlineTimeTypingFactName = "MainCountdownDeadlineTimeTypingAndStepping";
+    internal const string CountdownDeadlineTimeValidationFactName = "MainCountdownDeadlineTimeValidationAndAccessibility";
     internal const string RuleEditorRepeatAndLeadNumericFactName = "RuleEditorRepeatAndLeadNumericInputs";
     internal const string MonthlySalaryDecimalAndDownstreamFactName = "MonthlySalaryDecimalInputAndDownstreamContract";
 
@@ -156,6 +158,12 @@ internal static class Program
     private const string FloatingNoteOverflowInteractionsAndMotionFactMeaning =
         "悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、" +
         "Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）";
+    private const string CountdownDeadlineTimeTypingFactMeaning =
+        "管理窗口倒计时截止时刻改为单一可键入 HH:mm:ss 文本框：新增默认当前北京时间、直接键入与编辑保存保持精确领域值，" +
+        "光标按时/分/秒分段支持上下键步进与边界回绕，复用 TimeInputBehavior 兼顾 HH:mm 格式（#328）";
+    private const string CountdownDeadlineTimeValidationFactMeaning =
+        "倒计时截止时刻在失焦与提交时校验空值、越界与非时刻文本，错误行贴字段下方且礼貌播报，提交失败聚焦时间框（含收起态重展开），" +
+        "有效/出错无焦/出错有焦为 2/1/2 DIP 不挤布局且修正即清，保留可见标签 LabeledBy 与等价可访问名并适配系统对比度（#328）";
     private const string RuleEditorRepeatAndLeadNumericFactMeaning =
         "规则编辑器每隔几个周期（1..999）与提前分钟（0..5256000）均支持上下键/滚轮步进、范围校验、越界当场提示与不变错误文案，ViewModel 属性均为可空整数，且焦点、错误边、对比度、系统对比度与标签关系均符合契约（#331）";
     private const string MonthlySalaryDecimalAndDownstreamFactMeaning =
@@ -209,6 +217,8 @@ internal static class Program
             [TagManagerErrorsEscDeleteFactName] = false,
             [FloatingNoteOverflowNativeAndLazyFactName] = false,
             [FloatingNoteOverflowInteractionsAndMotionFactName] = false,
+            [CountdownDeadlineTimeTypingFactName] = false,
+            [CountdownDeadlineTimeValidationFactName] = false,
             [RuleEditorRepeatAndLeadNumericFactName] = false,
             [MonthlySalaryDecimalAndDownstreamFactName] = false
         };
@@ -464,6 +474,16 @@ internal static class Program
                 () => FloatingNoteOverflowMenuScenario.RunInteractionsAndMotion(
                     theme,
                     FloatingNoteOverflowInteractionsAndMotionFactMeaning));
+            RunFact(
+                CountdownDeadlineTimeTypingFactName,
+                CountdownDeadlineTimeTypingFactMeaning,
+                () => CountdownDeadlineTimeInputScenario.RunTypingAndStepping(
+                    CountdownDeadlineTimeTypingFactMeaning));
+            RunFact(
+                CountdownDeadlineTimeValidationFactName,
+                CountdownDeadlineTimeValidationFactMeaning,
+                () => CountdownDeadlineTimeInputScenario.RunValidationAndAccessibility(
+                    CountdownDeadlineTimeValidationFactMeaning));
             RunFact(
                 RuleEditorRepeatAndLeadNumericFactName,
                 RuleEditorRepeatAndLeadNumericFactMeaning,

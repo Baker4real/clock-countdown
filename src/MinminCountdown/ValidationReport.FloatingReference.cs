@@ -1653,7 +1653,7 @@ internal static partial class ValidationReport
             return !shared.IsEmpty && shared.Width > 0.5 && shared.Height > 0.5;
         })).Any();
         return days.Length == 42 &&
-            bounds.All(rect => rect.Width >= 24 && rect.Height >= 24) &&
+            bounds.All(rect => rect.Width >= 31.5 && rect.Height >= 29.5) &&
             bounds.Select(rect => Math.Round(rect.Left)).Distinct().Count() == 7 &&
             bounds.Select(rect => Math.Round(rect.Top)).Distinct().Count() == 6 &&
             !overlapping &&

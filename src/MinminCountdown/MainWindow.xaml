@@ -1269,7 +1269,7 @@
                           <StackPanel Grid.Column="2">
                             <TextBlock x:Name="CountdownDateLabel" Text="截止日期" Style="{StaticResource MainCompactFieldLabel}" />
                             <Grid Margin="0,3,0,0">
-                              <!-- #237：日期框不按 0.74 取整——共享模板的 38px 下拉列不随之收缩，
+                              <!-- #237/#312：日期框不按 0.74 取整——共享单框模板的 36px 箭头列不随之收缩，
                                    与便签日期框同宽 242，保证「2031 年 12 月 31 日」完整可见。 -->
                               <local:WpfUiDatePicker x:Name="CountdownDate"
                                           Width="242"
@@ -1646,7 +1646,7 @@
                             </StackPanel>
                             <StackPanel Grid.Row="2" Grid.Column="2">
                               <Grid>
-                                <!-- 管理窗等比收缩后正文降一档，共享模板的 38px 下拉列不随之收缩；
+                                <!-- 管理窗等比收缩后正文降一档，共享单框模板的 36px 箭头列不随之收缩；
                                      日期列由便签内容列让出宽度，保证「2031 年 12 月 31 日」完整可见。 -->
                                 <local:WpfUiDatePicker x:Name="NoteDate"
                                             Width="242"

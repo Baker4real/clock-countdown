@@ -1,10 +1,10 @@
 using System.IO.Pipes;
 using Microsoft.Win32.SafeHandles;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using MinminCountdown.Core;
+using Windows.Win32;
 
 namespace MinminCountdown;
 
@@ -482,7 +482,7 @@ internal static class ForegroundActivationPermission
         permissionGranted = null;
         try
         {
-            if (!GetNamedPipeServerProcessId(pipeHandle, out var processId) ||
+            if (!PInvoke.GetNamedPipeServerProcessId(pipeHandle, out var processId) ||
                 processId == 0 ||
                 processId > int.MaxValue)
             {
@@ -490,7 +490,7 @@ internal static class ForegroundActivationPermission
             }
 
             serverProcessId = checked((int)processId);
-            permissionGranted = AllowSetForegroundWindow(serverProcessId.Value);
+            permissionGranted = PInvoke.AllowSetForegroundWindow(processId);
             return true;
         }
         catch (DllNotFoundException)
@@ -502,14 +502,4 @@ internal static class ForegroundActivationPermission
             return false;
         }
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNamedPipeServerProcessId(
-        SafePipeHandle pipeHandle,
-        out uint serverProcessId);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool AllowSetForegroundWindow(int processId);
 }

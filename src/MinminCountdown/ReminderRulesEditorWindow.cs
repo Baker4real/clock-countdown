@@ -302,9 +302,21 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_customInterval, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidCustomIntervalInput), _viewModel, BindingMode.TwoWay);
         Bind(_customInterval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsIntervalErrorVisible), _viewModel);
         Bind(_interval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsIntervalComboErrorVisible), _viewModel);
-        BindText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetMinutes));
+        NumericInputBehavior.SetMinimum(_relativeOffset, ReminderRulesEditorViewModel.MinimumRelativeOffsetMinutes);
+        NumericInputBehavior.SetMaximum(_relativeOffset, ReminderRulesEditorViewModel.MaximumRelativeOffsetMinutes);
+        NumericInputBehavior.SetStep(_relativeOffset, 1);
+        NumericInputBehavior.SetIsEnabled(_relativeOffset, true);
+        Bind(_relativeOffset, NumericInputBehavior.ValueProperty, nameof(ReminderRulesEditorViewModel.RelativeOffsetMinutes), _viewModel, BindingMode.TwoWay);
+        Bind(_relativeOffset, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidRelativeOffsetInput), _viewModel, BindingMode.TwoWay);
+        Bind(_relativeOffset, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsRelativeOffsetErrorVisible), _viewModel);
         Bind(_calendarFrequency, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarFrequencyIndex), _viewModel, BindingMode.TwoWay);
-        BindText(_calendarInterval, nameof(ReminderRulesEditorViewModel.CalendarInterval));
+        NumericInputBehavior.SetMinimum(_calendarInterval, ReminderRulesEditorViewModel.MinimumCalendarInterval);
+        NumericInputBehavior.SetMaximum(_calendarInterval, ReminderRulesEditorViewModel.MaximumCalendarInterval);
+        NumericInputBehavior.SetStep(_calendarInterval, 1);
+        NumericInputBehavior.SetIsEnabled(_calendarInterval, true);
+        Bind(_calendarInterval, NumericInputBehavior.ValueProperty, nameof(ReminderRulesEditorViewModel.CalendarInterval), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarInterval, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidCalendarIntervalInput), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarInterval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsCalendarIntervalErrorVisible), _viewModel);
         Bind(_calendarMonth, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarMonthIndex), _viewModel, BindingMode.TwoWay);
         Bind(_calendarDay, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarDayIndex), _viewModel, BindingMode.TwoWay);
         Bind(_calendarLastDay, ToggleButton.IsCheckedProperty, nameof(ReminderRulesEditorViewModel.CalendarLastDay), _viewModel, BindingMode.TwoWay);
@@ -809,15 +821,6 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     private void BindHelpText(Control target, string path) =>
         Bind(target, AutomationProperties.HelpTextProperty, path, _viewModel);
-
-    private void BindText(TextBox target, string path) =>
-        Bind(
-            target,
-            TextBox.TextProperty,
-            path,
-            _viewModel,
-            BindingMode.TwoWay,
-            updateSourceTrigger: UpdateSourceTrigger.PropertyChanged);
 
     private static void Bind(
         DependencyObject target,

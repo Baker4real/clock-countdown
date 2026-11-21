@@ -1370,6 +1370,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.MarkLive(NoteTextError);
         UiAccessibility.MarkLive(NoteDateError);
         UiAccessibility.MarkLive(MonthlySalaryError);
+        AutomationProperties.SetAutomationId(MonthlySalaryError, "MonthlySalaryError");
         UiAccessibility.MarkLive(WorkStartError);
         UiAccessibility.MarkLive(WorkEndError);
         UiAccessibility.MarkLive(NoteMessage);
@@ -1498,10 +1499,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CountdownMinute.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
         CountdownSecond.SelectionChanged += (_, _) => ClearCountdownFieldError(CountdownDateError);
         DisplayPrecision.SelectionChanged += (_, _) => MarkSettingsDraftDirty();
+        ConfigureMonthlySalaryNumericInput();
         MonthlySalary.TextChanged += (_, _) =>
         {
             MarkSettingsDraftDirty();
-            ClearPreferenceFieldError(MonthlySalaryError);
+            ValidateMonthlySalaryImmediate();
         };
         WorkStart.TextChanged += (_, _) =>
         {
@@ -3068,23 +3070,60 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ResetNoteEditor();
     }
 
+    private const string InvalidMonthlySalaryFormatError = "月薪格式无效。";
+    private const string NegativeMonthlySalaryError = "月薪不能小于 0。";
+
+    private void ConfigureMonthlySalaryNumericInput()
+    {
+        DecimalNumericInputBehavior.SetMinimum(MonthlySalary, 0m);
+        DecimalNumericInputBehavior.SetMaximum(MonthlySalary, decimal.MaxValue);
+        DecimalNumericInputBehavior.SetStep(MonthlySalary, 1m);
+        DecimalNumericInputBehavior.SetDecimalPlaces(MonthlySalary, 2);
+        DecimalNumericInputBehavior.SetFormatString(MonthlySalary, "N2");
+        DecimalNumericInputBehavior.SetRequireFocusForMouseWheel(MonthlySalary, true);
+        DecimalNumericInputBehavior.SetFormatOnLostFocus(MonthlySalary, true);
+        DecimalNumericInputBehavior.SetIsEnabled(MonthlySalary, true);
+    }
+
+    private void ValidateMonthlySalaryImmediate()
+    {
+        if (_loadingPreferences || string.IsNullOrEmpty(MonthlySalary.Text))
+        {
+            ClearPreferenceFieldError(MonthlySalaryError);
+            return;
+        }
+
+        if (!DecimalNumericInputBehavior.TryParseDecimal(MonthlySalary.Text, out var salary))
+        {
+            ShowPreferenceFieldError(MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary);
+            return;
+        }
+
+        if (salary < 0m)
+        {
+            ShowPreferenceFieldError(MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary);
+            return;
+        }
+
+        ClearPreferenceFieldError(MonthlySalaryError);
+    }
+
     private void SavePreferences()
     {
         // #151：偏好格式错误出现在对应字段下方并同时镜像到底栏；不再只出现在窗口底栏。
         ClearPreferenceFieldErrors();
-        if (!decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var salary) &&
-            !decimal.TryParse(MonthlySalary.Text, NumberStyles.Number, CultureInfo.InvariantCulture, out salary))
+        if (!DecimalNumericInputBehavior.TryParseDecimal(MonthlySalary.Text, out var salary))
         {
-            ShowPreferenceFieldError(MonthlySalaryError, "月薪格式无效。", MonthlySalary);
-            SetMessage(StatusText, "月薪格式无效。", true);
+            ShowPreferenceFieldError(MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary);
+            SetMessage(StatusText, InvalidMonthlySalaryFormatError, true);
             MonthlySalary.Focus();
             return;
         }
 
-        if (salary < 0)
+        if (salary < 0m)
         {
-            ShowPreferenceFieldError(MonthlySalaryError, "月薪不能小于 0。", MonthlySalary);
-            SetMessage(StatusText, "月薪不能小于 0。", true);
+            ShowPreferenceFieldError(MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary);
+            SetMessage(StatusText, NegativeMonthlySalaryError, true);
             MonthlySalary.Focus();
             return;
         }
@@ -4487,6 +4526,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         SetFieldError(field, message);
         AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void ClearCountdownFieldErrors()
@@ -4560,7 +4600,44 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
     }
 
-    private void ClearPreferenceFieldError(TextBlock field) => SetFieldError(field, string.Empty);
+    private void ClearPreferenceFieldError(TextBlock field)
+    {
+        var previousMessage = field.Text;
+        SetFieldError(field, string.Empty);
+        var source = PreferenceValidationControl(field);
+        if (source is not null)
+        {
+            if (string.Equals(
+                    AutomationProperties.GetHelpText(source),
+                    previousMessage,
+                    StringComparison.Ordinal))
+            {
+                AutomationProperties.SetHelpText(source, string.Empty);
+            }
+
+            InputErrorState.SetHasError(source, false);
+        }
+    }
+
+    private Control? PreferenceValidationControl(TextBlock field)
+    {
+        if (ReferenceEquals(field, MonthlySalaryError))
+        {
+            return MonthlySalary;
+        }
+
+        if (ReferenceEquals(field, WorkStartError))
+        {
+            return WorkStart;
+        }
+
+        if (ReferenceEquals(field, WorkEndError))
+        {
+            return WorkEnd;
+        }
+
+        return null;
+    }
 
     private static void SetFieldError(TextBlock field, string message)
     {

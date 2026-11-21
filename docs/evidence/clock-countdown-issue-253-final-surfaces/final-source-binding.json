@@ -10,16 +10,16 @@
   "candidate_exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-14-v79/manifest.json",
-      "manifest_sha256": "99FA3C1326654895BA8274470A3B321454CCF2282219B182C6E6681AAB382B8A",
-      "aggregate_sha256": "B7974DA410A3260DCA5B43BBA2B74C8525F6FD3B5F655FF6421B2D004C36E151",
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-21-v80/manifest.json",
+      "manifest_sha256": "04499A093F318F8E9C8D7B226822954B45BA54C5716174375056DD34EB793BD6",
+      "aggregate_sha256": "16C8844D75F22BB5F97DA7C20276E72097D333B71302119D033A493D62B1474B",
       "current_source_files_verified": 23,
       "run_artifact_manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json",
-      "manifest_sha256": "2E1F033ED4413DD91A62814014115972574FD50EC1E5581429B822174CCD7F97",
-      "aggregate_sha256": "0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283",
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-21-v80/manifest.json",
+      "manifest_sha256": "ACD2B8D763550663C529116A00FACA8D6FF28B3F728975B811335AB1C8CD7701",
+      "aggregate_sha256": "0AE50B3DD6E5AD427B9C36B2A28CE880954BB6BCD472C4302CA96AA020E07659",
       "current_source_files_verified": 28,
       "run_artifact_manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799"
     }
@@ -89,7 +89,7 @@
     "main-window": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
     "floating-window": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json"
   },
-  "current_baseline_version": "2026-11-14-v79",
-  "current_sources_revalidated_at": "2026-11-14",
-  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-14起为v79，见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
+  "current_baseline_version": "2026-11-21-v80",
+  "current_sources_revalidated_at": "2026-11-21",
+  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-21起为v80，由#327统一重拍；此前v79见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
 }

@@ -13,7 +13,7 @@ Method: design review only (detector not applicable, native WPF)
 ## 现役基线与几何口径
 
 - 分支基点：`73ad5f46440eb8b2bbe3118c141cf0e0792f8d29`，当时与 `integration/prd-296` 相同。生成时源码身份及逐文件绑定见 [preview-manifest.json](preview-manifest.json)。
-- 现役真实帧：[v79 manifest](../../../assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json) 中的 [long-notes-day-top.png](../../../assets/ui-references/floating-window/520x390/2026-11-14-v79/long-notes-day-top.png)。PNG SHA-256：`39A148822F95D1FE53C2F0EEB59956BAB1B0ACE58BE330E1A789F4C61B3533B8`。
+- 对比基准帧（捕获时现役 v79，位于基点 `73ad5f46440eb8b2bbe3118c141cf0e0792f8d29`；后续按 #268 留存策略在 #327 升至 v80 时移除旧目录）：`assets/ui-references/floating-window/520x390/2026-11-14-v79/manifest.json` 中的 `assets/ui-references/floating-window/520x390/2026-11-14-v79/long-notes-day-top.png`。PNG SHA-256：`39A148822F95D1FE53C2F0EEB59956BAB1B0ACE58BE330E1A789F4C61B3533B8`。
 - 悬浮窗 `sourceBinding` 聚合 SHA-256：`0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283`；校验器对 manifest 列出的 28 个文件逐一重算当前工作树 SHA-256。
 - 几何来自 [DESIGN §10](../../../DESIGN.md#L513-L530)、[FloatingWindow.Notes.cs](../../../src/MinminCountdown/FloatingWindow.Notes.cs#L15-L21) 与 [FloatingWindow.xaml](../../../src/MinminCountdown/FloatingWindow.xaml#L219-L340)：319 DIP 卡宽内含 2 DIP 左右边、36 DIP 勾选槽、197 DIP 正文的 Grid 列、48 DIP 日期列和 36 DIP `...` 列；正文 StackPanel 右侧再有 8 DIP 间距，因此现役真正可排文字宽为 `197 - 8 = 189 DIP`。
 - 每行字数是**设计估算而非 WPF 实测**：全角口径为 `floor(可用 DIP / 13)`。票面所写约 12 字是经验口径；本稿统一用 13 DIP 全角估算，并用本机 Microsoft YaHei 13 px 对 v79 同一条长便签做换行复核。混合中英文、标点悬挂与真实 WPF 栅格化仍须由选定后的实现验证。

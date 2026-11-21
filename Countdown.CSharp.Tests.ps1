@@ -3857,7 +3857,7 @@ exit 23
     Assert-Equal 'captured-stderr：中文诊断' $captureHelperProbe.Stderr '进程捕获 helper 独立捕获 stderr，并按 UTF-8 解码中文诊断'
     Write-TestSegmentTiming -Name 'ProcessCaptureProbe'
 
-    # #273/#274/#297/#298/#303/#304/#306/#310/#314/#315/#316/#318/#320/#321/#322/#323/#324：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
+    # #273/#274/#297/#298/#303/#304/#306/#310/#314/#315/#316/#317/#318/#320/#321/#322/#323/#324：独立窗口验证项目是这些事实的唯一产物；缺字段、事实为假或非零退出都让 CSharp 阶段失败。
     $windowVerificationFacts = [ordered]@{
         MainEmptyStatesFitListViewport = '两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，在列表实际视口居中且滚进窗口后完整可见（#248）'
         MainEmptyStatesGuideToSingleAddEntry = '首次空态给说明与只聚焦表单、保留草稿的轻量填写引导，筛选无结果只给重置且重置恢复结果，分段无内容说明记录在另一分段，空态里没有写着「添加」的第二个入口（#248）'
@@ -3887,6 +3887,7 @@ exit 23
         DisabledStateUnifiedAndPreserved = '全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）'
         MainWindowCommandBarHeaderAndNoteRowsAligned = '管理窗口命令栏三枚命令按钮等高居中并与数量文字共用垂直中线、右缘对齐内容区右缘且页签与选中指示条几何不变；切页前后主标题水平位置不变并保留两页标题装饰；便签新增与编辑态正文列吸收剩余宽度、行尾留白等于行首留白且取消内边距与次级按钮一致（#304）'
         MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse = '管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）'
+        FloatingWorkdayCompletionBottomNoDuplicateAndCardMask = '下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

@@ -262,10 +262,12 @@ internal static partial class ValidationReport
             window.UpdateLayout();
         }
         bool HasCompletion() => Descendants<TextBlock>(rows).Any(text => text.Text == "下班啦");
-        void ToggleIncome()
+        var encouragement = ((Grid)income.Parent).Children.OfType<SilentTextBlock>().Single();
+        void ToggleCompletionIncome()
         {
-            var peer = UIElementAutomationPeer.CreatePeerForElement(income);
-            Require(peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider, "金额缺少 Invoke。");
+            var target = Descendants<InteractiveStatusTextBlock>((Border)rows.Children[0]).Single();
+            var peer = UIElementAutomationPeer.CreatePeerForElement(target);
+            Require(peer?.GetPattern(PatternInterface.Invoke) is IInvokeProvider, "收尾金额缺少 Invoke。");
             ((IInvokeProvider)peer!.GetPattern(PatternInterface.Invoke)).Invoke();
             PumpDispatcher();
         }
@@ -275,8 +277,11 @@ internal static partial class ValidationReport
         var beforeGeneration = window.FloatingRowsRebuildGenerationForValidation;
         At(end);
         Require(HasCompletion() && rows.Children[0] is Border &&
-            Descendants<TextBlock>((Border)rows.Children[0]).Any(text => text.Text == "今日已赚 ￥169.54"),
-            "精确下班时刻必须替换为带当日封顶金额的收尾卡。");
+            Descendants<TextBlock>((Border)rows.Children[0]).Any(text => text.Text == "今日已赚 ￥169.54") &&
+            income.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(income.Text) &&
+            encouragement.Visibility == Visibility.Visible &&
+            encouragement.Text == FloatingBottomStatus.CountdownEncouragementText,
+            "精确下班时刻必须替换为带当日封顶金额的收尾卡，且底栏改为鼓励语不重复金额。");
         var card = (Border)rows.Children[0];
         Require(window.FloatingRowsRebuildGenerationForValidation > beforeGeneration &&
             !Descendants<TextBlock>(card).Any(text => text.Text == "超期待！") &&
@@ -302,10 +307,13 @@ internal static partial class ValidationReport
         var capture = VisualReferenceBaseline.Floating.ActualCapture("floating-workday-complete-day",
             EncodePng(ScaleToFrame(CaptureVisual(root), 520, 390)),
             "Countdowns", string.Empty, "下班啦，今日已赚 ￥169.54", 0, 0, "下班啦", "七月倒计时");
-        ToggleIncome();
+        ToggleCompletionIncome();
         At(end.AddHours(1));
         Require(Descendants<TextBlock>(card).Any(text => text.Text == "今日已赚 ¥••••") &&
-            income.Text == "今日已赚 ¥••••", "收尾卡和底栏必须共用运行期遮罩。");
+            income.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(income.Text) &&
+            encouragement.Visibility == Visibility.Visible &&
+            encouragement.Text == FloatingBottomStatus.CountdownEncouragementText,
+            "收尾卡遮罩后必须保留运行期遮罩且底栏不重复金额。");
         var pending = new Queue<AutomationPeer>();
         var seen = new HashSet<AutomationPeer>();
         pending.Enqueue(UIElementAutomationPeer.CreatePeerForElement(window)!);
@@ -323,11 +331,14 @@ internal static partial class ValidationReport
             !Convert.ToString(element.ToolTip, CultureInfo.InvariantCulture)!.Contains("169.54", StringComparison.Ordinal)),
             "隐藏态 ToolTip 仍含收尾金额。");
         window.ShowWorkspace(WorkspaceKind.Notes);
+        Require(income.Text == "今日已赚 ¥••••", "切到便签页后底栏应共用运行期遮罩。");
         window.ShowWorkspace(WorkspaceKind.Countdowns);
         At(end.AddHours(2));
         Require(Descendants<TextBlock>(rows).Count(text => text.Text == "今日已赚 ¥••••") == 1 &&
-            income.Text == "今日已赚 ¥••••", "切页后收尾遮罩丢失。");
-        ToggleIncome();
+            income.Visibility == Visibility.Collapsed && string.IsNullOrEmpty(income.Text) &&
+            encouragement.Visibility == Visibility.Visible,
+            "切页回倒计时后收尾遮罩丢失或底栏重复金额。");
+        ToggleCompletionIncome();
         workspace.ApplyFilter(workspace.Snapshot.Filter with { UntaggedOnly = true });
         At(end);
         Require(!HasCompletion() && window.FloatingCountdownCount == 1, "激活筛选后收尾应退出且用户记录保留。");
@@ -337,8 +348,10 @@ internal static partial class ValidationReport
         Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, 0m, preferences.WorkStart, preferences.WorkEnd)).Succeeded,
             "零薪资夹具失败。");
         At(end);
-        Require(HasCompletion() && !Descendants<TextBlock>(rows).Any(text => text.Text.Contains("今日已赚", StringComparison.Ordinal)),
-            "零薪资收尾不能伪造金额。");
+        Require(HasCompletion() &&
+            !Descendants<TextBlock>(rows).Any(text => text.Text.Contains("今日已赚", StringComparison.Ordinal)) &&
+            !Descendants<InteractiveStatusTextBlock>((Border)rows.Children[0]).Single().IsInvokable,
+            "零薪资收尾不能伪造金额或暴露遮罩按钮。");
         Require(workspace.Apply(new SavePreferencesChange(preferences.DisplayPrecision, preferences.MonthlySalary,
             preferences.WorkStart, preferences.WorkEnd)).Succeeded, "薪资恢复夹具失败。");
         At(end.AddHours(6).AddSeconds(-1));

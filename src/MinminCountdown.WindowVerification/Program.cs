@@ -36,6 +36,7 @@ internal static class Program
     internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
+    internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -103,6 +104,9 @@ internal static class Program
     private const string MainEmptyAndHighContrastRibbonFactMeaning =
         "管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；" +
         "系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）";
+    private const string FloatingWorkdayCompletionFactMeaning =
+        "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
+        "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
 
     [STAThread]
     private static int Main()
@@ -137,7 +141,8 @@ internal static class Program
             [FloatingBottomStatusAutomationFactName] = false,
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
-            [MainEmptyAndHighContrastRibbonFactName] = false
+            [MainEmptyAndHighContrastRibbonFactName] = false,
+            [FloatingWorkdayCompletionFactName] = false
         };
         var failures = new List<string>();
 
@@ -316,6 +321,11 @@ internal static class Program
                 () => MainWindowAlignmentAndPolishScenario.RunEmptyStateAndHighContrastRibbon(
                     theme,
                     MainEmptyAndHighContrastRibbonFactMeaning));
+            RunFact(FloatingWorkdayCompletionFactName, FloatingWorkdayCompletionFactMeaning, () =>
+            {
+                FloatingWorkdayCompletionScenario.Run();
+                return (true, FloatingWorkdayCompletionFactMeaning);
+            });
         }
         catch (Exception exception)
         {

@@ -63,6 +63,7 @@
                   CornerRadius="{DynamicResource RadiusOverlay}"
                   Padding="{TemplateBinding Padding}">
             <ScrollViewer CanContentScroll="True"
+                          Focusable="False"
                           HorizontalScrollBarVisibility="Disabled"
                           VerticalScrollBarVisibility="Auto">
               <ItemsPresenter />

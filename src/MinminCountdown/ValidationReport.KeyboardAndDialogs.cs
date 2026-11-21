@@ -320,15 +320,15 @@ internal static partial class ValidationReport
         if (!editorWasExpanded)
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         PumpDispatcher();
-        var comboBoxFocused = countdownTimeInput.Focus();
+        var timeInputFocused = countdownTimeInput.Focus();
         PumpDispatcher();
-        var comboBoxGuarded =
-            comboBoxFocused && countdownTimeInput.IsKeyboardFocusWithin &&
+        var timeInputGuarded =
+            timeInputFocused && countdownTimeInput.IsKeyboardFocusWithin &&
             !WindowValidationInput.RaisePreviewKey(countdownTimeInput, Key.A, ModifierKeys.None) &&
             WindowValidationInput.RaisePreviewKey(countdownTimeInput, Key.D2, ModifierKeys.Control) &&
             main.CurrentWorkspace == WorkspaceKind.Notes;
         main.ShowWorkspace(WorkspaceKind.Countdowns);
-        var textInputPreserved = textBoxGuarded && datePickerGuarded && comboBoxGuarded;
+        var textInputPreserved = textBoxGuarded && datePickerGuarded && timeInputGuarded;
         if (!editorWasExpanded)
             Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 
@@ -365,7 +365,7 @@ internal static partial class ValidationReport
             new MainShortcutInputGuardResult(
                 textBoxGuarded,
                 datePickerGuarded,
-                comboBoxGuarded),
+                timeInputGuarded),
             popupGuarded,
             modalOwnerGuarded);
     }

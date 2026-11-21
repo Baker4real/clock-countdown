@@ -4261,7 +4261,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             entry.Input.Focus();
             Keyboard.Focus(entry.Input);
-            KeyboardFocusPolicy.ShowForKeyboardInput(entry.Input);
             entry.Input.CaretIndex = entry.Input.Text.Length;
             entry.Row.BringIntoView();
         }

@@ -49,6 +49,8 @@ public sealed partial class FloatingWindow
         var income = new InteractiveStatusTextBlock
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
+            // CODING_STANDARDS 特例：InteractiveStatusTextBlock 继承自 TextBlock 而非 Control，没有 ControlTemplate，
+            // 焦点环由下方同级 focusRing Border 绑定 FocusVisualState 绘制（与 FloatingWindow.xaml 同步），故在代码里清掉默认虚线框。
             FocusVisualStyle = null,
             TextWrapping = TextWrapping.Wrap
         };

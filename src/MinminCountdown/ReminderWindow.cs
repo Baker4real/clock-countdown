@@ -435,7 +435,6 @@ internal sealed class ReminderCenterWindow : Window
             ButtonBase.CommandProperty,
             nameof(ReminderCenterEntryViewModel.ToggleTitleExpandedCommand),
             viewModel);
-        KeyboardFocusPolicy.Apply(titleDisclosure);
         var titleDisclosureSlot = new Border();
         void ApplyTitlePresentation()
         {

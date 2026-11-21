@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -413,9 +414,11 @@ internal static class SharedScrollBarScenario
                     }
 
                     // 展开动画
+                    var paletteSubscribersBeforeHover = CountPaletteChangedSubscribers();
                     var expandSamples = new List<double>();
                     var layoutStableDuringExpand = true;
                     RaiseHoverEnter(bar);
+                    var paletteSubscribersDuringExpand = CountPaletteChangedSubscribers();
                     var expandSettled = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
                         2000,
@@ -432,6 +435,12 @@ internal static class SharedScrollBarScenario
 
                             return Math.Abs(width - ExpectedExpandedDip) <= GeometryToleranceDip;
                         });
+                    _ = WindowValidationInput.PumpRenderedFrames(
+                        main.Dispatcher,
+                        500,
+                        () => CountPaletteChangedSubscribers() == paletteSubscribersBeforeHover);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    var paletteSubscribersAfterExpand = CountPaletteChangedSubscribers();
                     var expandHadIntermediate = expandSamples.Any(w => w > ExpectedRestingDip + 0.15 && w < ExpectedExpandedDip - 0.15);
                     if (!expandSettled.Completed || !expandHadIntermediate || !layoutStableDuringExpand)
                     {
@@ -442,10 +451,19 @@ internal static class SharedScrollBarScenario
                             $"samples=[{string.Join(",", expandSamples.Take(8).Select(w => w.ToString("0.00", CultureInfo.InvariantCulture)))}]"));
                     }
 
+                    if (paletteSubscribersDuringExpand != paletteSubscribersBeforeHover + 1 ||
+                        paletteSubscribersAfterExpand != paletteSubscribersBeforeHover)
+                    {
+                        failures.Add(string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"展开动效结束后未注销 ApplicationTheme.PaletteChanged（before={paletteSubscribersBeforeHover}，during={paletteSubscribersDuringExpand}，after={paletteSubscribersAfterExpand}）"));
+                    }
+
                     // 收起动画
                     var collapseSamples = new List<double>();
                     var layoutStableDuringCollapse = true;
                     RaiseHoverLeave(bar);
+                    var paletteSubscribersDuringCollapse = CountPaletteChangedSubscribers();
                     var collapseSettled = WindowValidationInput.PumpRenderedFrames(
                         main.Dispatcher,
                         2000,
@@ -462,6 +480,12 @@ internal static class SharedScrollBarScenario
 
                             return Math.Abs(width - ExpectedRestingDip) <= GeometryToleranceDip;
                         });
+                    _ = WindowValidationInput.PumpRenderedFrames(
+                        main.Dispatcher,
+                        500,
+                        () => CountPaletteChangedSubscribers() == paletteSubscribersBeforeHover);
+                    WindowValidationInput.Pump(main.Dispatcher);
+                    var paletteSubscribersAfterCollapse = CountPaletteChangedSubscribers();
                     var collapseHadIntermediate = collapseSamples.Any(w => w > ExpectedRestingDip + 0.15 && w < ExpectedExpandedDip - 0.15);
                     if (!collapseSettled.Completed || !collapseHadIntermediate || !layoutStableDuringCollapse)
                     {
@@ -470,6 +494,14 @@ internal static class SharedScrollBarScenario
                             $"收起动效异常：settled={collapseSettled.Completed}({collapseSettled.ElapsedMilliseconds:0.#}ms)，" +
                             $"intermediate={collapseHadIntermediate}，layoutStable={layoutStableDuringCollapse}，" +
                             $"samples=[{string.Join(",", collapseSamples.Take(8).Select(w => w.ToString("0.00", CultureInfo.InvariantCulture)))}]"));
+                    }
+
+                    if (paletteSubscribersDuringCollapse != paletteSubscribersBeforeHover + 1 ||
+                        paletteSubscribersAfterCollapse != paletteSubscribersBeforeHover)
+                    {
+                        failures.Add(string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"收起动效结束后未注销 ApplicationTheme.PaletteChanged（before={paletteSubscribersBeforeHover}，during={paletteSubscribersDuringCollapse}，after={paletteSubscribersAfterCollapse}）"));
                     }
 
                     // 中途快速反向：展开到中间帧后立刻移出，不得跳回 10 再回退，须平滑回到 4 DIP。
@@ -1199,6 +1231,17 @@ internal static class SharedScrollBarScenario
                 FixtureUtc.AddDays(index)))
             .ToArray();
         return new ReminderRulesEditorWindow(rules, new FixedClock(FixtureUtc));
+    }
+
+    private static int CountPaletteChangedSubscribers()
+    {
+        var field = typeof(ApplicationTheme).GetField(
+            nameof(ApplicationTheme.PaletteChanged),
+            BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("找不到 ApplicationTheme.PaletteChanged 事件字段。");
+        return field.GetValue(null) is Delegate multicast
+            ? multicast.GetInvocationList().Length
+            : 0;
     }
 
     private static T RequiredElement<T>(MainWindow main, string name) where T : DependencyObject =>

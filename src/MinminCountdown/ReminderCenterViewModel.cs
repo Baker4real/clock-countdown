@@ -357,9 +357,12 @@ internal sealed partial class ReminderCenterEntryViewModel : ObservableObject
         }
     }
 
+    private bool HasCompleteCustomSchedule =>
+        CustomDate is not null && CustomTime is not null && !HasInvalidCustomTimeInput;
+
     partial void OnCustomDateChanged(DateTime? value)
     {
-        if (value is not null && IsCustomErrorVisible)
+        if (IsCustomErrorVisible && HasCompleteCustomSchedule)
         {
             ClearCustomError();
         }
@@ -372,7 +375,7 @@ internal sealed partial class ReminderCenterEntryViewModel : ObservableObject
     partial void OnCustomTimeChanged(TimeSpan? value)
     {
         _customTimeTouched = true;
-        if (value is not null && !HasInvalidCustomTimeInput && IsCustomErrorVisible)
+        if (IsCustomErrorVisible && HasCompleteCustomSchedule)
         {
             ClearCustomError();
         }
@@ -388,7 +391,7 @@ internal sealed partial class ReminderCenterEntryViewModel : ObservableObject
         {
             _customTimeTouched = true;
         }
-        else if (CustomTime is not null && IsCustomErrorVisible)
+        else if (IsCustomErrorVisible && HasCompleteCustomSchedule)
         {
             ClearCustomError();
             return;

@@ -10,16 +10,16 @@
   "candidate_exe_sha256": "FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-21-v81/manifest.json",
-      "manifest_sha256": "36870ED13AA6206CF3A3AA560132746449D99D9E07AB9B87E236A5EC221CB179",
-      "aggregate_sha256": "16C8844D75F22BB5F97DA7C20276E72097D333B71302119D033A493D62B1474B",
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-21-v82/manifest.json",
+      "manifest_sha256": "645D7C26854A65F793A4042B252AD3D46EF51C923149B26D7747B8161739629A",
+      "aggregate_sha256": "E86BD4E9587FB8B9556415468F9A5CC22A29C4E6C2D2496D98110EE2B55B087E",
       "current_source_files_verified": 23,
       "run_artifact_manifest_sha256": "D889DC37A370795879668078D6127BBEC9E4483489E7D03DCE52F1702B69A63A"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-21-v81/manifest.json",
-      "manifest_sha256": "9E7BE1D8CEC69FBDDA2EC9851021A7790F0F2607CB9FEFB8C796B4EFFEC0091B",
-      "aggregate_sha256": "58BEF982369803933EE97E087E4E57BECB9A6A255F4390DF8A8EABBAB4D73AAE",
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-21-v82/manifest.json",
+      "manifest_sha256": "69E06C1FDCD1774F4FE1B12E0B60A796863548ECB9A2FDD4BC0C2F4247B31884",
+      "aggregate_sha256": "3097D5354900928D07A374AFA5A310C5A3334BC28468DB646345FD93CAC4C07A",
       "current_source_files_verified": 28,
       "run_artifact_manifest_sha256": "BC33A376FBD94AFED975DF5BEBFF0DB11F49CCCC62235EE46D381DB73C7D4799"
     }
@@ -89,7 +89,7 @@
     "main-window": "assets/ui-references/main-window/864x1000/2026-11-09-v75/manifest.json",
     "floating-window": "assets/ui-references/floating-window/520x390/2026-11-09-v75/manifest.json"
   },
-  "current_baseline_version": "2026-11-21-v81",
+  "current_baseline_version": "2026-11-21-v82",
   "current_sources_revalidated_at": "2026-11-21",
-  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-21起为v81，由#335悬浮窗便签方案B重拍；此前v80见#327、v79见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
+  "source_scope_note": "baseline_version、baseline_run、产品哈希和41帧均保留原v75捕获身份；current_source_bindings单独跟随现役正式基线（2026-11-21起为v82，由PRD #296评审修复零像素差重拍；此前v81见#335、v80见#327、v79见clock-countdown-issue-275），不能把它当作旧截图已由新DLL重拍。v78时期的完整集成验收见clock-countdown-238-252-final。"
 }

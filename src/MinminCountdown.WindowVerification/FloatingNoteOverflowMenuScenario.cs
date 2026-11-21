@@ -392,6 +392,109 @@ internal static class FloatingNoteOverflowMenuScenario
                 Check(failures, "点击外部关闭不误触发编辑或删除",
                     !main.IsVisible &&
                     workspace.Snapshot.Settings.Notes.Count == 2);
+
+                // A4. 同一张卡退出淡出中途再次点击原「…」触发器：重开保留 PlacementTarget、活动便签与 Esc 还焦，编辑不退化为空操作。
+                PointerClickButton(trigger1);
+                var reopenBaseSettled = WindowValidationInput.PumpRenderedFrames(
+                    floating.Dispatcher,
+                    2000,
+                    () => menu.IsOpen &&
+                          Math.Abs(menu.Opacity - 1.0) < 0.001 &&
+                          Math.Abs(ReadTranslateY(menu)) < 0.001 &&
+                          !IsOpacityAnimated(menu));
+                Require(reopenBaseSettled.Completed && menu.IsOpen, "同卡退出中途重开前置打开失败。");
+
+                using (WindowValidationInput.AcquireContextMenuInputForValidation(menu))
+                {
+                    SendOutsideLeftMouseDown(menu);
+                }
+
+                var closingBeforeMidExitReopen = menu.IsOpen && PopupMotionBehavior.IsContextMenuClosing(menu);
+                PointerClickButton(trigger1);
+                var midExitReopenSettled = WindowValidationInput.PumpRenderedFrames(
+                    floating.Dispatcher,
+                    2000,
+                    () => menu.IsOpen &&
+                          !PopupMotionBehavior.IsContextMenuClosing(menu) &&
+                          Math.Abs(menu.Opacity - 1.0) < 0.001 &&
+                          Math.Abs(ReadTranslateY(menu)) < 0.001 &&
+                          !IsOpacityAnimated(menu));
+                Check(failures, "同卡退出中途重开保持打开、未处于退出态且保留原触发器 PlacementTarget",
+                    closingBeforeMidExitReopen &&
+                    midExitReopenSettled.Completed &&
+                    menu.IsOpen &&
+                    !PopupMotionBehavior.IsContextMenuClosing(menu) &&
+                    ReferenceEquals(menu.PlacementTarget, trigger1));
+
+                using (WindowValidationInput.AcquireContextMenuInputForValidation(menu))
+                {
+                    WindowValidationInput.RaiseKey(menu, Key.Escape);
+                    WindowValidationInput.Pump(floating.Dispatcher);
+                }
+
+                Settle(floating);
+                Check(failures, "同卡退出中途重开后按 Esc 关闭并将焦点还给原触发器",
+                    !menu.IsOpen && ReferenceEquals(Keyboard.FocusedElement, trigger1));
+
+                PointerClickButton(trigger1);
+                var reopenForEditBaseSettled = WindowValidationInput.PumpRenderedFrames(
+                    floating.Dispatcher,
+                    2000,
+                    () => menu.IsOpen &&
+                          Math.Abs(menu.Opacity - 1.0) < 0.001 &&
+                          Math.Abs(ReadTranslateY(menu)) < 0.001 &&
+                          !IsOpacityAnimated(menu));
+                Require(reopenForEditBaseSettled.Completed && menu.IsOpen, "同卡退出中途重开（编辑校验）前置打开失败。");
+
+                using (WindowValidationInput.AcquireContextMenuInputForValidation(menu))
+                {
+                    SendOutsideLeftMouseDown(menu);
+                }
+
+                var closingBeforeEditReopen = menu.IsOpen && PopupMotionBehavior.IsContextMenuClosing(menu);
+                PointerClickButton(trigger1);
+                var reopenForEditSettled = WindowValidationInput.PumpRenderedFrames(
+                    floating.Dispatcher,
+                    2000,
+                    () => menu.IsOpen &&
+                          !PopupMotionBehavior.IsContextMenuClosing(menu) &&
+                          Math.Abs(menu.Opacity - 1.0) < 0.001 &&
+                          Math.Abs(ReadTranslateY(menu)) < 0.001 &&
+                          !IsOpacityAnimated(menu));
+                Check(failures, "同卡退出中途重开（编辑校验）保持打开与 PlacementTarget",
+                    closingBeforeEditReopen &&
+                    reopenForEditSettled.Completed &&
+                    menu.IsOpen &&
+                    ReferenceEquals(menu.PlacementTarget, trigger1));
+
+                using (WindowValidationInput.AcquireContextMenuInputForValidation(menu))
+                {
+                    items[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, items[0]));
+                    Settle(floating);
+                }
+
+                Settle(main);
+                var reopenedEditorText = RequiredByName<TextBox>(main, "NoteText");
+                var reopenedCancelEdit = RequiredByName<Button>(main, "CancelNoteEdit");
+                Check(failures, "同卡退出中途重开后点击「编辑」打开主窗并载入对应便签",
+                    !menu.IsOpen &&
+                    main.IsVisible &&
+                    string.Equals(reopenedEditorText.Text, FirstNoteText, StringComparison.Ordinal) &&
+                    reopenedCancelEdit.Visibility == Visibility.Visible);
+
+                if (reopenedCancelEdit.Visibility == Visibility.Visible)
+                {
+                    reopenedCancelEdit.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                    Settle(main);
+                }
+
+                if (main.IsVisible)
+                {
+                    main.Hide();
+                    Settle(floating);
+                }
+
+                ActivateForKeyboard(floating);
             }
 
             theme.Apply();

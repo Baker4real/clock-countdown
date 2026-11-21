@@ -939,6 +939,11 @@ internal static class ManagerWindowRestore
     {
         if (!manager.IsVisible)
         {
+            if (manager is MainWindow main)
+            {
+                main.RefreshBeforeShow();
+            }
+
             manager.Show();
         }
 

@@ -218,11 +218,15 @@ internal static partial class ValidationExercises
             MustApply(workspace, new SaveNoteChange(selected.Id, selected.Text + "已更新", DateTime.Parse(selected.Date!), false, [], Array.Empty<ReminderRule>()));
             WindowValidationInput.Pump(main.Dispatcher);
             Must(count.Text == "已选择 2 条", "#235：仍可见记录的数据刷新必须保留有效选择。");
-            ((TextBox)main.FindName("NoteSearch")).Text = "选择便签 0";
+            var searchToFilter = (TextBox)main.FindName("NoteSearch");
+            searchToFilter.Text = "选择便签 0";
+            WindowValidationInput.RaisePreviewKey(searchToFilter, Key.Enter);
             WindowValidationInput.Pump(main.Dispatcher);
             Must(count.Text == "已选择 0 条" && !((Panel)main.FindName("NoteBatchActions")).IsVisible,
                 "#235：筛选隐藏的便签不能继续留在批量选择中。");
-            ((TextBox)main.FindName("NoteSearch")).Text = string.Empty;
+            var searchToClear = (TextBox)main.FindName("NoteSearch");
+            searchToClear.Text = string.Empty;
+            WindowValidationInput.RaisePreviewKey(searchToClear, Key.Enter);
             WindowValidationInput.Pump(main.Dispatcher);
             rows = VisualDescendants<Border>(main).Where(row => row.Uid == "SelectableNoteRow" && row.IsVisible).ToArray();
             Keyboard.Focus(rows[0]); WindowValidationInput.RaisePreviewKey(rows[0], Key.Space, ModifierKeys.Control);

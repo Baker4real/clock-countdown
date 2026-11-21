@@ -43,6 +43,8 @@ internal static class Program
     internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
     internal const string DatePickerSingleBoxGeometryFactName = "DatePickerSingleBoxGeometryAndFocus";
     internal const string DatePickerSingleBoxInteractionFactName = "DatePickerSingleBoxInteractionAndLongestDateFit";
+    internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
+    internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -129,6 +131,11 @@ internal static class Program
     private const string DatePickerSingleBoxInteractionFactMeaning =
         "六处日期框均支持点击文字区与箭头打开主题化日历并渲染 7+6×7 月视图，保持只读中文日期格式、Esc 取消并还原旧日期、日历方向键导航与焦点归还，" +
         "且最长日期「2031 年 12 月 31 日」在全部六处完整无裁切（含规则编辑器最小宽与提醒中心最小宽）（#312）";
+    private const string MainNoteSearchCoalesceFactMeaning =
+        "管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；" +
+        "搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）";
+    private const string MainHiddenDeferRefreshFactMeaning =
+        "管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）";
 
     [STAThread]
     private static int Main()
@@ -170,7 +177,9 @@ internal static class Program
             [OverlaySurfaceBordersFactName] = false,
             [FilterMatchModeAndFocusFactName] = false,
             [DatePickerSingleBoxGeometryFactName] = false,
-            [DatePickerSingleBoxInteractionFactName] = false
+            [DatePickerSingleBoxInteractionFactName] = false,
+            [MainNoteSearchCoalesceFactName] = false,
+            [MainHiddenDeferRefreshFactName] = false
         };
         var failures = new List<string>();
 
@@ -388,6 +397,16 @@ internal static class Program
                 () => DatePickerSingleBoxScenario.RunInteractionAndLongestDateFit(
                     theme,
                     DatePickerSingleBoxInteractionFactMeaning));
+            RunFact(
+                MainNoteSearchCoalesceFactName,
+                MainNoteSearchCoalesceFactMeaning,
+                () => MainWindowRefreshScenario.RunNoteSearchAndTagControls(
+                    MainNoteSearchCoalesceFactMeaning));
+            RunFact(
+                MainHiddenDeferRefreshFactName,
+                MainHiddenDeferRefreshFactMeaning,
+                () => MainWindowRefreshScenario.RunHiddenDeferAndFirstFrameRefresh(
+                    MainHiddenDeferRefreshFactMeaning));
         }
         catch (Exception exception)
         {

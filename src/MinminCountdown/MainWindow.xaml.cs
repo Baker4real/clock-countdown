@@ -168,6 +168,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     // #249：便签卡标签在正文与提醒摘要下方 6 DIP 处起排，折行后的芯片行之间留 4 DIP。
     private const double NoteCardTagTopGap = 6;
     private const double NoteCardTagRowGap = 4;
+    // #302：便签搜索连续输入合并时长；Enter 可随时立即应用。
+    private static readonly TimeSpan NoteSearchDebounceInterval = TimeSpan.FromMilliseconds(150);
 
     private static readonly string[] TagColors =
     {
@@ -205,6 +207,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private readonly HashSet<(bool IsCompleted, string? Date)> _collapsedNoteDateSections = new();
     private readonly SegmentIndicator _workspaceTabIndicator;
     private readonly SegmentIndicator _notesSegmentIndicator;
+    private readonly DispatcherTimer _noteSearchDebounceTimer;
     private WorkspaceKind _workspace = WorkspaceKind.Countdowns;
     private string? _assetRoot;
     private string? _editingCountdownId;
@@ -215,6 +218,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _settingsDraftDirty;
     private bool _loadingPreferences;
     private bool _syncingNoteSearch;
+    private bool _syncingNoteDateFilter;
+    private bool _needsRefresh;
     private bool _loadingCountdownEditor;
     // #211：用户经真实拖动/缩放（WM_EXITSIZEMOVE）调整过的几何在本次运行内保留，不持久化。
     private bool _hasUserWindowPlacement;
@@ -229,6 +234,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _reminderSourceNoteId;
     private string? _countdownRenderSignature;
     private string? _countdownTagRenderSignature;
+    private string? _tagPickersRenderSignature;
+    private string? _filterTagsRenderSignature;
+    private string? _tagManagerRenderSignature;
+    private string? _lastSyncedFilterNoteSearch;
     private NoteCompletionExit? _noteCompletionExit;
 
     internal bool CountdownRowsWereRebuiltForValidation { get; private set; }
@@ -318,6 +327,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             NotesSegmentHost,
             NotesSegmentIndicatorLayer,
             NotesSegmentIndicator);
+        _noteSearchDebounceTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+        {
+            Interval = NoteSearchDebounceInterval
+        };
+        _noteSearchDebounceTimer.Tick += (_, _) => ApplyNoteSearchInput();
         PopupFocusLifecycle.Attach(FilterPopup, FilterButton, FilterInitialFocusTarget);
         PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
         PopupFocusLifecycle.Attach(PreferencesPopup, PreferencesButton, () => DisplayPrecision);
@@ -348,8 +362,13 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             if (args.NewValue is true)
             {
+                RefreshBeforeShow();
                 ApplyWorkAreaGeometry();
                 UpdateTime(ChinaStandardTime.ToBeijingTime(_desktopWorkspace.Snapshot.UtcNow));
+            }
+            else if (args.NewValue is false && _noteSearchDebounceTimer.IsEnabled)
+            {
+                ApplyNoteSearchInput();
             }
         };
         Loaded += (_, _) =>
@@ -527,9 +546,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SetNoteFilter(NoteStatusFilter.Completed);
         UpdateFilter(filter => filter with
         {
-            SelectedTagIds = new[] { "instance-activation-tag-a", "instance-activation-tag-b" }
+            SelectedTagIds = new[] { "instance-activation-tag-a", "instance-activation-tag-b" },
+            NoteSearch = "instance-activation-search"
         });
-        NoteSearch.Text = "instance-activation-search";
+        SyncNoteSearchFromFilter();
         NoteDateFilter.SelectedDate = new DateTime(2031, 4, 5);
         CountdownName.Text = "instance-activation-countdown-draft";
         NoteText.Text = "instance-activation-note-draft";
@@ -878,7 +898,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SaveCountdownButton.IsEnabled = showCountdowns;
         EnsureReferenceDecoration(workspace);
         UpdateReferenceDecorationVisibility();
-        RenderVisibleWorkspace();
+        if (_needsRefresh)
+        {
+            RefreshAll();
+        }
+        else
+        {
+            RenderVisibleWorkspace();
+        }
     }
 
     void IManagerWorkspaceHost.Reveal(WorkspaceKind workspace) => Reveal(workspace);
@@ -1483,22 +1510,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         ApplicationTheme.PaletteChanged += OnPaletteChanged;
         Closed += (_, _) =>
         {
+            _noteSearchDebounceTimer.Stop();
+            _desktopWorkspace.StateChanged -= OnWorkspaceStateChanged;
             ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _desktopWorkspace.UndoChanged -= OnMainUndoChanged;
             _desktopWorkspace.SetUndoHovered(WorkspaceUndoSurface.Main, false);
             _desktopWorkspace.SetUndoFocused(WorkspaceUndoSurface.Main, false);
         };
-        NoteSearch.TextChanged += (_, _) =>
-        {
-            if (_syncingNoteSearch)
-            {
-                return;
-            }
-
-            UpdateFilter(filter => filter with { NoteSearch = NoteSearch.Text });
-            RenderNotes();
-            UpdateFilterSummary();
-        };
+        NoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
+        AttachSingleLineSubmit(NoteSearch, ApplyNoteSearchInput, () => IsEnabled);
         NoteDate.SelectedDateChanged += (_, _) =>
         {
             if (!_settingDefaultDate)
@@ -1520,17 +1540,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
         AnyTagMode.Click += (_, _) =>
         {
-            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.Any });
             AnyTagMode.IsChecked = true;
             AllTagMode.IsChecked = false;
-            RenderVisibleWorkspace();
+            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.Any });
         };
         AllTagMode.Click += (_, _) =>
         {
-            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.All });
             AnyTagMode.IsChecked = false;
             AllTagMode.IsChecked = true;
-            RenderVisibleWorkspace();
+            UpdateFilter(filter => filter with { MatchMode = TagMatchMode.All });
         };
         UntaggedOnly.Click += (_, _) =>
         {
@@ -1540,7 +1558,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 UntaggedOnly = untaggedOnly,
                 SelectedTagIds = untaggedOnly ? Array.Empty<string>() : filter.SelectedTagIds
             });
-            RenderVisibleWorkspace();
         };
         CountdownAllFilter.Click += (_, _) => SetCountdownFilter(CountdownStatusFilter.All);
         CountdownActiveFilter.Click += (_, _) => SetCountdownFilter(CountdownStatusFilter.Active);
@@ -1551,60 +1568,152 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NoteUndatedFilter.Click += (_, _) =>
         {
             var undatedOnly = NoteUndatedFilter.IsChecked == true;
+            if (undatedOnly)
+            {
+                SetNoteDateFilterSilently(null);
+            }
+
             UpdateFilter(filter => filter with
             {
                 UndatedNotesOnly = undatedOnly,
                 NoteDate = undatedOnly ? null : filter.NoteDate
             });
-            if (_desktopWorkspace.Snapshot.Filter.UndatedNotesOnly)
-            {
-                NoteDateFilter.SelectedDate = null;
-            }
-
-            RenderNotes();
-            UpdateFilterSummary();
         };
         NoteDateFilter.SelectedDateChanged += (_, _) =>
         {
+            if (_syncingNoteDateFilter)
+            {
+                return;
+            }
+
             var noteDate = NoteDateFilter.SelectedDate?.ToString(
                 "yyyy-MM-dd",
                 CultureInfo.InvariantCulture);
+            if (noteDate is not null)
+            {
+                NoteUndatedFilter.IsChecked = false;
+            }
+
             UpdateFilter(filter => filter with
             {
                 NoteDate = noteDate,
                 UndatedNotesOnly = noteDate is null && filter.UndatedNotesOnly
             });
-            if (_desktopWorkspace.Snapshot.Filter.NoteDate is not null)
-            {
-                NoteUndatedFilter.IsChecked = false;
-            }
-
-            RenderNotes();
-            UpdateFilterSummary();
         };
         ClearNoteDateFilter.Click += (_, _) =>
         {
-            NoteDateFilter.SelectedDate = null;
-            UpdateFilter(filter => filter with { NoteDate = null, UndatedNotesOnly = false });
+            SetNoteDateFilterSilently(null);
             NoteUndatedFilter.IsChecked = false;
-            RenderNotes();
-            UpdateFilterSummary();
+            UpdateFilter(filter => filter with { NoteDate = null, UndatedNotesOnly = false });
         };
         ClearFilterButton.Click += (_, _) => ClearFilters();
         ResetEmptyNotesFiltersButton.Click += (_, _) => ClearFilters();
         ResetEmptyCountdownFiltersButton.Click += (_, _) => ClearFilters();
     }
 
+    private void OnNoteSearchTextChanged()
+    {
+        if (_syncingNoteSearch)
+        {
+            return;
+        }
+
+        var currentFilter = _desktopWorkspace.Snapshot.Filter.NoteSearch ?? string.Empty;
+        if (string.Equals(NoteSearch.Text, currentFilter, StringComparison.Ordinal))
+        {
+            _noteSearchDebounceTimer.Stop();
+            return;
+        }
+
+        _noteSearchDebounceTimer.Stop();
+        _noteSearchDebounceTimer.Start();
+    }
+
+    private void ApplyNoteSearchInput()
+    {
+        _noteSearchDebounceTimer.Stop();
+        var term = NoteSearch.Text;
+        var currentFilter = _desktopWorkspace.Snapshot.Filter.NoteSearch ?? string.Empty;
+        if (string.Equals(term, currentFilter, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        UpdateFilter(filter => filter with { NoteSearch = term });
+    }
+
+    private void SetNoteSearchTextSilently(string text)
+    {
+        if (string.Equals(NoteSearch.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _syncingNoteSearch = true;
+        try
+        {
+            NoteSearch.Text = text;
+        }
+        finally
+        {
+            _syncingNoteSearch = false;
+        }
+    }
+
+    private void SetNoteDateFilterSilently(DateTime? date)
+    {
+        if (NoteDateFilter.SelectedDate == date)
+        {
+            return;
+        }
+
+        _syncingNoteDateFilter = true;
+        try
+        {
+            NoteDateFilter.SelectedDate = date;
+        }
+        finally
+        {
+            _syncingNoteDateFilter = false;
+        }
+    }
+
     private void OnWorkspaceStateChanged(object? sender, EventArgs eventArgs)
     {
-        Dispatcher.Invoke(RefreshAll);
+        Dispatcher.Invoke(() =>
+        {
+            if (!IsVisible)
+            {
+                _needsRefresh = true;
+                return;
+            }
+
+            RefreshAll();
+        });
+    }
+
+    internal void RefreshBeforeShow()
+    {
+        if (!_needsRefresh)
+        {
+            return;
+        }
+
+        RefreshAll();
     }
 
     private void RefreshAll()
     {
+        _needsRefresh = false;
         var snapshot = _desktopWorkspace.Snapshot;
-        CountdownTags.SetTags(snapshot.Settings.Tags);
-        NoteTags.SetTags(snapshot.Settings.Tags);
+        var tagSignature = BuildTagRenderSignature(snapshot.Settings.Tags);
+        if (!string.Equals(tagSignature, _tagPickersRenderSignature, StringComparison.Ordinal))
+        {
+            _tagPickersRenderSignature = tagSignature;
+            CountdownTags.SetTags(snapshot.Settings.Tags);
+            NoteTags.SetTags(snapshot.Settings.Tags);
+        }
+
         SyncNoteSearchFromFilter();
         RenderFilterTags();
         RenderTagManager();
@@ -1615,20 +1724,21 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private void SyncNoteSearchFromFilter()
     {
         var term = _desktopWorkspace.Snapshot.Filter.NoteSearch ?? string.Empty;
-        if (string.Equals(NoteSearch.Text, term, StringComparison.Ordinal))
+        var filterChanged = !string.Equals(term, _lastSyncedFilterNoteSearch, StringComparison.Ordinal);
+        if (!filterChanged)
         {
+            if (_noteSearchDebounceTimer.IsEnabled)
+            {
+                return;
+            }
+
+            SetNoteSearchTextSilently(term);
             return;
         }
 
-        _syncingNoteSearch = true;
-        try
-        {
-            NoteSearch.Text = term;
-        }
-        finally
-        {
-            _syncingNoteSearch = false;
-        }
+        _lastSyncedFilterNoteSearch = term;
+        _noteSearchDebounceTimer.Stop();
+        SetNoteSearchTextSilently(term);
     }
 
     private void RenderVisibleWorkspace()
@@ -3584,6 +3694,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var snapshot = _desktopWorkspace.Snapshot;
         var filter = snapshot.Filter;
         var tags = snapshot.Settings.Tags;
+        var tagSignature = BuildTagRenderSignature(tags);
         UntaggedOnly.IsChecked = filter.UntaggedOnly;
         UntaggedOnly.Margin = new Thickness(0, 0, 8, 8);
 
@@ -3597,18 +3708,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             FilterTagOptions.Children.Insert(0, UntaggedOnly);
         }
 
-        // 标签集合未增删改名时就地同步勾选态，避免重建芯片导致焦点或悬停状态丢失。
+        // #302/#305：标签集合（ID、名称、颜色、顺序）未变时就地同步勾选态与匹配方式显隐，避免重建芯片导致焦点或悬停状态丢失。
         var existingConcreteToggles = FilterTagOptions.Children
             .OfType<ToggleButton>()
             .Where(toggle => !ReferenceEquals(toggle, UntaggedOnly))
             .ToArray();
         var matchesExisting =
+            string.Equals(tagSignature, _filterTagsRenderSignature, StringComparison.Ordinal) &&
             FilterTagOptions.Children.Count == tags.Count + 1 &&
-            existingConcreteToggles.Length == tags.Count &&
-            tags.Select((tag, index) =>
-                    string.Equals(existingConcreteToggles[index].Uid, tag.Id, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(existingConcreteToggles[index].Content as string, tag.Name, StringComparison.Ordinal))
-                .All(matched => matched);
+            existingConcreteToggles.Length == tags.Count;
 
         if (matchesExisting)
         {
@@ -3675,8 +3783,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                             .ToArray()
                     });
                 }
-
-                RenderVisibleWorkspace();
             };
             FilterTagOptions.Children.Add(option);
             if (focusedTagId is not null &&
@@ -3686,6 +3792,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             }
         }
 
+        _filterTagsRenderSignature = tagSignature;
         SyncTagMatchModeVisibility(filter);
 
         if (FilterPopup.IsOpen && restoreFocus is not null)
@@ -3703,8 +3810,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void RenderTagManager()
     {
+        var tags = _desktopWorkspace.Snapshot.Settings.Tags;
+        var tagSignature = BuildTagRenderSignature(tags);
+        if (string.Equals(tagSignature, _tagManagerRenderSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _tagManagerRenderSignature = tagSignature;
         TagManagerRows.Children.Clear();
-        foreach (var tag in _desktopWorkspace.Snapshot.Settings.Tags)
+        foreach (var tag in tags)
         {
             var name = UiAccessibility.Name(
                 new TextBox { Text = tag.Name, MaxLength = 30 },
@@ -3788,27 +3903,23 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SetCountdownFilter(CountdownStatusFilter filter)
     {
-        UpdateFilter(current => current with { CountdownStatus = filter });
         CountdownAllFilter.IsChecked = filter == CountdownStatusFilter.All;
         CountdownActiveFilter.IsChecked = filter == CountdownStatusFilter.Active;
         CountdownExpiredFilter.IsChecked = filter == CountdownStatusFilter.Expired;
-        RenderCountdowns();
-        UpdateFilterSummary();
+        UpdateFilter(current => current with { CountdownStatus = filter });
     }
 
     private void SetNoteFilter(NoteStatusFilter filter)
     {
-        UpdateFilter(current => current with { NoteStatus = filter });
         NoteAllFilter.IsChecked = filter == NoteStatusFilter.All;
         NoteActiveFilter.IsChecked = filter == NoteStatusFilter.Active;
         NoteCompletedFilter.IsChecked = filter == NoteStatusFilter.Completed;
-        RenderNotes();
-        UpdateFilterSummary();
+        UpdateFilter(current => current with { NoteStatus = filter });
     }
 
     private void ClearFilters()
     {
-        _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
+        _noteSearchDebounceTimer.Stop();
         AnyTagMode.IsChecked = true;
         AllTagMode.IsChecked = false;
         UntaggedOnly.IsChecked = false;
@@ -3819,10 +3930,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NoteActiveFilter.IsChecked = false;
         NoteCompletedFilter.IsChecked = false;
         NoteUndatedFilter.IsChecked = false;
-        NoteDateFilter.SelectedDate = null;
-        NoteSearch.Clear();
-        RenderFilterTags();
-        RenderVisibleWorkspace();
+        SetNoteDateFilterSilently(null);
+        SetNoteSearchTextSilently(string.Empty);
+        _lastSyncedFilterNoteSearch = string.Empty;
+        _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty);
     }
 
     private void UpdateFilterSummary()

@@ -180,6 +180,7 @@ public sealed partial class MainWindow
             // —— 搜索：命中全部探针便签，列表仍出行，分段与搜索固定可见。
             NotesListRegion.ScrollToTop();
             NoteSearch.Text = DensityProbeSearch;
+            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
             SettleDensityProbeLayout();
             var searchShowsRows = DensityProbeFullyVisible(
                 _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
@@ -187,6 +188,7 @@ public sealed partial class MainWindow
             CheckNotesContext("搜索");
             Reveal($"{label}-notes-search", NotesListCard);
             NoteSearch.Text = string.Empty;
+            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
             SettleDensityProbeLayout();
 
             // —— 标签筛选：只剩一半便签，分段与搜索固定可见。
@@ -244,6 +246,7 @@ public sealed partial class MainWindow
         finally
         {
             NoteSearch.Text = string.Empty;
+            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
             OnClearSelectedNotes(this, new RoutedEventArgs());
             RestoreAfterDensityProbe(originalWorkspace, originalFilter, originalSegment, countdownIds, noteIds);
             if (tagId is not null)

@@ -1493,19 +1493,11 @@ internal static partial class ValidationReport
         ReminderCenterWindow? reminderCenter = null;
         ReminderRulesEditorWindow? rulesEditor = null;
         var originalWorkspace = main.CurrentWorkspace;
-        var expanded = Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible;
         try
         {
             main.ShowWorkspace(WorkspaceKind.Countdowns);
-            if (!expanded)
-                Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             PumpDispatcher();
-            var mainResults = new List<ComboBoxPointerExerciseResult>
-            {
-                MeasureCombo("Main.CountdownHour", Required<ComboBox>(main, "CountdownHour")),
-                MeasureCombo("Main.CountdownMinute", Required<ComboBox>(main, "CountdownMinute")),
-                MeasureCombo("Main.CountdownSecond", Required<ComboBox>(main, "CountdownSecond"))
-            };
+            var mainResults = new List<ComboBoxPointerExerciseResult>();
             Required<Button>(main, "PreferencesButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             PumpDispatcher();
             mainResults.Add(MeasureCombo("Main.DisplayPrecision", Required<ComboBox>(main, "DisplayPrecision"), Required<Popup>(main, "PreferencesPopup")));
@@ -1598,8 +1590,6 @@ internal static partial class ValidationReport
             rulesEditor?.Close();
             reminderCenter?.ForceClose();
             WindowValidationInput.ClosePopupForCleanup(Required<Popup>(main, "PreferencesPopup"));
-            if (!expanded && Required<FrameworkElement>(main, "MainCountdownTimeTagRow").Visibility == Visibility.Visible)
-                Required<Button>(main, "CountdownEditorExpandButton").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             main.ShowWorkspace(originalWorkspace);
         }
     }

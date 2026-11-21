@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 [CmdletBinding()]
 param(
     [switch] $Json,
@@ -408,8 +408,8 @@ Add-ToolingCheck -Name 'visual-baseline:design-anchors' -Passed ($designAnchorFa
 # 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。每个类按它的全部 partial 文件合计。
 $controlNameLookupPattern = [regex]'Required<[^>]+>\(\s*[A-Za-z_][\w\.]*\s*,\s*"|\.FindName\(\s*"'
 $controlNameLookupCeilings = [ordered]@{
-    'ValidationReport' = 358
-    'ValidationExercises' = 206
+    'ValidationReport' = 341
+    'ValidationExercises' = 204
 }
 $controlNameLookupFailures = [System.Collections.Generic.List[string]]::new()
 $controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnumerator()) {

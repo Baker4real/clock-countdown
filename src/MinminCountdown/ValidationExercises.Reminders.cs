@@ -101,9 +101,9 @@ internal static partial class ValidationExercises
             draftEdit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             var draftName = (TextBox)main.FindName("CountdownName");
             draftName.Text = "未保存的倒计时草稿";
-            var draftSecond = (ComboBox)main.FindName("CountdownSecond");
-            draftSecond.SelectedIndex = (draftSecond.SelectedIndex + 7) % 60;
-            var expectedDraftSecond = draftSecond.SelectedIndex;
+            var draftTime = (TextBox)main.FindName("CountdownTime");
+            draftTime.Text = "11:22:33";
+            var expectedDraftTime = draftTime.Text;
             ((ToggleButton)main.FindName("CountdownExpiredFilter"))
                 .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WindowValidationInput.Pump(main.Dispatcher);
@@ -121,7 +121,7 @@ internal static partial class ValidationExercises
                 main.CurrentWorkspace == WorkspaceKind.Countdowns &&
                 main.EditingCountdownId == draftCountdown.Id &&
                 string.Equals(draftName.Text, "未保存的倒计时草稿", StringComparison.Ordinal) &&
-                draftSecond.SelectedIndex == expectedDraftSecond &&
+                string.Equals(draftTime.Text, expectedDraftTime, StringComparison.Ordinal) &&
                 string.Equals(
                     ((TextBlock)main.FindName("CountdownReminderRulesSummary")).Text,
                     "不提醒",

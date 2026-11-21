@@ -649,7 +649,7 @@ public sealed partial class FloatingWindow : Window
         circle.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "MainActionTextBrush");
         var plus = new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse("M 4.6,8 L 11.4,8 M 8,4.6 L 8,11.4"),
+            Data = IconGeometries.Resolve(this, IconGeometries.Plus),
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round

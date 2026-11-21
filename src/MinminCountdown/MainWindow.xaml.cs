@@ -2661,7 +2661,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Height = 6,
             Margin = new Thickness(10, 0, 2, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Data = Geometry.Parse("M 1,1 L 6,6 L 11,1"),
+            Data = IconGeometries.Resolve(this, IconGeometries.ChevronDown),
             RenderTransform = chevronRotation,
             RenderTransformOrigin = new Point(0.5, 0.5),
             Stretch = Stretch.Uniform,
@@ -2796,7 +2796,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             UiAccessibility.Name(detailText, $"便签卡提醒摘要：{details}");
             _noteReminderSummaryTexts[note.Id] = detailText;
             var clockGlyph = CreateNoteRowGlyph(
-                "M 9,2.6 C 5.9,2.6 3.4,5.1 3.4,8.2 C 3.4,11.3 5.9,13.8 9,13.8 C 12.1,13.8 14.6,11.3 14.6,8.2 C 14.6,5.1 12.1,2.6 9,2.6 Z M 9,5.2 L 9,8.2 L 11.2,9.6",
+                IconGeometries.Clock,
                 "MutedBrush");
             var detailRow = new Grid { Margin = new Thickness(0, 3, 0, 0) };
             detailRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -2850,7 +2850,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         return card;
     }
 
-    private WpfPath CreateNoteRowGlyph(string data, string brushKey)
+    private WpfPath CreateNoteRowGlyph(string geometryKey, string brushKey)
     {
         const double size = 13;
         var glyph = new WpfPath
@@ -2859,7 +2859,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             Height = size,
             // #249：摘要可换行，图标顶对齐并居中在摘要首行（行高 NoteCardBodyLineHeight）上。
             Margin = new Thickness(0, (NoteCardBodyLineHeight - size) / 2, 5, 0),
-            Data = Geometry.Parse(data),
+            Data = IconGeometries.Resolve(this, geometryKey),
             Stretch = Stretch.Uniform,
             StrokeThickness = 1.6,
             StrokeStartLineCap = PenLineCap.Round,
@@ -3511,7 +3511,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SyncCountdownReminderModeFromRules();
             CountdownEditorTitle.Text = "新增倒计时";
             SetCountdownEditorExpanded(false);
-            SaveCountdownButton.Content = "＋ 添加倒计时";
+            SaveCountdownButton.Content = "添加倒计时";
             CancelCountdownEdit.Visibility = Visibility.Collapsed;
             ClearCountdownFieldErrors();
             UiAccessibility.Announce(CountdownMessage, string.Empty);
@@ -3542,7 +3542,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NoteTags.SetSelection(snapshot.Filter.SelectedTagIds);
         _noteReminderRules = Array.Empty<ReminderRule>();
         UpdateNoteReminderRulesSummary();
-        SaveNoteButton.Content = "＋ 添加";
+        SaveNoteButton.Content = "添加";
         CancelNoteEdit.Visibility = Visibility.Collapsed;
         UiAccessibility.Announce(NoteMessage, string.Empty);
     }

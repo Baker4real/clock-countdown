@@ -57,6 +57,8 @@ internal static class Program
     internal const string RuleEditorTimeInputFactName = "RuleEditorTimeInputTypingValidationAndPreview";
     internal const string ReminderCenterCustomSnoozeTimeInputFactName = "ReminderCenterCustomSnoozeTypeableTimeInput";
     internal const string MainWorkHoursTimeInputFactName = "MainWorkHoursTypeableTimeInputAndValidation";
+    internal const string SharedIconGeometriesFactName = "SharedIconGeometriesFrozenAndDeduplicated";
+    internal const string VectorizedTextGlyphIconsFactName = "VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry";
     internal const string MainAndFloatingFormErrorBordersFactName = "MainAndFloatingFormErrorBordersSpread";
     internal const string SecondaryWindowsFormErrorBordersFactName = "SecondaryWindowsFormErrorBordersSpread";
 
@@ -182,6 +184,10 @@ internal static class Program
     private const string MainWorkHoursTimeInputFactMeaning =
         "管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、" +
         "保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）";
+    private const string SharedIconGeometriesFactMeaning =
+        "全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）";
+    private const string VectorizedTextGlyphIconsFactMeaning =
+        "日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）";
     private const string MainAndFloatingFormErrorBordersFactMeaning =
         "主窗口便签增改、显示设置多字段、标签管理新建与行改名、主/浮标签选择器与悬浮快速新增均按统一规则呈现 1/2 DIP 危险错误边框与 2 DIP 暖金焦点且零布局位移，" +
         "修正即清、提交聚焦首错、HelpText 同步、播报不变并区分系统对比度；悬浮搜索确认无校验错误态并保持暖金焦点（#313）";
@@ -244,6 +250,8 @@ internal static class Program
             [RuleEditorTimeInputFactName] = false,
             [ReminderCenterCustomSnoozeTimeInputFactName] = false,
             [MainWorkHoursTimeInputFactName] = false,
+            [SharedIconGeometriesFactName] = false,
+            [VectorizedTextGlyphIconsFactName] = false,
             [MainAndFloatingFormErrorBordersFactName] = false,
             [SecondaryWindowsFormErrorBordersFactName] = false
         };
@@ -534,6 +542,16 @@ internal static class Program
                 MainWorkHoursTimeInputFactMeaning,
                 () => TimeInputSpreadScenario.RunWorkHoursTimeInput(
                     MainWorkHoursTimeInputFactMeaning));
+            RunFact(
+                SharedIconGeometriesFactName,
+                SharedIconGeometriesFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunSharedGeometries(
+                    SharedIconGeometriesFactMeaning));
+            RunFact(
+                VectorizedTextGlyphIconsFactName,
+                VectorizedTextGlyphIconsFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunVectorizedTextGlyphIcons(
+                    VectorizedTextGlyphIconsFactMeaning));
             RunFact(
                 MainAndFloatingFormErrorBordersFactName,
                 MainAndFloatingFormErrorBordersFactMeaning,

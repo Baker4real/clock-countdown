@@ -676,14 +676,16 @@ internal static partial class ValidationExercises
                     return false;
                 }
 
-                // #223：相对时间徽章使用矢量时钟，不靠文字字重构造图标。
+                // #223/#307：相对时间徽章使用共享矢量时钟 Path，不靠文字字重构造图标。
                 var badgePanel = badge.Child as StackPanel;
                 var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
-                    ? badgeIconText.Children[0] as Grid
+                    ? badgeIconText.Children[0] as FrameworkElement
                     : null;
                 if (badgeMark is null ||
                     VisualDescendants<TextBlock>(badgeMark).Any() ||
-                    !VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any())
+                    !(badgeMark is System.Windows.Shapes.Path { Data: not null } ||
+                      VisualDescendants<System.Windows.Shapes.Path>(badgeMark).Any(path => path.Data is not null) ||
+                      VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any()))
                 {
                     return false;
                 }
@@ -711,7 +713,8 @@ internal static partial class ValidationExercises
                     text.Text.StartsWith("计划：", StringComparison.Ordinal));
                 var scheduledRow = scheduledText.Parent as Panel;
                 var scheduledClock = scheduledRow is not null &&
-                    VisualDescendants<System.Windows.Shapes.Ellipse>(scheduledRow).Any();
+                    (VisualDescendants<System.Windows.Shapes.Path>(scheduledRow).Any(path => path.Data is not null) ||
+                     VisualDescendants<System.Windows.Shapes.Ellipse>(scheduledRow).Any());
                 // #253：时区标记整体位于下一行，完整宽度能放入卡片，不逐字拆开，也不改变原有文案。
                 var timezoneWidth = new FormattedText("（北京时间）", CultureInfo.CurrentCulture, scheduledText.FlowDirection,
                     new Typeface(scheduledText.FontFamily, scheduledText.FontStyle, scheduledText.FontWeight, scheduledText.FontStretch),
@@ -794,7 +797,7 @@ internal static partial class ValidationExercises
                     StringComparison.Ordinal));
             var badgePanel = badge?.Child as StackPanel;
             var badgeMark = badgePanel is { Children.Count: 2 } badgeIconText
-                ? badgeIconText.Children[0] as Grid
+                ? badgeIconText.Children[0] as FrameworkElement
                 : null;
             return textBlocks.Length > 0 &&
                    textBlocks.All(static text => text.FontWeight != FontWeights.Bold) &&
@@ -802,7 +805,9 @@ internal static partial class ValidationExercises
                        .All(static button => button.FontWeight != FontWeights.Bold) &&
                    badgeMark is not null &&
                    !VisualDescendants<TextBlock>(badgeMark).Any() &&
-                   VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any();
+                   (badgeMark is System.Windows.Shapes.Path { Data: not null } ||
+                    VisualDescendants<System.Windows.Shapes.Path>(badgeMark).Any(path => path.Data is not null) ||
+                    VisualDescendants<System.Windows.Shapes.Ellipse>(badgeMark).Any());
         }
         finally
         {

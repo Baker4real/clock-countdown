@@ -3913,6 +3913,8 @@ exit 23
         MainAndFloatingFormErrorBordersSpread = '主窗口便签增改、显示设置多字段、标签管理新建与行改名、主/浮标签选择器与悬浮快速新增均按统一规则呈现 1/2 DIP 危险错误边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、播报不变并区分系统对比度；悬浮搜索确认无校验错误态并保持暖金焦点（#313）'
         SecondaryWindowsFormErrorBordersSpread = '规则编辑器全部错误字段（含模式、首次日期/时刻、固定与自定义间隔、提前分钟、重复周期/间隔与按月按年选择器）及提醒中心自定义稍后日期/时间均按统一规则呈现 1/2 DIP 危险边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、原有播报不变并区分系统对比度（#313）'
         ReminderViewModelsUseSourceGeneratorsWithoutBehaviorDrift = '提醒中心与规则编辑器的全部 ViewModel 均改由 CommunityToolkit.Mvvm 源生成器生成属性与命令，不引入消息总线；对外属性名、访问级别、PropertyChanged 通知时机、命令 CanExecute 条件与实时预览/脏态/校验行为保持不变（#332）'
+        FloatingNoteBodyWidthOptionBGeometryAndDateStrip = '悬浮窗便签采用方案 B 上缘单行日期（319 DIP 卡宽内 36/245/36 列、正文可用 237 DIP、18 DIP 日期条与 4 DIP 间距、RadiusChip 圆角、pastel 轮换、系统高对比度映射、有日期与无日期文案及 ≥36 DIP 命中区，520×390 外壳与玩偶/x≤396 安全区不变）（#335）'
+        FloatingNoteBodyWidthOptionBScrollSearchTagsAndSticky = '悬浮窗便签方案 B 下验证长便签自然折行、5 个标签绑定与筛选、唯一外层滚动与滚动提示、视口裁切与搜索展开时的上缘单行粘性置顶不覆盖搜索槽/底部命令栏/勾选/…菜单且回顶归零（#335）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

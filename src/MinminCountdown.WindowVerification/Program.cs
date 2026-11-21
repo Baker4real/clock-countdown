@@ -62,6 +62,8 @@ internal static class Program
     internal const string MainAndFloatingFormErrorBordersFactName = "MainAndFloatingFormErrorBordersSpread";
     internal const string SecondaryWindowsFormErrorBordersFactName = "SecondaryWindowsFormErrorBordersSpread";
     internal const string ViewModelSourceGeneratorsFactName = "ReminderViewModelsUseSourceGeneratorsWithoutBehaviorDrift";
+    internal const string FloatingNoteBodyWidthOptionBGeometryFactName = "FloatingNoteBodyWidthOptionBGeometryAndDateStrip";
+    internal const string FloatingNoteBodyWidthOptionBScrollSearchFactName = "FloatingNoteBodyWidthOptionBScrollSearchTagsAndSticky";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -198,6 +200,12 @@ internal static class Program
     private const string ViewModelSourceGeneratorsFactMeaning =
         "提醒中心与规则编辑器的全部 ViewModel 均改由 CommunityToolkit.Mvvm 源生成器生成属性与命令，不引入消息总线；" +
         "对外属性名、访问级别、PropertyChanged 通知时机、命令 CanExecute 条件与实时预览/脏态/校验行为保持不变（#332）";
+    private const string FloatingNoteBodyWidthOptionBGeometryFactMeaning =
+        "悬浮窗便签采用方案 B 上缘单行日期（319 DIP 卡宽内 36/245/36 列、正文可用 237 DIP、18 DIP 日期条与 4 DIP 间距、" +
+        "RadiusChip 圆角、pastel 轮换、系统高对比度映射、有日期与无日期文案及 ≥36 DIP 命中区，520×390 外壳与玩偶/x≤396 安全区不变）（#335）";
+    private const string FloatingNoteBodyWidthOptionBScrollSearchFactMeaning =
+        "悬浮窗便签方案 B 下验证长便签自然折行、5 个标签绑定与筛选、唯一外层滚动与滚动提示、" +
+        "视口裁切与搜索展开时的上缘单行粘性置顶不覆盖搜索槽/底部命令栏/勾选/…菜单且回顶归零（#335）";
 
     [STAThread]
     private static int Main()
@@ -258,7 +266,9 @@ internal static class Program
             [VectorizedTextGlyphIconsFactName] = false,
             [MainAndFloatingFormErrorBordersFactName] = false,
             [SecondaryWindowsFormErrorBordersFactName] = false,
-            [ViewModelSourceGeneratorsFactName] = false
+            [ViewModelSourceGeneratorsFactName] = false,
+            [FloatingNoteBodyWidthOptionBGeometryFactName] = false,
+            [FloatingNoteBodyWidthOptionBScrollSearchFactName] = false
         };
         var failures = new List<string>();
 
@@ -572,6 +582,16 @@ internal static class Program
                 ViewModelSourceGeneratorsFactMeaning,
                 () => ViewModelSourceGeneratorScenario.Run(
                     ViewModelSourceGeneratorsFactMeaning));
+            RunFact(
+                FloatingNoteBodyWidthOptionBGeometryFactName,
+                FloatingNoteBodyWidthOptionBGeometryFactMeaning,
+                () => FloatingNoteBodyWidthOptionBScenario.RunGeometryAndDateStrip(
+                    FloatingNoteBodyWidthOptionBGeometryFactMeaning));
+            RunFact(
+                FloatingNoteBodyWidthOptionBScrollSearchFactName,
+                FloatingNoteBodyWidthOptionBScrollSearchFactMeaning,
+                () => FloatingNoteBodyWidthOptionBScenario.RunScrollSearchTagsAndSticky(
+                    FloatingNoteBodyWidthOptionBScrollSearchFactMeaning));
         }
         catch (Exception exception)
         {

@@ -16,11 +16,25 @@ public sealed partial class FloatingWindow
 {
     // Current row origins are x=60 in the single day theme; card width 319 keeps x <= 396.
     // #143：复选框槽位与“…”触发器命中区按 36px 下限收紧（DESIGN §10 小尺寸命中区合同）。
+    // #335（方案 B）：移除右侧 48 DIP 印记列，改为正文列上缘 18 DIP 单行日期条（与正文间隔 4 DIP），正文可用宽 237 DIP。
     private const double CalendarIndexNoteCardWidth = 319;
-    private const double CalendarIndexDateStampWidth = 48;
+    private const double CalendarIndexDateStripHeight = 18;
+    private const double CalendarIndexDateStripBodyGap = 4;
+    private const double CalendarIndexCardVerticalInset = 9;
+    private const double CalendarIndexBodyRightMargin = 8;
     private const double CalendarIndexRuleSpacing = 18;
     private const double CalendarIndexOverflowMenuWidth = 36;
     private const double CalendarIndexCheckboxSlotWidth = 36;
+
+    internal static readonly DependencyProperty IsNoteCardDateStampProperty =
+        DependencyProperty.RegisterAttached(
+            "IsNoteCardDateStamp",
+            typeof(bool),
+            typeof(FloatingWindow),
+            new PropertyMetadata(false));
+
+    internal static bool IsNoteCardDateStamp(Border border) =>
+        (bool)border.GetValue(IsNoteCardDateStampProperty);
 
     // DESIGN §2 日期印记 pastel 轮换：粉 → 蓝 → 绿，按列表顺序循环。
     private static readonly string[][] CalendarIndexStampPalette =
@@ -57,7 +71,6 @@ public sealed partial class FloatingWindow
     internal sealed record FloatingDateStampStickyEntry(
         Border Card,
         Border StampBorder,
-        StackPanel StampContent,
         TranslateTransform Translate);
 
     private FrameworkElement BuildCalendarIndexNoteCard(NoteRecord note, DateTimeOffset nowUtc, int rowIndex)
@@ -123,7 +136,11 @@ public sealed partial class FloatingWindow
 
         var body = new StackPanel
         {
-            Margin = new Thickness(0, 9, 8, 9)
+            Margin = new Thickness(
+                0,
+                CalendarIndexCardVerticalInset + CalendarIndexDateStripHeight + CalendarIndexDateStripBodyGap,
+                CalendarIndexBodyRightMargin,
+                CalendarIndexCardVerticalInset)
         };
         var noteText = new TextBlock
         {
@@ -166,18 +183,15 @@ public sealed partial class FloatingWindow
         layout.ColumnDefinitions.Add(new ColumnDefinition());
         layout.ColumnDefinitions.Add(new ColumnDefinition
         {
-            Width = new GridLength(CalendarIndexDateStampWidth)
-        });
-        layout.ColumnDefinitions.Add(new ColumnDefinition
-        {
             Width = new GridLength(CalendarIndexOverflowMenuWidth)
         });
 
         var overflowMenu = BuildNoteOverflowMenu(note);
         var dateStamp = CreateCalendarIndexDateStamp(note, rowIndex, out var stampTranslate);
         Grid.SetColumn(body, 1);
-        Grid.SetColumn(dateStamp, 2);
-        Grid.SetColumn(overflowMenu, 3);
+        Grid.SetColumn(dateStamp, 1);
+        Panel.SetZIndex(dateStamp, 1);
+        Grid.SetColumn(overflowMenu, 2);
         layout.Children.Add(completion);
         layout.Children.Add(body);
         layout.Children.Add(overflowMenu);
@@ -217,7 +231,6 @@ public sealed partial class FloatingWindow
             new FloatingDateStampStickyEntry(
                 card,
                 dateStamp,
-                (StackPanel)dateStamp.Child,
                 stampTranslate));
 
         return card;
@@ -260,9 +273,9 @@ public sealed partial class FloatingWindow
     }
 
     /// <summary>
-    ///     #149：长便签被视口裁切时，日期印记三行文字在「卡片可见区域」内居中（粘性），
-    ///     「月 / 日 / 周X」始终整体可见，不再只剩「日 / 周」；完整可见的卡片保持自然居中（位移 0）。
-    ///     印记 pastel 背景列仍铺满卡片高度，仅文字位移；印记继续不可命中、不可聚焦。
+    ///     #149/#335（方案 B）：长便签顶部滚出视口时，上缘单行日期条在卡片可见条带内粘性置顶，
+    ///     始终保持完整可读且不越出卡片底边、不覆盖搜索槽或底部命令栏；未滚出顶部的卡片位移归零并保持 4 DIP 正文间距。
+    ///     日期条继续不可命中、不可聚焦。
     /// </summary>
     internal void UpdateNoteDateStampStickyOffsets()
     {
@@ -274,7 +287,6 @@ public sealed partial class FloatingWindow
         foreach (var entry in _noteDateStampStickyEntries)
         {
             if (entry.StampBorder.ActualHeight <= 0 ||
-                entry.StampContent.ActualHeight <= 0 ||
                 entry.Card.ActualHeight <= 0 ||
                 VisualTreeHelper.GetParent(entry.Card) is not Visual cardParent)
             {
@@ -290,23 +302,30 @@ public sealed partial class FloatingWindow
             var visibleBottom = Math.Min(
                 entry.Card.ActualHeight,
                 FloatingBodyScroller.ViewportHeight - cardTop);
-            var stampHeight = entry.StampContent.ActualHeight;
-            var columnHeight = entry.StampBorder.ActualHeight;
-            var centeredTop = (columnHeight - stampHeight) / 2;
+            var stampHeight = entry.StampBorder.ActualHeight;
+            var stampLayoutTop = VisualTreeHelper.GetOffset(entry.StampBorder).Y;
+            var layoutOffsetTop = entry.Card.Child is Visual layoutVisual
+                ? VisualTreeHelper.GetOffset(layoutVisual).Y
+                : entry.Card.BorderThickness.Top;
+            var naturalTop = layoutOffsetTop + stampLayoutTop;
+            var maxTop = Math.Max(
+                naturalTop,
+                entry.Card.ActualHeight - entry.Card.BorderThickness.Bottom - CalendarIndexCardVerticalInset - stampHeight);
             double stickyTop;
-            if (visibleBottom <= visibleTop)
+            if (visibleBottom <= visibleTop || visibleTop <= naturalTop)
             {
-                // 卡片完全在视口外：回到自然居中，滚动后由 ScrollChanged 再次修正。
-                stickyTop = centeredTop;
+                // 卡片完全在视口外或自然顶边仍在视口内：位移归零，保持精确 4 DIP 静止间距。
+                stickyTop = naturalTop;
             }
             else
             {
-                var desiredTop = visibleTop +
-                    Math.Max(0, (visibleBottom - visibleTop - stampHeight) / 2);
-                stickyTop = Math.Clamp(desiredTop, 0, Math.Max(0, columnHeight - stampHeight));
+                var desiredTop = Math.Min(
+                    visibleTop,
+                    Math.Max(naturalTop, visibleBottom - stampHeight));
+                stickyTop = Math.Clamp(desiredTop, naturalTop, maxTop);
             }
 
-            entry.Translate.Y = stickyTop - centeredTop;
+            entry.Translate.Y = stickyTop - naturalTop;
         }
     }
 
@@ -707,84 +726,48 @@ public sealed partial class FloatingWindow
         var date = CalendarIndexDate(note);
         var culture = CultureInfo.GetCultureInfo("zh-CN");
         var palette = CalendarIndexStampPalette[rowIndex % CalendarIndexStampPalette.Length];
-        var stampText = palette[1];
         stickyTranslate = new TranslateTransform();
-        var stamp = new StackPanel
+
+        var label = new TextBlock
         {
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Text = date is null
+                ? "无日期"
+                : $"{date.Value.Month} 月 {date.Value.Day} 日 · {culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek)}",
+            FontSize = (double)FindResource("TypeCaptionFontSize"),
+            FontWeight = FontWeights.Regular,
+            LineHeight = CalendarIndexDateStripHeight - 2,
+            LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+            HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
-            RenderTransform = stickyTranslate
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        stamp.Children.Add(CalendarIndexStampText(
-            date is null ? "无日期" : $"{date.Value.Month} 月",
-            (double)FindResource("TypeCaptionFontSize"),
-            FontWeights.Regular,
-            stampText));
-        stamp.Children.Add(CalendarIndexStampText(
-            date is null ? "--" : date.Value.Day.ToString("D2", CultureInfo.InvariantCulture),
-            (double)FindResource("TypeH2FontSize"),
-            FontWeights.SemiBold,
-            stampText,
-            (FontFamily)FindResource("NumeralFontFamily"),
-            new Thickness(0, 2, 0, 2)));
-        stamp.Children.Add(CalendarIndexStampText(
-            date is null
-                ? " "
-                : culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek),
-            (double)FindResource("TypeCaptionFontSize"),
-            FontWeights.Regular,
-            stampText));
+        Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
+        label.SetResourceReference(TextBlock.ForegroundProperty, palette[1]);
 
         var dateStamp = new Border
         {
-            Child = stamp,
-            BorderThickness = new Thickness(2, 0, 0, 0),
-            Padding = new Thickness(4, 8, 4, 8),
+            Child = label,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            Height = CalendarIndexDateStripHeight,
+            Margin = new Thickness(0, CalendarIndexCardVerticalInset, CalendarIndexBodyRightMargin, 0),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(7, 0, 7, 0),
             IsHitTestVisible = false,
-            Focusable = false
+            Focusable = false,
+            RenderTransform = stickyTranslate
         };
+        dateStamp.SetValue(IsNoteCardDateStampProperty, true);
+        dateStamp.SetResourceReference(Border.CornerRadiusProperty, "RadiusChip");
         dateStamp.SetResourceReference(Border.BackgroundProperty, palette[0]);
-        ApplicationTheme.ApplyContrastAwareBrush(dateStamp, Border.BorderBrushProperty,
-            CreateCalendarIndexStampEdgeBrush(ApplicationTheme.DayColorFor(palette[1])), "ControlBorderBrush");
+        var dayBorderBrush = new SolidColorBrush(ApplicationTheme.DayColorFor(palette[0]));
+        dayBorderBrush.Freeze();
+        ApplicationTheme.ApplyContrastAwareBrush(
+            dateStamp,
+            Border.BorderBrushProperty,
+            dayBorderBrush,
+            "ControlBorderBrush");
         return dateStamp;
-    }
-
-    private static Brush CreateCalendarIndexStampEdgeBrush(Color dayText)
-    {
-        var edge = new SolidColorBrush(Color.FromArgb(96, dayText.R, dayText.G, dayText.B));
-        edge.Freeze();
-        return edge;
-    }
-
-    private static TextBlock CalendarIndexStampText(
-        string text,
-        double fontSize,
-        FontWeight fontWeight,
-        string foregroundKey,
-        FontFamily? fontFamily = null,
-        Thickness? margin = null)
-    {
-        var label = new TextBlock
-        {
-            Text = text,
-            FontSize = fontSize,
-            FontWeight = fontWeight,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            TextAlignment = TextAlignment.Center
-        };
-        label.SetResourceReference(TextBlock.ForegroundProperty, foregroundKey);
-        if (margin is { } value)
-        {
-            label.Margin = value;
-        }
-
-        if (fontFamily is not null)
-        {
-            label.FontFamily = fontFamily;
-            Typography.SetNumeralAlignment(label, FontNumeralAlignment.Tabular);
-        }
-
-        return label;
     }
 
     private static DateTime? CalendarIndexDate(NoteRecord note)

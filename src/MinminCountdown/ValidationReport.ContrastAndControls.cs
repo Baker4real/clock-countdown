@@ -747,7 +747,7 @@ internal static partial class ValidationReport
             main.Show(); floating.Show(); main.ShowWorkspace(WorkspaceKind.Notes); floating.ShowWorkspace(WorkspaceKind.Notes);
             PumpDispatcher();
             var chip = Descendants<Border>(main).First(border => border.Uid == "contrast-tag");
-            var stamp = Descendants<Border>(floating).First(border => border.BorderThickness == new Thickness(2, 0, 0, 0));
+            var stamp = Descendants<Border>(floating).First(FloatingWindow.IsNoteCardDateStamp);
             var oldChip = ((SolidColorBrush)chip.Background).Color;
             var oldStampEdge = ((SolidColorBrush)stamp.BorderBrush).Color;
             var noteRows = Required<StackPanel>(floating, "FloatingRows").Children.Cast<UIElement>().ToArray();
@@ -795,7 +795,7 @@ internal static partial class ValidationReport
                     ColorIs(chip.Background, palette.Control) && ColorIs(stamp.BorderBrush, palette.WindowText);
                 laterFloating = new FloatingWindow(workspace, calendar, main, assetRoot) { ShowInTaskbar = false, Opacity = 0 };
                 laterFloating.Show(); laterFloating.ShowWorkspace(WorkspaceKind.Notes); PumpDispatcher();
-                laterStamp = Descendants<Border>(laterFloating).First(border => border.BorderThickness == new Thickness(2, 0, 0, 0));
+                laterStamp = Descendants<Border>(laterFloating).First(FloatingWindow.IsNoteCardDateStamp);
                 checks["LaterStampUsesSystemColor"] = ColorIs(laterStamp.BorderBrush, palette.WindowText);
                 var newDialog = new ConfirmationDialog(main, "新建窗口", "使用当前系统颜色") { ShowActivated = false, Opacity = 0 };
                 try

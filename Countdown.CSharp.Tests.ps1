@@ -1572,15 +1572,28 @@ function Invoke-ManagedTestRootPurge {
         $stderrFile = Join-Path $purgeTempRoot (
             'countdown-test-purge-{0}.stderr.txt' -f [guid]::NewGuid().ToString('N'))
         try {
-            $process = Start-Process -FilePath $SafeTreeDelete `
-                -ArgumentList @(
-                    '-Mode', 'BatchPurge',
-                    '-TargetPaths', $TestRoot,
-                    '-CapabilityRoot', $CapabilityRoot,
-                    '-ConfirmApply',
-                    '-ConfirmPurge',
-                    '-Json'
-                ) `
+            $processFilePath = $SafeTreeDelete
+            $processArguments = @(
+                '-Mode', 'BatchPurge',
+                '-TargetPaths', $TestRoot,
+                '-CapabilityRoot', $CapabilityRoot,
+                '-ConfirmApply',
+                '-ConfirmPurge',
+                '-Json'
+            )
+            if ([System.String]::Equals(
+                    [System.IO.Path]::GetExtension($SafeTreeDelete),
+                    '.ps1',
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )) {
+                $processFilePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+                $processArguments = @(
+                    '-NoLogo', '-NoProfile', '-NonInteractive',
+                    '-File', $SafeTreeDelete
+                ) + $processArguments
+            }
+            $process = Start-Process -FilePath $processFilePath `
+                -ArgumentList $processArguments `
                 -WorkingDirectory $purgeTempRoot `
                 -Wait -PassThru -NoNewWindow `
                 -RedirectStandardOutput $stdoutFile `

@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 using MinminCountdown.Core;
+using Windows.Win32.Graphics.Dwm;
 using static MinminCountdown.WindowVerification.EmptyStateScenarioSupport;
 
 namespace MinminCountdown.WindowVerification;
@@ -559,7 +560,7 @@ internal static class SecondaryWindowDwmChromeScenario
             caseLabel: "DWM 投影/非客户区渲染不支持",
             hostFactory: () => new RecordingDwmHost(
                 isSupportedOperatingSystem: true,
-                handler: attribute => attribute == DwmWindowAttribute.DWMWA_NCRENDERING_POLICY
+                handler: attribute => attribute == DWMWINDOWATTRIBUTE.DWMWA_NCRENDERING_POLICY
                     ? DwmCompositionDisabledHr
                     : 0),
             expectedReminderEvent: DwmWindowChrome.ReminderCenterEvents.ShadowFallback,
@@ -575,7 +576,7 @@ internal static class SecondaryWindowDwmChromeScenario
             caseLabel: "DWM 系统圆角不支持",
             hostFactory: () => new RecordingDwmHost(
                 isSupportedOperatingSystem: true,
-                handler: attribute => attribute == DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE
+                handler: attribute => attribute == DWMWINDOWATTRIBUTE.DWMWA_WINDOW_CORNER_PREFERENCE
                     ? InvalidArgHr
                     : 0),
             expectedReminderEvent: DwmWindowChrome.ReminderCenterEvents.RoundedCornersFallback,
@@ -605,11 +606,11 @@ internal static class SecondaryWindowDwmChromeScenario
         var logger = new DiagnosticLogger(logPath);
         var centerHost = new RecordingDwmHost(
             isSupportedOperatingSystem: true,
-            handler: attribute => attribute == DwmWindowAttribute.DWMWA_BORDER_COLOR ? InvalidArgHr : 0);
+            handler: attribute => attribute == DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR ? InvalidArgHr : 0);
         var editorBorderShouldFail = false;
         var editorHost = new RecordingDwmHost(
             isSupportedOperatingSystem: true,
-            handler: attribute => attribute == DwmWindowAttribute.DWMWA_BORDER_COLOR && editorBorderShouldFail
+            handler: attribute => attribute == DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR && editorBorderShouldFail
                 ? InvalidArgHr
                 : 0);
         ReminderCenterWindow? center = null;
@@ -876,11 +877,11 @@ internal static class SecondaryWindowDwmChromeScenario
         List<string> failures)
     {
         if (host.Calls.Count < 3 ||
-            host.Calls[0].Attribute != DwmWindowAttribute.DWMWA_NCRENDERING_POLICY ||
+            host.Calls[0].Attribute != DWMWINDOWATTRIBUTE.DWMWA_NCRENDERING_POLICY ||
             host.Calls[0].Value != DwmNcrpEnabled ||
-            host.Calls[1].Attribute != DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE ||
+            host.Calls[1].Attribute != DWMWINDOWATTRIBUTE.DWMWA_WINDOW_CORNER_PREFERENCE ||
             host.Calls[1].Value != DwmwcpRound ||
-            host.Calls[2].Attribute != DwmWindowAttribute.DWMWA_BORDER_COLOR ||
+            host.Calls[2].Attribute != DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR ||
             host.Calls[2].Value != expectedDayColorRef)
         {
             var actual = string.Join(", ", host.Calls.Select(call => $"{call.Attribute}=0x{call.Value:X8}"));
@@ -896,7 +897,7 @@ internal static class SecondaryWindowDwmChromeScenario
         List<string> failures)
     {
         var borderCalls = host.Calls
-            .Where(call => call.Attribute == DwmWindowAttribute.DWMWA_BORDER_COLOR)
+            .Where(call => call.Attribute == DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR)
             .ToArray();
         if (borderCalls.Length == 0 || borderCalls[^1].Value != expectedColorRef)
         {
@@ -1135,20 +1136,20 @@ internal static class SecondaryWindowDwmChromeScenario
 
     private sealed class RecordingDwmHost(
         bool isSupportedOperatingSystem,
-        Func<DwmWindowAttribute, int>? handler = null) : IDwmWindowChromeHost
+        Func<DWMWINDOWATTRIBUTE, int>? handler = null) : IDwmWindowChromeHost
     {
         public bool IsSupportedOperatingSystem { get; } = isSupportedOperatingSystem;
 
         public List<RecordedDwmCall> Calls { get; } = new();
 
-        public int SetWindowAttribute(IntPtr hwnd, DwmWindowAttribute attribute, uint value)
+        public int SetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE attribute, uint value)
         {
             Calls.Add(new RecordedDwmCall(hwnd, attribute, value));
             return handler?.Invoke(attribute) ?? 0;
         }
     }
 
-    private sealed record RecordedDwmCall(IntPtr Handle, DwmWindowAttribute Attribute, uint Value);
+    private sealed record RecordedDwmCall(IntPtr Handle, DWMWINDOWATTRIBUTE Attribute, uint Value);
 
     private sealed record DiagnosticLogRow(
         string Level,

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Windows.Win32;
 
 namespace MinminCountdown;
 
@@ -23,8 +24,8 @@ internal static class WindowWorkAreaGeometry
         }
         IntPtr Hook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (message is 0x007E or 0x001A) Queue(); // display/work-area settings changed
-            if (message == 0x0232) markManual?.Invoke();
+            if (message is (int)PInvoke.WM_DISPLAYCHANGE or (int)PInvoke.WM_SETTINGCHANGE) Queue(); // display/work-area settings changed
+            if (message == (int)PInvoke.WM_EXITSIZEMOVE) markManual?.Invoke();
             return IntPtr.Zero;
         }
         void OnSourceInitialized(object? sender, EventArgs args)

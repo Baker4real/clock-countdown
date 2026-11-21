@@ -1,0 +1,30 @@
+// DwmWindowChrome.cs
+DwmSetWindowAttribute
+DWMNCRENDERINGPOLICY
+DWM_WINDOW_CORNER_PREFERENCE
+S_OK
+
+// FloatingTrayController.cs
+GetForegroundWindow
+SetForegroundWindow
+
+// InstanceActivation.cs
+GetNamedPipeServerProcessId
+AllowSetForegroundWindow
+
+// MonitorWorkAreaResolver.cs
+MonitorFromRect
+GetWindowRect
+GetDpiForMonitor
+GetMonitorInfo
+
+// ReminderWindow.cs
+FlashWindowEx
+
+// TrayIconHost.cs
+FindWindow
+
+// WindowWorkAreaGeometry.cs
+WM_DISPLAYCHANGE
+WM_SETTINGCHANGE
+WM_EXITSIZEMOVE

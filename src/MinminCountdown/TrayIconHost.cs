@@ -1,9 +1,9 @@
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using H.NotifyIcon;
+using Windows.Win32;
 
 namespace MinminCountdown;
 
@@ -78,10 +78,7 @@ internal sealed class MemoryTrayIconHost : ITrayIconHost
 
 internal sealed class TrayIconHost : ITrayIconHost
 {
-    internal static bool IsShellHostAvailable => FindWindowW("Shell_TrayWnd", null) != IntPtr.Zero;
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
-    private static extern IntPtr FindWindowW(string className, string? windowName);
+    internal static bool IsShellHostAvailable => !PInvoke.FindWindow("Shell_TrayWnd", null).IsNull;
 
     private readonly Dispatcher _dispatcher;
     private readonly Action _restore;

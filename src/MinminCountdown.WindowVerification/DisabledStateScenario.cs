@@ -126,8 +126,8 @@ internal static class DisabledStateScenario
             new("App.RadioButton(Checked)", radioChecked, ["Surface"], [], CheckMotionSurface: false),
             new("App.ComboBox", combo, ["Surface", "ContentSlot"], ["Surface"], CheckMotionSurface: false),
             new("App.ComboBox(HasError)", errorCombo, ["Surface", "ContentSlot"], ["Surface"], CheckMotionSurface: false),
-            new("App.DatePicker", datePicker, ["PART_Root"], ["PART_TextBox", "PART_Button"], CheckMotionSurface: false),
-            new("App.DatePicker(HasError)", errorDatePicker, ["PART_Root"], ["PART_TextBox", "PART_Button"], CheckMotionSurface: false)
+            new("App.DatePicker", datePicker, ["Surface", "ContentSlot"], ["Surface"], CheckMotionSurface: false),
+            new("App.DatePicker(HasError)", errorDatePicker, ["Surface", "ContentSlot"], ["Surface"], CheckMotionSurface: false)
         };
 
         var panel = new WrapPanel { Margin = new Thickness(12), Orientation = Orientation.Horizontal };

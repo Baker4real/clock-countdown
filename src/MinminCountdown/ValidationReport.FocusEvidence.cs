@@ -299,8 +299,10 @@ internal static partial class ValidationReport
             Capture("note-rows-bottom", "未完成滚到底部：每 15 分钟提醒的来源卡与单标签短卡");
             parts.ListRegion.ScrollToHome();
             parts.Search.Text = fixture.SearchTerm;
+            WindowValidationInput.RaisePreviewKey(parts.Search, Key.Enter);
             Capture("note-rows-search", "「复盘」搜索：长正文与五标签两张");
             parts.Search.Clear();
+            WindowValidationInput.RaisePreviewKey(parts.Search, Key.Enter);
             PumpDispatcher();
             var chosen = Descendants<NoteSelectionCard>(parts.ActiveRows).Where(card => card.IsVisible).Take(2).ToArray();
             foreach (var card in chosen)

@@ -1285,7 +1285,11 @@ internal static partial class ValidationReport
             ["ThemedControlTemplatesApplied"] = Must(mainThemeTemplate, "adapter 验证真实 WPF 主题模板"),
             ["ComboBoxesUseThemedDropDowns"] = Must(comboThemed, "ComboBox 下拉、选项与滚动条无未主题化表面（#129 自 U1 迁移）"),
             ["DatePickerCalendarIsThemed"] = Must(dateFamilyThemed, "DatePicker 文本框、触发器与日历族完全主题化（#129 自 U1 迁移）"),
-            ["DatePickerTextFits"] = Must(dateTextMetrics.Fits, "完整选中日期在日期框内完整可见（#129 自 U1 迁移）"),
+            ["DatePickerTextFits"] = Must(
+                dateTextMetrics.Fits &&
+                productionDatePickers.Attached.All(input => input.TextFit.Fits) &&
+                productionDatePickers.ReminderCenter.TextFit.Fits,
+                "完整选中日期在全部六处日期框内完整可见（#129 / #312）"),
             ["DatePickerTextAvailableWidth"] = dateTextMetrics.Available,
             ["DatePickerTextRequiredWidth"] = dateTextMetrics.Required,
             ["LiveDatePickerPopupIsThemed"] = Must(livePopupThemed, "adapter 验证真实 DatePicker Popup 主题"),

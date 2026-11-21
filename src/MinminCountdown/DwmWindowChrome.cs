@@ -4,6 +4,9 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shell;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Dwm;
 
 namespace MinminCountdown;
 
@@ -16,8 +19,6 @@ namespace MinminCountdown;
 /// </summary>
 internal static class DwmWindowChrome
 {
-    private const int Succeeded = 0;
-
     internal static readonly DwmWindowChromeEvents MainWindowEvents = new(
         Applied: "MainWindowDwmRoundedCornersApplied",
         ShadowFallback: "MainWindowDwmShadowFallback",
@@ -148,12 +149,12 @@ internal static class DwmWindowChrome
                 return DwmWindowChromeResult.Fallback;
             }
 
-            var renderingPolicy = (uint)DwmNcRenderingPolicy.DWMNCRP_ENABLED;
+            var renderingPolicy = (uint)DWMNCRENDERINGPOLICY.DWMNCRP_ENABLED;
             var shadowResult = host.SetWindowAttribute(
                 handle,
-                DwmWindowAttribute.DWMWA_NCRENDERING_POLICY,
+                DWMWINDOWATTRIBUTE.DWMWA_NCRENDERING_POLICY,
                 renderingPolicy);
-            if (shadowResult != Succeeded)
+            if (shadowResult != HRESULT.S_OK)
             {
                 logger?.Warning(
                     events.ShadowFallback,
@@ -163,12 +164,12 @@ internal static class DwmWindowChrome
                 return DwmWindowChromeResult.Fallback;
             }
 
-            var preference = (uint)DwmWindowCornerPreference.DWMWCP_ROUND;
+            var preference = (uint)DWM_WINDOW_CORNER_PREFERENCE.DWMWCP_ROUND;
             var result = host.SetWindowAttribute(
                 handle,
-                DwmWindowAttribute.DWMWA_WINDOW_CORNER_PREFERENCE,
+                DWMWINDOWATTRIBUTE.DWMWA_WINDOW_CORNER_PREFERENCE,
                 preference);
-            if (result != Succeeded)
+            if (result != HRESULT.S_OK)
             {
                 logger?.Warning(
                     events.RoundedCornersFallback,
@@ -218,9 +219,9 @@ internal static class DwmWindowChrome
             var colorRef = ToColorRef(color);
             var result = host.SetWindowAttribute(
                 handle,
-                DwmWindowAttribute.DWMWA_BORDER_COLOR,
+                DWMWINDOWATTRIBUTE.DWMWA_BORDER_COLOR,
                 colorRef);
-            if (result != Succeeded)
+            if (result != HRESULT.S_OK)
             {
                 logger?.Warning(
                     events.BorderColorFallback,
@@ -263,22 +264,6 @@ internal static class DwmWindowChrome
         shellSurface.Padding = new Thickness(0);
     }
 
-    private enum DwmNcRenderingPolicy : uint
-    {
-        DWMNCRP_USEWINDOWSTYLE = 0,
-        DWMNCRP_DISABLED = 1,
-        DWMNCRP_ENABLED = 2,
-        DWMNCRP_LAST = 3
-    }
-
-    private enum DwmWindowCornerPreference : uint
-    {
-        DWMWCP_DEFAULT = 0,
-        DWMWCP_DONOTROUND = 1,
-        DWMWCP_ROUND = 2,
-        DWMWCP_ROUNDSMALL = 3
-    }
-
     private sealed class NativeDwmWindowChromeHost : IDwmWindowChromeHost
     {
         internal static readonly NativeDwmWindowChromeHost Instance = new();
@@ -286,36 +271,21 @@ internal static class DwmWindowChrome
         public bool IsSupportedOperatingSystem =>
             OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
 
-        public int SetWindowAttribute(IntPtr hwnd, DwmWindowAttribute attribute, uint value) =>
-            DwmSetWindowAttribute(
-                hwnd,
+        public int SetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE attribute, uint value) =>
+            PInvoke.DwmSetWindowAttribute(
+                new HWND(hwnd),
                 attribute,
-                ref value,
-                // The Win32 contract is a 32-bit enum or COLORREF. Marshal.SizeOf<T>()
-                // rejects enum types on current .NET runtimes, so use the ABI width explicitly.
-                sizeof(uint));
-
-        [DllImport("dwmapi.dll", ExactSpelling = true)]
-        private static extern int DwmSetWindowAttribute(
-            IntPtr hwnd,
-            DwmWindowAttribute attribute,
-            ref uint value,
-            uint valueSize);
+                // The Win32 contract is a 32-bit enum or COLORREF. Pass the exact
+                // 4-byte uint span to CsWin32's ReadOnlySpan<byte> overload.
+                MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref value, 1)));
     }
-}
-
-internal enum DwmWindowAttribute
-{
-    DWMWA_NCRENDERING_POLICY = 2,
-    DWMWA_WINDOW_CORNER_PREFERENCE = 33,
-    DWMWA_BORDER_COLOR = 34
 }
 
 internal interface IDwmWindowChromeHost
 {
     bool IsSupportedOperatingSystem { get; }
 
-    int SetWindowAttribute(IntPtr hwnd, DwmWindowAttribute attribute, uint value);
+    int SetWindowAttribute(IntPtr hwnd, DWMWINDOWATTRIBUTE attribute, uint value);
 }
 
 internal sealed record DwmWindowChromeEvents(

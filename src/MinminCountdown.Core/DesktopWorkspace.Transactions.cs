@@ -685,19 +685,16 @@ public sealed partial class DesktopWorkspace
             })
             .ToArray();
         var candidate = _current with { Tags = tags, Countdowns = countdowns, Notes = notes };
-        if (!TryCommit(candidate, out error))
+        return TryCommit(candidate, null, out error, () =>
         {
-            return false;
-        }
-
-        _filter = _filter with
-        {
-            SelectedTagIds = Array.AsReadOnly(_filter.SelectedTagIds
-                .Where(tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase))
-                .ToArray())
-        };
-        _filterVersion++;
-        return true;
+            _filter = _filter with
+            {
+                SelectedTagIds = Array.AsReadOnly(_filter.SelectedTagIds
+                    .Where(tagId => !string.Equals(tagId, id, StringComparison.OrdinalIgnoreCase))
+                    .ToArray())
+            };
+            _filterVersion++;
+        });
     }
 
     private bool TrySavePreferences(
@@ -837,7 +834,8 @@ public sealed partial class DesktopWorkspace
     private bool TryCommit(
         CountdownSettings candidate,
         DateTimeOffset? commitNow,
-        out string error)
+        out string error,
+        Action? afterCommitBeforeNotify = null)
     {
         CountdownSettings previous;
         CountdownSettings canonical;
@@ -857,6 +855,7 @@ public sealed partial class DesktopWorkspace
         _current = canonical;
         _stateVersion++;
         _reminders.Synchronize(previous, canonical, commitNow ?? _store.Clock.UtcNow);
+        afterCommitBeforeNotify?.Invoke();
         error = string.Empty;
         StateChanged?.Invoke(this, EventArgs.Empty);
         return true;

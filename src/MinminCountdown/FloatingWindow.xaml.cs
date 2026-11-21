@@ -988,7 +988,7 @@ public sealed partial class FloatingWindow : Window
                 .ToArray()
                 .All(matches => matches);
             checks["TagSelector"] =
-                UsesQuickAddResources(FloatingTags, "CanvasBrush", "InkBrush", "PeachLineBrush") &&
+                UsesQuickAddResources(FloatingTags, "CanvasBrush", "InkBrush", "ControlBorderBrush") &&
                 ControlUsesQuickAddSurface(FloatingTags.PopupTrigger);
 
             var tagPopupOpened = false;
@@ -1027,7 +1027,7 @@ public sealed partial class FloatingWindow : Window
             checks["TagSelectorPopup"] =
                 tagPopupOpened &&
                 popupRoot is Border popupSurface &&
-                BorderUsesQuickAddSurface(popupSurface) &&
+                BorderUsesQuickAddSurface(popupSurface, "ControlBorderBrush") &&
                 popupSearch is not null &&
                 TextBoxUsesQuickAddTheme(popupSearch);
             checks["CheckBox"] = popupCheckBox is not null && CheckBoxUsesQuickAddTheme(popupCheckBox);
@@ -1473,10 +1473,10 @@ public sealed partial class FloatingWindow : Window
             UsesQuickAddResources(control, surfaceKey, "InkBrush", borderKey);
     }
 
-    private bool BorderUsesQuickAddSurface(Border border) =>
+    private bool BorderUsesQuickAddSurface(Border border, string borderResourceKey = "PeachLineBrush") =>
         Equals(border.Background, border.TryFindResource("CanvasBrush")) &&
-        Equals(border.BorderBrush, border.TryFindResource("PeachLineBrush")) &&
-        UsesQuickAddResources(border, "CanvasBrush", "PeachLineBrush");
+        Equals(border.BorderBrush, border.TryFindResource(borderResourceKey)) &&
+        UsesQuickAddResources(border, "CanvasBrush", borderResourceKey);
 
     private bool UsesQuickAddResources(FrameworkElement element, params string[] keys) =>
         keys.All(key =>

@@ -39,6 +39,8 @@ internal static class Program
     internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
     internal const string RuleEditorFixedIntervalNumericFactName = "ReminderRulesEditorFixedIntervalNumericInput";
     internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
+    internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
+    internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -113,6 +115,12 @@ internal static class Program
         "规则编辑器固定间隔支持上下键与滚轮在 1 到 1440 整数范围内增减、超出范围或非法输入当场提示且错误文案不变；ViewModel 属性为可空数值且对外保存、脏态与预览行为不变（#330）";
     private const string RuleEditorFixedIntervalVisualFactMeaning =
         "规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）";
+    private const string OverlaySurfaceBordersFactMeaning =
+        "筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，" +
+        "对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）";
+    private const string FilterMatchModeAndFocusFactMeaning =
+        "筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；" +
+        "「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）";
 
     [STAThread]
     private static int Main()
@@ -150,7 +158,9 @@ internal static class Program
             [MainEmptyAndHighContrastRibbonFactName] = false,
             [FloatingWorkdayCompletionFactName] = false,
             [RuleEditorFixedIntervalNumericFactName] = false,
-            [RuleEditorFixedIntervalVisualFactName] = false
+            [RuleEditorFixedIntervalVisualFactName] = false,
+            [OverlaySurfaceBordersFactName] = false,
+            [FilterMatchModeAndFocusFactName] = false
         };
         var failures = new List<string>();
 
@@ -344,6 +354,18 @@ internal static class Program
                 RuleEditorFixedIntervalVisualFactMeaning,
                 () => ReminderRulesFixedIntervalScenario.RunFixedIntervalVisualAndIsolation(
                     RuleEditorFixedIntervalVisualFactMeaning));
+            RunFact(
+                OverlaySurfaceBordersFactName,
+                OverlaySurfaceBordersFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunOverlayBordersAndContrast(
+                    theme,
+                    OverlaySurfaceBordersFactMeaning));
+            RunFact(
+                FilterMatchModeAndFocusFactName,
+                FilterMatchModeAndFocusFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunFilterMatchModeAndFocusLifecycle(
+                    theme,
+                    FilterMatchModeAndFocusFactMeaning));
         }
         catch (Exception exception)
         {

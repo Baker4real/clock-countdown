@@ -664,16 +664,16 @@ internal static partial class ValidationReport
             PumpDispatcher();
             main.UpdateLayout();
 
-            var countdownPanelsFollowTheme = new[]
+            var countdownPanelsFollowTheme = new (Border? Panel, string BorderKey)[]
                 {
-                    main.FindName("CountdownWorkspaceBackdrop") as Border,
-                    main.FindName("CountdownEditorSurface") as Border,
-                    main.FindName("CountdownPreferencesSurface") as Border
+                    (main.FindName("CountdownWorkspaceBackdrop") as Border, "PeachLineBrush"),
+                    (main.FindName("CountdownEditorSurface") as Border, "PeachLineBrush"),
+                    (main.FindName("CountdownPreferencesSurface") as Border, "ControlBorderBrush")
                 }
-                .All(panel =>
-                    panel is not null &&
-                    UsesResource(panel, Border.BackgroundProperty, "BackgroundBrush") &&
-                    UsesResource(panel, Border.BorderBrushProperty, "PeachLineBrush"));
+                .All(entry =>
+                    entry.Panel is not null &&
+                    UsesResource(entry.Panel, Border.BackgroundProperty, "BackgroundBrush") &&
+                    UsesResource(entry.Panel, Border.BorderBrushProperty, entry.BorderKey));
             var notePanel = main.FindName("NoteEditorPanel") as Border;
             var panelsFollowTheme =
                 countdownPanelsFollowTheme &&

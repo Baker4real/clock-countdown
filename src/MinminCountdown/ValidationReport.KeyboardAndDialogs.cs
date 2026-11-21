@@ -1179,7 +1179,7 @@ internal static partial class ValidationReport
                     "ReminderRulesEditor",
                     "ReminderRulesEditorContentRoot",
                     "提醒规则",
-                    ":",
+                    null,
                     "规则类型",
                     "0 / 8 条"),
                 MeasureSecondaryTypography(
@@ -1453,7 +1453,7 @@ internal static partial class ValidationReport
                 dispositionActionsTraverse &&
                 snoozeActionsTraverse;
 
-            // #86/#320 回归：从稍后菜单选中「自定义」后懒创建日期、小时、分钟与确认按钮，
+            // #86/#320/#329 回归：从稍后菜单选中「自定义」后懒创建日期、可键入时间框与确认按钮，
             // 进入 Tab 链且步步留在当前条目内。
             ValidationExercises.SelectReminderSnoozeMenuItem(
                 window,
@@ -1462,13 +1462,10 @@ internal static partial class ValidationReport
                 ReminderSnoozeOption.Custom);
             PumpDispatcher();
             var customDate = Descendants<DatePicker>(entryRow).Single();
-            var customHour = Descendants<ComboBox>(entryRow).Single(comboBox =>
-                AutomationProperties.GetName(comboBox).StartsWith(
-                    "自定义稍后小时：",
-                    StringComparison.Ordinal));
-            var customMinute = Descendants<ComboBox>(entryRow).Single(comboBox =>
-                AutomationProperties.GetName(comboBox).StartsWith(
-                    "自定义稍后分钟：",
+            var customTime = Descendants<TextBox>(entryRow).Single(textBox =>
+                string.Equals(
+                    AutomationProperties.GetAutomationId(textBox),
+                    "ReminderEntryCustomSnoozeTime",
                     StringComparison.Ordinal));
             var customConfirm = Descendants<Button>(entryRow).Single(button =>
                 string.Equals(
@@ -1477,13 +1474,13 @@ internal static partial class ValidationReport
                     StringComparison.Ordinal));
             openSource.Focus();
             var customVisible =
-                customDate.IsVisible && customHour.IsVisible && customMinute.IsVisible && customConfirm.IsVisible;
-            // 主题 ComboBox 模板内的 ToggleButton 可聚焦，会为每个下拉多占一步 Tab；
-            // 因此只要求焦点按 打开来源→日期→小时→分钟→确认稍后 的顺序前进、允许控件内部件占步，且步步留在条目内。
-            var customStage = 0; // 0=待进日期 1=日期 2=小时 3=分钟 4=确认稍后
+                !Descendants<ComboBox>(entryRow).Any() &&
+                customDate.IsVisible && customTime.IsVisible && customConfirm.IsVisible;
+            // 要求焦点按 打开来源→日期→时间→确认稍后 的顺序前进、允许日期框内部部件占步，且步步留在条目内。
+            var customStage = 0; // 0=待进日期 1=日期 2=时间 3=确认稍后
             var customChainStaysInEntry = customVisible;
             UIElement? customMover = openSource;
-            for (var step = 0; step < 14 && customStage < 4 && customChainStaysInEntry; step++)
+            for (var step = 0; step < 12 && customStage < 3 && customChainStaysInEntry; step++)
             {
                 if (customMover?.MoveFocus(tabRequest) != true ||
                     Keyboard.FocusedElement is not DependencyObject customFocused ||
@@ -1497,20 +1494,15 @@ internal static partial class ValidationReport
                     customChainStaysInEntry = customStage <= 1;
                     customStage = Math.Max(customStage, 1);
                 }
-                else if (FocusStaysWithin(entryRow, customHour))
+                else if (FocusStaysWithin(entryRow, customTime))
                 {
                     customChainStaysInEntry = customStage is 1 or 2;
                     customStage = 2;
                 }
-                else if (FocusStaysWithin(entryRow, customMinute))
+                else if (FocusStaysWithin(entryRow, customConfirm))
                 {
                     customChainStaysInEntry = customStage is 2 or 3;
                     customStage = 3;
-                }
-                else if (FocusStaysWithin(entryRow, customConfirm))
-                {
-                    customChainStaysInEntry = customStage is 3 or 4;
-                    customStage = 4;
                 }
                 else
                 {
@@ -1518,7 +1510,7 @@ internal static partial class ValidationReport
                 }
                 customMover = customFocused as UIElement;
             }
-            customChainStaysInEntry = customChainStaysInEntry && customStage == 4;
+            customChainStaysInEntry = customChainStaysInEntry && customStage == 3;
 
             // 选回预设项后自定义控件收起并退出 Tab 链；条目末尾动作之后 Tab 仍绕回当前条目。
             ValidationExercises.SelectReminderSnoozeMenuItem(
@@ -1530,8 +1522,7 @@ internal static partial class ValidationReport
             snooze.Focus();
             var presetChainRestored =
                 !customDate.IsVisible &&
-                !customHour.IsVisible &&
-                !customMinute.IsVisible &&
+                !customTime.IsVisible &&
                 !customConfirm.IsVisible &&
                 snooze.MoveFocus(tabRequest) &&
                 ReferenceEquals(Keyboard.FocusedElement, complete);

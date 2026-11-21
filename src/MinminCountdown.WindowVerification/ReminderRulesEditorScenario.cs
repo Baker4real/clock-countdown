@@ -952,8 +952,8 @@ internal static class ReminderRulesEditorScenario
     {
         FindByAutomationId<ComboBox>(editor, "ReminderRuleMode").SelectedIndex = modeIndex;
         FindByAutomationId<DatePicker>(editor, "ReminderRuleFirstDueDate").SelectedDate = dueBeijing.Date;
-        FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour").SelectedIndex = dueBeijing.Hour;
-        FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute").SelectedIndex = dueBeijing.Minute;
+        FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime").Text =
+            dueBeijing.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
         if (modeIndex == 1)
         {
             FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval").SelectedIndex = intervalIndex;

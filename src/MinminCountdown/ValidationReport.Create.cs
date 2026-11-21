@@ -1759,11 +1759,6 @@ internal static partial class ValidationReport
                 floating.Height <= 391 &&
                 floatingStructure.ReminderRulesEntryCompact,
                 "悬浮窗提醒规则入口保持 520 x 390 紧凑表面"),
-            ["NoteReminderTimeOptionCounts"] = new[]
-            {
-                productionDatePickers.ReminderHourOptionCount,
-                productionDatePickers.ReminderMinuteOptionCount
-            },
             ["CrossDayReminderSelectionWorks"] = Must(crossDayReminderBehavior, "便签提醒支持跨天选择并按北京时间触发"),
             ["ReminderSummaryAdvancesAfterFirstDue"] = Must(reminderSummaryAdvances, "首次提醒到期后主窗口摘要显示下一循环时间"),
             ["OneTimeReminderLifecycleWorks"] = Must(oneTimeReminderBehavior, "一次性提醒支持离线补发并在送达后跨重启去重"),

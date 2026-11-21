@@ -110,6 +110,8 @@ internal sealed class ReminderCenterViewModel : ObservableObject
 
 internal sealed class ReminderCenterEntryViewModel : ObservableObject
 {
+    private const string IncompleteCustomSnoozeError = "请选择完整的自定义稍后日期和时间。";
+
     private readonly bool _canComplete;
     private bool _isAcknowledgeEnabled;
     private bool _isSnoozeEnabled;
@@ -124,8 +126,9 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     private string _customErrorMessage = string.Empty;
     private DateTime? _customDate;
     private string _relativeTimeText = "刚刚";
-    private int _customHourIndex = -1;
-    private int _customMinuteIndex = -1;
+    private TimeSpan? _customTime;
+    private bool _hasInvalidCustomTimeInput;
+    private bool _customTimeTouched;
 
     public ReminderCenterEntryViewModel(ReminderCenterItem item)
     {
@@ -220,8 +223,22 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     public bool IsCustomErrorVisible
     {
         get => _isCustomErrorVisible;
-        private set => SetProperty(ref _isCustomErrorVisible, value);
+        private set
+        {
+            if (SetProperty(ref _isCustomErrorVisible, value))
+            {
+                NotifyCustomErrorBordersChanged();
+            }
+        }
     }
+
+    public bool IsCustomDateErrorVisible =>
+        IsCustomErrorVisible &&
+        (CustomDate is null || (CustomTime is not null && !HasInvalidCustomTimeInput));
+
+    public bool IsCustomTimeErrorVisible =>
+        IsCustomErrorVisible &&
+        (CustomTime is null || HasInvalidCustomTimeInput || CustomDate is not null);
 
     public bool IsRendered
     {
@@ -283,19 +300,68 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     public DateTime? CustomDate
     {
         get => _customDate;
-        set => SetProperty(ref _customDate, value);
+        set
+        {
+            if (!SetProperty(ref _customDate, value))
+            {
+                return;
+            }
+
+            if (value is not null && IsCustomErrorVisible)
+            {
+                ClearCustomError();
+            }
+            else
+            {
+                NotifyCustomErrorBordersChanged();
+            }
+        }
     }
 
-    public int CustomHourIndex
+    public TimeSpan? CustomTime
     {
-        get => _customHourIndex;
-        set => SetProperty(ref _customHourIndex, value);
+        get => _customTime;
+        set
+        {
+            if (!SetProperty(ref _customTime, value))
+            {
+                return;
+            }
+
+            _customTimeTouched = true;
+            if (value is not null && !_hasInvalidCustomTimeInput && IsCustomErrorVisible)
+            {
+                ClearCustomError();
+            }
+            else
+            {
+                NotifyCustomErrorBordersChanged();
+            }
+        }
     }
 
-    public int CustomMinuteIndex
+    public bool HasInvalidCustomTimeInput
     {
-        get => _customMinuteIndex;
-        set => SetProperty(ref _customMinuteIndex, value);
+        get => _hasInvalidCustomTimeInput;
+        set
+        {
+            if (!SetProperty(ref _hasInvalidCustomTimeInput, value))
+            {
+                return;
+            }
+
+            if (value)
+            {
+                _customTimeTouched = true;
+            }
+            else if (_customTime is not null && IsCustomErrorVisible)
+            {
+                ClearCustomError();
+                return;
+            }
+
+            NotifyCustomErrorBordersChanged();
+        }
     }
 
     public RelayCommand AcknowledgeCommand { get; }
@@ -344,6 +410,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsCustomSnoozeVisible = true;
         CustomErrorMessage = message;
         IsCustomErrorVisible = true;
+        NotifyCustomErrorBordersChanged();
         IsAcknowledgeEnabled = true;
         IsSnoozeEnabled = true;
         IsCompleteEnabled = CanComplete;
@@ -394,6 +461,24 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         OnPropertyChanged(nameof(TitleDisclosureAccessibleName));
     }
 
+    internal void ValidateCustomTimeOnBlur()
+    {
+        if (!IsCustomSnoozeVisible || !IsSnoozeEnabled)
+        {
+            return;
+        }
+
+        if (HasInvalidCustomTimeInput || (_customTimeTouched && CustomTime is null))
+        {
+            ShowCustomSnoozeError(IncompleteCustomSnoozeError);
+        }
+        else if (CustomDate is not null &&
+                 string.Equals(CustomErrorMessage, IncompleteCustomSnoozeError, StringComparison.Ordinal))
+        {
+            ClearCustomError();
+        }
+    }
+
     private void ConfirmCustomSnooze()
     {
         if (!IsSnoozeEnabled)
@@ -402,18 +487,24 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         }
 
         IsCustomSnoozeVisible = true;
-        if (CustomDate is not { } date || CustomHourIndex < 0 || CustomMinuteIndex < 0)
+        if (CustomDate is not { } date || HasInvalidCustomTimeInput || CustomTime is not { } time)
         {
-            ShowCustomSnoozeError("请选择完整的自定义稍后日期和时间。");
+            ShowCustomSnoozeError(IncompleteCustomSnoozeError);
             return;
         }
 
         var customBeijing = ChinaStandardTime.ToBeijingTime(
-            CountdownFormatting.ToUtc(date, CustomHourIndex, CustomMinuteIndex, 0));
+            CountdownFormatting.ToUtc(date, time.Hours, time.Minutes, 0));
         ClearCustomError();
         SnoozeRequested?.Invoke(
             this,
             new ReminderCenterSnoozeEventArgs(Item.Key, ReminderSnoozeOption.Custom, customBeijing));
+    }
+
+    private void NotifyCustomErrorBordersChanged()
+    {
+        OnPropertyChanged(nameof(IsCustomDateErrorVisible));
+        OnPropertyChanged(nameof(IsCustomTimeErrorVisible));
     }
 
     private void ClearFailure()

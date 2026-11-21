@@ -119,16 +119,13 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
                 "开始日期",
                 "日历-开始日期名",
                 failures);
+            var firstDueTimeCheck = FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime");
             AssertAutomationName(
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour"),
-                "本地时刻小时",
-                "日历-小时名",
+                firstDueTimeCheck,
+                "本地时刻",
+                "日历-本地时刻名",
                 failures);
-            AssertAutomationName(
-                FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute"),
-                "本地时刻分钟",
-                "日历-分钟名",
-                failures);
+            AssertLabeledByText(editor, firstDueTimeCheck, "开始日期", "日历-本地时刻标签关系", failures);
             AssertFieldLabelAndName(editor, frequency, "重复周期", "日历-重复周期", failures);
             AssertFieldLabelAndName(editor, interval, "每隔几个周期", "日历-每隔几个周期", failures);
             AssertLabeledByText(editor, preview, "规则预览", "日历-规则预览", failures);
@@ -290,8 +287,7 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
 
             var mode = FindByAutomationId<ComboBox>(editor, "ReminderRuleMode");
             var firstDueDate = FindByAutomationId<DatePicker>(editor, "ReminderRuleFirstDueDate");
-            var firstDueHour = FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour");
-            var firstDueMinute = FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute");
+            var firstDueTime = FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime");
             var intervalChoice = FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval");
             var customInterval = FindByAutomationId<TextBox>(editor, "ReminderRuleCustomInterval");
             var relativeOffset = FindByAutomationId<TextBox>(editor, "ReminderRuleRelativeOffsetMinutes");
@@ -308,11 +304,10 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             // 1. 提醒一次：实时更新 + 保存后与规则行摘要一致
             mode.SelectedIndex = 0;
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 10;
-            firstDueMinute.SelectedIndex = 20;
+            firstDueTime.Text = "10:20";
             SettleWindow(editor);
             AssertPreview(preview, "提醒一次 · 2038 年 7 月 9 日 10:20", inkBrush, "一次初值", failures);
-            firstDueMinute.SelectedIndex = 45;
+            firstDueTime.Text = "10:45";
             SettleWindow(editor);
             AssertPreview(preview, "提醒一次 · 2038 年 7 月 9 日 10:45", inkBrush, "一次改分钟", failures);
             var oncePreviewBeforeSave = preview.Text;
@@ -322,8 +317,7 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             // 2. 每隔一段时间：预设、自定义、无效值回退、恢复并保存匹配
             mode.SelectedIndex = 1;
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 11;
-            firstDueMinute.SelectedIndex = 0;
+            firstDueTime.Text = "11:00";
             intervalChoice.SelectedIndex = 1; // 30 分钟
             SettleWindow(editor);
             AssertPreview(preview, "每隔一段时间 · 每 30 分钟 · 2038 年 7 月 9 日 11:00 起", inkBrush, "固定间隔预设", failures);
@@ -358,14 +352,12 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             frequency.SelectedIndex = 0;
             calendarInterval.Text = "1";
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 9;
-            firstDueMinute.SelectedIndex = 15;
+            firstDueTime.Text = "09:15";
             SettleWindow(editor);
             AssertPreview(preview, "按日历重复 · 每 1 日 · 09:15", inkBrush, "日历每天", failures);
             captureEvidence?.Invoke(editor, "rules-editor-323-calendar-daily");
             calendarInterval.Text = "2";
-            firstDueHour.SelectedIndex = 8;
-            firstDueMinute.SelectedIndex = 30;
+            firstDueTime.Text = "08:30";
             SettleWindow(editor);
             AssertPreview(preview, "按日历重复 · 每 2 日 · 08:30", inkBrush, "日历每2日", failures);
             var dailyPreviewBeforeSave = preview.Text;
@@ -377,8 +369,7 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             frequency.SelectedIndex = 1;
             calendarInterval.Text = "1";
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 9;
-            firstDueMinute.SelectedIndex = 0;
+            firstDueTime.Text = "09:00";
             foreach (var weekday in Enum.GetValues<DayOfWeek>())
             {
                 FindByAutomationId<CheckBox>(editor, $"ReminderRuleCalendarWeekday{weekday}").IsChecked = false;
@@ -416,8 +407,7 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             frequency.SelectedIndex = 2;
             calendarInterval.Text = "1";
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 18;
-            firstDueMinute.SelectedIndex = 0;
+            firstDueTime.Text = "18:00";
             calendarLastDay.IsChecked = false;
             calendarDay.SelectedIndex = 14; // 15 日
             SettleWindow(editor);
@@ -434,8 +424,7 @@ internal static class ReminderRulesEditorCopyAndPreviewScenario
             frequency.SelectedIndex = 3;
             calendarInterval.Text = "1";
             firstDueDate.SelectedDate = new DateTime(2038, 7, 9);
-            firstDueHour.SelectedIndex = 9;
-            firstDueMinute.SelectedIndex = 30;
+            firstDueTime.Text = "09:30";
             calendarLastDay.IsChecked = false;
             calendarMonth.SelectedIndex = 7; // 8 月
             calendarDay.SelectedIndex = 14; // 15 日

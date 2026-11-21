@@ -54,6 +54,9 @@ internal static class Program
     internal const string CountdownDeadlineTimeValidationFactName = "MainCountdownDeadlineTimeValidationAndAccessibility";
     internal const string RuleEditorRepeatAndLeadNumericFactName = "RuleEditorRepeatAndLeadNumericInputs";
     internal const string MonthlySalaryDecimalAndDownstreamFactName = "MonthlySalaryDecimalInputAndDownstreamContract";
+    internal const string RuleEditorTimeInputFactName = "RuleEditorTimeInputTypingValidationAndPreview";
+    internal const string ReminderCenterCustomSnoozeTimeInputFactName = "ReminderCenterCustomSnoozeTypeableTimeInput";
+    internal const string MainWorkHoursTimeInputFactName = "MainWorkHoursTypeableTimeInputAndValidation";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -168,6 +171,15 @@ internal static class Program
         "规则编辑器每隔几个周期（1..999）与提前分钟（0..5256000）均支持上下键/滚轮步进、范围校验、越界当场提示与不变错误文案，ViewModel 属性均为可空整数，且焦点、错误边、对比度、系统对比度与标签关系均符合契约（#331）";
     private const string MonthlySalaryDecimalAndDownstreamFactMeaning =
         "主窗口显示设置月薪支持两位小数与千位分隔显示、上下键与获焦滚轮步进、范围/格式校验及不变错误文案与位置、单层暖金焦点与 1/2 DIP 危险错误边（不挤布局）、对比度与系统对比度、LabeledBy 标签关系、零 WPF-UI 资源污染，且月薪为零时悬浮窗仍显示鼓励语等下游行为不变（#331）";
+    private const string RuleEditorTimeInputFactMeaning =
+        "规则编辑器首次提醒与日历本地时刻改为单一可键入 HH:mm 文本框：支持直接键入与上下键分段步进、失焦与提交校验、暖金/危险边框不挤布局、" +
+        "实时规则预览同步与精确持久化领域值，保留 LabeledBy 标签关系并适配系统对比度（#329）";
+    private const string ReminderCenterCustomSnoozeTimeInputFactMeaning =
+        "提醒中心懒创建自定义稍后时间改为单一可键入 HH:mm 文本框：保留懒创建与默认值、支持直接键入与上下键步进、非法格式与不晚于当前北京时间错误紧贴下方且带错误边框、" +
+        "合法稍后精确持久化，保留 LabeledBy 与系统对比度（#329）";
+    private const string MainWorkHoursTimeInputFactMeaning =
+        "管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、" +
+        "保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）";
 
     [STAThread]
     private static int Main()
@@ -220,7 +232,10 @@ internal static class Program
             [CountdownDeadlineTimeTypingFactName] = false,
             [CountdownDeadlineTimeValidationFactName] = false,
             [RuleEditorRepeatAndLeadNumericFactName] = false,
-            [MonthlySalaryDecimalAndDownstreamFactName] = false
+            [MonthlySalaryDecimalAndDownstreamFactName] = false,
+            [RuleEditorTimeInputFactName] = false,
+            [ReminderCenterCustomSnoozeTimeInputFactName] = false,
+            [MainWorkHoursTimeInputFactName] = false
         };
         var failures = new List<string>();
 
@@ -494,6 +509,21 @@ internal static class Program
                 MonthlySalaryDecimalAndDownstreamFactMeaning,
                 () => ExtendedNumericInputsScenario.RunMonthlySalaryDecimalInputAndDownstream(
                     MonthlySalaryDecimalAndDownstreamFactMeaning));
+            RunFact(
+                RuleEditorTimeInputFactName,
+                RuleEditorTimeInputFactMeaning,
+                () => TimeInputSpreadScenario.RunRuleEditorTimeInput(
+                    RuleEditorTimeInputFactMeaning));
+            RunFact(
+                ReminderCenterCustomSnoozeTimeInputFactName,
+                ReminderCenterCustomSnoozeTimeInputFactMeaning,
+                () => TimeInputSpreadScenario.RunReminderCenterCustomSnoozeTimeInput(
+                    ReminderCenterCustomSnoozeTimeInputFactMeaning));
+            RunFact(
+                MainWorkHoursTimeInputFactName,
+                MainWorkHoursTimeInputFactMeaning,
+                () => TimeInputSpreadScenario.RunWorkHoursTimeInput(
+                    MainWorkHoursTimeInputFactMeaning));
         }
         catch (Exception exception)
         {

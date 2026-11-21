@@ -24,8 +24,7 @@ internal sealed class ReminderRulesEditorWindow : Window
     private readonly TextBlock _countText = new();
     private readonly ComboBox _mode = new();
     private readonly DatePicker _firstDueDate = new WpfUiDatePicker();
-    private readonly ComboBox _firstDueHour = new();
-    private readonly ComboBox _firstDueMinute = new();
+    private readonly TextBox _firstDueTime = new();
     private readonly ComboBox _interval = new();
     private readonly TextBox _customInterval = new() { MaxLength = 4 };
     private readonly TextBox _relativeOffset = new() { MaxLength = 7 };
@@ -62,6 +61,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         MinWidth = 92
     };
     private TextBlock _firstDueLabel = null!;
+    private Button _cancelDraftButton = null!;
     private Border _dragHeader = null!;
     private bool _hasManualWindowPlacement;
     private bool _placementInitialized;
@@ -216,8 +216,6 @@ internal sealed class ReminderRulesEditorWindow : Window
     private void ConfigureControls()
     {
         _mode.ItemsSource = _viewModel.ModeOptions;
-        _firstDueHour.ItemsSource = _viewModel.Hours;
-        _firstDueMinute.ItemsSource = _viewModel.Minutes;
         _interval.ItemsSource = _viewModel.IntervalOptions;
         _calendarFrequency.ItemsSource = _viewModel.CalendarFrequencyOptions;
         _calendarMonth.ItemsSource = _viewModel.Months;
@@ -241,8 +239,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         BuildCalendarSelector();
         NameControl(_mode, "提醒规则类型");
         NameControl(_firstDueDate, "首次提醒日期");
-        NameControl(_firstDueHour, "首次提醒小时");
-        NameControl(_firstDueMinute, "首次提醒分钟");
+        NameControl(_firstDueTime, "首次提醒时刻");
         NameControl(_interval, "固定间隔分钟");
         NameControl(_customInterval, "自定义固定间隔分钟");
         NameControl(_relativeOffset, "倒计时提前分钟");
@@ -257,8 +254,7 @@ internal sealed class ReminderRulesEditorWindow : Window
 
         AutomationProperties.SetAutomationId(_mode, "ReminderRuleMode");
         AutomationProperties.SetAutomationId(_firstDueDate, "ReminderRuleFirstDueDate");
-        AutomationProperties.SetAutomationId(_firstDueHour, "ReminderRuleFirstDueHour");
-        AutomationProperties.SetAutomationId(_firstDueMinute, "ReminderRuleFirstDueMinute");
+        AutomationProperties.SetAutomationId(_firstDueTime, "ReminderRuleFirstDueTime");
         AutomationProperties.SetAutomationId(_interval, "ReminderRuleInterval");
         AutomationProperties.SetAutomationId(_customInterval, "ReminderRuleCustomInterval");
         AutomationProperties.SetAutomationId(_relativeOffset, "ReminderRuleRelativeOffsetMinutes");
@@ -291,8 +287,12 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_countText, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.CountText), _viewModel);
         Bind(_mode, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.ModeIndex), _viewModel, BindingMode.TwoWay);
         Bind(_firstDueDate, DatePicker.SelectedDateProperty, nameof(ReminderRulesEditorViewModel.FirstDueDate), _viewModel, BindingMode.TwoWay);
-        Bind(_firstDueHour, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueHourIndex), _viewModel, BindingMode.TwoWay);
-        Bind(_firstDueMinute, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.FirstDueMinuteIndex), _viewModel, BindingMode.TwoWay);
+        TimeInputBehavior.SetFormat(_firstDueTime, TimeInputFormat.HourMinute);
+        TimeInputBehavior.SetIsEnabled(_firstDueTime, true);
+        Bind(_firstDueTime, TimeInputBehavior.ValueProperty, nameof(ReminderRulesEditorViewModel.FirstDueTime), _viewModel, BindingMode.TwoWay);
+        Bind(_firstDueTime, TimeInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidFirstDueTimeInput), _viewModel, BindingMode.TwoWay);
+        Bind(_firstDueDate, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueDateErrorVisible), _viewModel);
+        Bind(_firstDueTime, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueTimeErrorVisible), _viewModel);
         Bind(_interval, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.IntervalIndex), _viewModel, BindingMode.TwoWay);
         NumericInputBehavior.SetMinimum(_customInterval, ReminderRulesEditorViewModel.MinimumFixedIntervalMinutes);
         NumericInputBehavior.SetMaximum(_customInterval, ReminderRulesEditorViewModel.MaximumFixedIntervalMinutes);
@@ -342,8 +342,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         BindError(_collectionError, nameof(ReminderRulesEditorViewModel.CollectionError), nameof(ReminderRulesEditorViewModel.IsCollectionErrorVisible), () => _viewModel.CollectionError);
 
         Bind(_firstDueDate, DatePicker.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
-        Bind(_firstDueHour, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
-        Bind(_firstDueMinute, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
+        Bind(_firstDueTime, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsFirstDueVisible), _viewModel, converter: _visibilityConverter);
         Bind(_interval, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsIntervalVisible), _viewModel, converter: _visibilityConverter);
         Bind(_customInterval, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCustomIntervalVisible), _viewModel, converter: _visibilityConverter);
         Bind(_relativeOffset, TextBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsRelativeVisible), _viewModel, converter: _visibilityConverter);
@@ -355,13 +354,11 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_calendarMonth, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarMonthVisible), _viewModel, converter: _visibilityConverter);
         Bind(_calendarDay, ComboBox.VisibilityProperty, nameof(ReminderRulesEditorViewModel.IsCalendarDayVisible), _viewModel, converter: _visibilityConverter);
         Bind(_firstDueDate, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueDateAutomationName), _viewModel);
-        Bind(_firstDueHour, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueHourAutomationName), _viewModel);
-        Bind(_firstDueMinute, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueMinuteAutomationName), _viewModel);
+        Bind(_firstDueTime, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueTimeAutomationName), _viewModel);
 
         BindHelpText(_mode, nameof(ReminderRulesEditorViewModel.ModeError));
         BindHelpText(_firstDueDate, nameof(ReminderRulesEditorViewModel.FirstDueError));
-        BindHelpText(_firstDueHour, nameof(ReminderRulesEditorViewModel.FirstDueError));
-        BindHelpText(_firstDueMinute, nameof(ReminderRulesEditorViewModel.FirstDueError));
+        BindHelpText(_firstDueTime, nameof(ReminderRulesEditorViewModel.FirstDueError));
         BindHelpText(_interval, nameof(ReminderRulesEditorViewModel.IntervalError));
         BindHelpText(_customInterval, nameof(ReminderRulesEditorViewModel.IntervalError));
         BindHelpText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetError));
@@ -426,6 +423,8 @@ internal sealed class ReminderRulesEditorWindow : Window
         AddFormRow(form, 0, "规则类型", _mode, _modeError);
         _firstDueLabel = AddFormRow(form, 1, "首次提醒", BuildFirstDueRow(), _firstDueError,
             nameof(ReminderRulesEditorViewModel.IsFirstDueVisible));
+        AutomationProperties.SetLabeledBy(_firstDueDate, _firstDueLabel);
+        AutomationProperties.SetLabeledBy(_firstDueTime, _firstDueLabel);
         var intervalLabel = AddFormRow(form, 2, "固定间隔", BuildIntervalRow(), _intervalError,
             nameof(ReminderRulesEditorViewModel.IsIntervalVisible));
         AutomationProperties.SetLabeledBy(_interval, intervalLabel);
@@ -489,6 +488,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         cancel.SetResourceReference(StyleProperty, "SecondaryButton");
         AutomationProperties.SetAutomationId(cancel, "CancelReminderRulesButton");
         Bind(cancel, Button.CommandProperty, nameof(ReminderRulesEditorViewModel.CancelDraftCommand), _viewModel);
+        _cancelDraftButton = cancel;
         var dialogActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -525,27 +525,36 @@ internal sealed class ReminderRulesEditorWindow : Window
     {
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition());
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72) });
-        // #312/#311：单框日期控件与相邻小时下拉框之间保留 SpacingUnit(8 DIP) 间距，避免外框相撞。
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+        // #312/#311/#329：单框日期控件与相邻可键入时刻框之间保留 SpacingUnit(8 DIP) 间距，避免外框相撞。
         _firstDueDate.Margin = new Thickness(0, 0, SpacingTokens.Resolve(this, SpacingTokens.Unit), 0);
-        Grid.SetColumn(_firstDueHour, 1);
-        var separator = new TextBlock
-        {
-            Text = ":",
-            Margin = new Thickness(6, 0, 6, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        separator.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowSectionFontSize");
-        separator.SetResourceReference(TextBlock.ForegroundProperty, "InkBrush");
-        Grid.SetColumn(separator, 2);
-        Grid.SetColumn(_firstDueMinute, 3);
+        var timeSlot = new Grid();
+        timeSlot.Children.Add(_firstDueTime);
+        timeSlot.Children.Add(CreateTimePlaceholder(_firstDueTime));
+        Grid.SetColumn(timeSlot, 1);
         row.Children.Add(_firstDueDate);
-        row.Children.Add(_firstDueHour);
-        row.Children.Add(separator);
-        row.Children.Add(_firstDueMinute);
+        row.Children.Add(timeSlot);
         return row;
+    }
+
+    private static SilentTextBlock CreateTimePlaceholder(TextBox target)
+    {
+        var placeholder = new SilentTextBlock
+        {
+            Text = "HH:mm",
+            Margin = new Thickness(12, 0, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            Visibility = string.IsNullOrEmpty(target.Text) ? Visibility.Visible : Visibility.Collapsed
+        };
+        placeholder.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        Typography.SetNumeralAlignment(placeholder, FontNumeralAlignment.Tabular);
+        target.TextChanged += (_, _) =>
+            placeholder.Visibility = string.IsNullOrEmpty(target.Text)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        return placeholder;
     }
 
     private UIElement BuildIntervalRow()
@@ -661,6 +670,14 @@ internal sealed class ReminderRulesEditorWindow : Window
         _viewModel.DraftCancelled += (_, _) => DialogResult = false;
         _viewModel.ValidationErrorRaised += OnValidationErrorRaised;
         _viewModel.FormFocusRequested += OnFormFocusRequested;
+        _firstDueTime.LostKeyboardFocus += (_, args) =>
+        {
+            if (!ReferenceEquals(args.NewFocus, _cancelRuleEditButton) &&
+                !ReferenceEquals(args.NewFocus, _cancelDraftButton))
+            {
+                _viewModel.ValidateFirstDueTimeOnBlur();
+            }
+        };
         PreviewKeyDown += (_, args) =>
         {
             if (args.Key == Key.Escape && _viewModel.EditingRuleId is not null)
@@ -737,7 +754,11 @@ internal sealed class ReminderRulesEditorWindow : Window
     private Control GetErrorControl(ReminderRuleEditingErrorTarget target) => target switch
     {
         ReminderRuleEditingErrorTarget.Mode => _mode,
-        ReminderRuleEditingErrorTarget.FirstDue => _firstDueDate,
+        ReminderRuleEditingErrorTarget.FirstDue =>
+            _viewModel.FirstDueDate is not null &&
+            (_viewModel.FirstDueTime is null || _viewModel.HasInvalidFirstDueTimeInput)
+                ? _firstDueTime
+                : _firstDueDate,
         ReminderRuleEditingErrorTarget.Interval => _interval.SelectedIndex == 3 ? _customInterval : _interval,
         ReminderRuleEditingErrorTarget.RelativeOffset => _relativeOffset,
         ReminderRuleEditingErrorTarget.CalendarInterval => _calendarInterval,

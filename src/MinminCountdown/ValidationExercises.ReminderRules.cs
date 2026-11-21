@@ -863,8 +863,7 @@ internal static partial class ValidationExercises
                 interval.Text = "2";
                 FindByAutomationId<DatePicker>(noteEditor, "ReminderRuleFirstDueDate").SelectedDate =
                     new DateTime(2032, 1, 5);
-                FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleFirstDueHour").SelectedIndex = 9;
-                FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleFirstDueMinute").SelectedIndex = 30;
+                FindByAutomationId<TextBox>(noteEditor, "ReminderRuleFirstDueTime").Text = "09:30";
                 foreach (var day in Enum.GetValues<DayOfWeek>())
                 {
                     FindByAutomationId<CheckBox>(noteEditor, $"ReminderRuleCalendarWeekday{day}")
@@ -976,8 +975,7 @@ internal static partial class ValidationExercises
                 FindByAutomationId<TextBox>(countdownEditor, "ReminderRuleCalendarInterval").Text = "1";
                 FindByAutomationId<DatePicker>(countdownEditor, "ReminderRuleFirstDueDate").SelectedDate =
                     new DateTime(2031, 1, 1);
-                FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleFirstDueHour").SelectedIndex = 10;
-                FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleFirstDueMinute").SelectedIndex = 0;
+                FindByAutomationId<TextBox>(countdownEditor, "ReminderRuleFirstDueTime").Text = "10:00";
                 FindByAutomationId<ComboBox>(countdownEditor, "ReminderRuleCalendarDay").SelectedIndex = 30;
                 InvokeRuleEditorButton(FindByAutomationId<Button>(countdownEditor, "SaveReminderRuleButton"));
                 InvokeRuleEditorButton(FindByAutomationId<Button>(countdownEditor, "AcceptReminderRulesButton"));
@@ -1032,15 +1030,12 @@ internal static partial class ValidationExercises
             var visibleFields = new[]
             {
                 ("ReminderRuleFirstDueDate", firstDueVisible),
-                ("ReminderRuleFirstDueHour", firstDueVisible),
-                ("ReminderRuleFirstDueMinute", firstDueVisible),
+                ("ReminderRuleFirstDueTime", firstDueVisible),
                 ("ReminderRuleInterval", expected.Contains("固定间隔")),
                 ("ReminderRuleRelativeOffsetMinutes", expected.Contains("提前分钟")),
                 ("ReminderRuleCalendarFrequency", expected.Contains("重复周期")),
                 ("ReminderRuleCalendarInterval", expected.Contains("每隔几个周期"))
             }.All(field => FindByAutomationId<FrameworkElement>(editor, field.Item1).IsVisible == field.Item2);
-            var timeSeparatorMatches = VisualDescendants<TextBlock>(editor)
-                .Any(text => text.Text == ":" && text.IsVisible) == firstDueVisible;
             var emptyRowsCollapse = VisualDescendants<Grid>(editor)
                 .Where(grid => grid.IsVisible &&
                     (grid.IsAncestorOf(mode) || labels.Any(label => ReferenceEquals(label.Parent, grid))))
@@ -1048,12 +1043,12 @@ internal static partial class ValidationExercises
                     grid.Children.Cast<UIElement>().Any(child => Grid.GetRow(child) == pair.index && child.IsVisible) ||
                     pair.row.ActualHeight <= 0.01));
             var result = actual.Order(StringComparer.Ordinal).SequenceEqual(expected.Order(StringComparer.Ordinal)) &&
-                visibleFields && timeSeparatorMatches && emptyRowsCollapse;
+                visibleFields && emptyRowsCollapse;
             passed &= result;
             if (!result)
             {
                 Console.Error.WriteLine("REMINDER_FORM_DIAGNOSTIC " + JsonSerializer.Serialize(new
-                { scenario, supportsRelative, expected, actual, visibleFields, timeSeparatorMatches, emptyRowsCollapse }));
+                { scenario, supportsRelative, expected, actual, visibleFields, emptyRowsCollapse }));
             }
         }
 
@@ -1092,8 +1087,8 @@ internal static partial class ValidationExercises
         FindByAutomationId<ComboBox>(editor, "ReminderRuleMode").SelectedIndex =
             mode == ReminderEditingMode.Once ? 0 : 1;
         FindByAutomationId<DatePicker>(editor, "ReminderRuleFirstDueDate").SelectedDate = due.Date;
-        FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueHour").SelectedIndex = due.Hour;
-        FindByAutomationId<ComboBox>(editor, "ReminderRuleFirstDueMinute").SelectedIndex = due.Minute;
+        FindByAutomationId<TextBox>(editor, "ReminderRuleFirstDueTime").Text =
+            due.ToString("HH:mm", CultureInfo.InvariantCulture);
         var interval = FindByAutomationId<ComboBox>(editor, "ReminderRuleInterval");
         interval.SelectedIndex = intervalMinutes switch
         {

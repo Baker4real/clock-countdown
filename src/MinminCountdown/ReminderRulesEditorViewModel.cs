@@ -23,6 +23,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     internal const int MinimumCalendarInterval = 1;
     internal const int MaximumCalendarInterval = 999;
     internal const string InvalidCalendarIntervalError = "每隔几个周期必须是 1 到 999。";
+    private const string IncompleteFirstDueError = "请选择完整的首次提醒日期和时间。";
+    private const string IncompleteCalendarScheduleError = "请选择完整的日历起始日期和本地时间。";
 
     private const int CalendarModeIndexWithoutCountdown = 2;
     private const int CalendarModeIndexWithCountdown = 3;
@@ -41,8 +43,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private string? _editingRuleId;
     private int _modeIndex;
     private DateTime? _firstDueDate;
-    private int _firstDueHourIndex = -1;
-    private int _firstDueMinuteIndex = -1;
+    private TimeSpan? _firstDueTime;
+    private bool _hasInvalidFirstDueTimeInput;
     private int _intervalIndex = 1;
     private int? _customIntervalMinutes;
     private bool _hasInvalidCustomIntervalInput;
@@ -90,12 +92,6 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             : new[] { "提醒一次", "每隔一段时间", "截止前提醒", "按日历重复" };
         IntervalOptions = new[] { "15 分钟", "30 分钟", "60 分钟", "自定义" };
         CalendarFrequencyOptions = new[] { "每天", "每周", "每月", "每年" };
-        Hours = Enumerable.Range(0, 24)
-            .Select(static hour => hour.ToString("D2", CultureInfo.InvariantCulture))
-            .ToArray();
-        Minutes = Enumerable.Range(0, 60)
-            .Select(static minute => minute.ToString("D2", CultureInfo.InvariantCulture))
-            .ToArray();
         Months = Enumerable.Range(1, 12)
             .Select(static month => month.ToString(CultureInfo.InvariantCulture))
             .ToArray();
@@ -132,10 +128,6 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public IReadOnlyList<string> IntervalOptions { get; }
 
     public IReadOnlyList<string> CalendarFrequencyOptions { get; }
-
-    public IReadOnlyList<string> Hours { get; }
-
-    public IReadOnlyList<string> Minutes { get; }
 
     public IReadOnlyList<string> Months { get; }
 
@@ -187,19 +179,46 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public DateTime? FirstDueDate
     {
         get => _firstDueDate;
-        set => SetFormProperty(ref _firstDueDate, value);
+        set
+        {
+            if (!SetFormProperty(ref _firstDueDate, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+        }
     }
 
-    public int FirstDueHourIndex
+    public TimeSpan? FirstDueTime
     {
-        get => _firstDueHourIndex;
-        set => SetFormProperty(ref _firstDueHourIndex, value);
+        get => _firstDueTime;
+        set
+        {
+            if (!SetFormProperty(ref _firstDueTime, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+        }
     }
 
-    public int FirstDueMinuteIndex
+    public bool HasInvalidFirstDueTimeInput
     {
-        get => _firstDueMinuteIndex;
-        set => SetFormProperty(ref _firstDueMinuteIndex, value);
+        get => _hasInvalidFirstDueTimeInput;
+        set
+        {
+            if (!SetFormProperty(ref _hasInvalidFirstDueTimeInput, value))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+        }
     }
 
     public int IntervalIndex
@@ -297,9 +316,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     public string FirstDueDateAutomationName => IsCalendarMode ? "开始日期" : "首次提醒日期";
 
-    public string FirstDueHourAutomationName => IsCalendarMode ? "本地时刻小时" : "首次提醒小时";
-
-    public string FirstDueMinuteAutomationName => IsCalendarMode ? "本地时刻分钟" : "首次提醒分钟";
+    public string FirstDueTimeAutomationName => IsCalendarMode ? "本地时刻" : "首次提醒时刻";
 
     public bool IsFirstDueVisible => !IsRelativeMode;
 
@@ -366,6 +383,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             if (SetProperty(ref _firstDueError, value))
             {
                 OnPropertyChanged(nameof(IsFirstDueErrorVisible));
+                OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+                OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
             }
         }
     }
@@ -436,6 +455,14 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     public bool IsFirstDueErrorVisible => !string.IsNullOrEmpty(FirstDueError);
 
+    public bool IsFirstDueDateErrorVisible =>
+        IsFirstDueErrorVisible &&
+        (FirstDueDate is null || (FirstDueTime is not null && !HasInvalidFirstDueTimeInput));
+
+    public bool IsFirstDueTimeErrorVisible =>
+        IsFirstDueErrorVisible &&
+        (FirstDueTime is null || HasInvalidFirstDueTimeInput || FirstDueDate is not null);
+
     public bool IsIntervalErrorVisible => !string.IsNullOrEmpty(IntervalError);
 
     public bool IsIntervalComboErrorVisible => IsIntervalErrorVisible && !IsCustomIntervalVisible;
@@ -473,6 +500,27 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     }
 
     internal void ClearValidationErrors() => ClearErrors();
+
+    internal void ValidateFirstDueTimeOnBlur()
+    {
+        if (_updatingForm || !IsFirstDueVisible)
+        {
+            return;
+        }
+
+        if (HasInvalidFirstDueTimeInput || FirstDueTime is null)
+        {
+            FirstDueError = IsCalendarMode
+                ? IncompleteCalendarScheduleError
+                : IncompleteFirstDueError;
+        }
+        else if (FirstDueDate is not null &&
+                 (string.Equals(FirstDueError, IncompleteFirstDueError, StringComparison.Ordinal) ||
+                  string.Equals(FirstDueError, IncompleteCalendarScheduleError, StringComparison.Ordinal)))
+        {
+            FirstDueError = string.Empty;
+        }
+    }
 
     private bool IsRelativeMode =>
         _countdownTargetUtc is not null && ModeIndex == 2;
@@ -653,36 +701,40 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         BeginAddRule();
     }
 
-    private ReminderRuleEditingRequest BuildEditingRequest() => new(
-        _editingRuleId,
-        ModeIndex switch
-        {
-            0 => ReminderEditingMode.Once,
-            1 => ReminderEditingMode.Repeating,
-            2 when _countdownTargetUtc is not null => ReminderEditingMode.CountdownRelative,
-            var index when index == CalendarModeIndex => ReminderEditingMode.Calendar,
-            _ => (ReminderEditingMode)(-1)
-        },
-        FirstDueDate,
-        FirstDueHourIndex,
-        FirstDueMinuteIndex,
-        SelectedInterval,
-        CustomIntervalMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-        _clock.UtcNow,
-        _countdownTargetUtc,
-        RelativeOffsetMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-        SelectedCalendarFrequency,
-        CalendarInterval?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-        Weekdays.Where(static weekday => weekday.IsSelected)
-            .Select(static weekday => weekday.Day)
-            .ToArray(),
-        CalendarDayIndex >= 0
-            ? (CalendarDayIndex + 1).ToString(CultureInfo.InvariantCulture)
-            : string.Empty,
-        CalendarMonthIndex >= 0
-            ? (CalendarMonthIndex + 1).ToString(CultureInfo.InvariantCulture)
-            : string.Empty,
-        CalendarLastDay);
+    private ReminderRuleEditingRequest BuildEditingRequest()
+    {
+        var hasValidTime = !HasInvalidFirstDueTimeInput && FirstDueTime is not null;
+        return new ReminderRuleEditingRequest(
+            _editingRuleId,
+            ModeIndex switch
+            {
+                0 => ReminderEditingMode.Once,
+                1 => ReminderEditingMode.Repeating,
+                2 when _countdownTargetUtc is not null => ReminderEditingMode.CountdownRelative,
+                var index when index == CalendarModeIndex => ReminderEditingMode.Calendar,
+                _ => (ReminderEditingMode)(-1)
+            },
+            FirstDueDate,
+            hasValidTime ? FirstDueTime!.Value.Hours : -1,
+            hasValidTime ? FirstDueTime!.Value.Minutes : -1,
+            SelectedInterval,
+            CustomIntervalMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            _clock.UtcNow,
+            _countdownTargetUtc,
+            RelativeOffsetMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            SelectedCalendarFrequency,
+            CalendarInterval?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            Weekdays.Where(static weekday => weekday.IsSelected)
+                .Select(static weekday => weekday.Day)
+                .ToArray(),
+            CalendarDayIndex >= 0
+                ? (CalendarDayIndex + 1).ToString(CultureInfo.InvariantCulture)
+                : string.Empty,
+            CalendarMonthIndex >= 0
+                ? (CalendarMonthIndex + 1).ToString(CultureInfo.InvariantCulture)
+                : string.Empty,
+            CalendarLastDay);
+    }
 
     private bool TryBuildPreviewRule(out ReminderRule? rule) =>
         ReminderRuleEditing.TryBuildPreviewRule(BuildEditingRequest(), out rule);
@@ -728,8 +780,10 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private void SetSchedule(DateTimeOffset? beijing)
     {
         FirstDueDate = beijing?.Date;
-        FirstDueHourIndex = beijing?.Hour ?? -1;
-        FirstDueMinuteIndex = beijing?.Minute ?? -1;
+        FirstDueTime = beijing is { } value
+            ? new TimeSpan(value.Hour, value.Minute, 0)
+            : null;
+        HasInvalidFirstDueTimeInput = false;
     }
 
     private void RequestFormFocus()
@@ -754,8 +808,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(FirstDueLabel));
         OnPropertyChanged(nameof(FirstDueDateAutomationName));
-        OnPropertyChanged(nameof(FirstDueHourAutomationName));
-        OnPropertyChanged(nameof(FirstDueMinuteAutomationName));
+        OnPropertyChanged(nameof(FirstDueTimeAutomationName));
         OnPropertyChanged(nameof(IsFirstDueVisible));
         OnPropertyChanged(nameof(IsIntervalVisible));
         OnPropertyChanged(nameof(IsRelativeVisible));
@@ -958,6 +1011,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         CollectionError = string.Empty;
         OnPropertyChanged(nameof(IsModeErrorVisible));
         OnPropertyChanged(nameof(IsFirstDueErrorVisible));
+        OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+        OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
         OnPropertyChanged(nameof(IsIntervalErrorVisible));
         OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
         OnPropertyChanged(nameof(IsRelativeOffsetErrorVisible));

@@ -1115,33 +1115,27 @@ internal static partial class ValidationReport
                     "ReminderRuleMode",
                     StringComparison.Ordinal));
             var date = Descendants<DatePicker>(editor).Single();
-            var hour = Descendants<ComboBox>(editor).Single(comboBox =>
+            var time = Descendants<TextBox>(editor).Single(textBox =>
                 string.Equals(
-                    AutomationProperties.GetAutomationId(comboBox),
-                    "ReminderRuleFirstDueHour",
-                    StringComparison.Ordinal));
-            var minute = Descendants<ComboBox>(editor).Single(comboBox =>
-                string.Equals(
-                    AutomationProperties.GetAutomationId(comboBox),
-                    "ReminderRuleFirstDueMinute",
+                    AutomationProperties.GetAutomationId(textBox),
+                    "ReminderRuleFirstDueTime",
                     StringComparison.Ordinal));
             var onceLabelsMatch =
                 FirstDueRowLabel(editor) == "首次提醒" &&
                 AutomationProperties.GetName(date) == "首次提醒日期" &&
-                AutomationProperties.GetName(hour) == "首次提醒小时" &&
-                AutomationProperties.GetName(minute) == "首次提醒分钟";
+                AutomationProperties.GetName(time) == "首次提醒时刻";
             mode.SelectedIndex = 2;
             PumpDispatcher();
             var calendarLabelsMatch =
                 FirstDueRowLabel(editor) == "开始日期" &&
                 AutomationProperties.GetName(date) == "开始日期" &&
-                AutomationProperties.GetName(hour) == "本地时刻小时" &&
-                AutomationProperties.GetName(minute) == "本地时刻分钟";
+                AutomationProperties.GetName(time) == "本地时刻";
             mode.SelectedIndex = 1;
             PumpDispatcher();
             var intervalLabelsMatch =
                 FirstDueRowLabel(editor) == "首次提醒" &&
-                AutomationProperties.GetName(date) == "首次提醒日期";
+                AutomationProperties.GetName(date) == "首次提醒日期" &&
+                AutomationProperties.GetName(time) == "首次提醒时刻";
             return onceLabelsMatch && calendarLabelsMatch && intervalLabelsMatch;
         }
         finally
@@ -1174,8 +1168,7 @@ internal static partial class ValidationReport
         ReminderRulesEditorWindow? rulesEditor = null;
         ReminderCenterWindow? reminderCenter = null;
         Window? negativeHost = null;
-        var reminderHourOptionCount = 0;
-        var reminderMinuteOptionCount = 0;
+        var reminderRuleTimeThemed = false;
         try
         {
             main.ShowWorkspace(WorkspaceKind.Countdowns);
@@ -1215,20 +1208,12 @@ internal static partial class ValidationReport
             attached.Add(MeasureDatePicker(
                 "ReminderRules.FirstDueDate",
                 Descendants<DatePicker>(rulesEditor).Single()));
-            reminderHourOptionCount = Descendants<ComboBox>(rulesEditor)
-                .Single(comboBox =>
+            reminderRuleTimeThemed = HasTemplate(Descendants<TextBox>(rulesEditor)
+                .Single(textBox =>
                     string.Equals(
-                        AutomationProperties.GetAutomationId(comboBox),
-                        "ReminderRuleFirstDueHour",
-                        StringComparison.Ordinal))
-                .Items.Count;
-            reminderMinuteOptionCount = Descendants<ComboBox>(rulesEditor)
-                .Single(comboBox =>
-                    string.Equals(
-                        AutomationProperties.GetAutomationId(comboBox),
-                        "ReminderRuleFirstDueMinute",
-                        StringComparison.Ordinal))
-                .Items.Count;
+                        AutomationProperties.GetAutomationId(textBox),
+                        "ReminderRuleFirstDueTime",
+                        StringComparison.Ordinal)));
 
             var reminderKey = new ActiveReminderOccurrenceKey(
                 "date-picker-validation-rule",
@@ -1272,6 +1257,12 @@ internal static partial class ValidationReport
                 Descendants<DatePicker>(reminderCenter).Single());
             var reminderCenterComboBoxes = Descendants<ComboBox>(reminderCenter).ToArray();
             var reminderCenterComboBoxThemedCount = reminderCenterComboBoxes.Count(HasTemplate);
+            var reminderCenterCustomTimeThemed = HasTemplate(Descendants<TextBox>(reminderCenter)
+                .Single(textBox =>
+                    string.Equals(
+                        AutomationProperties.GetAutomationId(textBox),
+                        "ReminderEntryCustomSnoozeTime",
+                        StringComparison.Ordinal)));
 
             // Keep an independent negative: the same warm, read-only date
             // template with its text activation surface removed. Its arrow
@@ -1302,10 +1293,10 @@ internal static partial class ValidationReport
                 attached,
                 reminderCenterMeasurement,
                 negativeMeasurement,
-                reminderHourOptionCount,
-                reminderMinuteOptionCount,
+                reminderRuleTimeThemed,
                 reminderCenterComboBoxes.Length,
-                reminderCenterComboBoxThemedCount);
+                reminderCenterComboBoxThemedCount,
+                reminderCenterCustomTimeThemed);
         }
         finally
         {

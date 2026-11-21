@@ -336,8 +336,7 @@ internal static class ExtendedNumericInputsScenario
                 FindByAutomationId<ComboBox>(editorWindow, "ReminderRuleMode").SelectedIndex = 2;
                 FindByAutomationId<ComboBox>(editorWindow, "ReminderRuleCalendarFrequency").SelectedIndex = 0;
                 FindByAutomationId<DatePicker>(editorWindow, "ReminderRuleFirstDueDate").SelectedDate = startDate;
-                FindByAutomationId<ComboBox>(editorWindow, "ReminderRuleFirstDueHour").SelectedIndex = 9;
-                FindByAutomationId<ComboBox>(editorWindow, "ReminderRuleFirstDueMinute").SelectedIndex = 15;
+                FindByAutomationId<TextBox>(editorWindow, "ReminderRuleFirstDueTime").Text = "09:15";
                 var intervalBox = FindByAutomationId<TextBox>(editorWindow, "ReminderRuleCalendarInterval");
                 intervalBox.Text = "0";
                 SettleWindow(editorWindow);

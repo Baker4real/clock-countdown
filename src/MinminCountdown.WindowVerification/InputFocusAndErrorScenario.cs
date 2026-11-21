@@ -70,30 +70,27 @@ internal static class InputFocusAndErrorScenario
 
             var name = Required<TextBox>(main, "CountdownName");
             var date = Required<DatePicker>(main, "CountdownDate");
-            var hour = Required<ComboBox>(main, "CountdownHour");
-            var minute = Required<ComboBox>(main, "CountdownMinute");
-            var second = Required<ComboBox>(main, "CountdownSecond");
+            var time = Required<TextBox>(main, "CountdownTime");
             var save = Required<Button>(main, "SaveCountdownButton");
             var nameError = Required<TextBlock>(main, "CountdownNameError");
             var dateError = Required<TextBlock>(main, "CountdownDateError");
+            var timeError = Required<TextBlock>(main, "CountdownTimeError");
             var message = Required<TextBlock>(main, "CountdownMessage");
-            Require(hour.IsVisible, "展开倒计时编辑器后时间下拉框仍不可见。");
+            Require(time.IsVisible, "展开倒计时编辑器后截止时刻输入框仍不可见。");
 
             name.Text = "有效输入";
             date.SelectedDate = workspace.Snapshot.BeijingNow.Date.AddDays(2);
-            hour.SelectedIndex = 0;
-            minute.SelectedIndex = 0;
-            second.SelectedIndex = 0;
+            time.Text = "00:00:00";
             Keyboard.Focus(save);
             SettleLayout(main);
 
-            var restingGeometry = ReadGeometry(main, name, date, hour, save);
+            var restingGeometry = ReadGeometry(main, name, date, time, save);
 
             foreach (var (input, label) in new (Control Input, string Label)[]
                      {
                          (name, "valid-focused-name"),
                          (date, "valid-focused-date"),
-                         (hour, "valid-focused-hour")
+                         (time, "valid-focused-time")
                      })
             {
                 Keyboard.Focus(input);
@@ -104,7 +101,7 @@ internal static class InputFocusAndErrorScenario
                     !ReferenceEquals(ReadBoundaries(input)[0].Brush, main.FindResource("ActiveBrush")) &&
                     !ReferenceEquals(ReadBoundaries(input)[0].Brush, main.FindResource("DangerBrush")),
                     $"{input.Name} 有效焦点仍与红色/危险色混用。");
-                var focusedGeometry = ReadGeometry(main, name, date, hour, save);
+                var focusedGeometry = ReadGeometry(main, name, date, time, save);
                 Require(
                     restingGeometry.Equals(focusedGeometry),
                     $"{input.Name} 有效焦点挤动布局：resting={restingGeometry}，focused={focusedGeometry}。");
@@ -113,7 +110,43 @@ internal static class InputFocusAndErrorScenario
 
             RequireHover(main, name, save);
             RequireHover(main, date, save);
-            RequireHover(main, hour, save);
+            RequireHover(main, time, save);
+
+            // 验证生产 ComboBox（规则编辑器 ReminderRuleMode）仍保持暖金焦点与真实悬停边界
+            var rulesEditor = new ReminderRulesEditorWindow(
+                Array.Empty<ReminderRule>(),
+                new FixedClock(FixtureUtc))
+            {
+                Owner = main,
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                Left = -20_000,
+                Top = -20_000,
+                Opacity = 0
+            };
+            try
+            {
+                rulesEditor.Show();
+                rulesEditor.Activate();
+                WindowValidationInput.Pump(rulesEditor.Dispatcher);
+                rulesEditor.UpdateLayout();
+                var ruleMode = FindByAutomationId<ComboBox>(rulesEditor, "ReminderRuleMode");
+                var ruleCancel = FindByAutomationId<Button>(rulesEditor, "CancelReminderRulesButton");
+                Keyboard.Focus(ruleMode);
+                WindowValidationInput.Pump(rulesEditor.Dispatcher);
+                rulesEditor.UpdateLayout();
+                Require(ruleMode.IsKeyboardFocusWithin, "ReminderRuleMode 下拉框没有取得键盘焦点。");
+                RequireState(main, ruleMode, "MainActionFocusBrush", 2, "下拉框有效且有焦点");
+                RequireHover(rulesEditor, main, ruleMode, ruleCancel);
+            }
+            finally
+            {
+                rulesEditor.Close();
+                WindowValidationInput.Pump(rulesEditor.Dispatcher);
+                main.Activate();
+                SettleLayout(main);
+            }
 
             announcements.Clear();
             name.Text = string.Empty;
@@ -135,13 +168,13 @@ internal static class InputFocusAndErrorScenario
                 "名称错误行没有触发礼貌直播区播报。");
             capture?.Invoke(main, "error-name-focused-date-unfocused");
 
-            var errorBeforeSwitch = ReadGeometry(main, name, date, hour, save);
+            var errorBeforeSwitch = ReadGeometry(main, name, date, time, save);
             Keyboard.Focus(date);
             SettleLayout(main);
             Require(date.IsKeyboardFocusWithin, "日期错误没有取得焦点。");
             RequireState(main, name, "DangerBrush", 1, "名称出错无焦点");
             RequireState(main, date, "DangerBrush", 2, "日期出错有焦点");
-            var errorAfterSwitch = ReadGeometry(main, name, date, hour, save);
+            var errorAfterSwitch = ReadGeometry(main, name, date, time, save);
             Require(
                 errorBeforeSwitch.Equals(errorAfterSwitch),
                 $"错误三态切换挤动布局：before={errorBeforeSwitch}，after={errorAfterSwitch}。");
@@ -165,7 +198,7 @@ internal static class InputFocusAndErrorScenario
             RequireCleared(date, dateError);
             Require(string.IsNullOrEmpty(message.Text), "所有字段修正后唯一错误行没有清除。");
             RequireState(main, date, "MainActionFocusBrush", 2, "日期修正后仍有焦点");
-            var restoredGeometry = ReadGeometry(main, name, date, hour, save);
+            var restoredGeometry = ReadGeometry(main, name, date, time, save);
             Require(
                 restingGeometry.Equals(restoredGeometry),
                 $"修正错误后布局未回到初始几何：resting={restingGeometry}，restored={restoredGeometry}。");
@@ -205,15 +238,15 @@ internal static class InputFocusAndErrorScenario
             SettleLayout(main);
 
             date.SelectedDate = workspace.Snapshot.BeijingNow.Date.AddDays(4);
-            hour.SelectedIndex = -1;
+            time.Text = "25:00:00";
             ClickSave(main, save);
-            Require(hour.IsKeyboardFocusWithin, "截止时刻不完整时没有聚焦首个时间字段。");
-            RequireState(main, hour, "DangerBrush", 2, "时间下拉出错有焦点");
-            RequireAccessibleError(dateError, hour, "请先选择完整的倒计时截止时间。");
-            hour.SelectedIndex = 0;
+            Require(time.IsKeyboardFocusWithin, "截止时刻无效时没有聚焦截止时刻字段。");
+            RequireState(main, time, "DangerBrush", 2, "时间输入出错有焦点");
+            RequireAccessibleError(timeError, time, "截止时刻请使用 HH:mm:ss。");
+            time.Text = "00:00:00";
             SettleLayout(main);
-            RequireCleared(hour, dateError);
-            RequireState(main, hour, "MainActionFocusBrush", 2, "时间修正后仍有焦点");
+            RequireCleared(time, timeError);
+            RequireState(main, time, "MainActionFocusBrush", 2, "时间修正后仍有焦点");
         }
         finally
         {
@@ -231,22 +264,27 @@ internal static class InputFocusAndErrorScenario
         }
     }
 
-    private static void RequireHover(MainWindow main, Control input, Button save)
+    private static void RequireHover(MainWindow main, Control input, Button save) =>
+        RequireHover(main, main, input, save);
+
+    private static void RequireHover(Window host, MainWindow resourcesOwner, Control input, Button idleFocusTarget)
     {
-        Keyboard.Focus(save);
-        SettleLayout(main);
-        WithPointerHover(main, input, () =>
+        Keyboard.Focus(idleFocusTarget);
+        WindowValidationInput.Pump(host.Dispatcher);
+        host.UpdateLayout();
+        WithPointerHover(host, input, () =>
         {
             Require(!input.IsKeyboardFocusWithin, $"{input.Name} 悬停检查前不应持有键盘焦点。");
             Require(input.IsMouseOver, $"{input.Name} 没有保持真实悬停状态。");
-            RequireState(main, input, "ActiveHoverBrush", 1, "悬停");
+            RequireState(resourcesOwner, input, "ActiveHoverBrush", 1, "悬停");
         });
     }
 
-    private static void WithPointerHover(MainWindow main, Control target, Action verify)
+    private static void WithPointerHover(Window host, Control target, Action verify)
     {
         target.BringIntoView();
-        SettleLayout(main);
+        WindowValidationInput.Pump(host.Dispatcher);
+        host.UpdateLayout();
         if (PresentationSource.FromVisual(target) is not HwndSource source ||
             source.RootVisual is not Visual root)
         {
@@ -257,13 +295,14 @@ internal static class InputFocusAndErrorScenario
             new Point(Math.Min(target.RenderSize.Width * 0.35, 24), target.RenderSize.Height / 2));
         point = source.CompositionTarget.TransformToDevice.Transform(point);
         var coordinates = new IntPtr(((int)point.Y << 16) | ((int)point.X & 0xffff));
-        main.Activate();
+        host.Activate();
         SetCapture(source.Handle);
         try
         {
             Require(GetCapture() == source.Handle, "隔离验证窗口无法捕获鼠标移动消息。");
             SendMessage(source.Handle, 0x0200, IntPtr.Zero, coordinates);
-            SettleLayout(main);
+            WindowValidationInput.Pump(host.Dispatcher);
+            host.UpdateLayout();
             verify();
         }
         finally
@@ -273,7 +312,36 @@ internal static class InputFocusAndErrorScenario
                 ReleaseCapture();
             }
             SendMessage(source.Handle, 0x02A3, IntPtr.Zero, IntPtr.Zero);
-            SettleLayout(main);
+            WindowValidationInput.Pump(host.Dispatcher);
+            host.UpdateLayout();
+        }
+    }
+
+    private static T FindByAutomationId<T>(DependencyObject root, string automationId) where T : DependencyObject
+    {
+        foreach (var candidate in Walk(root))
+        {
+            if (candidate is T match &&
+                string.Equals(AutomationProperties.GetAutomationId(match), automationId, StringComparison.Ordinal))
+            {
+                return match;
+            }
+        }
+
+        throw new InvalidOperationException($"窗口缺少 AutomationId={automationId} 的 {typeof(T).Name}。");
+
+        static IEnumerable<DependencyObject> Walk(DependencyObject node)
+        {
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var index = 0; index < count; index++)
+            {
+                var child = VisualTreeHelper.GetChild(node, index);
+                yield return child;
+                foreach (var nested in Walk(child))
+                {
+                    yield return nested;
+                }
+            }
         }
     }
 
@@ -353,7 +421,7 @@ internal static class InputFocusAndErrorScenario
         MainWindow main,
         TextBox name,
         DatePicker date,
-        ComboBox hour,
+        Control time,
         Button save)
     {
         var root = (Visual)main.Content;
@@ -364,7 +432,7 @@ internal static class InputFocusAndErrorScenario
             Bounds(name, root),
             Bounds(contentHost, root),
             Bounds(date, root),
-            Bounds(hour, root),
+            Bounds(time, root),
             Bounds(save, root));
     }
 

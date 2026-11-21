@@ -3897,6 +3897,8 @@ exit 23
         MainNoteSearchCoalescesAndPreservesTagControls = '管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）'
         MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame = '管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）'
         SpacingTokensWiredAcrossWindows = 'SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）'
+        MainCountdownDeadlineTimeTypingAndStepping = '管理窗口倒计时截止时刻改为单一可键入 HH:mm:ss 文本框：新增默认当前北京时间、直接键入与编辑保存保持精确领域值，光标按时/分/秒分段支持上下键步进与边界回绕，复用 TimeInputBehavior 兼顾 HH:mm 格式（#328）'
+        MainCountdownDeadlineTimeValidationAndAccessibility = '倒计时截止时刻在失焦与提交时校验空值、越界与非时刻文本，错误行贴字段下方且礼貌播报，提交失败聚焦时间框（含收起态重展开），有效/出错无焦/出错有焦为 2/1/2 DIP 不挤布局且修正即清，保留可见标签 LabeledBy 与等价可访问名并适配系统对比度（#328）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -5195,7 +5197,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $narratorLiveNames = @(
         'StatusText', 'RecordCountText', 'CountdownMessage', 'NoteMessage', 'TagManagerMessage',
         'EmptyCountdownMessage', 'EmptyNotesMessage',
-        'CountdownNameError', 'CountdownDateError', 'NoteTextError', 'NoteDateError',
+        'CountdownNameError', 'CountdownDateError', 'CountdownTimeError', 'NoteTextError', 'NoteDateError',
         'MonthlySalaryError', 'WorkStartError', 'WorkEndError',
         'FloatingNoteTextError', 'FloatingNoteDateError', 'FloatingReminderMessage', 'FloatingNoteMessage'
     )
@@ -5588,14 +5590,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([double] $adapterValidation.CountdownInputHeight -gt 0) '倒计时输入实测高度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CountdownNameWidth -gt 0) '名称输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.TargetDateWidth -gt 0) '日期输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.TargetHourWidth -gt 0) '小时输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.TargetMinuteWidth -gt 0) '分钟输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.TargetSecondWidth -gt 0) '秒输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $adapterValidation.TargetTimeWidth -gt 0) '截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
     Assert-Equal $true ([double] $adapterValidation.DisplayPrecisionWidth -gt 0) '精度输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedTargetDateWidth -gt 0) '展开态日期输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetHourWidth -gt 0) '展开态小时输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetMinuteWidth -gt 0) '展开态分钟输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetSecondWidth -gt 0) '展开态秒输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetTimeWidth -gt 0) '展开态截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedDisplayPrecisionWidth -gt 0) '展开态精度输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.CountdownPreferenceInputHeight -gt 0) '偏好输入实测高度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.MonthlySalaryWidth -gt 0) '月薪输入实测宽度为正（#129 自 U1 迁移）'
@@ -5604,8 +5602,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([double] $adapterValidation.ExpandedMonthlySalaryWidth -gt 0) '展开态月薪输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedWorkStartWidth -gt 0) '展开态上班输入实测宽度为正（#129 自 U1 迁移）'
     Assert-Equal $true ([double] $adapterValidation.ExpandedWorkEndWidth -gt 0) '展开态下班输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal 3 ([int] $adapterValidation.TimeDropDowns) '主窗口保留三个时间下拉（#129 自 U1 迁移）'
-    Assert-Equal '24,60,60' ([string]::Join(',', @($adapterValidation.TimeOptionCounts))) '时/分/秒下拉选项计数为 24/60/60（#129 自 U1 迁移）'
     $noteEmptyContrastMeasurements = @($adapterValidation.NoteEmptyStateContrastMeasurements)
     Assert-Equal 1 $noteEmptyContrastMeasurements.Count '便签空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '便签空态对比度主题集合固定'
@@ -6044,12 +6040,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $beginEditCountdownBody -match 'CountdownName\.Text = record\.Name' -and
         $beginEditCountdownBody -match 'CountdownDate\.SelectedDate = beijing\.Date' -and
-        $beginEditCountdownBody -match 'CountdownHour\.SelectedIndex = beijing\.Hour' -and
-        $beginEditCountdownBody -match 'CountdownMinute\.SelectedIndex = beijing\.Minute' -and
-        $beginEditCountdownBody -match 'CountdownSecond\.SelectedIndex = beijing\.Second' -and
+        $beginEditCountdownBody -match 'TimeInputBehavior\.SetValue\(CountdownTime, new TimeSpan\(beijing\.Hour, beijing\.Minute, beijing\.Second\)\)' -and
         $beginEditCountdownBody -match 'CountdownTags\.SetSelection\(record\.TagIds\)' -and
         $beginEditCountdownBody -match '_countdownReminderRules = Array\.AsReadOnly\(record\.ReminderRules\.ToArray\(\)\)' -and
-        $beginEditCountdownBody -match 'SyncCountdownReminderModeFromRules\(\)') '倒计时编辑回填按记录原值还原名称、日期、时分秒、标签与提醒规则并同步三态，极长标题/标签原样回填不截断（#140 编辑回填源码契约）'
+        $beginEditCountdownBody -match 'SyncCountdownReminderModeFromRules\(\)') '倒计时编辑回填按记录原值还原名称、日期、截止时刻、标签与提醒规则并同步三态，极长标题/标签原样回填不截断（#140/#328 编辑回填源码契约）'
     $onDeleteCountdownBody = [regex]::Match(
         $mainWindowCountdownBehaviorSource,
         'private void OnDeleteCountdown\(object sender, RoutedEventArgs eventArgs\).*?\r?\n    private ',

@@ -46,6 +46,8 @@ internal static class Program
     internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
     internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
     internal const string SpacingTokensWiredFactName = "SpacingTokensWiredAcrossWindows";
+    internal const string CountdownDeadlineTimeTypingFactName = "MainCountdownDeadlineTimeTypingAndStepping";
+    internal const string CountdownDeadlineTimeValidationFactName = "MainCountdownDeadlineTimeValidationAndAccessibility";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -140,6 +142,12 @@ internal static class Program
     private const string SpacingTokensWiredFactMeaning =
         "SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器" +
         "的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）";
+    private const string CountdownDeadlineTimeTypingFactMeaning =
+        "管理窗口倒计时截止时刻改为单一可键入 HH:mm:ss 文本框：新增默认当前北京时间、直接键入与编辑保存保持精确领域值，" +
+        "光标按时/分/秒分段支持上下键步进与边界回绕，复用 TimeInputBehavior 兼顾 HH:mm 格式（#328）";
+    private const string CountdownDeadlineTimeValidationFactMeaning =
+        "倒计时截止时刻在失焦与提交时校验空值、越界与非时刻文本，错误行贴字段下方且礼貌播报，提交失败聚焦时间框（含收起态重展开），" +
+        "有效/出错无焦/出错有焦为 2/1/2 DIP 不挤布局且修正即清，保留可见标签 LabeledBy 与等价可访问名并适配系统对比度（#328）";
 
     [STAThread]
     private static int Main()
@@ -184,7 +192,9 @@ internal static class Program
             [DatePickerSingleBoxInteractionFactName] = false,
             [MainNoteSearchCoalesceFactName] = false,
             [MainHiddenDeferRefreshFactName] = false,
-            [SpacingTokensWiredFactName] = false
+            [SpacingTokensWiredFactName] = false,
+            [CountdownDeadlineTimeTypingFactName] = false,
+            [CountdownDeadlineTimeValidationFactName] = false
         };
         var failures = new List<string>();
 
@@ -416,6 +426,16 @@ internal static class Program
                 SpacingTokensWiredFactName,
                 SpacingTokensWiredFactMeaning,
                 () => SpacingTokenWiringScenario.Run(SpacingTokensWiredFactMeaning));
+            RunFact(
+                CountdownDeadlineTimeTypingFactName,
+                CountdownDeadlineTimeTypingFactMeaning,
+                () => CountdownDeadlineTimeInputScenario.RunTypingAndStepping(
+                    CountdownDeadlineTimeTypingFactMeaning));
+            RunFact(
+                CountdownDeadlineTimeValidationFactName,
+                CountdownDeadlineTimeValidationFactMeaning,
+                () => CountdownDeadlineTimeInputScenario.RunValidationAndAccessibility(
+                    CountdownDeadlineTimeValidationFactMeaning));
         }
         catch (Exception exception)
         {

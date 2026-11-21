@@ -186,8 +186,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                 return;
             }
 
-            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
-            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+            NotifyFirstDueErrorStateChanged();
         }
     }
 
@@ -201,8 +200,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                 return;
             }
 
-            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
-            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+            NotifyFirstDueErrorStateChanged();
         }
     }
 
@@ -216,8 +214,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                 return;
             }
 
-            OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
-            OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+            NotifyFirstDueErrorStateChanged();
         }
     }
 
@@ -289,13 +286,29 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public int CalendarMonthIndex
     {
         get => _calendarMonthIndex;
-        set => SetFormProperty(ref _calendarMonthIndex, value);
+        set
+        {
+            if (!SetFormProperty(ref _calendarMonthIndex, value))
+            {
+                return;
+            }
+
+            NotifyCalendarSelectorErrorStateChanged();
+        }
     }
 
     public int CalendarDayIndex
     {
         get => _calendarDayIndex;
-        set => SetFormProperty(ref _calendarDayIndex, value);
+        set
+        {
+            if (!SetFormProperty(ref _calendarDayIndex, value))
+            {
+                return;
+            }
+
+            NotifyCalendarSelectorErrorStateChanged();
+        }
     }
 
     public bool CalendarLastDay
@@ -383,8 +396,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             if (SetProperty(ref _firstDueError, value))
             {
                 OnPropertyChanged(nameof(IsFirstDueErrorVisible));
-                OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
-                OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+                NotifyFirstDueErrorStateChanged();
             }
         }
     }
@@ -397,7 +409,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             if (SetProperty(ref _intervalError, value))
             {
                 OnPropertyChanged(nameof(IsIntervalErrorVisible));
-                OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
+                NotifyIntervalErrorStateChanged();
             }
         }
     }
@@ -435,6 +447,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));
                 OnPropertyChanged(nameof(IsCalendarSelectorVisible));
+                NotifyCalendarSelectorErrorStateChanged();
             }
         }
     }
@@ -463,15 +476,46 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         IsFirstDueErrorVisible &&
         (FirstDueTime is null || HasInvalidFirstDueTimeInput || FirstDueDate is not null);
 
+    public string FirstDueDateHelpText => IsFirstDueDateErrorVisible ? FirstDueError : string.Empty;
+
+    public string FirstDueTimeHelpText => IsFirstDueTimeErrorVisible ? FirstDueError : string.Empty;
+
     public bool IsIntervalErrorVisible => !string.IsNullOrEmpty(IntervalError);
 
     public bool IsIntervalComboErrorVisible => IsIntervalErrorVisible && !IsCustomIntervalVisible;
+
+    public string IntervalComboHelpText => IsIntervalComboErrorVisible ? IntervalError : string.Empty;
+
+    public string CustomIntervalHelpText => IsIntervalErrorVisible ? IntervalError : string.Empty;
 
     public bool IsRelativeOffsetErrorVisible => !string.IsNullOrEmpty(RelativeOffsetError);
 
     public bool IsCalendarIntervalErrorVisible => !string.IsNullOrEmpty(CalendarIntervalError);
 
     public bool IsCalendarSelectorErrorVisible => !string.IsNullOrEmpty(CalendarSelectorError);
+
+    public bool IsCalendarFrequencyErrorVisible =>
+        IsCalendarSelectorErrorVisible &&
+        (SelectedCalendarFrequency is not (CalendarFrequency.Daily or CalendarFrequency.Weekly or CalendarFrequency.Monthly or CalendarFrequency.Yearly) ||
+         SelectedCalendarFrequency == CalendarFrequency.Daily);
+
+    public bool IsCalendarMonthErrorVisible =>
+        IsCalendarSelectorErrorVisible &&
+        SelectedCalendarFrequency == CalendarFrequency.Yearly &&
+        (CalendarMonthIndex < 0 || CalendarLastDay || CalendarDayIndex >= 0);
+
+    public bool IsCalendarDayErrorVisible =>
+        IsCalendarSelectorErrorVisible &&
+        !CalendarLastDay &&
+        (SelectedCalendarFrequency == CalendarFrequency.Monthly ||
+         (SelectedCalendarFrequency == CalendarFrequency.Yearly &&
+          (CalendarDayIndex < 0 || CalendarMonthIndex >= 0)));
+
+    public string CalendarFrequencyHelpText => IsCalendarFrequencyErrorVisible ? CalendarSelectorError : string.Empty;
+
+    public string CalendarMonthHelpText => IsCalendarMonthErrorVisible ? CalendarSelectorError : string.Empty;
+
+    public string CalendarDayHelpText => IsCalendarDayErrorVisible ? CalendarSelectorError : string.Empty;
 
     public bool IsCollectionErrorVisible => !string.IsNullOrEmpty(CollectionError);
 
@@ -821,8 +865,34 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsCalendarMonthVisible));
         OnPropertyChanged(nameof(IsCalendarDayVisible));
         OnPropertyChanged(nameof(IsCustomIntervalVisible));
-        OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
+        NotifyIntervalErrorStateChanged();
+        NotifyCalendarSelectorErrorStateChanged();
         NotifyPreviewChanged();
+    }
+
+    private void NotifyFirstDueErrorStateChanged()
+    {
+        OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
+        OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
+        OnPropertyChanged(nameof(FirstDueDateHelpText));
+        OnPropertyChanged(nameof(FirstDueTimeHelpText));
+    }
+
+    private void NotifyIntervalErrorStateChanged()
+    {
+        OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
+        OnPropertyChanged(nameof(IntervalComboHelpText));
+        OnPropertyChanged(nameof(CustomIntervalHelpText));
+    }
+
+    private void NotifyCalendarSelectorErrorStateChanged()
+    {
+        OnPropertyChanged(nameof(IsCalendarFrequencyErrorVisible));
+        OnPropertyChanged(nameof(IsCalendarMonthErrorVisible));
+        OnPropertyChanged(nameof(IsCalendarDayErrorVisible));
+        OnPropertyChanged(nameof(CalendarFrequencyHelpText));
+        OnPropertyChanged(nameof(CalendarMonthHelpText));
+        OnPropertyChanged(nameof(CalendarDayHelpText));
     }
 
     private void NotifyPreviewChanged()
@@ -1010,14 +1080,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         CalendarSelectorError = string.Empty;
         CollectionError = string.Empty;
         OnPropertyChanged(nameof(IsModeErrorVisible));
-        OnPropertyChanged(nameof(IsFirstDueErrorVisible));
-        OnPropertyChanged(nameof(IsFirstDueDateErrorVisible));
-        OnPropertyChanged(nameof(IsFirstDueTimeErrorVisible));
-        OnPropertyChanged(nameof(IsIntervalErrorVisible));
-        OnPropertyChanged(nameof(IsIntervalComboErrorVisible));
+        NotifyFirstDueErrorStateChanged();
+        NotifyIntervalErrorStateChanged();
         OnPropertyChanged(nameof(IsRelativeOffsetErrorVisible));
         OnPropertyChanged(nameof(IsCalendarIntervalErrorVisible));
-        OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));
+        NotifyCalendarSelectorErrorStateChanged();
         OnPropertyChanged(nameof(IsCalendarSelectorVisible));
         OnPropertyChanged(nameof(IsCollectionErrorVisible));
     }

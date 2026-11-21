@@ -240,6 +240,10 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsCustomErrorVisible &&
         (CustomTime is null || HasInvalidCustomTimeInput || CustomDate is not null);
 
+    public string CustomDateHelpText => IsCustomDateErrorVisible ? CustomErrorMessage : string.Empty;
+
+    public string CustomTimeHelpText => IsCustomTimeErrorVisible ? CustomErrorMessage : string.Empty;
+
     public bool IsRendered
     {
         get => _isRendered;
@@ -294,7 +298,14 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     public string CustomErrorMessage
     {
         get => _customErrorMessage;
-        private set => SetProperty(ref _customErrorMessage, value);
+        private set
+        {
+            if (SetProperty(ref _customErrorMessage, value))
+            {
+                OnPropertyChanged(nameof(CustomDateHelpText));
+                OnPropertyChanged(nameof(CustomTimeHelpText));
+            }
+        }
     }
 
     public DateTime? CustomDate
@@ -386,6 +397,8 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
 
     internal event EventHandler<ReminderCenterEntryEventArgs>? OpenSourceRequested;
 
+    internal event EventHandler? CustomSnoozeValidationErrorFocusRequested;
+
     internal void SetDeliveryReady()
     {
         ClearFailure();
@@ -403,7 +416,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsCompleteEnabled = false;
     }
 
-    internal void ShowCustomSnoozeError(string message)
+    internal void ShowCustomSnoozeError(string message, bool focusFirstInvalid = false)
     {
         ClearFailure();
         // 先确保自定义输入区域已按需创建并可见，再写错误文案以便错误贴在输入旁并正确播报。
@@ -414,6 +427,10 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsAcknowledgeEnabled = true;
         IsSnoozeEnabled = true;
         IsCompleteEnabled = CanComplete;
+        if (focusFirstInvalid)
+        {
+            CustomSnoozeValidationErrorFocusRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     internal void MarkRendered() => IsRendered = true;
@@ -489,7 +506,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsCustomSnoozeVisible = true;
         if (CustomDate is not { } date || HasInvalidCustomTimeInput || CustomTime is not { } time)
         {
-            ShowCustomSnoozeError(IncompleteCustomSnoozeError);
+            ShowCustomSnoozeError(IncompleteCustomSnoozeError, focusFirstInvalid: true);
             return;
         }
 
@@ -505,6 +522,8 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsCustomDateErrorVisible));
         OnPropertyChanged(nameof(IsCustomTimeErrorVisible));
+        OnPropertyChanged(nameof(CustomDateHelpText));
+        OnPropertyChanged(nameof(CustomTimeHelpText));
     }
 
     private void ClearFailure()

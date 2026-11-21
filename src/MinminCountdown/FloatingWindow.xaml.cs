@@ -60,6 +60,7 @@ public sealed partial class FloatingWindow : Window
     private int _nativeWindowDragCompletionCount;
     private readonly string _assetRoot;
     private bool _assetsLoaded;
+    private string _floatingTagCreateError = string.Empty;
     private NoteCompletionExit? _noteCompletionExit;
 
     internal FloatingWindow(
@@ -1593,7 +1594,9 @@ public sealed partial class FloatingWindow : Window
         UiAccessibility.Name(FloatingNoteSearchHintClear, "清除搜索");
         FloatingNoteSearch.IsTabStop = false;
         UiAccessibility.MarkLive(FloatingNoteTextError);
+        AutomationProperties.SetAutomationId(FloatingNoteTextError, "FloatingNoteTextError");
         UiAccessibility.MarkLive(FloatingNoteDateError);
+        AutomationProperties.SetAutomationId(FloatingNoteDateError, "FloatingNoteDateError");
         UiAccessibility.MarkLive(FloatingReminderMessage);
         UiAccessibility.MarkLive(FloatingNoteMessage);
     }
@@ -1649,16 +1652,40 @@ public sealed partial class FloatingWindow : Window
         FloatingNoteSearch.TextChanged += (_, _) => OnNoteSearchTextChanged();
         FloatingNoteSearchHintTerm.Click += (_, _) => ExpandNoteSearch(focus: true);
         FloatingNoteSearchHintClear.Click += (_, _) => ClearNoteSearch();
+        FloatingTags.CreateErrorCleared += (_, _) =>
+        {
+            if (!string.IsNullOrEmpty(_floatingTagCreateError) &&
+                string.Equals(FloatingNoteMessage.Text, _floatingTagCreateError, StringComparison.Ordinal))
+            {
+                SetNoteMessage(string.Empty);
+            }
+
+            _floatingTagCreateError = string.Empty;
+        };
         FloatingTags.CreateRequested += (_, name) =>
         {
-            var result = _desktopWorkspace.Apply(new CreateTagChange(name, "#F4B6A6"));
+            var normalized = name.Trim();
+            if (normalized.Length == 0)
+            {
+                _floatingTagCreateError = "请输入标签名称。";
+                FloatingTags.ShowCreateError(_floatingTagCreateError);
+                SetNoteMessage(_floatingTagCreateError);
+                return;
+            }
+
+            var result = _desktopWorkspace.Apply(new CreateTagChange(normalized, "#F4B6A6"));
             if (result is { Succeeded: true, CreatedTag: { } tag })
             {
+                _floatingTagCreateError = string.Empty;
+                FloatingTags.ClearCreateError();
                 FloatingTags.SelectedTagIds.Add(tag.Id);
                 FloatingTags.SetSelection(FloatingTags.SelectedTagIds);
+                SetNoteMessage(string.Empty);
             }
             else
             {
+                _floatingTagCreateError = result.Error;
+                FloatingTags.ShowCreateError(result.Error);
                 SetNoteMessage(result.Error);
             }
         };
@@ -2536,21 +2563,28 @@ public sealed partial class FloatingWindow : Window
     private void AddNote()
     {
         ClearNoteFieldErrors();
+        var validations = new List<(TextBlock Error, string Message, Control Source)>();
         if (string.IsNullOrWhiteSpace(FloatingNoteText.Text))
         {
-            ShowNoteValidationError(
-                FloatingNoteTextError,
-                "请先写下便签内容。",
-                FloatingNoteText);
-            return;
+            validations.Add((FloatingNoteTextError, "请先写下便签内容。", FloatingNoteText));
         }
 
         if (FloatingNoteDate.SelectedDate is null)
         {
-            ShowNoteValidationError(
-                FloatingNoteDateError,
-                "请选择便签日期。",
-                FloatingNoteDate);
+            validations.Add((FloatingNoteDateError, "请选择便签日期。", FloatingNoteDate));
+        }
+
+        if (validations.Count > 0)
+        {
+            foreach (var (error, message, source) in validations)
+            {
+                ShowNoteValidationError(error, message, source);
+            }
+
+            SetNoteMessage(validations[0].Message);
+            FloatingNotesCommandScroller.UpdateLayout();
+            validations[0].Source.Focus();
+            BringQuickAddFieldAndErrorIntoView(validations[0].Source, validations[0].Error);
             return;
         }
 
@@ -2634,15 +2668,17 @@ public sealed partial class FloatingWindow : Window
     {
         var previousMessage = field.Text;
         SetNoteFieldError(field, string.Empty);
-        foreach (var control in NoteValidationControls())
+        foreach (var source in NoteValidationControls(field))
         {
             if (string.Equals(
-                    AutomationProperties.GetHelpText(control),
+                    AutomationProperties.GetHelpText(source),
                     previousMessage,
                     StringComparison.Ordinal))
             {
-                AutomationProperties.SetHelpText(control, string.Empty);
+                AutomationProperties.SetHelpText(source, string.Empty);
             }
+
+            InputErrorState.SetHasError(source, false);
         }
 
         if (!string.IsNullOrWhiteSpace(previousMessage) &&
@@ -2652,14 +2688,11 @@ public sealed partial class FloatingWindow : Window
         }
     }
 
-    private void ShowNoteValidationError(TextBlock field, string message, Control focusTarget)
+    private void ShowNoteValidationError(TextBlock field, string message, Control source)
     {
         SetNoteFieldError(field, message);
-        SetNoteMessage(message);
-        AutomationProperties.SetHelpText(focusTarget, message);
-        FloatingNotesCommandScroller.UpdateLayout();
-        focusTarget.Focus();
-        BringQuickAddFieldAndErrorIntoView(focusTarget, field);
+        AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void BringQuickAddFieldAndErrorIntoView(FrameworkElement focusTarget, FrameworkElement errorField)
@@ -2690,11 +2723,24 @@ public sealed partial class FloatingWindow : Window
         });
     }
 
-    private IEnumerable<Control> NoteValidationControls()
+    private IEnumerable<Control> NoteValidationControls(TextBlock field)
     {
-        yield return FloatingNoteText;
-        yield return FloatingNoteDate;
-        yield return FloatingManageReminderRules;
+        if (ReferenceEquals(field, FloatingNoteTextError))
+        {
+            yield return FloatingNoteText;
+            yield break;
+        }
+
+        if (ReferenceEquals(field, FloatingNoteDateError))
+        {
+            yield return FloatingNoteDate;
+            yield break;
+        }
+
+        if (ReferenceEquals(field, FloatingReminderMessage))
+        {
+            yield return FloatingManageReminderRules;
+        }
     }
 
     private (string NoteId, string? Role)? FocusedFloatingNoteTag()

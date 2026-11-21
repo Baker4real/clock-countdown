@@ -680,7 +680,15 @@ internal sealed class ReminderCenterWindow : Window
                 entry.SnoozeMenu.IsOpen = false;
             }
         };
+        EventHandler customSnoozeErrorFocusRequested = (_, _) =>
+        {
+            if (entry is not null)
+            {
+                FocusFirstInvalidCustomSnoozeField(entry);
+            }
+        };
         viewModel.PropertyChanged += customSnoozePropertyChanged;
+        viewModel.CustomSnoozeValidationErrorFocusRequested += customSnoozeErrorFocusRequested;
 
         entry = new ReminderCenterEntry(
             item,
@@ -695,6 +703,7 @@ internal sealed class ReminderCenterWindow : Window
             error,
             titlePropertyChanged,
             customSnoozePropertyChanged,
+            customSnoozeErrorFocusRequested,
             () => RefreshTitleOverflow(force: true));
         BindEntry(
             openSource,
@@ -749,6 +758,7 @@ internal sealed class ReminderCenterWindow : Window
         entry.ViewModel.OpenSourceRequested -= OnViewModelOpenSourceRequested;
         entry.ViewModel.PropertyChanged -= entry.TitlePropertyChanged;
         entry.ViewModel.PropertyChanged -= entry.CustomSnoozePropertyChanged;
+        entry.ViewModel.CustomSnoozeValidationErrorFocusRequested -= entry.CustomSnoozeErrorFocusRequested;
         _viewModel.Remove(key);
         _itemsHost.Children.Remove(entry.Row);
         UpdateTitle();
@@ -810,7 +820,7 @@ internal sealed class ReminderCenterWindow : Window
     {
         if (_entries.TryGetValue(key, out var entry))
         {
-            entry.ViewModel.ShowCustomSnoozeError(message);
+            entry.ViewModel.ShowCustomSnoozeError(message, focusFirstInvalid: true);
         }
     }
 
@@ -1273,6 +1283,31 @@ internal sealed class ReminderCenterWindow : Window
         return menu;
     }
 
+    private void FocusFirstInvalidCustomSnoozeField(ReminderCenterEntry entry)
+    {
+        if (!entry.ViewModel.IsCustomSnoozeVisible)
+        {
+            return;
+        }
+
+        EnsureCustomSnoozeControls(entry);
+        Control? target = entry.ViewModel.IsCustomDateErrorVisible
+            ? entry.CustomDate
+            : entry.ViewModel.IsCustomTimeErrorVisible
+                ? entry.CustomTime
+                : null;
+        if (target is null || !target.IsVisible || !target.IsEnabled)
+        {
+            return;
+        }
+
+        target.Focus();
+        if (IsActive || IsKeyboardFocusWithin)
+        {
+            Keyboard.Focus(target);
+        }
+    }
+
     private void ApplyCustomSnoozePresentation(ReminderCenterEntry entry)
     {
         if (entry.ViewModel.IsCustomSnoozeVisible)
@@ -1317,7 +1352,7 @@ internal sealed class ReminderCenterWindow : Window
         BindEntry(
             customDate,
             AutomationProperties.HelpTextProperty,
-            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            nameof(ReminderCenterEntryViewModel.CustomDateHelpText),
             viewModel);
         var customTimeLabel = new TextBlock
         {
@@ -1355,7 +1390,7 @@ internal sealed class ReminderCenterWindow : Window
         BindEntry(
             customTime,
             AutomationProperties.HelpTextProperty,
-            nameof(ReminderCenterEntryViewModel.CustomErrorMessage),
+            nameof(ReminderCenterEntryViewModel.CustomTimeHelpText),
             viewModel);
         customTime.LostKeyboardFocus += (_, _) => viewModel.ValidateCustomTimeOnBlur();
         customTime.PreviewKeyDown += (_, args) =>
@@ -1652,6 +1687,7 @@ internal sealed class ReminderCenterWindow : Window
         TextBlock error,
         PropertyChangedEventHandler titlePropertyChanged,
         PropertyChangedEventHandler customSnoozePropertyChanged,
+        EventHandler customSnoozeErrorFocusRequested,
         Action refreshTitleOverflow)
     {
         public ReminderCenterItem Item { get; } = item;
@@ -1687,6 +1723,8 @@ internal sealed class ReminderCenterWindow : Window
         public PropertyChangedEventHandler TitlePropertyChanged { get; } = titlePropertyChanged;
 
         public PropertyChangedEventHandler CustomSnoozePropertyChanged { get; } = customSnoozePropertyChanged;
+
+        public EventHandler CustomSnoozeErrorFocusRequested { get; } = customSnoozeErrorFocusRequested;
 
         public Action RefreshTitleOverflow { get; } = refreshTitleOverflow;
 

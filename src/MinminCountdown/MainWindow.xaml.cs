@@ -243,6 +243,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private bool _suppressTagRenameOnClose;
     private bool _deletingTagInProgress;
     private string? _pendingDeleteTagId;
+    private string _newTagErrorMessage = string.Empty;
     private string? _lastSyncedFilterNoteSearch;
     private NoteCompletionExit? _noteCompletionExit;
 
@@ -1351,7 +1352,9 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         UiAccessibility.MarkLive(CountdownTimeError);
         AutomationProperties.SetAutomationId(CountdownTimeError, "CountdownTimeError");
         UiAccessibility.MarkLive(NoteTextError);
+        AutomationProperties.SetAutomationId(NoteTextError, "NoteTextError");
         UiAccessibility.MarkLive(NoteDateError);
+        AutomationProperties.SetAutomationId(NoteDateError, "NoteDateError");
         UiAccessibility.MarkLive(MonthlySalaryError);
         AutomationProperties.SetAutomationId(MonthlySalaryError, "MonthlySalaryError");
         UiAccessibility.MarkLive(WorkStartError);
@@ -1360,6 +1363,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         AutomationProperties.SetAutomationId(WorkEndError, "WorkEndError");
         UiAccessibility.MarkLive(NoteMessage);
         UiAccessibility.MarkLive(TagManagerMessage);
+        AutomationProperties.SetAutomationId(TagManagerMessage, "TagManagerMessage");
     }
 
     private void MinimizeToTray() => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
@@ -1458,6 +1462,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             _suppressTagRenameOnClose = false;
             _pendingDeleteTagId = null;
+            ClearNewTagError();
             ResetTagManagerRowsToPersistedState();
         };
         CountdownReminderNoRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.None);
@@ -1527,10 +1532,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         CompletedNotesSegment.Click += (_, _) => SelectNotesSegment(showCompleted: true);
         CountdownTags.CreateRequested += CreateTagFromSelector;
         NoteTags.CreateRequested += CreateTagFromSelector;
+        NewTagInput.TextChanged += (_, _) => ClearNewTagError();
         CreateTagButton.Click += (_, _) => CreateTag(NewTagInput.Text, null);
         AttachSingleLineSubmit(NewTagInput, () =>
         {
-            if (CreateTag(NewTagInput.Text, null) is null) NewTagInput.Focus();
+            CreateTag(NewTagInput.Text, null);
         }, () => IsEnabled && TagManagerPopup.IsOpen);
 
         AnyTagMode.Click += (_, _) =>
@@ -3208,45 +3214,54 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void SavePreferences()
     {
-        // #151/#329：偏好格式与上下班顺序错误出现在对应字段下方、挂接错误边框并同时镜像到底栏。
+        // #151/#329/#313：偏好格式与上下班顺序错误收集全部出错字段、挂接错误边框、镜像首错到底栏并聚焦首个出错字段。
         ClearPreferenceFieldErrors();
+        var validations = new List<(TextBlock Field, string Message, Control Source)>();
         if (!DecimalNumericInputBehavior.TryParseDecimal(MonthlySalary.Text, out var salary))
         {
-            ShowPreferenceFieldError(MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary);
-            SetMessage(StatusText, InvalidMonthlySalaryFormatError, true);
-            MonthlySalary.Focus();
-            return;
+            validations.Add((MonthlySalaryError, InvalidMonthlySalaryFormatError, MonthlySalary));
+        }
+        else if (salary < 0m)
+        {
+            validations.Add((MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary));
         }
 
-        if (salary < 0m)
+        var workStartValid = TimeInputBehavior.TryParseStrict(
+            WorkStart.Text,
+            TimeInputFormat.HourMinute,
+            out var workStart);
+        if (!workStartValid)
         {
-            ShowPreferenceFieldError(MonthlySalaryError, NegativeMonthlySalaryError, MonthlySalary);
-            SetMessage(StatusText, NegativeMonthlySalaryError, true);
-            MonthlySalary.Focus();
-            return;
+            validations.Add((WorkStartError, WorkStartFormatErrorMessage, WorkStart));
         }
 
-        if (!TimeInputBehavior.TryParseStrict(WorkStart.Text, TimeInputFormat.HourMinute, out var workStart))
+        var workEndValid = TimeInputBehavior.TryParseStrict(
+            WorkEnd.Text,
+            TimeInputFormat.HourMinute,
+            out var workEnd);
+        if (!workEndValid)
         {
-            ShowPreferenceFieldError(WorkStartError, WorkStartFormatErrorMessage, WorkStart);
-            SetMessage(StatusText, WorkStartFormatErrorMessage, true);
-            WorkStart.Focus();
-            return;
+            validations.Add((WorkEndError, WorkEndFormatErrorMessage, WorkEnd));
+        }
+        else if (workStartValid && workEnd <= workStart)
+        {
+            validations.Add((WorkEndError, WorkTimeOrderErrorMessage, WorkEnd));
         }
 
-        if (!TimeInputBehavior.TryParseStrict(WorkEnd.Text, TimeInputFormat.HourMinute, out var workEnd))
+        if (validations.Count > 0)
         {
-            ShowPreferenceFieldError(WorkEndError, WorkEndFormatErrorMessage, WorkEnd);
-            SetMessage(StatusText, WorkEndFormatErrorMessage, true);
-            WorkEnd.Focus();
-            return;
-        }
+            foreach (var (field, message, source) in validations)
+            {
+                ShowPreferenceFieldError(field, message, source);
+            }
 
-        if (workEnd <= workStart)
-        {
-            ShowPreferenceFieldError(WorkEndError, WorkTimeOrderErrorMessage, WorkEnd);
-            SetMessage(StatusText, WorkTimeOrderErrorMessage, true);
-            WorkEnd.Focus();
+            SetMessage(StatusText, validations[0].Message, true);
+            validations[0].Source.Focus();
+            if (PreferencesPopup.IsOpen && (IsActive || IsKeyboardFocusWithin || PreferencesPopup.IsKeyboardFocusWithin))
+            {
+                Keyboard.Focus(validations[0].Source);
+            }
+
             return;
         }
 
@@ -3347,6 +3362,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     internal void LoadNoteIntoEditor(NoteRecord note)
     {
+        ClearNoteFieldErrors();
+        UiAccessibility.Announce(NoteMessage, string.Empty);
         _editingNoteId = note.Id;
         NoteEditorTitle.Visibility = Visibility.Visible;
         NoteText.Text = note.Text;
@@ -4256,6 +4273,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void ShowTagRowError(TagManagerRowState entry, string message)
     {
+        ClearNewTagError();
         UiAccessibility.Announce(TagManagerMessage, string.Empty);
         SetFieldError(entry.ErrorText, message);
         AutomationProperties.SetHelpText(entry.Input, message);
@@ -4288,6 +4306,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         _suppressTagRenameOnClose = true;
         _pendingDeleteTagId = null;
+        ClearNewTagError();
         ResetTagManagerRowsToPersistedState();
     }
 
@@ -4361,7 +4380,16 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var normalized = name.Trim();
         if (normalized.Length == 0)
         {
-            SetMessage(TagManagerMessage, "请输入标签名称。", true);
+            const string emptyMessage = "请输入标签名称。";
+            if (selector is not null)
+            {
+                selector.ShowCreateError(emptyMessage);
+            }
+            else
+            {
+                ShowNewTagError(emptyMessage);
+            }
+
             return null;
         }
 
@@ -4369,13 +4397,72 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var result = _desktopWorkspace.Apply(new CreateTagChange(normalized, color));
         if (!result.Succeeded)
         {
-            SetMessage(TagManagerMessage, result.Error, true);
+            if (selector is not null)
+            {
+                selector.ShowCreateError(result.Error);
+            }
+            else
+            {
+                ShowNewTagError(result.Error);
+            }
+
             return null;
         }
 
-        NewTagInput.Clear();
-        SetMessage(TagManagerMessage, "标签已创建。", false);
+        if (selector is not null)
+        {
+            selector.ClearCreateError();
+        }
+        else
+        {
+            ClearNewTagError();
+            NewTagInput.Clear();
+            SetMessage(TagManagerMessage, "标签已创建。", false);
+        }
+
         return result.CreatedTag;
+    }
+
+    private void ShowNewTagError(string message)
+    {
+        _newTagErrorMessage = message;
+        SetMessage(TagManagerMessage, message, true);
+        AutomationProperties.SetHelpText(TagManagerMessage, message);
+        AutomationProperties.SetHelpText(NewTagInput, message);
+        InputErrorState.SetHasError(NewTagInput, !string.IsNullOrWhiteSpace(message));
+        if (TagManagerPopup.IsOpen)
+        {
+            NewTagInput.Focus();
+            Keyboard.Focus(NewTagInput);
+        }
+    }
+
+    private void ClearNewTagError()
+    {
+        var previousMessage = _newTagErrorMessage;
+        var hasError = InputErrorState.GetHasError(NewTagInput);
+        if (string.IsNullOrEmpty(previousMessage) && !hasError)
+        {
+            return;
+        }
+
+        _newTagErrorMessage = string.Empty;
+        InputErrorState.SetHasError(NewTagInput, false);
+        if (!string.IsNullOrEmpty(previousMessage) &&
+            string.Equals(
+                AutomationProperties.GetHelpText(NewTagInput),
+                previousMessage,
+                StringComparison.Ordinal))
+        {
+            AutomationProperties.SetHelpText(NewTagInput, string.Empty);
+        }
+
+        if (!string.IsNullOrEmpty(previousMessage) &&
+            string.Equals(TagManagerMessage.Text, previousMessage, StringComparison.Ordinal))
+        {
+            UiAccessibility.Announce(TagManagerMessage, string.Empty);
+            AutomationProperties.SetHelpText(TagManagerMessage, string.Empty);
+        }
     }
 
     private void UpdateFilter(Func<DesktopWorkspaceFilter, DesktopWorkspaceFilter> update)
@@ -4650,6 +4737,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         SetFieldError(field, message);
         AutomationProperties.SetHelpText(source, message);
+        InputErrorState.SetHasError(source, !string.IsNullOrWhiteSpace(message));
     }
 
     private void ClearNoteFieldErrors()
@@ -4662,15 +4750,18 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     {
         var previousMessage = field.Text;
         SetFieldError(field, string.Empty);
-        foreach (var control in NoteValidationControls())
+        var source = NoteValidationControl(field);
+        if (source is not null)
         {
             if (string.Equals(
-                    AutomationProperties.GetHelpText(control),
+                    AutomationProperties.GetHelpText(source),
                     previousMessage,
                     StringComparison.Ordinal))
             {
-                AutomationProperties.SetHelpText(control, string.Empty);
+                AutomationProperties.SetHelpText(source, string.Empty);
             }
+
+            InputErrorState.SetHasError(source, false);
         }
 
         if (!string.IsNullOrWhiteSpace(previousMessage) &&
@@ -4728,6 +4819,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
             InputErrorState.SetHasError(source, false);
         }
+
+        if (!string.IsNullOrWhiteSpace(previousMessage) &&
+            string.Equals(StatusText.Text, previousMessage, StringComparison.Ordinal))
+        {
+            UiAccessibility.Announce(StatusText, string.Empty);
+        }
     }
 
     private Control? PreferenceValidationControl(TextBlock field)
@@ -4778,10 +4875,19 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         yield return CountdownDate;
     }
 
-    private IEnumerable<Control> NoteValidationControls()
+    private Control? NoteValidationControl(TextBlock field)
     {
-        yield return NoteText;
-        yield return NoteDate;
+        if (ReferenceEquals(field, NoteTextError))
+        {
+            return NoteText;
+        }
+
+        if (ReferenceEquals(field, NoteDateError))
+        {
+            return NoteDate;
+        }
+
+        return null;
     }
 
     private void LoadCharacterAssets(string assetRoot)

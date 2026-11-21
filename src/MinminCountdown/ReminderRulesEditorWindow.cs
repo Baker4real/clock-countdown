@@ -286,6 +286,7 @@ internal sealed class ReminderRulesEditorWindow : Window
 
         Bind(_countText, TextBlock.TextProperty, nameof(ReminderRulesEditorViewModel.CountText), _viewModel);
         Bind(_mode, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.ModeIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_mode, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsModeErrorVisible), _viewModel);
         Bind(_firstDueDate, DatePicker.SelectedDateProperty, nameof(ReminderRulesEditorViewModel.FirstDueDate), _viewModel, BindingMode.TwoWay);
         TimeInputBehavior.SetFormat(_firstDueTime, TimeInputFormat.HourMinute);
         TimeInputBehavior.SetIsEnabled(_firstDueTime, true);
@@ -310,6 +311,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_relativeOffset, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidRelativeOffsetInput), _viewModel, BindingMode.TwoWay);
         Bind(_relativeOffset, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsRelativeOffsetErrorVisible), _viewModel);
         Bind(_calendarFrequency, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarFrequencyIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarFrequency, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsCalendarFrequencyErrorVisible), _viewModel);
         NumericInputBehavior.SetMinimum(_calendarInterval, ReminderRulesEditorViewModel.MinimumCalendarInterval);
         NumericInputBehavior.SetMaximum(_calendarInterval, ReminderRulesEditorViewModel.MaximumCalendarInterval);
         NumericInputBehavior.SetStep(_calendarInterval, 1);
@@ -318,7 +320,9 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_calendarInterval, NumericInputBehavior.HasInvalidTextProperty, nameof(ReminderRulesEditorViewModel.HasInvalidCalendarIntervalInput), _viewModel, BindingMode.TwoWay);
         Bind(_calendarInterval, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsCalendarIntervalErrorVisible), _viewModel);
         Bind(_calendarMonth, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarMonthIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarMonth, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsCalendarMonthErrorVisible), _viewModel);
         Bind(_calendarDay, Selector.SelectedIndexProperty, nameof(ReminderRulesEditorViewModel.CalendarDayIndex), _viewModel, BindingMode.TwoWay);
+        Bind(_calendarDay, InputErrorState.HasErrorProperty, nameof(ReminderRulesEditorViewModel.IsCalendarDayErrorVisible), _viewModel);
         Bind(_calendarLastDay, ToggleButton.IsCheckedProperty, nameof(ReminderRulesEditorViewModel.CalendarLastDay), _viewModel, BindingMode.TwoWay);
         _rulePreview.SetResourceReference(TextBlock.FontSizeProperty, "SecondaryWindowMinorFontSize");
         _rulePreviewSurface.Child = _rulePreview;
@@ -357,15 +361,15 @@ internal sealed class ReminderRulesEditorWindow : Window
         Bind(_firstDueTime, AutomationProperties.NameProperty, nameof(ReminderRulesEditorViewModel.FirstDueTimeAutomationName), _viewModel);
 
         BindHelpText(_mode, nameof(ReminderRulesEditorViewModel.ModeError));
-        BindHelpText(_firstDueDate, nameof(ReminderRulesEditorViewModel.FirstDueError));
-        BindHelpText(_firstDueTime, nameof(ReminderRulesEditorViewModel.FirstDueError));
-        BindHelpText(_interval, nameof(ReminderRulesEditorViewModel.IntervalError));
-        BindHelpText(_customInterval, nameof(ReminderRulesEditorViewModel.IntervalError));
+        BindHelpText(_firstDueDate, nameof(ReminderRulesEditorViewModel.FirstDueDateHelpText));
+        BindHelpText(_firstDueTime, nameof(ReminderRulesEditorViewModel.FirstDueTimeHelpText));
+        BindHelpText(_interval, nameof(ReminderRulesEditorViewModel.IntervalComboHelpText));
+        BindHelpText(_customInterval, nameof(ReminderRulesEditorViewModel.CustomIntervalHelpText));
         BindHelpText(_relativeOffset, nameof(ReminderRulesEditorViewModel.RelativeOffsetError));
-        BindHelpText(_calendarFrequency, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_calendarFrequency, nameof(ReminderRulesEditorViewModel.CalendarFrequencyHelpText));
         BindHelpText(_calendarInterval, nameof(ReminderRulesEditorViewModel.CalendarIntervalError));
-        BindHelpText(_calendarMonth, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
-        BindHelpText(_calendarDay, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
+        BindHelpText(_calendarMonth, nameof(ReminderRulesEditorViewModel.CalendarMonthHelpText));
+        BindHelpText(_calendarDay, nameof(ReminderRulesEditorViewModel.CalendarDayHelpText));
         BindHelpText(_calendarLastDay, nameof(ReminderRulesEditorViewModel.CalendarSelectorError));
         BindHelpText(_saveRuleButton, nameof(ReminderRulesEditorViewModel.CollectionError));
         foreach (var checkBox in _calendarWeekdayChecks.Values)
@@ -732,7 +736,12 @@ internal sealed class ReminderRulesEditorWindow : Window
 
     private void OnValidationErrorRaised(object? sender, ReminderRuleEditorErrorEventArgs args)
     {
-        GetErrorControl(args.Target).Focus();
+        var control = GetErrorControl(args.Target);
+        control.Focus();
+        if (IsActive || IsKeyboardFocusWithin)
+        {
+            Keyboard.Focus(control);
+        }
     }
 
     private void OnFormFocusRequested(object? sender, EventArgs args)
@@ -762,11 +771,34 @@ internal sealed class ReminderRulesEditorWindow : Window
         ReminderRuleEditingErrorTarget.Interval => _interval.SelectedIndex == 3 ? _customInterval : _interval,
         ReminderRuleEditingErrorTarget.RelativeOffset => _relativeOffset,
         ReminderRuleEditingErrorTarget.CalendarInterval => _calendarInterval,
-        ReminderRuleEditingErrorTarget.CalendarSelector => _viewModel.CalendarFrequencyIndex == 1
-            ? _calendarWeekdayChecks.Values.First()
-            : _calendarLastDay,
+        ReminderRuleEditingErrorTarget.CalendarSelector => GetCalendarSelectorErrorControl(),
         _ => _saveRuleButton
     };
+
+    private Control GetCalendarSelectorErrorControl()
+    {
+        if (_viewModel.IsCalendarFrequencyErrorVisible)
+        {
+            return _calendarFrequency;
+        }
+
+        if (_viewModel.IsCalendarWeekdaysVisible)
+        {
+            return _calendarWeekdayChecks.Values.First();
+        }
+
+        if (_viewModel.IsCalendarMonthErrorVisible)
+        {
+            return _calendarMonth;
+        }
+
+        if (_viewModel.IsCalendarDayErrorVisible)
+        {
+            return _calendarDay;
+        }
+
+        return _calendarLastDay;
+    }
 
     private void RenderRules()
     {

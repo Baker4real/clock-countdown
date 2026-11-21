@@ -3910,6 +3910,8 @@ exit 23
         MainWorkHoursTypeableTimeInputAndValidation = '管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）'
         SharedIconGeometriesFrozenAndDeduplicated = '全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）'
         VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry = '日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）'
+        MainAndFloatingFormErrorBordersSpread = '主窗口便签增改、显示设置多字段、标签管理新建与行改名、主/浮标签选择器与悬浮快速新增均按统一规则呈现 1/2 DIP 危险错误边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、播报不变并区分系统对比度；悬浮搜索确认无校验错误态并保持暖金焦点（#313）'
+        SecondaryWindowsFormErrorBordersSpread = '规则编辑器全部错误字段（含模式、首次日期/时刻、固定与自定义间隔、提前分钟、重复周期/间隔与按月按年选择器）及提醒中心自定义稍后日期/时间均按统一规则呈现 1/2 DIP 危险边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、原有播报不变并区分系统对比度（#313）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

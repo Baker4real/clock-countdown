@@ -683,6 +683,7 @@ internal sealed class TagSelector : Grid
     private readonly Popup _popup;
     private readonly Border _surface;
     private readonly TextBox _search;
+    private readonly TextBlock _error;
     private readonly Button _create;
     private readonly StackPanel _items;
     private readonly TextBlock _triggerText;
@@ -733,7 +734,22 @@ internal sealed class TagSelector : Grid
         _search = UiAccessibility.Name(
             new TextBox { MaxLength = 30, Margin = new Thickness(0, 0, 0, unitSpacing) },
             "搜索或新建标签");
-        _search.TextChanged += (_, _) => RenderItems();
+        _search.TextChanged += (_, _) =>
+        {
+            ClearCreateError();
+            RenderItems();
+        };
+
+        _error = new TextBlock
+        {
+            Margin = new Thickness(0, 0, 0, unitSpacing),
+            TextWrapping = TextWrapping.Wrap,
+            Visibility = Visibility.Collapsed
+        };
+        _error.SetResourceReference(TextBlock.FontSizeProperty, "TypeCaptionFontSize");
+        _error.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
+        AutomationProperties.SetAutomationId(_error, "TagSelectorCreateError");
+        UiAccessibility.MarkLive(_error);
 
         _create = UiAccessibility.Name(
             new Button
@@ -752,11 +768,16 @@ internal sealed class TagSelector : Grid
             {
                 CreateRequested?.Invoke(this, name);
             }
+            else
+            {
+                ShowCreateError("请输入标签名称。");
+            }
         };
 
         _items = new StackPanel();
         var panel = new StackPanel { Margin = new Thickness(10) };
         panel.Children.Add(_search);
+        panel.Children.Add(_error);
         var itemsScroller = new ScrollViewer
         {
             Content = _items,
@@ -787,6 +808,7 @@ internal sealed class TagSelector : Grid
             PopupAnimation = PopupAnimation.None,
             Child = _surface
         };
+        _popup.Closed += (_, _) => ClearCreateError();
         PopupMotionBehavior.Attach(_popup);
         PopupFocusLifecycle.Attach(_popup, _trigger, () => _search);
         _trigger.Click += (_, _) => PopupMotionBehavior.Toggle(_popup);
@@ -796,6 +818,59 @@ internal sealed class TagSelector : Grid
     public event EventHandler? SelectionChanged;
 
     public event Action<object?, string>? CreateRequested;
+
+    internal event EventHandler? CreateErrorCleared;
+
+    internal void ShowCreateError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            ClearCreateError();
+            return;
+        }
+
+        UiAccessibility.Announce(_error, message, block =>
+        {
+            AutomationProperties.SetHelpText(block, message);
+            block.Visibility = Visibility.Visible;
+        });
+        AutomationProperties.SetHelpText(_search, message);
+        InputErrorState.SetHasError(_search, true);
+        if (_popup.IsOpen && !PopupMotionBehavior.IsClosing(_popup))
+        {
+            _search.Focus();
+            Keyboard.Focus(_search);
+            _search.CaretIndex = _search.Text.Length;
+        }
+    }
+
+    internal void ClearCreateError()
+    {
+        var previousMessage = _error.Text;
+        if (string.IsNullOrEmpty(previousMessage) &&
+            _error.Visibility != Visibility.Visible &&
+            !InputErrorState.GetHasError(_search))
+        {
+            return;
+        }
+
+        UiAccessibility.Announce(_error, string.Empty, block =>
+        {
+            AutomationProperties.SetHelpText(block, string.Empty);
+            block.Visibility = Visibility.Collapsed;
+        });
+        InputErrorState.SetHasError(_search, false);
+        if (!string.IsNullOrEmpty(previousMessage) &&
+            string.Equals(
+                AutomationProperties.GetHelpText(_search),
+                previousMessage,
+                StringComparison.Ordinal))
+        {
+            AutomationProperties.SetHelpText(_search, string.Empty);
+        }
+
+        CreateErrorCleared?.Invoke(this, EventArgs.Empty);
+    }
 
     public HashSet<string> SelectedTagIds { get; } = new(StringComparer.OrdinalIgnoreCase);
 

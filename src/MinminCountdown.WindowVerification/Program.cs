@@ -61,6 +61,7 @@ internal static class Program
     internal const string VectorizedTextGlyphIconsFactName = "VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry";
     internal const string MainAndFloatingFormErrorBordersFactName = "MainAndFloatingFormErrorBordersSpread";
     internal const string SecondaryWindowsFormErrorBordersFactName = "SecondaryWindowsFormErrorBordersSpread";
+    internal const string ViewModelSourceGeneratorsFactName = "ReminderViewModelsUseSourceGeneratorsWithoutBehaviorDrift";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -194,6 +195,9 @@ internal static class Program
     private const string SecondaryWindowsFormErrorBordersFactMeaning =
         "规则编辑器全部错误字段（含模式、首次日期/时刻、固定与自定义间隔、提前分钟、重复周期/间隔与按月按年选择器）及提醒中心自定义稍后日期/时间" +
         "均按统一规则呈现 1/2 DIP 危险边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、原有播报不变并区分系统对比度（#313）";
+    private const string ViewModelSourceGeneratorsFactMeaning =
+        "提醒中心与规则编辑器的全部 ViewModel 均改由 CommunityToolkit.Mvvm 源生成器生成属性与命令，不引入消息总线；" +
+        "对外属性名、访问级别、PropertyChanged 通知时机、命令 CanExecute 条件与实时预览/脏态/校验行为保持不变（#332）";
 
     [STAThread]
     private static int Main()
@@ -253,7 +257,8 @@ internal static class Program
             [SharedIconGeometriesFactName] = false,
             [VectorizedTextGlyphIconsFactName] = false,
             [MainAndFloatingFormErrorBordersFactName] = false,
-            [SecondaryWindowsFormErrorBordersFactName] = false
+            [SecondaryWindowsFormErrorBordersFactName] = false,
+            [ViewModelSourceGeneratorsFactName] = false
         };
         var failures = new List<string>();
 
@@ -562,6 +567,11 @@ internal static class Program
                 SecondaryWindowsFormErrorBordersFactMeaning,
                 () => FormErrorBordersSpreadScenario.RunSecondaryWindows(
                     SecondaryWindowsFormErrorBordersFactMeaning));
+            RunFact(
+                ViewModelSourceGeneratorsFactName,
+                ViewModelSourceGeneratorsFactMeaning,
+                () => ViewModelSourceGeneratorScenario.Run(
+                    ViewModelSourceGeneratorsFactMeaning));
         }
         catch (Exception exception)
         {

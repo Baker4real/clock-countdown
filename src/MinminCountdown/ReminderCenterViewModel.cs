@@ -10,17 +10,13 @@ namespace MinminCountdown;
 /// visual tree and render probe, while this object owns every mutable value
 /// shown by that tree.
 /// </summary>
-internal sealed class ReminderCenterViewModel : ObservableObject
+internal sealed partial class ReminderCenterViewModel : ObservableObject
 {
     private readonly ObservableCollection<ReminderCenterEntryViewModel> _entries = new();
-    private bool _canAcknowledgeAll;
 
     public ReminderCenterViewModel()
     {
         Entries = new ReadOnlyObservableCollection<ReminderCenterEntryViewModel>(_entries);
-        AcknowledgeAllCommand = new RelayCommand(
-            () => AcknowledgeAllRequested?.Invoke(this, EventArgs.Empty),
-            () => CanAcknowledgeAll);
         _entries.CollectionChanged += (_, _) => RefreshSummary();
     }
 
@@ -32,21 +28,14 @@ internal sealed class ReminderCenterViewModel : ObservableObject
 
     public string AccessibleCountText => $"共 {EntryCount} 条提醒";
 
-    public bool CanAcknowledgeAll
-    {
-        get => _canAcknowledgeAll;
-        private set
-        {
-            if (SetProperty(ref _canAcknowledgeAll, value))
-            {
-                AcknowledgeAllCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
-
-    public RelayCommand AcknowledgeAllCommand { get; }
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AcknowledgeAllCommand))]
+    public partial bool CanAcknowledgeAll { get; private set; }
 
     internal event EventHandler<EventArgs>? AcknowledgeAllRequested;
+
+    [RelayCommand(CanExecute = nameof(CanAcknowledgeAll))]
+    private void AcknowledgeAll() => AcknowledgeAllRequested?.Invoke(this, EventArgs.Empty);
 
     internal ReminderCenterEntryViewModel Add(ReminderCenterItem item) =>
         Add(new ReminderCenterEntryViewModel(item));
@@ -108,55 +97,26 @@ internal sealed class ReminderCenterViewModel : ObservableObject
     }
 }
 
-internal sealed class ReminderCenterEntryViewModel : ObservableObject
+internal sealed partial class ReminderCenterEntryViewModel : ObservableObject
 {
     private const string IncompleteCustomSnoozeError = "请选择完整的自定义稍后日期和时间。";
 
     private readonly bool _canComplete;
-    private bool _isAcknowledgeEnabled;
-    private bool _isSnoozeEnabled;
-    private bool _isCompleteEnabled;
-    private bool _isCustomSnoozeVisible;
-    private bool _isFailureVisible;
-    private bool _isCustomErrorVisible;
-    private bool _isRendered;
-    private bool _isTitleOverflowing;
-    private bool _isTitleExpanded;
-    private string _errorMessage = string.Empty;
-    private string _customErrorMessage = string.Empty;
-    private DateTime? _customDate;
-    private string _relativeTimeText = "刚刚";
-    private TimeSpan? _customTime;
-    private bool _hasInvalidCustomTimeInput;
     private bool _customTimeTouched;
 
     public ReminderCenterEntryViewModel(ReminderCenterItem item)
     {
         Item = item;
         _canComplete = item.CanComplete;
-        AcknowledgeCommand = new RelayCommand(
-            () => AcknowledgeRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)),
-            () => IsAcknowledgeEnabled);
-        SelectSnoozePresetCommand = new RelayCommand<ReminderSnoozeOption>(
-            SelectSnoozePreset,
-            option => IsSnoozeEnabled && option != ReminderSnoozeOption.Custom);
-        OpenCustomSnoozeCommand = new RelayCommand(BeginCustomSnooze, () => IsSnoozeEnabled);
-        ConfirmCustomSnoozeCommand = new RelayCommand(ConfirmCustomSnooze, () => IsSnoozeEnabled);
-        CompleteCommand = new RelayCommand(
-            () => CompleteRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)),
-            () => IsCompleteEnabled);
-        OpenSourceCommand = new RelayCommand(
-            () => OpenSourceRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key)));
-        ToggleTitleExpandedCommand = new RelayCommand(ToggleTitleExpanded);
+        RelativeTimeText = "刚刚";
+        ErrorMessage = string.Empty;
+        CustomErrorMessage = string.Empty;
     }
 
     public ReminderCenterItem Item { get; }
 
-    public string RelativeTimeText
-    {
-        get => _relativeTimeText;
-        private set => SetProperty(ref _relativeTimeText, value);
-    }
+    [ObservableProperty]
+    public partial string RelativeTimeText { get; private set; }
 
     internal void UpdateTime(DateTimeOffset nowUtc)
     {
@@ -170,67 +130,32 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
 
     public bool CanComplete => _canComplete;
 
-    public bool IsAcknowledgeEnabled
-    {
-        get => _isAcknowledgeEnabled;
-        private set
-        {
-            if (SetProperty(ref _isAcknowledgeEnabled, value))
-            {
-                AcknowledgeCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AcknowledgeCommand))]
+    public partial bool IsAcknowledgeEnabled { get; private set; }
 
-    public bool IsSnoozeEnabled
-    {
-        get => _isSnoozeEnabled;
-        private set
-        {
-            if (SetProperty(ref _isSnoozeEnabled, value))
-            {
-                SelectSnoozePresetCommand.NotifyCanExecuteChanged();
-                OpenCustomSnoozeCommand.NotifyCanExecuteChanged();
-                ConfirmCustomSnoozeCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SelectSnoozePresetCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenCustomSnoozeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConfirmCustomSnoozeCommand))]
+    public partial bool IsSnoozeEnabled { get; private set; }
 
-    public bool IsCompleteEnabled
-    {
-        get => _isCompleteEnabled;
-        private set
-        {
-            if (SetProperty(ref _isCompleteEnabled, value))
-            {
-                CompleteCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CompleteCommand))]
+    public partial bool IsCompleteEnabled { get; private set; }
 
-    public bool IsCustomSnoozeVisible
-    {
-        get => _isCustomSnoozeVisible;
-        private set => SetProperty(ref _isCustomSnoozeVisible, value);
-    }
+    [ObservableProperty]
+    public partial bool IsCustomSnoozeVisible { get; private set; }
 
-    public bool IsFailureVisible
-    {
-        get => _isFailureVisible;
-        private set => SetProperty(ref _isFailureVisible, value);
-    }
+    [ObservableProperty]
+    public partial bool IsFailureVisible { get; private set; }
 
-    public bool IsCustomErrorVisible
-    {
-        get => _isCustomErrorVisible;
-        private set
-        {
-            if (SetProperty(ref _isCustomErrorVisible, value))
-            {
-                NotifyCustomErrorBordersChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCustomDateErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCustomTimeErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(CustomDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(CustomTimeHelpText))]
+    public partial bool IsCustomErrorVisible { get; private set; }
 
     public bool IsCustomDateErrorVisible =>
         IsCustomErrorVisible &&
@@ -244,42 +169,17 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
 
     public string CustomTimeHelpText => IsCustomTimeErrorVisible ? CustomErrorMessage : string.Empty;
 
-    public bool IsRendered
-    {
-        get => _isRendered;
-        private set => SetProperty(ref _isRendered, value);
-    }
+    [ObservableProperty]
+    public partial bool IsRendered { get; private set; }
 
-    public bool IsTitleOverflowing
-    {
-        get => _isTitleOverflowing;
-        private set
-        {
-            if (!SetProperty(ref _isTitleOverflowing, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial bool IsTitleOverflowing { get; private set; }
 
-            if (!value && _isTitleExpanded)
-            {
-                _isTitleExpanded = false;
-                OnPropertyChanged(nameof(IsTitleExpanded));
-                NotifyTitleDisclosureChanged();
-            }
-        }
-    }
-
-    public bool IsTitleExpanded
-    {
-        get => _isTitleExpanded;
-        private set
-        {
-            if (SetProperty(ref _isTitleExpanded, value))
-            {
-                NotifyTitleDisclosureChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TitleDisclosureText))]
+    [NotifyPropertyChangedFor(nameof(TitleDisclosureStateText))]
+    [NotifyPropertyChangedFor(nameof(TitleDisclosureAccessibleName))]
+    public partial bool IsTitleExpanded { get; private set; }
 
     public string TitleDisclosureText => IsTitleExpanded ? "收起" : "展开全文";
 
@@ -289,105 +189,22 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         ? $"收起标题（当前展开）：{Item.Source.DisplayText}"
         : $"展开标题（当前收起）：{Item.Source.DisplayText}";
 
-    public string ErrorMessage
-    {
-        get => _errorMessage;
-        private set => SetProperty(ref _errorMessage, value);
-    }
+    [ObservableProperty]
+    public partial string ErrorMessage { get; private set; }
 
-    public string CustomErrorMessage
-    {
-        get => _customErrorMessage;
-        private set
-        {
-            if (SetProperty(ref _customErrorMessage, value))
-            {
-                OnPropertyChanged(nameof(CustomDateHelpText));
-                OnPropertyChanged(nameof(CustomTimeHelpText));
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CustomDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(CustomTimeHelpText))]
+    public partial string CustomErrorMessage { get; private set; }
 
-    public DateTime? CustomDate
-    {
-        get => _customDate;
-        set
-        {
-            if (!SetProperty(ref _customDate, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial DateTime? CustomDate { get; set; }
 
-            if (value is not null && IsCustomErrorVisible)
-            {
-                ClearCustomError();
-            }
-            else
-            {
-                NotifyCustomErrorBordersChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    public partial TimeSpan? CustomTime { get; set; }
 
-    public TimeSpan? CustomTime
-    {
-        get => _customTime;
-        set
-        {
-            if (!SetProperty(ref _customTime, value))
-            {
-                return;
-            }
-
-            _customTimeTouched = true;
-            if (value is not null && !_hasInvalidCustomTimeInput && IsCustomErrorVisible)
-            {
-                ClearCustomError();
-            }
-            else
-            {
-                NotifyCustomErrorBordersChanged();
-            }
-        }
-    }
-
-    public bool HasInvalidCustomTimeInput
-    {
-        get => _hasInvalidCustomTimeInput;
-        set
-        {
-            if (!SetProperty(ref _hasInvalidCustomTimeInput, value))
-            {
-                return;
-            }
-
-            if (value)
-            {
-                _customTimeTouched = true;
-            }
-            else if (_customTime is not null && IsCustomErrorVisible)
-            {
-                ClearCustomError();
-                return;
-            }
-
-            NotifyCustomErrorBordersChanged();
-        }
-    }
-
-    public RelayCommand AcknowledgeCommand { get; }
-
-    public RelayCommand<ReminderSnoozeOption> SelectSnoozePresetCommand { get; }
-
-    public RelayCommand OpenCustomSnoozeCommand { get; }
-
-    public RelayCommand ConfirmCustomSnoozeCommand { get; }
-
-    public RelayCommand CompleteCommand { get; }
-
-    public RelayCommand OpenSourceCommand { get; }
-
-    public RelayCommand ToggleTitleExpandedCommand { get; }
+    [ObservableProperty]
+    public partial bool HasInvalidCustomTimeInput { get; set; }
 
     internal event EventHandler<ReminderCenterEntryEventArgs>? AcknowledgeRequested;
 
@@ -447,6 +264,10 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         IsCustomSnoozeVisible = true;
     }
 
+    private bool CanSelectSnoozePreset(ReminderSnoozeOption option) =>
+        IsSnoozeEnabled && option != ReminderSnoozeOption.Custom;
+
+    [RelayCommand(CanExecute = nameof(CanSelectSnoozePreset))]
     internal void SelectSnoozePreset(ReminderSnoozeOption option)
     {
         if (!IsSnoozeEnabled || option == ReminderSnoozeOption.Custom)
@@ -461,6 +282,22 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
             new ReminderCenterSnoozeEventArgs(Item.Key, option, null));
     }
 
+    [RelayCommand(CanExecute = nameof(IsAcknowledgeEnabled))]
+    private void Acknowledge() =>
+        AcknowledgeRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key));
+
+    [RelayCommand(CanExecute = nameof(IsSnoozeEnabled))]
+    private void OpenCustomSnooze() => BeginCustomSnooze();
+
+    [RelayCommand(CanExecute = nameof(IsCompleteEnabled))]
+    private void Complete() =>
+        CompleteRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key));
+
+    [RelayCommand]
+    private void OpenSource() =>
+        OpenSourceRequested?.Invoke(this, new ReminderCenterEntryEventArgs(Item.Key));
+
+    [RelayCommand]
     private void ToggleTitleExpanded()
     {
         if (!IsTitleOverflowing)
@@ -469,13 +306,6 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         }
 
         IsTitleExpanded = !IsTitleExpanded;
-    }
-
-    private void NotifyTitleDisclosureChanged()
-    {
-        OnPropertyChanged(nameof(TitleDisclosureText));
-        OnPropertyChanged(nameof(TitleDisclosureStateText));
-        OnPropertyChanged(nameof(TitleDisclosureAccessibleName));
     }
 
     internal void ValidateCustomTimeOnBlur()
@@ -496,6 +326,7 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(IsSnoozeEnabled))]
     private void ConfirmCustomSnooze()
     {
         if (!IsSnoozeEnabled)
@@ -516,6 +347,54 @@ internal sealed class ReminderCenterEntryViewModel : ObservableObject
         SnoozeRequested?.Invoke(
             this,
             new ReminderCenterSnoozeEventArgs(Item.Key, ReminderSnoozeOption.Custom, customBeijing));
+    }
+
+    partial void OnIsTitleOverflowingChanged(bool value)
+    {
+        if (!value && IsTitleExpanded)
+        {
+            IsTitleExpanded = false;
+        }
+    }
+
+    partial void OnCustomDateChanged(DateTime? value)
+    {
+        if (value is not null && IsCustomErrorVisible)
+        {
+            ClearCustomError();
+        }
+        else
+        {
+            NotifyCustomErrorBordersChanged();
+        }
+    }
+
+    partial void OnCustomTimeChanged(TimeSpan? value)
+    {
+        _customTimeTouched = true;
+        if (value is not null && !HasInvalidCustomTimeInput && IsCustomErrorVisible)
+        {
+            ClearCustomError();
+        }
+        else
+        {
+            NotifyCustomErrorBordersChanged();
+        }
+    }
+
+    partial void OnHasInvalidCustomTimeInputChanged(bool value)
+    {
+        if (value)
+        {
+            _customTimeTouched = true;
+        }
+        else if (CustomTime is not null && IsCustomErrorVisible)
+        {
+            ClearCustomError();
+            return;
+        }
+
+        NotifyCustomErrorBordersChanged();
     }
 
     private void NotifyCustomErrorBordersChanged()

@@ -909,10 +909,11 @@ internal static partial class ValidationExercises
                         AutomationProperties.GetHelpText(lastDay),
                         error.Text,
                         StringComparison.Ordinal) &&
-                    lastDay.IsKeyboardFocusWithin;
+                    daySelector.IsKeyboardFocusWithin;
 
                 frequency.SelectedIndex = 3;
-                FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleCalendarMonth").SelectedIndex = -1;
+                var monthSelector = FindByAutomationId<ComboBox>(noteEditor, "ReminderRuleCalendarMonth");
+                monthSelector.SelectedIndex = -1;
                 InvokeRuleEditorButton(FindByAutomationId<Button>(noteEditor, "SaveReminderRuleButton"));
                 var yearlyLocalized = error.Visibility == Visibility.Visible &&
                     error.Text.Contains("按年重复", StringComparison.Ordinal) &&
@@ -920,7 +921,7 @@ internal static partial class ValidationExercises
                         AutomationProperties.GetHelpText(lastDay),
                         error.Text,
                         StringComparison.Ordinal) &&
-                    lastDay.IsKeyboardFocusWithin;
+                    monthSelector.IsKeyboardFocusWithin;
                 noteSelectorErrorCasesLocalized = monthlyLocalized && yearlyLocalized;
 
                 frequency.SelectedIndex = 1;

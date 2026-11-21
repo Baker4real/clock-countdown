@@ -3908,6 +3908,8 @@ exit 23
         RuleEditorTimeInputTypingValidationAndPreview = '规则编辑器首次提醒与日历本地时刻改为单一可键入 HH:mm 文本框：支持直接键入与上下键分段步进、失焦与提交校验、暖金/危险边框不挤布局、实时规则预览同步与精确持久化领域值，保留 LabeledBy 标签关系并适配系统对比度（#329）'
         ReminderCenterCustomSnoozeTypeableTimeInput = '提醒中心懒创建自定义稍后时间改为单一可键入 HH:mm 文本框：保留懒创建与默认值、支持直接键入与上下键步进、非法格式与不晚于当前北京时间错误紧贴下方且带错误边框、合法稍后精确持久化，保留 LabeledBy 与系统对比度（#329）'
         MainWorkHoursTypeableTimeInputAndValidation = '管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）'
+        MainAndFloatingFormErrorBordersSpread = '主窗口便签增改、显示设置多字段、标签管理新建与行改名、主/浮标签选择器与悬浮快速新增均按统一规则呈现 1/2 DIP 危险错误边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、播报不变并区分系统对比度；悬浮搜索确认无校验错误态并保持暖金焦点（#313）'
+        SecondaryWindowsFormErrorBordersSpread = '规则编辑器全部错误字段（含模式、首次日期/时刻、固定与自定义间隔、提前分钟、重复周期/间隔与按月按年选择器）及提醒中心自定义稍后日期/时间均按统一规则呈现 1/2 DIP 危险边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、原有播报不变并区分系统对比度（#313）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

@@ -57,6 +57,8 @@ internal static class Program
     internal const string RuleEditorTimeInputFactName = "RuleEditorTimeInputTypingValidationAndPreview";
     internal const string ReminderCenterCustomSnoozeTimeInputFactName = "ReminderCenterCustomSnoozeTypeableTimeInput";
     internal const string MainWorkHoursTimeInputFactName = "MainWorkHoursTypeableTimeInputAndValidation";
+    internal const string MainAndFloatingFormErrorBordersFactName = "MainAndFloatingFormErrorBordersSpread";
+    internal const string SecondaryWindowsFormErrorBordersFactName = "SecondaryWindowsFormErrorBordersSpread";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -180,6 +182,12 @@ internal static class Program
     private const string MainWorkHoursTimeInputFactMeaning =
         "管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、" +
         "保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）";
+    private const string MainAndFloatingFormErrorBordersFactMeaning =
+        "主窗口便签增改、显示设置多字段、标签管理新建与行改名、主/浮标签选择器与悬浮快速新增均按统一规则呈现 1/2 DIP 危险错误边框与 2 DIP 暖金焦点且零布局位移，" +
+        "修正即清、提交聚焦首错、HelpText 同步、播报不变并区分系统对比度；悬浮搜索确认无校验错误态并保持暖金焦点（#313）";
+    private const string SecondaryWindowsFormErrorBordersFactMeaning =
+        "规则编辑器全部错误字段（含模式、首次日期/时刻、固定与自定义间隔、提前分钟、重复周期/间隔与按月按年选择器）及提醒中心自定义稍后日期/时间" +
+        "均按统一规则呈现 1/2 DIP 危险边框与 2 DIP 暖金焦点且零布局位移，修正即清、提交聚焦首错、HelpText 同步、原有播报不变并区分系统对比度（#313）";
 
     [STAThread]
     private static int Main()
@@ -235,7 +243,9 @@ internal static class Program
             [MonthlySalaryDecimalAndDownstreamFactName] = false,
             [RuleEditorTimeInputFactName] = false,
             [ReminderCenterCustomSnoozeTimeInputFactName] = false,
-            [MainWorkHoursTimeInputFactName] = false
+            [MainWorkHoursTimeInputFactName] = false,
+            [MainAndFloatingFormErrorBordersFactName] = false,
+            [SecondaryWindowsFormErrorBordersFactName] = false
         };
         var failures = new List<string>();
 
@@ -524,6 +534,16 @@ internal static class Program
                 MainWorkHoursTimeInputFactMeaning,
                 () => TimeInputSpreadScenario.RunWorkHoursTimeInput(
                     MainWorkHoursTimeInputFactMeaning));
+            RunFact(
+                MainAndFloatingFormErrorBordersFactName,
+                MainAndFloatingFormErrorBordersFactMeaning,
+                () => FormErrorBordersSpreadScenario.RunMainAndFloating(
+                    MainAndFloatingFormErrorBordersFactMeaning));
+            RunFact(
+                SecondaryWindowsFormErrorBordersFactName,
+                SecondaryWindowsFormErrorBordersFactMeaning,
+                () => FormErrorBordersSpreadScenario.RunSecondaryWindows(
+                    SecondaryWindowsFormErrorBordersFactMeaning));
         }
         catch (Exception exception)
         {

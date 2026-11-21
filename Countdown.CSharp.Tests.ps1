@@ -3888,6 +3888,8 @@ exit 23
         MainWindowCommandBarHeaderAndNoteRowsAligned = '管理窗口命令栏三枚命令按钮等高居中并与数量文字共用垂直中线、右缘对齐内容区右缘且页签与选中指示条几何不变；切页前后主标题水平位置不变并保留两页标题装饰；便签新增与编辑态正文列吸收剩余宽度、行尾留白等于行首留白且取消内边距与次级按钮一致（#304）'
         MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse = '管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）'
         FloatingWorkdayCompletionBottomNoDuplicateAndCardMask = '下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）'
+        FloatingNoteOverflowMenuNativeAndLazy = '悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）'
+        FloatingNoteOverflowMenuInteractionsAndMotion = '悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -6155,8 +6157,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingNotesSource -match 'CalendarIndexOverflowMenuWidth = 36' -and
         $floatingNotesSource -match 'Width = CalendarIndexOverflowMenuWidth' -and
         $floatingNotesSource -match 'Height = CalendarIndexOverflowMenuWidth') '悬浮便签…菜单触发器 36×36 命中（#143 命中区源码契约）'
-    Assert-Equal $true (
-        $floatingNotesSource -match 'PopupFocusLifecycle\.Attach\(popup, trigger') '悬浮便签…菜单接入与筛选/标签选择器同一套弹层焦点生命周期（#149 升级 #143 键盘路径源码契约；Esc 归还焦点行为由 PopupFocusLifecycle 与运行态探针共同钉住）'
     Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'validate-only 保持设置不变'
     Write-TestSegmentTiming -Name 'AdapterAssertions'

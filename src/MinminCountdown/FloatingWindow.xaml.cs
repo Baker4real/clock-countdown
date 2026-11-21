@@ -1638,6 +1638,7 @@ public sealed partial class FloatingWindow : Window
         ApplicationTheme.PaletteChanged += OnPaletteChanged;
         Closed += (_, _) =>
         {
+            CloseNoteOverflowMenu(immediate: true);
             CancelPendingSearchFocus();
             ApplicationTheme.PaletteChanged -= OnPaletteChanged;
             _desktopWorkspace.UndoChanged -= OnFloatingUndoChanged;
@@ -1821,6 +1822,7 @@ public sealed partial class FloatingWindow : Window
             : null;
         var renderVersion = ++_floatingRowsRenderVersion;
 
+        CloseNoteOverflowMenu(immediate: true);
         _noteCompletionExit?.Dispose();
         _noteCompletionExit = null;
         FloatingRows.Children.Clear();
@@ -2265,7 +2267,7 @@ public sealed partial class FloatingWindow : Window
     private void OnPreviewKeyDown(object sender, KeyEventArgs args)
     {
         var modifiers = MainShortcutInput.ResolveModifiers(args);
-        if (IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
+        if (IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen && !IsNoteOverflowMenuOpen &&
             modifiers == ModifierKeys.Control && args.Key == Key.Enter && FloatingNoteText.IsKeyboardFocusWithin)
         {
             AddNote();
@@ -2274,7 +2276,7 @@ public sealed partial class FloatingWindow : Window
         }
         if (modifiers == ModifierKeys.Control &&
             args.Key == Key.Z &&
-            IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen &&
+            IsEnabled && !FloatingTags.IsPopupOpen && !FloatingNoteDate.IsDropDownOpen && !IsNoteOverflowMenuOpen &&
             Keyboard.FocusedElement is not TextBoxBase &&
             _desktopWorkspace.UndoOffer?.Surface == WorkspaceUndoSurface.Floating)
         {
@@ -2287,7 +2289,7 @@ public sealed partial class FloatingWindow : Window
         {
             // #156：Ctrl+R 是非拖动的窗口复位入口（与托盘「复位窗口位置」共用实现）；
             // 弹层或日期下拉打开时不抢动作。
-            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen)
+            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen || IsNoteOverflowMenuOpen)
             {
                 return;
             }
@@ -2299,7 +2301,7 @@ public sealed partial class FloatingWindow : Window
 
         if (modifiers == ModifierKeys.Control && args.Key == Key.F)
         {
-            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen)
+            if (FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen || IsNoteOverflowMenuOpen)
             {
                 return;
             }
@@ -2313,7 +2315,8 @@ public sealed partial class FloatingWindow : Window
             modifiers != ModifierKeys.None ||
             !_searchExpanded && string.IsNullOrWhiteSpace(_desktopWorkspace.Snapshot.Filter.NoteSearch) ||
             FloatingTags.IsPopupOpen ||
-            FloatingNoteDate.IsDropDownOpen)
+            FloatingNoteDate.IsDropDownOpen ||
+            IsNoteOverflowMenuOpen)
         {
             return;
         }

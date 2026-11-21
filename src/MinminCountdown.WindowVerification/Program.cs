@@ -37,6 +37,8 @@ internal static class Program
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
     internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
+    internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
+    internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -107,6 +109,12 @@ internal static class Program
     private const string FloatingWorkdayCompletionFactMeaning =
         "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
         "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
+    private const string FloatingNoteOverflowNativeAndLazyFactMeaning =
+        "悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），" +
+        "自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）";
+    private const string FloatingNoteOverflowInteractionsAndMotionFactMeaning =
+        "悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、" +
+        "Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）";
 
     [STAThread]
     private static int Main()
@@ -142,7 +150,9 @@ internal static class Program
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
             [MainEmptyAndHighContrastRibbonFactName] = false,
-            [FloatingWorkdayCompletionFactName] = false
+            [FloatingWorkdayCompletionFactName] = false,
+            [FloatingNoteOverflowNativeAndLazyFactName] = false,
+            [FloatingNoteOverflowInteractionsAndMotionFactName] = false
         };
         var failures = new List<string>();
 
@@ -326,6 +336,18 @@ internal static class Program
                 FloatingWorkdayCompletionScenario.Run();
                 return (true, FloatingWorkdayCompletionFactMeaning);
             });
+            RunFact(
+                FloatingNoteOverflowNativeAndLazyFactName,
+                FloatingNoteOverflowNativeAndLazyFactMeaning,
+                () => FloatingNoteOverflowMenuScenario.RunNativeAndLazy(
+                    theme,
+                    FloatingNoteOverflowNativeAndLazyFactMeaning));
+            RunFact(
+                FloatingNoteOverflowInteractionsAndMotionFactName,
+                FloatingNoteOverflowInteractionsAndMotionFactMeaning,
+                () => FloatingNoteOverflowMenuScenario.RunInteractionsAndMotion(
+                    theme,
+                    FloatingNoteOverflowInteractionsAndMotionFactMeaning));
         }
         catch (Exception exception)
         {

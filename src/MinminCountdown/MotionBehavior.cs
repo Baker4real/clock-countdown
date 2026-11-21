@@ -697,6 +697,28 @@ internal sealed class MotionPopup : Popup
     }
 }
 
+/// <summary>
+/// #319：原生 ContextMenu 的动效宿主；在退出过渡期间保持 IsOpen，避免过早销毁弹出层 HWND，
+/// 并在键盘打开、Esc 或减弱动画时由 PopupMotionBehavior 即时到位/关闭。
+/// </summary>
+internal sealed class MotionContextMenu : ContextMenu
+{
+    private static readonly CoerceValueCallback? BaseCoerceIsOpen =
+        IsOpenProperty.GetMetadata(typeof(ContextMenu)).CoerceValueCallback;
+
+    static MotionContextMenu()
+    {
+        IsOpenProperty.OverrideMetadata(typeof(MotionContextMenu),
+            new FrameworkPropertyMetadata(false, null, CoerceIsOpen));
+    }
+
+    private static object CoerceIsOpen(DependencyObject owner, object value)
+    {
+        var requestedOpen = (bool)(BaseCoerceIsOpen?.Invoke(owner, value) ?? value);
+        return PopupMotionBehavior.CoerceContextMenuIsOpen((ContextMenu)owner, requestedOpen);
+    }
+}
+
 internal static class PopupMotionBehavior
 {
     public static readonly DependencyProperty IsEnabledProperty =
@@ -712,6 +734,13 @@ internal static class PopupMotionBehavior
             typeof(bool),
             typeof(PopupMotionBehavior),
             new PropertyMetadata(false, OnIsToolTipEnabledChanged));
+
+    public static readonly DependencyProperty IsContextMenuEnabledProperty =
+        DependencyProperty.RegisterAttached(
+            "IsContextMenuEnabled",
+            typeof(bool),
+            typeof(PopupMotionBehavior),
+            new PropertyMetadata(false, OnIsContextMenuEnabledChanged));
 
     private static readonly DependencyProperty ControllerProperty =
         DependencyProperty.RegisterAttached(
@@ -732,7 +761,15 @@ internal static class PopupMotionBehavior
     public static bool GetIsToolTipEnabled(DependencyObject element) =>
         (bool)element.GetValue(IsToolTipEnabledProperty);
 
+    public static void SetIsContextMenuEnabled(DependencyObject element, bool value) =>
+        element.SetValue(IsContextMenuEnabledProperty, value);
+
+    public static bool GetIsContextMenuEnabled(DependencyObject element) =>
+        (bool)element.GetValue(IsContextMenuEnabledProperty);
+
     internal static void Attach(Popup popup) => SetIsEnabled(popup, true);
+
+    internal static void AttachContextMenu(ContextMenu menu) => SetIsContextMenuEnabled(menu, true);
 
     internal static bool IsAttached(Popup? popup) =>
         popup is not null && popup.ReadLocalValue(ControllerProperty) is PopupMotionController;
@@ -741,6 +778,39 @@ internal static class PopupMotionBehavior
         popup.ReadLocalValue(ControllerProperty) is PopupMotionController controller
             ? controller.CoerceIsOpen(requestedOpen)
             : requestedOpen;
+
+    internal static bool CoerceContextMenuIsOpen(ContextMenu menu, bool requestedOpen) =>
+        menu.ReadLocalValue(ControllerProperty) is PopupMotionController controller
+            ? controller.CoerceIsOpen(requestedOpen)
+            : requestedOpen;
+
+    internal static void OpenContextMenu(ContextMenu menu, bool immediate = false)
+    {
+        if (menu.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestOpen(immediate);
+        }
+        else if (!menu.IsOpen)
+        {
+            menu.SetCurrentValue(ContextMenu.IsOpenProperty, true);
+        }
+    }
+
+    internal static void CloseContextMenu(ContextMenu menu, bool immediate = false)
+    {
+        if (menu.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.RequestClose(immediate);
+        }
+        else if (menu.IsOpen)
+        {
+            menu.SetCurrentValue(ContextMenu.IsOpenProperty, false);
+        }
+    }
+
+    internal static bool IsContextMenuClosing(ContextMenu? menu) =>
+        menu?.ReadLocalValue(ControllerProperty) is PopupMotionController controller &&
+        controller.IsClosing;
 
     internal static void Open(Popup popup) => Open(popup, immediate: false);
 
@@ -871,6 +941,33 @@ internal static class PopupMotionBehavior
         }
     }
 
+    private static void OnIsContextMenuEnabledChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs args)
+    {
+        if (dependencyObject is not ContextMenu contextMenu)
+        {
+            return;
+        }
+
+        if (args.NewValue is true)
+        {
+            if (contextMenu.ReadLocalValue(ControllerProperty) is PopupMotionController)
+            {
+                return;
+            }
+
+            var controller = new PopupMotionController(contextMenu);
+            contextMenu.SetValue(ControllerProperty, controller);
+            controller.Attach();
+        }
+        else if (contextMenu.ReadLocalValue(ControllerProperty) is PopupMotionController controller)
+        {
+            controller.Detach();
+            contextMenu.ClearValue(ControllerProperty);
+        }
+    }
+
     private static void SetPopupOpen(Popup popup, bool value)
     {
         if (popup.IsOpen != value)
@@ -898,6 +995,7 @@ internal static class PopupMotionBehavior
 
         private readonly DependencyObject _owner;
         private readonly bool _isToolTip;
+        private readonly bool _isContextMenu;
         // Dependency-property bindings use weak invalidation listeners. A
         // PropertyDescriptor subscription instead roots transient popup owners.
         private static readonly DependencyProperty ObservedIsOpenProperty =
@@ -926,6 +1024,7 @@ internal static class PopupMotionBehavior
         private bool _hasPresented;
         private bool _attached;
         private bool _restoreDismissOnOutsideClick;
+        private bool _restoreContextMenuHitTest;
         // #244：进入从触发点一侧移入、退出朝同一侧收回的位移。弹层在触发点下方为 -4，在上方
         // （含 WPF 翻转）为 +4；定位完成后才判定，无法判定时按下方处理。
         private const double PopupOffset = 4;
@@ -935,6 +1034,7 @@ internal static class PopupMotionBehavior
         {
             _owner = owner;
             _isToolTip = owner is ToolTip;
+            _isContextMenu = owner is ContextMenu;
         }
 
         public bool IsClosing => _transition == TransitionKind.Closing;
@@ -960,6 +1060,11 @@ internal static class PopupMotionBehavior
             else if (_owner is ToolTip toolTip)
             {
                 toolTip.Opened += OnToolTipOpened;
+            }
+            else if (_owner is ContextMenu contextMenu)
+            {
+                contextMenu.Opened += OnContextMenuOpened;
+                contextMenu.Closed += OnContextMenuClosed;
             }
 
             AttachPlacementTarget();
@@ -996,6 +1101,11 @@ internal static class PopupMotionBehavior
             {
                 toolTip.Opened -= OnToolTipOpened;
             }
+            else if (_owner is ContextMenu contextMenu)
+            {
+                contextMenu.Opened -= OnContextMenuOpened;
+                contextMenu.Closed -= OnContextMenuClosed;
+            }
 
             ToolTipChain.Release(this);
             DetachPlacementTarget();
@@ -1005,6 +1115,10 @@ internal static class PopupMotionBehavior
             if (_owner is MotionPopup popupWithRetainedExit)
             {
                 popupWithRetainedExit.CoerceValue(Popup.IsOpenProperty);
+            }
+            else if (_owner is MotionContextMenu menuWithRetainedExit)
+            {
+                menuWithRetainedExit.CoerceValue(ContextMenu.IsOpenProperty);
             }
 
             RestoreCapturePolicy();
@@ -1057,7 +1171,22 @@ internal static class PopupMotionBehavior
 
             _immediateRequest = immediate;
             _requestedOpen = true;
-            if (!IsOpen)
+            if (_isContextMenu && IsOpen && _transition == TransitionKind.Closing)
+            {
+                // ContextMenu 在外部点击后退出 MenuMode；中途重开时保留当前呈现值并重新建立原生 MenuMode。
+                var resumeOpacity = _visual?.Opacity ?? 0;
+                var resumeY = _translation?.Y ?? _offset;
+                RestoreCapturePolicy();
+                SetIsOpen(false);
+                SetIsOpen(true);
+                ResolveVisual();
+                if (_visual is not null)
+                {
+                    SetVisualValues(resumeOpacity, resumeY);
+                    _hasPresented = true;
+                }
+            }
+            else if (!IsOpen)
             {
                 SetIsOpen(true);
             }
@@ -1120,6 +1249,19 @@ internal static class PopupMotionBehavior
                 _restoreDismissOnOutsideClick = true;
                 popup.SetCurrentValue(Popup.StaysOpenProperty, true);
             }
+            else if (_owner is ContextMenu contextMenu)
+            {
+                if (ReferenceEquals(System.Windows.Input.Mouse.Captured, contextMenu))
+                {
+                    System.Windows.Input.Mouse.Capture(null);
+                }
+
+                if (contextMenu.IsHitTestVisible)
+                {
+                    _restoreContextMenuHitTest = true;
+                    contextMenu.SetCurrentValue(UIElement.IsHitTestVisibleProperty, false);
+                }
+            }
         }
 
         private void RestoreCapturePolicy()
@@ -1128,6 +1270,12 @@ internal static class PopupMotionBehavior
             {
                 _restoreDismissOnOutsideClick = false;
                 popup.SetCurrentValue(Popup.StaysOpenProperty, false);
+            }
+
+            if (_restoreContextMenuHitTest && _owner is ContextMenu contextMenu)
+            {
+                _restoreContextMenuHitTest = false;
+                contextMenu.SetCurrentValue(UIElement.IsHitTestVisibleProperty, true);
             }
         }
 
@@ -1157,7 +1305,9 @@ internal static class PopupMotionBehavior
 
         private bool IsOpen => _isToolTip
             ? ((ToolTip)_owner).IsOpen
-            : ((Popup)_owner).IsOpen;
+            : _isContextMenu
+                ? ((ContextMenu)_owner).IsOpen
+                : ((Popup)_owner).IsOpen;
 
         private void SetIsOpen(bool value)
         {
@@ -1172,6 +1322,10 @@ internal static class PopupMotionBehavior
                 if (_isToolTip)
                 {
                     _owner.SetCurrentValue(ToolTip.IsOpenProperty, value);
+                }
+                else if (_isContextMenu)
+                {
+                    _owner.SetCurrentValue(ContextMenu.IsOpenProperty, value);
                 }
                 else
                 {
@@ -1207,6 +1361,19 @@ internal static class PopupMotionBehavior
         // ToolTip 的弹层可能在请求之后才打开（绑定通知顺序或异步建窗）；打开后重新按定位判定方向。
         private void OnToolTipOpened(object sender, RoutedEventArgs args) => OnSurfaceOpened();
 
+        private void OnContextMenuOpened(object sender, RoutedEventArgs args) => OnSurfaceOpened();
+
+        private void OnContextMenuClosed(object sender, RoutedEventArgs args)
+        {
+            if (!_suppress && _transition != TransitionKind.Closing)
+            {
+                _requestedOpen = false;
+                _hasPresented = false;
+                DetachPlacementTarget();
+                RestoreCapturePolicy();
+            }
+        }
+
         private void OnSurfaceOpened()
         {
             ResolveVisual();
@@ -1232,7 +1399,9 @@ internal static class PopupMotionBehavior
             }
             DependencyObject? target = _isToolTip
                 ? ((ToolTip)_owner).PlacementTarget
-                : ((Popup)_owner).PlacementTarget;
+                : _isContextMenu
+                    ? ((ContextMenu)_owner).PlacementTarget
+                    : ((Popup)_owner).PlacementTarget;
             // Template popups can position relative to their template parent
             // without setting PlacementTarget. Observe that owner's request
             // so reopening can interrupt an exit while IsOpen is still true.
@@ -1521,6 +1690,13 @@ internal static class PopupMotionBehavior
             if (_isToolTip)
             {
                 _visual = (ToolTip)_owner;
+                _translation = null;
+                return;
+            }
+
+            if (_isContextMenu)
+            {
+                _visual = (ContextMenu)_owner;
                 _translation = null;
                 return;
             }

@@ -141,7 +141,7 @@ internal static partial class ValidationExercises
     // thumb 与键盘 PageDown/PageUp 改变偏移后的提示，搜索展开、快速新增展开与「…」菜单打开时的提示，以及十二条倒计时
     // 溢出的顶部与底部（到底时底部状态完整可见）。captureEvidence 在每个状态摆好后调用（实拍用，菜单态带弹层）。
     public static FloatingScrollContextProbe RunFloatingScrollContextHintBehavior(
-        Action<FloatingWindow, System.Windows.Controls.Primitives.Popup?, string>? captureEvidence = null)
+        Action<FloatingWindow, System.Windows.Controls.ContextMenu?, string>? captureEvidence = null)
     {
         using var workArea = MonitorWorkAreaResolver.OverrideForValidation(
             new MonitorWorkArea(new Rect(0, 0, 2560, 2000), 1, 1));
@@ -156,7 +156,7 @@ internal static partial class ValidationExercises
             var window = fixture.Floating;
             var scroller = window.BodyScrollerForValidation;
 
-            void Expect(string state, bool above, bool below, System.Windows.Controls.Primitives.Popup? popup = null)
+            void Expect(string state, bool above, bool below, System.Windows.Controls.ContextMenu? menu = null)
             {
                 var reading = window.ScrollContextStateForValidation();
                 checkedStates++;
@@ -167,7 +167,7 @@ internal static partial class ValidationExercises
                     failures.Add($"{state}：{string.Join("、", problems)}（{reading.Describe()}）");
                 }
 
-                captureEvidence?.Invoke(window, popup, state);
+                captureEvidence?.Invoke(window, menu, state);
             }
 
             // 没有可滚动内容：空便签列表只有空态说明与底部状态，不挂提示。悬浮便签卡带日期印记，单张卡加底部状态
@@ -269,13 +269,13 @@ internal static partial class ValidationExercises
             Expect("notes-quick-add-middle", true, true);
             window.CollapseQuickAddForValidation();
 
-            // 「…」菜单：在中段打开露在视口里的卡片菜单，提示不变，弹层不挂遮罩。
+            // 「…」菜单：在中段打开露在视口里的卡片原生菜单，提示不变，菜单表面不挂遮罩。
             window.ScrollBodyForValidation(scroller.ScrollableHeight / 2);
             var menu = window.OpenVisibleNoteOverflowMenuForValidation();
             Must(menu is { IsOpen: true }, "#251：没能打开视口里便签卡的「…」菜单。");
-            Must(menu!.Child is UIElement { OpacityMask: null }, "#251：「…」菜单弹层不应挂遮罩。");
+            Must(menu!.OpacityMask is null, "#251：「…」菜单弹层不应挂遮罩。");
             Expect("notes-menu-open", true, true, menu);
-            WindowValidationInput.ClosePopupForCleanup(menu);
+            PopupMotionBehavior.CloseContextMenu(menu, immediate: true);
             window.SettleScrollContextForValidation();
             Expect("notes-menu-closed", true, true);
 

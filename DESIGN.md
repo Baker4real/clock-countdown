@@ -740,10 +740,10 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 | token | 值 | 口径 |
 | --- | --- | --- |
-| `SpacingUnit` | 8 | 8px 基准网格（§5） |
-| `SpacingFieldRow` | 10 | 区块内字段行距（§5） |
-| `SpacingBlockGap` | 12 | 区块间纵向节奏（§5） |
-| `SpacingCardPadding` | 14 | 卡片内边距（§4 便签卡） |
+| `SpacingUnit` | 8 | 8px 基准网格（§5：卡间距、字段错误/消息行上距、相邻控件/芯片/按钮与行内分区间距） |
+| `SpacingFieldRow` | 10 | 区块内字段行距（§5：管理窗倒计时编辑区与规则编辑器表单行距） |
+| `SpacingBlockGap` | 12 | 区块间纵向节奏（§5：管理窗工作区顶距与编辑卡-列表槽、便签日期章节间距、悬浮便签列表底距、规则编辑器区块间距、提醒卡片内容-动作分隔距） |
+| `SpacingCardPadding` | 14 | Level 2 条目卡片内边距（§4/§6：管理窗便签卡、提醒中心条目卡） |
 | `RadiusPill` | 19 | 全圆角胶囊（短边 38 的一半） |
 | `RadiusOverlay` | 12 | 区块表面（管理窗口编辑区、列表区、状态栏）与 Popup / 下拉 / 日历浮层、悬浮便签 `…` 菜单 |
 | `RadiusControl` | 9 | 按钮及其焦点环、输入框、分段控件、页签与状态分段容器、单选焦点环 |
@@ -752,7 +752,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 | `RadiusThumb` | 4 | 滚动条 thumb |
 | `FocusBorderThickness` | 2 | 键盘焦点/按压边粗细（`Thickness` 资源，可直接绑定 `BorderThickness`） |
 
-间距 token 以 `sys:Double` 网格值提供（可绑定 `FontSize`/`Height` 或在代码中组装）；XAML 中直接用于 `Margin` 时需由消费方包装为 `Thickness`。焦点语义沿用 §6：文本框、下拉框、日期框的键盘焦点用 `MainActionFocusBrush`；其他常规非输入控件用 `ActiveBrush`，主操作按钮、浮窗选中胶囊与已勾选置顶继续用 `MainActionFocusBrush`；不得引入默认系统蓝。圆角与焦点资源主要由 App.xaml 的控件模板消费；主窗口日期章节与卡片在代码中消费 `SpacingBlockGap`、`SpacingUnit`、`SpacingCardPadding`，其他固定布局尺寸仍按对应章节定义，不宣称所有几何均已 token 化（#232）。
+间距 token 以 `sys:Double` 网格值在 `App.xaml` 声明，全应用共享单一真源（#311）：XAML 中经 `SpacingThickness` / `SpacingGridLength` 标记扩展直接引用（不再在 XAML 另写副本字面量），C# 经 `SpacingTokens.Resolve` / `FindResource` 读取；缺失 token 失败闭锁。四个 token 均有真实生产消费方（主窗口、悬浮窗、提醒中心、规则编辑器与共享 `TagSelector`），由独立窗口验证事实 `SpacingTokensWiredAcrossWindows` 通过临时覆写资源并检验实际控件属性变化守住。只在「数值相等且语义一致」的位置改用 token；碰巧同值但语义不同的字面量（图标/箭头矢量尺寸、圆角、10 DIP 滚动条命中轨、控件自身内边距/图文间距、光学微调偏移、悬浮窗 raster 贴图拟合边距、水平列槽与预主题静态恢复窗边距）保持字面量，不强行绑定间距 token。焦点语义沿用 §6：文本框、下拉框、日期框的键盘焦点用 `MainActionFocusBrush`；其他常规非输入控件用 `ActiveBrush`，主操作按钮、浮窗选中胶囊与已勾选置顶继续用 `MainActionFocusBrush`；不得引入默认系统蓝。圆角与焦点资源主要由 App.xaml 的控件模板消费，其他固定布局尺寸仍按对应章节定义，不宣称所有几何均已 token 化（#232）。
 
 #250：区块表面、条目卡、输入与按钮、芯片的圆角只消费上表 token，不另写近义值。归并前的原值：管理窗口倒计时编辑区与工作区底（12）、便签编辑区外层（30）、便签编辑与列表表面（12）、显示设置浮层（12）、筛选与标签管理浮层（9）、标签选择浮层（8）、悬浮便签 `…` 菜单（12）归入 `RadiusOverlay`；管理窗口倒计时条目卡（13）、悬浮次倒计时行底（6），以及原先写字面 8 的便签卡、悬浮主行底与便签卡、提醒卡、规则行和三个次级窗口外壳归入 `RadiusCard`；管理窗口主行动与实心次级按钮的焦点环和表面（12/10、12/9）、便签日期组头按钮（5/3）、页签容器（10）、状态分段容器（13）、提醒方式单选焦点环归入 `RadiusControl`；置顶开关（6）、便签完成勾选（4）、标签芯片（7）归入 `RadiusChip`。以下圆角由自身几何或其他章节合同决定，不算近义 token，本次不动：激活胶囊、命令胶囊与圆形帮助按钮取短边一半（§4，含悬浮工作区分段 18/16、帮助按钮焦点环 14）；数字色块与提醒来源图标取短边约 1/4（§4，来源图标 40 → 10）；徽章胶囊（提醒相对时间 9、悬浮行数徽章 8）；强调轨 1.5；选中指示条 0（#245）；滚动条 thumb；`ComboBoxItem` 7 与下拉/日期框箭头区 `0,9,9,0`（#312）；悬浮窗外壳 28 / 24 / 16 与快速新增区 6px（§10 外壳与快速新增合同）；主窗装饰带 `22,22,0,0` 与玩偶托座 13；焦点装饰层 `MainKeyboardFocusVisual` 6 与悬浮收入焦点环 8；设置恢复与激活失败窗是主题加载前的静态副本（§7），仍写 8；提醒中心与规则编辑器外壳自 #324 起改为不透明无边框窗口并交由 DWM 绘制系统圆角与投影，内容根 `Border` 保持直角 0 以避免回退时出现死角。验证事实 `SharedSurfaceRadiiFollowTokens`（`GeometryPreflight` 的 `SharedSurfaceRadii`）在主窗、悬浮窗、提醒中心与规则编辑器的真实模板上按区块、卡片、次级窗口外壳（0）、控件、芯片核对，任一样本不在对应口径上即报出元素名与实际值。
 
@@ -817,7 +817,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 ### 13.6 同步与验证接线
 
-- `ApplicationTheme.Tokens` 配色表是色值与系统对比度角色的唯一来源，新增或修改颜色只改这一行；App.xaml 不写色值。Tooling `design-token:drift` 让 §13.4 前景值与 §13.1 alias 清单对准配色表（按解析后 ARGB 比较），并拒绝 App.xaml 重新出现 `<Color>` 资源或字面色值。
+- `ApplicationTheme.Tokens` 配色表是色值与系统对比度角色的唯一来源，新增或修改颜色只改这一行；App.xaml 不写色值，而是作为 `Spacing*` 间距 token 的唯一来源。Tooling `design-token:drift` 让 §13.4 前景值与 §13.1 alias 清单对准配色表（按解析后 ARGB 比较），双向核对 §13.3 间距 token 表与 `App.xaml` 的 `Spacing*` 资源（#311），并拒绝 App.xaml 重新出现 `<Color>` 资源或字面色值。
 - 修改 `App.xaml` / `ApplicationTheme.cs` 会使现役视觉基线 `sourceBinding` 失配：按 §11 口径在新版本目录重拍并生成双 manifest 后基线门禁才恢复。本节 token 变更应与后续界面节点的消费面修正（13.4 例外表）在同一次重拍中收口。
 
 ## Agent Prompt Guide

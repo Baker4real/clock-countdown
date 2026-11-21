@@ -3711,9 +3711,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var snapshot = _desktopWorkspace.Snapshot;
         var filter = snapshot.Filter;
         var tags = snapshot.Settings.Tags;
+        var chipGap = SpacingTokens.Resolve(this, SpacingTokens.Unit);
         var tagSignature = BuildTagRenderSignature(tags);
         UntaggedOnly.IsChecked = filter.UntaggedOnly;
-        UntaggedOnly.Margin = new Thickness(0, 0, 8, 8);
+        UntaggedOnly.Margin = new Thickness(0, 0, chipGap, chipGap);
 
         if (!FilterTagOptions.Children.Contains(UntaggedOnly))
         {
@@ -3773,8 +3774,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                     filter.SelectedTagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
                 Tag = tag.Id,
                 Uid = tag.Id,
-                // #152：筛选标签芯片相邻间距向紧凑下限族靠拢（6 → 8，与 #143 相邻命令间距一致）。
-                Margin = new Thickness(0, 0, 8, 8),
+                // #152/#311：筛选标签芯片相邻间距消费 SpacingUnit（8 DIP，与 #143 相邻命令间距一致）。
+                Margin = new Thickness(0, 0, chipGap, chipGap),
                 Style = (Style)FindResource("TagToggleButton")
             };
             NameControl(option, $"筛选标签 {tag.Name}");
@@ -3852,7 +3853,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
                 this, InlineActionSurface.TagManager, InlineActionIntent.Delete, tag.Id, $"删除标签 {tag.Name}");
             var rowError = new TextBlock
             {
-                Margin = new Thickness(0, (double)FindResource("SpacingUnit"), 0, 0),
+                Margin = new Thickness(0, SpacingTokens.Resolve(this, SpacingTokens.Unit), 0, 0),
                 TextWrapping = TextWrapping.Wrap,
                 Visibility = Visibility.Collapsed
             };

@@ -1,16 +1,18 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 <#
 .SYNOPSIS
-    核对 DESIGN.md 记录的色值与 ApplicationTheme 配色表是否一致。
+    核对 DESIGN.md 记录的色值与间距 token 与实现真源是否一致。
 
 .DESCRIPTION
-    `ApplicationTheme.Tokens` 配色表是色值唯一真源（每行：原色键、画刷键、日间色值、系统对比度角色）。
+    `ApplicationTheme.Tokens` 配色表是色值唯一真源（每行：原色键、画刷键、日间色值、系统对比度角色）；
+    `App.xaml` 的 `Spacing*` 资源是间距 token 唯一真源。
     本检查只读三份文件，核对：
     1. DESIGN.md §13.4 对比度基线表里每个 `XxxColor` 行的前景值等于配色表的同名原色；
     2. DESIGN.md §13.1 的同值 alias 清单与配色表实际的同值原色分组双向一致
        （清单里的分组必须真实同值，配色表里任何同值分组也必须登记在清单里）；
-    3. App.xaml 不再自持色值（没有 `<Color>` 资源，也没有 `="#…"` 字面色值），避免重新长出第二份来源。
-    `-SelfTest` 用内置夹具证明四类漂移都会变红。
+    3. App.xaml 不再自持色值（没有 `<Color>` 资源，也没有 `="#…"` 字面色值），避免重新长出第二份来源；
+    4. DESIGN.md §13.3 间距 token 表与 App.xaml 的 `Spacing*` 资源双向一致且数值相等。
+    `-SelfTest` 用内置夹具证明色值与间距各类漂移都会变红。
 #>
 [CmdletBinding()]
 param(
@@ -69,6 +71,25 @@ function Get-DocumentedAliasGroup {
     }
 }
 
+function Get-XamlSpacingToken {
+    param([Parameter(Mandatory)] [string] $XamlText)
+    $tokens = [ordered]@{}
+    foreach ($match in [regex]::Matches($XamlText, '<sys:Double\s+x:Key="(Spacing\w+)">\s*([0-9]+(?:\.[0-9]+)?)\s*</sys:Double>')) {
+        $tokens[$match.Groups[1].Value] = [double]::Parse($match.Groups[2].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+    return $tokens
+}
+
+function Get-SpacingRow {
+    param([Parameter(Mandatory)] [string] $DesignText)
+    foreach ($match in [regex]::Matches($DesignText, '(?m)^\| `(Spacing\w+)` \| ([0-9]+(?:\.[0-9]+)?) \|')) {
+        [pscustomobject]@{
+            Token = $match.Groups[1].Value
+            Value = [double]::Parse($match.Groups[2].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+}
+
 function Test-DesignTokenText {
     param(
         [Parameter(Mandatory)] [string] $DesignText,
@@ -81,6 +102,26 @@ function Test-DesignTokenText {
 
     foreach ($literal in @(Get-XamlLiteralColor -XamlText $XamlText)) {
         $issues.Add([pscustomobject]@{ Kind = 'xaml-literal-color'; Detail = "App.xaml 自持色值：$literal" })
+    }
+
+    $spacingTokens = Get-XamlSpacingToken -XamlText $XamlText
+    $spacingRows = @(Get-SpacingRow -DesignText $DesignText)
+    if ($spacingTokens.Count -eq 0) { $issues.Add([pscustomobject]@{ Kind = 'no-spacing-tokens'; Detail = 'App.xaml 未解析到任何 Spacing* 间距 token' }) }
+    if ($spacingRows.Count -eq 0) { $issues.Add([pscustomobject]@{ Kind = 'no-spacing-rows'; Detail = 'DESIGN.md 未解析到 §13.3 间距 token 行' }) }
+    $documentedSpacing = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($spacingRow in $spacingRows) {
+        [void]$documentedSpacing.Add($spacingRow.Token)
+        if (-not $spacingTokens.Contains($spacingRow.Token)) {
+            $issues.Add([pscustomobject]@{ Kind = 'spacing-row-unknown-token'; Detail = "$($spacingRow.Token) 不在 App.xaml" })
+        }
+        elseif ([Math]::Abs($spacingTokens[$spacingRow.Token] - $spacingRow.Value) -gt 0.0001) {
+            $issues.Add([pscustomobject]@{ Kind = 'spacing-row-drift'; Detail = "$($spacingRow.Token)：DESIGN $($spacingRow.Value) ≠ App.xaml $($spacingTokens[$spacingRow.Token])" })
+        }
+    }
+    foreach ($entry in $spacingTokens.GetEnumerator()) {
+        if (-not $documentedSpacing.Contains($entry.Key)) {
+            $issues.Add([pscustomobject]@{ Kind = 'undocumented-spacing-token'; Detail = "$($entry.Key)=$($entry.Value) 未在 DESIGN.md §13.3 登记" })
+        }
     }
 
     $rows = @(Get-ContrastRow -DesignText $DesignText)
@@ -124,15 +165,18 @@ function Test-DesignTokenText {
         PaletteColors = $colors.Count
         ContrastRows = $rows.Count
         AliasGroups = $documented.Count
+        SpacingTokens = $spacingTokens.Count
+        SpacingRows = $spacingRows.Count
         Issues = @($issues)
     }
 }
 
 if ($SelfTest) {
     $theme = 'Token("InkColor", "InkBrush", "#FF3B190D", SystemColorRole.WindowText), Token("TagChipTextColor", "TagChipTextBrush", "#3B190D", SystemColorRole.ControlText), Token("CanvasColor", "CanvasBrush", "#FFFDF3EB", SystemColorRole.Window)'
-    $xaml = '<Application.Resources><Setter Property="Foreground" Value="{DynamicResource InkBrush}" /></Application.Resources>'
+    $xaml = '<Application.Resources><sys:Double x:Key="SpacingUnit">8</sys:Double><Setter Property="Foreground" Value="{DynamicResource InkBrush}" /></Application.Resources>'
     $design = @"
 - 允许存在的值级重复只有以下 alias：``#3B190D`` → ``Ink`` / ``TagChipText``。
+| ``SpacingUnit`` | 8 | 8px 基准网格（§5） |
 | ``InkColor`` | ``#3B190D`` | 背景 | 12.48 |
 "@
     $cases = @(
@@ -141,6 +185,9 @@ if ($SelfTest) {
         [pscustomobject]@{ Name = 'undocumented-alias'; Design = $design; Theme = $theme + ', Token("PanelColor", "PanelBrush", "#FFFDF3EB", SystemColorRole.Window)'; Xaml = $xaml; ExpectValid = $false; ExpectKind = 'undocumented-alias' }
         [pscustomobject]@{ Name = 'alias-value-drift'; Design = $design; Theme = $theme.Replace('"#3B190D"', '"#3B190E"'); Xaml = $xaml; ExpectValid = $false; ExpectKind = 'alias-value-drift' }
         [pscustomobject]@{ Name = 'xaml-literal-color'; Design = $design; Theme = $theme; Xaml = $xaml.Replace('<Application.Resources>', '<Application.Resources><Color x:Key="CanvasColor">#FFFDF3EB</Color>'); ExpectValid = $false; ExpectKind = 'xaml-literal-color' }
+        [pscustomobject]@{ Name = 'spacing-row-drift'; Design = $design.Replace('| `SpacingUnit` | 8 |', '| `SpacingUnit` | 9 |'); Theme = $theme; Xaml = $xaml; ExpectValid = $false; ExpectKind = 'spacing-row-drift' }
+        [pscustomobject]@{ Name = 'spacing-row-unknown-token'; Design = $design + "`n| ``SpacingLegacy`` | 16 | 已删除的旧间距 |"; Theme = $theme; Xaml = $xaml; ExpectValid = $false; ExpectKind = 'spacing-row-unknown-token' }
+        [pscustomobject]@{ Name = 'undocumented-spacing-token'; Design = $design; Theme = $theme; Xaml = $xaml.Replace('</Application.Resources>', '<sys:Double x:Key="SpacingExtra">6</sys:Double></Application.Resources>'); ExpectValid = $false; ExpectKind = 'undocumented-spacing-token' }
     )
     $results = foreach ($case in $cases) {
         $outcome = Test-DesignTokenText -DesignText $case.Design -ThemeText $case.Theme -XamlText $case.Xaml

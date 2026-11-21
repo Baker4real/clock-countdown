@@ -45,6 +45,7 @@ internal static class Program
     internal const string DatePickerSingleBoxInteractionFactName = "DatePickerSingleBoxInteractionAndLongestDateFit";
     internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
     internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
+    internal const string SpacingTokensWiredFactName = "SpacingTokensWiredAcrossWindows";
     internal const string TagManagerAutoSaveFactName = "TagManagerAutoSaveOnEnterAndBlur";
     internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
 
@@ -138,6 +139,9 @@ internal static class Program
         "搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）";
     private const string MainHiddenDeferRefreshFactMeaning =
         "管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）";
+    private const string SpacingTokensWiredFactMeaning =
+        "SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器" +
+        "的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）";
     private const string TagManagerAutoSaveFactMeaning =
         "标签管理行移除“保存”按钮并保留“删除”与新建流程；名称输入框按 Enter 与失焦各提交一次改名并同步四处界面，内容未变化（含仅首尾空白）不产生提交也不重建行（#308）";
     private const string TagManagerErrorsEscDeleteFactMeaning =
@@ -186,6 +190,7 @@ internal static class Program
             [DatePickerSingleBoxInteractionFactName] = false,
             [MainNoteSearchCoalesceFactName] = false,
             [MainHiddenDeferRefreshFactName] = false,
+            [SpacingTokensWiredFactName] = false,
             [TagManagerAutoSaveFactName] = false,
             [TagManagerErrorsEscDeleteFactName] = false
         };
@@ -415,6 +420,10 @@ internal static class Program
                 MainHiddenDeferRefreshFactMeaning,
                 () => MainWindowRefreshScenario.RunHiddenDeferAndFirstFrameRefresh(
                     MainHiddenDeferRefreshFactMeaning));
+            RunFact(
+                SpacingTokensWiredFactName,
+                SpacingTokensWiredFactMeaning,
+                () => SpacingTokenWiringScenario.Run(SpacingTokensWiredFactMeaning));
             RunFact(
                 TagManagerAutoSaveFactName,
                 TagManagerAutoSaveFactMeaning,

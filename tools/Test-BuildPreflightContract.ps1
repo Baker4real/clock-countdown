@@ -18,7 +18,7 @@ function Assert-Preflight {
 $root = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\')
 $buildSource = Get-Content -Raw -LiteralPath (Join-Path $root 'Build-CountdownApplication.ps1')
 Assert-Preflight ($buildSource.Contains("tools\Countdown.BuildPreflight.psm1") -and $buildSource.Contains('Resolve-CountdownBuildDotnet') -and $buildSource.Contains('Get-CountdownBuildPaths')) 'Build reuses the shared preflight resolver and build path contract'
-$managedCleanIndex = $buildSource.IndexOf('invoke-safe-tree-delete.cmd')
+$managedCleanIndex = $buildSource.IndexOf('invoke-safe-tree-delete.ps1')
 $releaseContractImportIndex = $buildSource.IndexOf("Import-Module (Join-Path `$PSScriptRoot 'Countdown.ReleaseContract.psm1')")
 Assert-Preflight ($managedCleanIndex -ge 0 -and $releaseContractImportIndex -gt $managedCleanIndex) 'Build -Clean removes app output before the release contract import reads a stale published payload'
 

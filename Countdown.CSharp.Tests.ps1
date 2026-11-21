@@ -1658,7 +1658,7 @@ function Invoke-ManagedTestRootPurge {
 function Invoke-InstanceActivationProcessTests {
     $dotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
     $sourceApplication = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
     $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
     $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-instance-activation-tests'
     $testRoot = [System.IO.Path]::GetFullPath(
@@ -2909,7 +2909,7 @@ function Remove-DesktopLauncherHostPayload {
 
 function Invoke-DesktopLauncherProcessTests {
     Assert-DesktopLauncherSourceLocks
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
     $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
     $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests'
     $testRoot = [System.IO.Path]::GetFullPath(
@@ -3657,7 +3657,7 @@ if (-not [string]::Equals(
     throw "C# 验证必须由 pwsh.exe 执行，当前宿主：$pwsh"
 }
 
-$safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+$safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
 $defaultTestCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
 $testCapabilityRoot = $defaultTestCapabilityRoot
 $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-csharp-tests'

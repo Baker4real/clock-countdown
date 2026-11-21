@@ -747,6 +747,7 @@ public sealed partial class FloatingWindow
             Text = date is null
                 ? "无日期"
                 : $"{date.Value.Month} 月 {date.Value.Day} 日 · {culture.DateTimeFormat.GetAbbreviatedDayName(date.Value.DayOfWeek)}",
+            FontFamily = (FontFamily)FindResource("UiFontFamily"),
             FontSize = (double)FindResource("TypeCaptionFontSize"),
             FontWeight = FontWeights.Regular,
             LineHeight = CalendarIndexDateStripHeight - 2,

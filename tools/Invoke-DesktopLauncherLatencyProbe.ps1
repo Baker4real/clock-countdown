@@ -37,7 +37,7 @@ if ($TimeoutMilliseconds -lt 1) {
 }
 
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-$safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+$safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
 $capabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
 $productionHost = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe')
 $productionSettingsPath = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\settings.json')

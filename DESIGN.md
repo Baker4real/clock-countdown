@@ -596,7 +596,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v82 基线 `assets/ui-references/floating-window/520x390/2026-11-21-v82/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v83 基线 `assets/ui-references/floating-window/520x390/2026-11-21-v83/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -692,11 +692,13 @@ PRD #296 统一重拍（2026-11-21，#327，v80）：合并六项可见外观改
 
 PRD #296 Step 7 代码评审修复零像素差重拍（2026-11-21，v82）：因修复 #319 便签菜单退出中途重开保护（`FloatingWindow.Notes.cs`）、#306 滚动条动画完成注销 `ApplicationTheme.PaletteChanged`（`MotionBehavior.cs`）与编码标准焦点/注释清理（`MainWindow.xaml.cs`、`FloatingWindow.Countdowns.cs`）触及双窗源码绑定，分配未使用编号 `2026-11-21-v82`（增量构建 `20261121T201203664-f9fa07d5` + 独立 BaselineGenerate `20261121T201343175-f0d8fc69` 均退出 0）；主窗聚合 SHA-256 更新为 `E86BD4E9587FB8B9556415468F9A5CC22A29C4E6C2D2496D98110EE2B55B087E`，悬浮窗聚合更新为 `3097D5354900928D07A374AFA5A310C5A3334BC28468DB646345FD93CAC4C07A`，双 manifest `executable.sha256` 仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，候选 DLL SHA-256 `F67F60BF4131D3EF04402B31D5016C321A0A9D2E7B474D25EBAD85F21DBA6E42`；经 `tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-21-v81 -To 2026-11-21-v82` 核对，主窗 9 帧与悬浮窗 5 帧共 14/14 帧 PNG 与状态指纹全部与 v81 逐字节一致（零像素漂移），生成器按 #268 自动移除 v81 目录。
 
-1. #189 的 WPF 改版使用纯日间 **v82** 真实渲染系列，版本目录为 `2026-11-21-v82`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+悬浮窗便签上缘日期条 `UiFontFamily` 显式绑定零像素差重拍（2026-11-21，#335 CI 修复，v83）：GitHub Actions 英文 Windows 运行器在 CI run `44912116192` 暴露 `#335` 新建的上缘单行日期条 `TextBlock`（`FloatingWindow.Notes.cs`）未显式绑定 `UiFontFamily`，在中文系统偶然继承 `Microsoft YaHei UI` 而英文系统回落 `Segoe UI`，触发 `FloatingDateStampTypographyMatches` 失败；现为日期条显式绑定 `(FontFamily)FindResource("UiFontFamily")` 并将验证探针 `StampTypographyMatches` 收紧为逐字符串严格匹配 `UiFontFamily`，分配未使用编号 `2026-11-21-v83`（官方 Clean + R2R Build `20261121T222054960-a12ff869` + 独立 BaselineGenerate `20261121T222254411-393a12f6` 均退出 0）；主窗聚合 SHA-256 保持 `E86BD4E9587FB8B9556415468F9A5CC22A29C4E6C2D2496D98110EE2B55B087E`（无绑定文件变化），悬浮窗聚合更新为 `104D3432816BA5DA584D6386F4F6644C93A4E2AC502B5173842FF73A7D1C3898`（仅改动 `src/MinminCountdown/FloatingWindow.Notes.cs`），双 manifest `executable.sha256` 仍为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，候选 DLL SHA-256 `3BD533D630594A5B1EF72F03D54CC7DA8EDA250A7891C0C738BBC16B427CEE1D`；经 `tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-21-v82 -To 2026-11-21-v83` 核对，主窗 9 帧与悬浮窗 5 帧共 14/14 帧 PNG 与状态指纹全部与 v82 逐字节一致（零像素漂移），生成器按 #268 自动移除 v82 目录。
 
-2. v82 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-21-v82/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v82 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. #268 起工作树只保留现役版本（当前 v82）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v82，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
+1. #189 的 WPF 改版使用纯日间 **v83** 真实渲染系列，版本目录为 `2026-11-21-v83`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v83 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-21-v83/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v83 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. #268 起工作树只保留现役版本（当前 v83）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v83，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

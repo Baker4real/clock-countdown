@@ -1352,9 +1352,11 @@ internal static partial class ValidationExercises
             return false;
         }
 
+        var expectedUiFont = (Application.Current.FindResource("UiFontFamily") as FontFamily)?.Source ?? string.Empty;
         var fontFamily = label.FontFamily?.Source ?? string.Empty;
         return label.FontWeight == FontWeights.Regular &&
                Math.Abs(label.FontSize - 13) <= 0.01 &&
+               string.Equals(fontFamily, expectedUiFont, StringComparison.Ordinal) &&
                fontFamily.Contains("Microsoft YaHei UI", StringComparison.Ordinal) &&
                fontFamily.Contains("Microsoft YaHei", StringComparison.Ordinal) &&
                Typography.GetNumeralAlignment(label) == FontNumeralAlignment.Tabular &&

@@ -140,7 +140,7 @@ $buildSegmentStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $buildSegmentStart = $buildSegmentStopwatch.Elapsed
 
 if ($Clean) {
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
     $runEvidenceCapabilityRoot = 'D:\agents\run-evidence'
     if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
         throw "未找到受管构建目录清理入口：$safeTreeDelete"

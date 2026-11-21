@@ -233,7 +233,7 @@ function Invoke-ExternalCloseOnlyTests {
     $application = Join-Path $RepositoryRoot 'app\MinminCountdown.exe'
     if (-not (Test-Path -LiteralPath $application -PathType Leaf)) { throw "未找到待验证的 C# 应用宿主：$application" }
     $ephemeralCi = $env:GITHUB_ACTIONS -eq 'true'
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.cmd'
+    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
     if (-not $ephemeralCi -and -not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) { throw "未找到受管 C# 测试目录清理入口：$safeTreeDelete" }
     $capabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
     $testRoot = [System.IO.Path]::GetFullPath((Join-Path $capabilityRoot ('clock-countdown-external-close\' + [guid]::NewGuid().ToString('N'))))

@@ -1993,8 +1993,10 @@ public sealed partial class MainWindow
                     4.5) &&
                 ReferenceEquals(SaveNoteButton.Background, FindResource("MainActionBrush"));
 
-            // —— 白纸输入面：主窗倒计时页输入控件表面为 PanelBrush，与画布色分开。
+            // —— 白纸输入面：主窗倒计时页输入控件表面为 PanelBrush，与画布色分开；
+            // #312 单框日期控件由外层 Surface 承接 PanelBrush，内部文本框与箭头按钮保持透明不遮挡。
             CountdownDate.ApplyTemplate();
+            var dateSurface = CountdownDate.Template.FindName("Surface", CountdownDate) as Border;
             var dateTextBox = CountdownDate.Template.FindName("PART_TextBox", CountdownDate)
                 as System.Windows.Controls.Primitives.DatePickerTextBox;
             var dateButton = CountdownDate.Template.FindName("PART_Button", CountdownDate) as Button;
@@ -2004,10 +2006,12 @@ public sealed partial class MainWindow
                 ReferenceEquals(CountdownHour.Background, FindResource("PanelBrush")) &&
                 ReferenceEquals(DisplayPrecision.Background, FindResource("PanelBrush")) &&
                 ReferenceEquals(CountdownDate.Background, FindResource("PanelBrush")) &&
+                dateSurface is not null &&
+                ReferenceEquals(dateSurface.Background, FindResource("PanelBrush")) &&
                 dateTextBox is not null &&
-                ReferenceEquals(dateTextBox.Background, FindResource("PanelBrush")) &&
+                dateTextBox.Background is SolidColorBrush { Color.A: 0 } &&
                 dateButton is not null &&
-                ReferenceEquals(dateButton.Background, CountdownDate.Background) &&
+                dateButton.Background is SolidColorBrush { Color.A: 0 } &&
                 !((Color)FindResource("PanelColor")).Equals((Color)FindResource("BackgroundColor"));
 
             // —— 文本选区高亮：独立语义色（不得复用 PeachLine 结构线色）且 0.4 合成肉眼可辨。

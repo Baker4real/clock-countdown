@@ -861,7 +861,7 @@ internal static partial class ValidationReport
             ("Radio", new RadioButton(), "Ring"),
             ("MainRadio", new RadioButton { Style = (Style)projection.FindResource("MainReminderModeRadio") }, "Ring"),
             ("Combo", new ComboBox(), "Surface"),
-            ("Date", new WpfUiDatePicker(), "PART_TextBox"),
+            ("Date", new WpfUiDatePicker(), "Surface"),
             ("Secondary", new Button { Style = (Style)Application.Current.FindResource("SecondaryButton") }, "Surface"),
             ("MainSecondary", new Button { Style = (Style)projection.FindResource("MainSecondaryButton") }, "Surface"),
             ("SavePreferencesSecondary", new Button { Style = Required<Button>(main, "SavePreferencesButton").Style }, "Surface"),

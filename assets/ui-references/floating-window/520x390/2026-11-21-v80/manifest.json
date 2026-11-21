@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineVersion": "2026-11-14-v79",
+  "baselineVersion": "2026-11-21-v80",
   "captureKind": "actual-wpf-floating-window",
   "canvas": {
     "width": 520,
@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
-    "aggregateSha256": "0C4B72CBC5D8B79C904717AF66669461B1B858C6856F45BD7F50361543DE2283",
+    "aggregateSha256": "0AE50B3DD6E5AD427B9C36B2A28CE880954BB6BCD472C4302CA96AA020E07659",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -45,15 +45,15 @@
       },
       {
         "path": "src/MinminCountdown.Core/DesktopWorkspace.Transactions.cs",
-        "sha256": "B34806A072C4789415FC1F9E7073E1FD74CBE54A67C823D15FF1EEF2AA731144"
+        "sha256": "DADB85308CCFBB9A0287FAC97C65B834F6B5AB7152FC74735C087A54C375FFDE"
       },
       {
         "path": "src/MinminCountdown.Core/DesktopWorkspace.cs",
-        "sha256": "3F26B8273F9A40705350B095405FECE4B2FE2F4CEA04E26C2AE3880BF859BBDD"
+        "sha256": "116D65B3206F3D5C057FDCA81774B49DD1A758A73F0D2B075E17348D0035F84D"
       },
       {
         "path": "src/MinminCountdown.Core/DomainLogic.cs",
-        "sha256": "C868BFE0758A77AC8F178AC48F9793E4389160EDCA34ADF35E9B4708C83BD918"
+        "sha256": "6258FF188F42ACF68F1DC1D8D1BF027E84C0EA9A88024B60BAEA7B3F2CB44835"
       },
       {
         "path": "src/MinminCountdown.Core/FloatingCountdownProjection.cs",
@@ -65,11 +65,11 @@
       },
       {
         "path": "src/MinminCountdown/App.xaml",
-        "sha256": "0C07DBA5CC89DAF11A4952A3B16ED84A27D1811A1440337133B7BCF517FC4696"
+        "sha256": "39F430AE02CF7F4A1D5CFC1B1B09248A0F16A9416B4C72114F44C15FB088CDB0"
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
-        "sha256": "62335806E95C6C174AF12AF94A9988E8A559F1FCC31ADE356410AC232D486653"
+        "sha256": "060181C070E25BE5128A08D09048D8AE076DB8D5F068F6E64301AC1F00FECD8E"
       },
       {
         "path": "src/MinminCountdown/DeleteUndoOffer.cs",
@@ -77,27 +77,27 @@
       },
       {
         "path": "src/MinminCountdown/FloatingBottomStatus.cs",
-        "sha256": "D4D74BA69AE04210BB0A62F2A7DD7C4CABF031DB360FCE732ECD68B02D1DF1FC"
+        "sha256": "9693108DAD05904FDBEC398EBE24B5214837010537E3F23EEF457A3B0F967ADD"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Countdowns.cs",
-        "sha256": "72151C8F77343040C9999DD4ECD805889975871F3C14CC60D3ED2AD7F98F5265"
+        "sha256": "A50FA52711196249445DD9C1946F26490732FDB84A9842C565827D9E7F0180E5"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
-        "sha256": "B5E1079A1ADD763AAE89CD8645340894B5E5FC4FB1811000F710A6081F96E551"
+        "sha256": "C43DD4DBCE51A2E788FF1C39A055FCBDA18A3A897CC97093BA40C0AEDB02309E"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.ScrollContext.cs",
-        "sha256": "49F0933410948D4DB054CACCEF58FE61A33DF6B68A714D472CAE20B5D7A1AB16"
+        "sha256": "6EAD79589D1168E1A5576406575374EE3C95F937A067444BD803EF239F026483"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml",
-        "sha256": "1A792D5B2CEE16E912FE5220062B52C2A7C1FD0417479CDAE488242BFF66630F"
+        "sha256": "D980459D95B474B3B707FFAC7FD96A06CA893DC23D49AA442E2A6DC645230AB9"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
-        "sha256": "1A4136CE5C1AF2D980722921B5066504E64841C2C9383F6801000D59CB8B5CF4"
+        "sha256": "91B5395F32D2DFF66041096FE0E82EFA24727243FF81B1EED698166951F17520"
       },
       {
         "path": "src/MinminCountdown/HolidayCalendar.cs",
@@ -105,11 +105,11 @@
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
-        "sha256": "23D6E3F1A2AE628BD366F8CF7C53674767EA30322E9DBEE0B73E03FF3066B705"
+        "sha256": "57C496354FCC09726E1F64B6A640A39E01643CCFEED69B88C7B8011BFE221F46"
       },
       {
         "path": "src/MinminCountdown/MotionBehavior.cs",
-        "sha256": "F4A5ABD21B1858771C1A1352E62526B1690788A97B1A6E0EF89DB1C4D8BF0859"
+        "sha256": "8E094C385A8845BCA6EF26BDDF0FCCD9FEBE5A74CAF28DC1FDE4D302E713BDE9"
       },
       {
         "path": "src/MinminCountdown/NoteCompletionExit.cs",
@@ -117,11 +117,11 @@
       },
       {
         "path": "src/MinminCountdown/KeyboardFocusPolicy.cs",
-        "sha256": "A6E87412F07C19332EBD33DF04724B78A2BA19D79B72BB891B0972CBACC6B307"
+        "sha256": "E3EBDD12745FE3911E229D06E9EF2B5E08502DEBC5BBFB5994D516E9D0B8D23D"
       },
       {
         "path": "src/MinminCountdown/UiControls.cs",
-        "sha256": "3A4C2CAEB40CECA22B67E3CD79F4DCE0B6B193F06E4D7496A1B48CB84383BFD4"
+        "sha256": "A85E7F9F5D7BCAAC4B13F99E07302E622E2DDEFCE74F549721C11EBA6745A6C6"
       }
     ]
   },
@@ -148,8 +148,8 @@
         "topCaptureId": "long-notes-day-top",
         "bottomCaptureId": "long-notes-day-bottom",
         "maxAbsoluteChannelDelta": 240,
-        "meanAbsoluteError": 5.790814,
-        "rootMeanSquareError": 27.925324,
+        "meanAbsoluteError": 5.788025,
+        "rootMeanSquareError": 27.917562,
         "changedPixelCount": 43173
       }
     ]
@@ -160,7 +160,7 @@
       "scenario": "floating-countdowns-baseline",
       "theme": "Day",
       "state": "Baseline",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/floating-countdowns-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/floating-countdowns-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "DE1A4EE5A8EED50F49650F11A7910EFB6B572B87DF56F9A37EB70C8964F62419",
@@ -206,10 +206,10 @@
       "scenario": "floating-workday-complete",
       "theme": "Day",
       "state": "Complete",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/floating-workday-complete-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/floating-workday-complete-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "B14FD9504F94935351B3F6854E04D3B1A6FDF2D158CCFA9C2780E17E243D92AF",
+      "pngSha256": "EF2A2D33E755D0C177FA6753E1F7E2501E97E235C8A96B2124C3D4221FEC85BD",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "5241539C1EF77558375021112BC1DA7E28A1D0612445FF0C8051E80977A6B26A",
@@ -252,10 +252,10 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Top",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/long-notes-day-top.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/long-notes-day-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "39A148822F95D1FE53C2F0EEB59956BAB1B0ACE58BE330E1A789F4C61B3533B8",
+      "pngSha256": "D7899D48E04E4FB78F4001FB4C5178256D5961452E799231F6BF073D83FAA10D",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "B5D61AB35EED07443DA62CD258CD9600D41280E186506F693138FCFDF4B2F202",
@@ -298,7 +298,7 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Bottom",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/long-notes-day-bottom.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
       "pngSha256": "C809CBBEFE2C0CFD649856BB3F24DAD3627A5FF227B51B44F9FA55B285109B10",
@@ -344,10 +344,10 @@
       "scenario": "notes-search-expanded",
       "theme": "Day",
       "state": "Expanded",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-14-v79/notes-search-expanded-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/notes-search-expanded-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "E16E5C476682A54E116802D3DF747E36E3E7E71B8508D96CA0200E401480B06E",
+      "pngSha256": "E0BD78B8EF6D7F231875FB3B56D361AB623EF2F08995ABE74C286F8A6B6263F3",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
         "sha256": "2A593ED782EE98EE00229B0181E76C943DC01F5A113F2D05DDE1439C11BD5860",

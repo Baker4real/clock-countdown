@@ -16,7 +16,7 @@ public sealed partial class FloatingWindow
     internal const string RemainingBlocksTag = "FloatingRemainingBlocks";
     private const string EncourageBadgeText = "超期待！";
     private const double KeyTextMinimumFontSize = 12;
-    private TextBlock? _workdayCompletionIncome;
+    private InteractiveStatusTextBlock? _workdayCompletionIncome;
 
     private FrameworkElement BuildWarmPaperCountdownRow(FloatingCountdownRow row)
     {
@@ -45,15 +45,48 @@ public sealed partial class FloatingWindow
         };
         title.SetResourceReference(TextBlock.ForegroundProperty, theme.TextBrushKey);
         content.Children.Add(title);
-        _workdayCompletionIncome = new TextBlock
+
+        var income = new InteractiveStatusTextBlock
         {
             FontSize = (double)FindResource("TypeCaptionFontSize"),
-            Margin = new Thickness(0, 6, 0, 0),
+            FocusVisualStyle = null,
             TextWrapping = TextWrapping.Wrap
         };
-        _workdayCompletionIncome.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
-        Typography.SetNumeralAlignment(_workdayCompletionIncome, FontNumeralAlignment.Tabular);
-        content.Children.Add(_workdayCompletionIncome);
+        income.SetResourceReference(TextBlock.ForegroundProperty, theme.MutedBrushKey);
+        Typography.SetNumeralAlignment(income, FontNumeralAlignment.Tabular);
+        income.Invoked += OnEarningsToggleInvoked;
+        _workdayCompletionIncome = income;
+
+        var focusRing = new Border
+        {
+            Margin = new Thickness(-2),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(8),
+            IsHitTestVisible = false
+        };
+        var ringStyle = new Style(typeof(Border));
+        ringStyle.Setters.Add(new Setter(Border.BorderBrushProperty, Brushes.Transparent));
+        var focusTrigger = new MultiDataTrigger();
+        focusTrigger.Conditions.Add(new System.Windows.Condition(
+            new System.Windows.Data.Binding(nameof(UIElement.IsKeyboardFocused)) { Source = income },
+            true));
+        focusTrigger.Conditions.Add(new System.Windows.Condition(
+            new System.Windows.Data.Binding
+            {
+                Source = income,
+                Path = new PropertyPath(FocusVisualState.IsKeyboardFocusVisibleProperty)
+            },
+            true));
+        focusTrigger.Setters.Add(new Setter(
+            Border.BorderBrushProperty,
+            new DynamicResourceExtension("ActiveBrush")));
+        ringStyle.Triggers.Add(focusTrigger);
+        focusRing.Style = ringStyle;
+
+        var incomeHost = new Grid { Margin = new Thickness(0, 6, 0, 0) };
+        incomeHost.Children.Add(income);
+        incomeHost.Children.Add(focusRing);
+        content.Children.Add(incomeHost);
         return BuildWarmPaperRow(content, "下班啦", true);
     }
 

@@ -1603,11 +1603,7 @@ public sealed partial class FloatingWindow : Window
 
     private void WireEvents()
     {
-        FloatingIncome.Invoked += (_, _) =>
-        {
-            _earningsHidden = !_earningsHidden;
-            Refresh();
-        };
+        FloatingIncome.Invoked += OnEarningsToggleInvoked;
         FloatingCountdownsButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Countdowns);
         FloatingNotesButton.Click += (_, _) => ShowWorkspace(WorkspaceKind.Notes);
         MinimizeToTrayButton.Click += (_, _) => MinimizeToTrayRequested?.Invoke(this, EventArgs.Empty);
@@ -1830,7 +1826,11 @@ public sealed partial class FloatingWindow : Window
         FloatingRows.Children.Clear();
         _countdownRemainingBlocks.Clear();
         _countdownRowRoots.Clear();
-        _workdayCompletionIncome = null;
+        if (_workdayCompletionIncome is not null)
+        {
+            _workdayCompletionIncome.Invoked -= OnEarningsToggleInvoked;
+            _workdayCompletionIncome = null;
+        }
         ClearNoteDateStampStickyEntries();
         if (countdownView is not null)
         {
@@ -2030,6 +2030,12 @@ public sealed partial class FloatingWindow : Window
             "\u001f",
             string.Join("\u001f", entryFingerprints));
 
+    private void OnEarningsToggleInvoked(object? sender, EventArgs args)
+    {
+        _earningsHidden = !_earningsHidden;
+        Refresh();
+    }
+
     private void ApplyFloatingBottomStatus(
         DesktopWorkspaceSnapshot snapshot,
         WorkspaceKind workspace,
@@ -2039,25 +2045,58 @@ public sealed partial class FloatingWindow : Window
         var encouragementText = workspace == WorkspaceKind.Notes
             ? FloatingBottomStatus.NotesEncouragementText
             : FloatingBottomStatus.CountdownEncouragementText;
+        var earnings = _calendar.GetEarnings(nowUtc, preferences);
         var presentation = FloatingBottomStatus.Resolve(
-                _calendar.GetEarnings(nowUtc, preferences),
+            earnings,
+            preferences.MonthlySalary,
+            _calendar.State,
+            _calendar.StatusText,
+            encouragementText,
+            _earningsHidden);
+        var showingWorkdayCompletion = _workdayCompletionIncome is not null;
+        if (_workdayCompletionIncome is { } completionIncome)
+        {
+            ApplyWorkdayCompletionIncome(completionIncome, presentation);
+        }
+
+        var bottomPresentation = showingWorkdayCompletion
+            ? FloatingBottomStatus.Resolve(
+                earnings,
                 preferences.MonthlySalary,
                 _calendar.State,
                 _calendar.StatusText,
                 encouragementText,
-                _earningsHidden);
-        if (_workdayCompletionIncome is { } completionIncome)
-        {
-            completionIncome.Text = presentation.Text;
-            UiAccessibility.Name(completionIncome, presentation.Text);
-        }
+                _earningsHidden,
+                suppressEarnings: true)
+            : presentation;
         FloatingBottomStatus.Apply(
             FloatingIncome,
             FloatingEncouragement,
-            presentation,
+            bottomPresentation,
             ActiveTheme.MutedBrushKey,
             "DecoTextSoftBrush",
             (FontFamily)FindResource("HandwrittenDecoFontFamily"));
+    }
+
+    private static void ApplyWorkdayCompletionIncome(
+        InteractiveStatusTextBlock target,
+        FloatingBottomStatusPresentation presentation)
+    {
+        var previousInvokable = target.IsInvokable;
+        var previousText = target.Text;
+        var previousName = AutomationProperties.GetName(target);
+
+        target.IsInvokable = presentation.Kind == FloatingBottomStatusKind.Earnings;
+        target.Text = presentation.Text;
+        AutomationProperties.SetName(target, presentation.Text);
+        target.IsHitTestVisible = target.IsInvokable;
+
+        if (target.IsInvokable != previousInvokable ||
+            !string.Equals(target.Text, previousText, StringComparison.Ordinal) ||
+            !string.Equals(AutomationProperties.GetName(target), previousName, StringComparison.Ordinal))
+        {
+            UIElementAutomationPeer.FromElement(target)?.InvalidatePeer();
+        }
     }
 
     private TextBlock EmptyText(string text)

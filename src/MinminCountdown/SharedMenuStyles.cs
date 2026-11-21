@@ -29,12 +29,22 @@ internal static class SharedMenuStyles
         menu.Closed += (_, _) => ApplicationTheme.PaletteChanged -= refreshTheme;
     }
 
+    internal static void ApplyDangerItemStyle(MenuItem item, ContextMenu menu)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(menu);
+        if (menu.TryFindResource("SharedDangerMenuItemStyle") is Style dangerStyle)
+        {
+            item.Style = dangerStyle;
+        }
+    }
+
     private static void ApplyThemeResources(ContextMenu menu)
     {
         ApplicationTheme.SetIsSystemContrast(menu, ApplicationTheme.HighContrastEnabled);
         foreach (var key in new[]
         {
-            "CanvasBrush", "ControlBorderBrush", "InkBrush", "MainActionBrush", "MainActionTextBrush",
+            "CanvasBrush", "ControlBorderBrush", "InkBrush", "DangerBrush", "MainActionBrush", "MainActionTextBrush",
             "SystemContrastDisabledTextBrush", "SystemContrastControlBrush"
         })
         {

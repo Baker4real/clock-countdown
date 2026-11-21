@@ -8,6 +8,7 @@
     <Setter Property="Padding" Value="16,9" />
     <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
     <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     <Setter Property="focus:DisabledStateBehavior.IsEnabled" Value="True" />
     <Setter Property="focus:DisabledStateBehavior.ApplyContrastBorderBrush" Value="False" />
     <Setter Property="Template">
@@ -40,10 +41,17 @@
     </Style.Triggers>
   </Style>
 
+  <Style x:Key="SharedDangerMenuItemStyle"
+         TargetType="{x:Type MenuItem}"
+         BasedOn="{StaticResource SharedMenuItemStyle}">
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+  </Style>
+
   <Style x:Key="SharedContextMenuStyle" TargetType="{x:Type ContextMenu}">
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="Padding" Value="4" />
     <Setter Property="HasDropShadow" Value="True" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
     <Setter Property="Template">

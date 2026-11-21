@@ -48,6 +48,8 @@ internal static class Program
     internal const string SpacingTokensWiredFactName = "SpacingTokensWiredAcrossWindows";
     internal const string TagManagerAutoSaveFactName = "TagManagerAutoSaveOnEnterAndBlur";
     internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
+    internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
+    internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -146,6 +148,12 @@ internal static class Program
         "标签管理行移除“保存”按钮并保留“删除”与新建流程；名称输入框按 Enter 与失焦各提交一次改名并同步四处界面，内容未变化（含仅首尾空白）不产生提交也不重建行（#308）";
     private const string TagManagerErrorsEscDeleteFactMeaning =
         "标签管理重名或空名失败时错误贴在该行、保留用户输入并把焦点放回该输入框，修正即清；Esc 放弃未提交改名并关闭弹层返焦，删除标签保持取消默认确认与只解除关联、不删记录语义（#308）";
+    private const string FloatingNoteOverflowNativeAndLazyFactMeaning =
+        "悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），" +
+        "自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）";
+    private const string FloatingNoteOverflowInteractionsAndMotionFactMeaning =
+        "悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、" +
+        "Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）";
 
     [STAThread]
     private static int Main()
@@ -192,7 +200,9 @@ internal static class Program
             [MainHiddenDeferRefreshFactName] = false,
             [SpacingTokensWiredFactName] = false,
             [TagManagerAutoSaveFactName] = false,
-            [TagManagerErrorsEscDeleteFactName] = false
+            [TagManagerErrorsEscDeleteFactName] = false,
+            [FloatingNoteOverflowNativeAndLazyFactName] = false,
+            [FloatingNoteOverflowInteractionsAndMotionFactName] = false
         };
         var failures = new List<string>();
 
@@ -434,6 +444,18 @@ internal static class Program
                 TagManagerErrorsEscDeleteFactMeaning,
                 () => TagManagerAutoSaveScenario.RunErrorsEscDiscardAndDelete(
                     TagManagerErrorsEscDeleteFactMeaning));
+            RunFact(
+                FloatingNoteOverflowNativeAndLazyFactName,
+                FloatingNoteOverflowNativeAndLazyFactMeaning,
+                () => FloatingNoteOverflowMenuScenario.RunNativeAndLazy(
+                    theme,
+                    FloatingNoteOverflowNativeAndLazyFactMeaning));
+            RunFact(
+                FloatingNoteOverflowInteractionsAndMotionFactName,
+                FloatingNoteOverflowInteractionsAndMotionFactMeaning,
+                () => FloatingNoteOverflowMenuScenario.RunInteractionsAndMotion(
+                    theme,
+                    FloatingNoteOverflowInteractionsAndMotionFactMeaning));
         }
         catch (Exception exception)
         {

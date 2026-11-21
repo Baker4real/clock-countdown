@@ -825,7 +825,7 @@ public sealed partial class MainWindow
             var filterPopup = WindowValidationInput.ExercisePopup(
                 FilterPopup,
                 FilterButton,
-                AnyTagMode,
+                FilterInitialFocusTarget(),
                 NoteSearch);
             var tagManagerPopup = WindowValidationInput.ExercisePopup(
                 TagManagerPopup,
@@ -1106,7 +1106,7 @@ public sealed partial class MainWindow
             ShowWorkspace(WorkspaceKind.Notes);
             UpdateLayout();
             WindowValidationInput.Pump(Dispatcher);
-            var filterCycles = ProbePopupTabCyclesInsideLayer(FilterPopup, AnyTagMode);
+            var filterCycles = ProbePopupTabCyclesInsideLayer(FilterPopup, FilterInitialFocusTarget());
             var tagManagerCycles = ProbePopupTabCyclesInsideLayer(TagManagerPopup, NewTagInput);
             var tagSelectorCycles = ProbePopupTabCyclesInsideLayer(
                 NoteTags.Popup,
@@ -2469,15 +2469,16 @@ public sealed partial class MainWindow
         WindowValidationInput.Pump(Dispatcher);
         try
         {
+            var filterInitialFocus = FilterInitialFocusTarget();
             // 弹层打开后在 Input 优先级把焦点交给首项；等焦点进层再按 Esc。
             if (!WindowValidationInput.RaisePreviewKey(CountdownTab, Key.F, ModifierKeys.Control) ||
                 !FilterPopup.IsOpen ||
-                !WindowValidationInput.WaitUntil(Dispatcher, () => AnyTagMode.IsKeyboardFocusWithin, 1000))
+                !WindowValidationInput.WaitUntil(Dispatcher, () => filterInitialFocus.IsKeyboardFocusWithin, 1000))
             {
                 return false;
             }
 
-            UIElement escapeSource = AnyTagMode;
+            UIElement escapeSource = filterInitialFocus;
             if (escapeFromTrigger)
             {
                 Keyboard.Focus(FilterButton);

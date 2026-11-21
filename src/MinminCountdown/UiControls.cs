@@ -762,10 +762,10 @@ internal sealed class TagSelector : Grid
             Child = panel,
             MinWidth = 230
         };
-        // #250：标签选择浮层与筛选、标签管理浮层同用 §13.3 RadiusOverlay。
+        // #250/#305：标签选择浮层与筛选、标签管理、显示设置浮层同用 RadiusOverlay 与 ControlBorderBrush（≥3:1）。
         _surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusOverlay");
         _surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
-        _surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
+        _surface.SetResourceReference(Border.BorderBrushProperty, "ControlBorderBrush");
         _popup = new Popup
         {
             PlacementTarget = _trigger,
@@ -817,7 +817,7 @@ internal sealed class TagSelector : Grid
 
     internal bool PopupSurfaceFollowsActiveTheme =>
         ReferenceEquals(_surface.Background, Application.Current.FindResource("CanvasBrush")) &&
-        ReferenceEquals(_surface.BorderBrush, Application.Current.FindResource("PeachLineBrush"));
+        ReferenceEquals(_surface.BorderBrush, Application.Current.FindResource("ControlBorderBrush"));
 
     public bool ProbeCreateAction(string query)
     {

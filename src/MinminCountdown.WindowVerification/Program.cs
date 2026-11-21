@@ -37,6 +37,10 @@ internal static class Program
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
     internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
+    internal const string RuleEditorFixedIntervalNumericFactName = "ReminderRulesEditorFixedIntervalNumericInput";
+    internal const string RuleEditorFixedIntervalVisualFactName = "ReminderRulesEditorFixedIntervalVisualAndIsolationContract";
+    internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
+    internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
     internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
     internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
 
@@ -109,6 +113,16 @@ internal static class Program
     private const string FloatingWorkdayCompletionFactMeaning =
         "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
         "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
+    private const string RuleEditorFixedIntervalNumericFactMeaning =
+        "规则编辑器固定间隔支持上下键与滚轮在 1 到 1440 整数范围内增减、超出范围或非法输入当场提示且错误文案不变；ViewModel 属性为可空数值且对外保存、脏态与预览行为不变（#330）";
+    private const string RuleEditorFixedIntervalVisualFactMeaning =
+        "规则编辑器固定间隔输入满足单层焦点描边、暖金焦点与危险错误边框（不挤布局）、对比度基线、系统对比度主题、可见标签 LabeledBy 关系，且 WPF-UI 资源不进入应用级资源、其他窗口外观不受影响（#330）";
+    private const string OverlaySurfaceBordersFactMeaning =
+        "筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，" +
+        "对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）";
+    private const string FilterMatchModeAndFocusFactMeaning =
+        "筛选弹层仅在已选不少于两个具体标签时显示并可聚焦匹配方式（默认任一匹配），0/1 个标签或「无标签」时完全折叠且不可聚焦；" +
+        "「无标签」位于同标签芯片组并与具体标签互斥，筛选结果语义不变；四类弹层均保持打开聚焦首项、层内 Tab 循环与 Esc 关闭返焦生命周期（#305）";
     private const string FloatingNoteOverflowNativeAndLazyFactMeaning =
         "悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），" +
         "自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）";
@@ -151,6 +165,10 @@ internal static class Program
             [MainAlignmentAndNoteRowsFactName] = false,
             [MainEmptyAndHighContrastRibbonFactName] = false,
             [FloatingWorkdayCompletionFactName] = false,
+            [RuleEditorFixedIntervalNumericFactName] = false,
+            [RuleEditorFixedIntervalVisualFactName] = false,
+            [OverlaySurfaceBordersFactName] = false,
+            [FilterMatchModeAndFocusFactName] = false,
             [FloatingNoteOverflowNativeAndLazyFactName] = false,
             [FloatingNoteOverflowInteractionsAndMotionFactName] = false
         };
@@ -336,6 +354,28 @@ internal static class Program
                 FloatingWorkdayCompletionScenario.Run();
                 return (true, FloatingWorkdayCompletionFactMeaning);
             });
+            RunFact(
+                RuleEditorFixedIntervalNumericFactName,
+                RuleEditorFixedIntervalNumericFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalNumericInput(
+                    RuleEditorFixedIntervalNumericFactMeaning));
+            RunFact(
+                RuleEditorFixedIntervalVisualFactName,
+                RuleEditorFixedIntervalVisualFactMeaning,
+                () => ReminderRulesFixedIntervalScenario.RunFixedIntervalVisualAndIsolation(
+                    RuleEditorFixedIntervalVisualFactMeaning));
+            RunFact(
+                OverlaySurfaceBordersFactName,
+                OverlaySurfaceBordersFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunOverlayBordersAndContrast(
+                    theme,
+                    OverlaySurfaceBordersFactMeaning));
+            RunFact(
+                FilterMatchModeAndFocusFactName,
+                FilterMatchModeAndFocusFactMeaning,
+                () => OverlayBorderAndFilterMatchModeScenario.RunFilterMatchModeAndFocusLifecycle(
+                    theme,
+                    FilterMatchModeAndFocusFactMeaning));
             RunFact(
                 FloatingNoteOverflowNativeAndLazyFactName,
                 FloatingNoteOverflowNativeAndLazyFactMeaning,

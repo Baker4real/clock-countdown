@@ -12,6 +12,9 @@ using System.Windows.Threading;
 using System.Windows.Data;
 using System.Runtime.InteropServices;
 using MinminCountdown.Core;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 using Path = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
@@ -998,12 +1001,12 @@ internal sealed class ReminderCenterWindow : Window
         var info = new FLASHWINFO
         {
             cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
-            hwnd = handle,
-            dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG,
+            hwnd = new HWND(handle),
+            dwFlags = FLASHWINFO_FLAGS.FLASHW_TRAY | FLASHWINFO_FLAGS.FLASHW_TIMERNOFG,
             uCount = 0,
             dwTimeout = 0
         };
-        FlashWindowEx(ref info);
+        PInvoke.FlashWindowEx(in info);
     }
 
     private void FocusEscapeTarget()
@@ -1664,23 +1667,6 @@ internal sealed class ReminderCenterWindow : Window
             CustomError = customError;
         }
     }
-
-    private const uint FLASHW_TRAY = 0x2;
-    private const uint FLASHW_TIMERNOFG = 0xC;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct FLASHWINFO
-    {
-        public uint cbSize;
-        public IntPtr hwnd;
-        public uint dwFlags;
-        public uint uCount;
-        public uint dwTimeout;
-    }
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
 }
 
 internal sealed class ReminderCenterEntryEventArgs(ActiveReminderOccurrenceKey key) : EventArgs

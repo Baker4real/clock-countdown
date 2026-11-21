@@ -2,6 +2,10 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Interop;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.UI.HiDpi;
 
 namespace MinminCountdown;
 
@@ -20,8 +24,6 @@ internal sealed record MonitorWorkArea(
 /// </summary>
 internal static class MonitorWorkAreaResolver
 {
-    private const uint MonitorDefaultToNearest = 0x00000002;
-
     private static MonitorWorkArea? s_validationOverride;
     private static IReadOnlyList<MonitorWorkArea>? s_validationMonitors;
 
@@ -34,7 +36,7 @@ internal static class MonitorWorkAreaResolver
 
         var dpi = VisualTreeHelper.GetDpi(window);
         var handle = new WindowInteropHelper(window).Handle;
-        if (handle != IntPtr.Zero && GetWindowRect(handle, out var physical))
+        if (handle != IntPtr.Zero && PInvoke.GetWindowRect(new HWND(handle), out var physical))
             return ResolvePhysicalRect(physical, dpi.DpiScaleX, dpi.DpiScaleY);
         var width = double.IsNaN(window.Width) ? window.ActualWidth : window.Width;
         var height = double.IsNaN(window.Height) ? window.ActualHeight : window.Height;
@@ -63,10 +65,10 @@ internal static class MonitorWorkAreaResolver
         var scaleY = IsUsableScale(windowDpi.DpiScaleY) ? windowDpi.DpiScaleY : 1;
         var physical = ToPhysical(monitor.WorkAreaDip, monitor.DpiScaleX, monitor.DpiScaleY);
         return new Rect(
-            physical.Left / scaleX,
-            physical.Top / scaleY,
-            (physical.Right - physical.Left) / scaleX,
-            (physical.Bottom - physical.Top) / scaleY);
+            physical.left / scaleX,
+            physical.top / scaleY,
+            (physical.right - physical.left) / scaleX,
+            (physical.bottom - physical.top) / scaleY);
     }
 
     internal static MonitorWorkArea ResolveForScreenRect(
@@ -82,7 +84,7 @@ internal static class MonitorWorkAreaResolver
         return ResolvePhysicalRect(ToPhysical(windowRectDip, dpiScaleX, dpiScaleY), dpiScaleX, dpiScaleY);
     }
 
-    private static MonitorWorkArea ResolvePhysicalRect(NativeRect physical, double dpiScaleX, double dpiScaleY)
+    private static MonitorWorkArea ResolvePhysicalRect(RECT physical, double dpiScaleX, double dpiScaleY)
     {
         if (s_validationMonitors is { } monitors)
         {
@@ -111,39 +113,41 @@ internal static class MonitorWorkAreaResolver
             return injected;
         }
 
-        var monitor = MonitorFromRect(ref physical, MonitorDefaultToNearest);
-        var info = new NativeMonitorInfo { Size = Marshal.SizeOf<NativeMonitorInfo>() };
-        if (monitor == IntPtr.Zero || !GetMonitorInfoW(monitor, ref info))
+        var monitor = PInvoke.MonitorFromRect(in physical, MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        var info = new MONITORINFO { cbSize = (uint)Marshal.SizeOf<MONITORINFO>() };
+        if (monitor.IsNull || !PInvoke.GetMonitorInfo(monitor, ref info))
         {
             // 解析失败退回主显示器工作区（与悬浮窗既有 SystemParameters.WorkArea
             // 口径一致），不让外壳集成点阻止管理窗口打开。
             return new MonitorWorkArea(SystemParameters.WorkArea, dpiScaleX, dpiScaleY);
         }
 
-        if (GetDpiForMonitor(monitor, 0, out var dpiX, out var dpiY) == 0 && dpiX > 0 && dpiY > 0)
+        if (OperatingSystem.IsWindowsVersionAtLeast(8, 1) &&
+            PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpiX, out var dpiY) == HRESULT.S_OK &&
+            dpiX > 0 && dpiY > 0)
         {
             dpiScaleX = dpiX / 96.0;
             dpiScaleY = dpiY / 96.0;
         }
-        return FromPhysical(info.Work, dpiScaleX, dpiScaleY);
+        return FromPhysical(info.rcWork, dpiScaleX, dpiScaleY);
     }
 
-    private static NativeRect ToPhysical(Rect rect, double scaleX, double scaleY) => new()
-    {
-        Left = (int)Math.Floor(rect.Left * scaleX), Top = (int)Math.Floor(rect.Top * scaleY),
-        Right = (int)Math.Ceiling(rect.Right * scaleX), Bottom = (int)Math.Ceiling(rect.Bottom * scaleY)
-    };
+    private static RECT ToPhysical(Rect rect, double scaleX, double scaleY) => new(
+        (int)Math.Floor(rect.Left * scaleX),
+        (int)Math.Floor(rect.Top * scaleY),
+        (int)Math.Ceiling(rect.Right * scaleX),
+        (int)Math.Ceiling(rect.Bottom * scaleY));
 
-    private static Rect ToRect(NativeRect rect) => new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+    private static Rect ToRect(RECT rect) => new(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
 
-    private static MonitorWorkArea FromPhysical(NativeRect work, double dpiScaleX, double dpiScaleY)
+    private static MonitorWorkArea FromPhysical(RECT work, double dpiScaleX, double dpiScaleY)
     {
         return new MonitorWorkArea(
             new Rect(
-                work.Left / dpiScaleX,
-                work.Top / dpiScaleY,
-                (work.Right - work.Left) / dpiScaleX,
-                (work.Bottom - work.Top) / dpiScaleY),
+                work.left / dpiScaleX,
+                work.top / dpiScaleY,
+                (work.right - work.left) / dpiScaleX,
+                (work.bottom - work.top) / dpiScaleY),
             dpiScaleX,
             dpiScaleY);
     }
@@ -196,36 +200,4 @@ internal static class MonitorWorkAreaResolver
             s_validationMonitors = _previousMonitors;
         }
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeMonitorInfo
-    {
-        public int Size;
-        public NativeRect Monitor;
-        public NativeRect Work;
-        public uint Flags;
-    }
-
-    [DllImport("user32.dll", ExactSpelling = true)]
-    private static extern IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
-
-    [DllImport("user32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetWindowRect(IntPtr hwnd, out NativeRect rect);
-
-    [DllImport("shcore.dll", ExactSpelling = true)]
-    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
-
-    [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetMonitorInfoW(IntPtr monitor, ref NativeMonitorInfo info);
 }

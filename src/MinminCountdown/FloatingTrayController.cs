@@ -1,5 +1,6 @@
-using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using Windows.Win32;
+using Windows.Win32.Foundation;
 
 namespace MinminCountdown;
 
@@ -98,7 +99,7 @@ internal sealed class FloatingTrayController : IDisposable
         .OfType<FloatingWindow>()
         .Count() ?? 0;
 
-    internal long ForegroundWindowHandle => GetForegroundWindow().ToInt64();
+    internal long ForegroundWindowHandle => ((IntPtr)PInvoke.GetForegroundWindow()).ToInt64();
 
     internal bool FloatingWindowIsActive => _floatingWindow.IsActive;
 
@@ -191,9 +192,6 @@ internal sealed class FloatingTrayController : IDisposable
     private void ResetWindowPosition() => _floatingWindow.ResetPositionIntoWorkArea();
 
     private bool CanTransition() => !_disposed && _canTransition();
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
 }
 
 // RestoreCore 判定成功所依赖的 shell 交互 seam；验证替身可注入确定性失败。
@@ -205,15 +203,8 @@ internal class TrayForegroundInterop
 
     internal virtual bool Focus(FloatingWindow window) => window.Focus();
 
-    internal virtual bool TrySetForeground(IntPtr handle) => SetForegroundWindow(handle);
+    internal virtual bool TrySetForeground(IntPtr handle) => PInvoke.SetForegroundWindow(new HWND(handle));
 
     internal virtual bool IsForegroundOrActive(FloatingWindow window, IntPtr handle) =>
-        handle != IntPtr.Zero && (GetForegroundWindow() == handle || window.IsActive);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetForegroundWindow(IntPtr windowHandle);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
+        handle != IntPtr.Zero && (PInvoke.GetForegroundWindow() == new HWND(handle) || window.IsActive);
 }

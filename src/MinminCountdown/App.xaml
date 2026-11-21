@@ -1,6 +1,9 @@
 <Application x:Class="MinminCountdown.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="po"
              xmlns:focus="clr-namespace:MinminCountdown"
              xmlns:core="clr-namespace:MinminCountdown.Core;assembly=MinminCountdown.Core"
              xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
@@ -49,6 +52,32 @@
     <Duration x:Key="MotionIndicatorDuration">0:0:0.160</Duration>
     <PowerEase x:Key="MotionEaseOut" EasingMode="EaseOut" Power="4" />
     <CubicEase x:Key="MotionCubicEaseOut" EasingMode="EaseOut" />
+
+    <!-- #307：全部图标共享冻结几何（同一图标只保留一份定义；管理窗实心齿轮与浮窗描边齿轮为两套刻意不同的设计，各自保留一份）。 -->
+    <StreamGeometry x:Key="IconMinimizeGeometry" po:Freeze="True">M 2,10 L 12,10</StreamGeometry>
+    <StreamGeometry x:Key="IconCloseGeometry" po:Freeze="True">M 2,2 L 12,12 M 12,2 L 2,12</StreamGeometry>
+    <StreamGeometry x:Key="IconDropdownTriangleGeometry" po:Freeze="True">M 0,0 L 10,0 L 5,6 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconCalendarGeometry" po:Freeze="True">M 2.25,3.38 L 12.75,3.38 C 13.2,3.38 13.5,3.68 13.5,4.12 L 13.5,12.38 C 13.5,12.83 13.2,13.12 12.75,13.12 L 2.25,13.12 C 1.8,13.12 1.5,12.83 1.5,12.38 L 1.5,4.12 C 1.5,3.68 1.8,3.38 2.25,3.38 Z M 1.5,6.38 L 13.5,6.38 M 4.88,1.88 L 4.88,4.5 M 10.12,1.88 L 10.12,4.5</StreamGeometry>
+    <StreamGeometry x:Key="IconChevronDownGeometry" po:Freeze="True">M 3,5.5 L 8,10.5 L 13,5.5</StreamGeometry>
+    <StreamGeometry x:Key="IconClockGeometry" po:Freeze="True">M 9,2.6 C 5.9,2.6 3.4,5.1 3.4,8.2 C 3.4,11.3 5.9,13.8 9,13.8 C 12.1,13.8 14.6,11.3 14.6,8.2 C 14.6,5.1 12.1,2.6 9,2.6 Z M 9,5.2 L 9,8.2 L 11.2,9.6</StreamGeometry>
+    <StreamGeometry x:Key="IconTagGeometry" po:Freeze="True">M 2.5,3.5 L 2.5,9.2 C 2.5,10 2.8,10.8 3.4,11.4 L 11.6,19.6 C 12.7,20.7 14.4,20.7 15.5,19.6 L 19.6,15.5 C 20.7,14.4 20.7,12.7 19.6,11.6 L 11.4,3.4 C 10.8,2.8 10,2.5 9.2,2.5 L 3.5,2.5 C 2.9,2.5 2.5,2.9 2.5,3.5 Z M 7,7 L 7.02,7</StreamGeometry>
+    <StreamGeometry x:Key="IconPencilGeometry" po:Freeze="True">M 1.88,13.12 L 2.55,10.27 L 10.65,2.17 C 11.25,1.58 12.23,1.58 12.83,2.17 C 13.42,2.78 13.42,3.75 12.83,4.35 L 4.72,12.45 L 1.88,13.12 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconCheckmarkGeometry" po:Freeze="True">M 0.75,3.75 L 4.5,7.5 L 10.5,0.75</StreamGeometry>
+    <StreamGeometry x:Key="IconMainGearGeometry" po:Freeze="True">M 6.95,3.36 L 7.45,1.05 L 10.55,1.05 L 11.05,3.36 A 6,6 0 0 1 12.86,4.4 L 15.11,3.69 L 16.66,6.36 L 14.91,7.96 A 6,6 0 0 1 14.91,10.04 L 16.66,11.64 L 15.11,14.31 L 12.86,13.6 A 6,6 0 0 1 11.05,14.64 L 10.55,16.95 L 7.45,16.95 L 6.95,14.64 A 6,6 0 0 1 5.14,13.6 L 2.89,14.31 L 1.34,11.64 L 3.09,10.04 A 6,6 0 0 1 3.09,7.96 L 1.34,6.36 L 2.89,3.69 L 5.14,4.4 A 6,6 0 0 1 6.95,3.36 Z M 11.7,9 A 2.7,2.7 0 1 0 6.3,9 A 2.7,2.7 0 1 0 11.7,9 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconFloatingGearOutlineGeometry" po:Freeze="True">M 6.55,2.4 L 8.45,2.4 L 8.9,4 C 9.32,4.14 9.7,4.34 10.05,4.6 L 11.68,4.05 L 12.63,5.7 L 11.4,6.8 C 11.43,7.03 11.45,7.26 11.45,7.5 C 11.45,7.74 11.43,7.97 11.4,8.2 L 12.63,9.3 L 11.68,10.95 L 10.05,10.4 C 9.7,10.66 9.32,10.86 8.9,11 L 8.45,12.6 L 6.55,12.6 L 6.1,11 C 5.68,10.86 5.3,10.66 4.95,10.4 L 3.32,10.95 L 2.37,9.3 L 3.6,8.2 C 3.57,7.97 3.55,7.74 3.55,7.5 C 3.55,7.26 3.57,7.03 3.6,6.8 L 2.37,5.7 L 3.32,4.05 L 4.95,4.6 C 5.3,4.34 5.68,4.14 6.1,4 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconPlusGeometry" po:Freeze="True">M 4.6,8 L 11.4,8 M 8,4.6 L 8,11.4</StreamGeometry>
+    <StreamGeometry x:Key="IconHomeGeometry" po:Freeze="True">M 2,8 L 9,2 L 16,8 L 16,16 L 2,16 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconTitleHeartGeometry" po:Freeze="True">M 12,19.88 C 5.62,15 1.5,10.65 1.5,6.45 C 1.5,3.3 3.9,1.35 6.38,1.35 C 8.7,1.35 10.8,2.92 12,5.1 C 13.2,2.92 15.3,1.35 17.62,1.35 C 20.1,1.35 22.5,3.3 22.5,6.45 C 22.5,10.65 18.38,15 12,19.88 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconTitleHouseGeometry" po:Freeze="True">M 16.5,2.25 L 30.75,13.88 L 27.38,13.88 L 27.38,24.38 C 27.38,26.03 26.03,27.38 24.38,27.38 L 8.62,27.38 C 6.98,27.38 5.62,26.03 5.62,24.38 L 5.62,13.88 L 2.25,13.88 Z M 12.75,27.38 L 12.75,18.75 C 12.75,17.92 13.42,17.25 14.25,17.25 L 18.75,17.25 C 19.58,17.25 20.25,17.92 20.25,18.75 L 20.25,27.38 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconFilterFunnelGeometry" po:Freeze="True">M 1.82,2.91 L 14.18,2.91 L 9.82,8.36 L 9.82,13.09 L 6.18,11.27 L 6.18,8.36 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconUpArrowGeometry" po:Freeze="True">M 5,8.75 L 5,1.75 M 2,4.75 L 5,1.75 L 8,4.75</StreamGeometry>
+    <StreamGeometry x:Key="IconBellOutlineGeometry" po:Freeze="True">M 6.5,1.59 C 4.48,1.59 3.03,3.18 3.03,5.2 L 3.03,7.51 L 2.02,9.24 L 10.98,9.24 L 9.97,7.51 L 9.97,5.2 C 9.97,3.18 8.52,1.59 6.5,1.59 Z M 5.2,10.54 A 1.37,1.37 0 0 0 7.8,10.54</StreamGeometry>
+    <StreamGeometry x:Key="IconBellFilledGeometry" po:Freeze="True">M 12,22 C 13.1,22 14,21.1 14,20 L 10,20 C 10,21.1 10.9,22 12,22 Z M 18,16 L 18,11 C 18,7.93 16.37,5.36 13.5,4.68 L 13.5,4 C 13.5,3.17 12.83,2.5 12,2.5 C 11.17,2.5 10.5,3.17 10.5,4 L 10.5,4.68 C 7.64,5.36 6,7.92 6,11 L 6,16 L 4,18 L 4,19 L 20,19 L 20,18 Z</StreamGeometry>
+    <StreamGeometry x:Key="IconStickyNoteGeometry" po:Freeze="True">M 2.82,1.81 L 10.18,1.81 C 10.76,1.81 11.19,2.24 11.19,2.82 L 11.19,7.87 L 7.87,11.19 L 2.82,11.19 C 2.24,11.19 1.81,10.76 1.81,10.18 L 1.81,2.82 C 1.81,2.24 2.24,1.81 2.82,1.81 Z M 7.87,7.87 L 7.87,11.19</StreamGeometry>
+    <StreamGeometry x:Key="IconReminderNoteDocumentGeometry" po:Freeze="True">M 4,2.2 L 9.2,2.2 L 12,5 L 12,13.8 L 4,13.8 Z M 9,2.4 L 9,5.2 L 11.8,5.2 M 6.2,8 L 9.8,8 M 6.2,10.4 L 9.8,10.4</StreamGeometry>
+    <StreamGeometry x:Key="IconSearchGeometry" po:Freeze="True">M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38</StreamGeometry>
+    <StreamGeometry x:Key="IconTrashGeometry" po:Freeze="True">M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5</StreamGeometry>
+    <StreamGeometry x:Key="IconExternalLinkGeometry" po:Freeze="True">M 6.5,3.5 L 3.5,3.5 L 3.5,12.5 L 12.5,12.5 L 12.5,9.5 M 8.2,7.8 L 13.5,2.5 M 9.5,2.5 L 13.5,2.5 L 13.5,6.5</StreamGeometry>
 
     <Style TargetType="{x:Type Window}">
       <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
@@ -438,9 +467,10 @@
                       CornerRadius="{DynamicResource RadiusControl}" Padding="{TemplateBinding Padding}">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Path x:Name="SelectedTick" Width="10" Height="8" Margin="0,0,6,0"
+                        Stretch="Fill"
                         Stroke="{DynamicResource PeachRailBrush}" StrokeThickness="2"
                         StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                        Data="M 1,4 L 4,7 L 9,1" Visibility="Hidden" />
+                        Data="{StaticResource IconCheckmarkGeometry}" Visibility="Hidden" />
                   <ContentPresenter VerticalAlignment="Center" />
                 </StackPanel>
               </Border>
@@ -561,12 +591,13 @@
                       VerticalAlignment="Center">
                 <Path x:Name="Tick"
                       Width="10"
-                      Height="7"
+                      Height="7.5"
+                      Stretch="Uniform"
                       Stroke="{DynamicResource MainActionTextBrush}"
                       StrokeThickness="2"
                       StrokeStartLineCap="Round"
                       StrokeEndLineCap="Round"
-                      Data="M 1,3.5 L 4,6.5 L 9,1"
+                      Data="{StaticResource IconCheckmarkGeometry}"
                       Visibility="Collapsed" />
               </Border>
               <ContentPresenter Grid.Column="1"
@@ -765,7 +796,7 @@
                           <Path Width="10"
                                 Height="6"
                                 Fill="{DynamicResource BodyBrush}"
-                                Data="M 0,0 L 10,0 L 5,6 Z"
+                                Data="{StaticResource IconDropdownTriangleGeometry}"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center" />
                         </Border>
@@ -934,7 +965,7 @@
                           <Path Width="10"
                                 Height="6"
                                 Fill="{DynamicResource BodyBrush}"
-                                Data="M 0,0 L 10,0 L 5,6 Z"
+                                Data="{StaticResource IconDropdownTriangleGeometry}"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center" />
                         </Border>

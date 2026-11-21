@@ -132,7 +132,7 @@
                                 Height="10"
                                 Margin="6,0,0,0"
                                 VerticalAlignment="Center"
-                                Data="M 5,8.75 L 5,1.75 M 2,4.75 L 5,1.75 L 8,4.75"
+                                Data="{StaticResource IconUpArrowGeometry}"
                                 Stroke="{TemplateBinding Foreground}"
                                 StrokeThickness="1.5"
                                 StrokeStartLineCap="Round"
@@ -548,7 +548,7 @@
                               StrokeThickness="2.2"
                               StrokeStartLineCap="Round"
                               StrokeEndLineCap="Round"
-                              Data="M 0.75,3.75 L 4.5,7.5 L 10.5,0.75"
+                              Data="{StaticResource IconCheckmarkGeometry}"
                               Visibility="Collapsed" />
                       </Border>
                       <ContentPresenter Grid.Column="1"
@@ -609,13 +609,15 @@
                               BorderThickness="{DynamicResource FocusBorderThickness}"
                               CornerRadius="{DynamicResource RadiusChip}">
                         <Path x:Name="Tick"
-                              Width="10"
-                              Height="7"
+                              Width="11"
+                              Height="8"
+                              Margin="0.5,0.5,0,0"
+                              Stretch="Uniform"
                               Stroke="{DynamicResource MainActionTextBrush}"
                               StrokeThickness="2"
                               StrokeStartLineCap="Round"
                               StrokeEndLineCap="Round"
-                              Data="M 0.75,3.75 L 3.75,6.75 L 9.75,0.75"
+                              Data="{StaticResource IconCheckmarkGeometry}"
                               Visibility="Collapsed" />
                       </Border>
                     </Grid>
@@ -926,7 +928,7 @@
                           Height="21"
                           Margin="9,0,0,0"
                           VerticalAlignment="Center"
-                          Data="M 12,19.88 C 5.62,15 1.5,10.65 1.5,6.45 C 1.5,3.3 3.9,1.35 6.38,1.35 C 8.7,1.35 10.8,2.92 12,5.1 C 13.2,2.92 15.3,1.35 17.62,1.35 C 20.1,1.35 22.5,3.3 22.5,6.45 C 22.5,10.65 18.38,15 12,19.88 Z"
+                          Data="{StaticResource IconTitleHeartGeometry}"
                           Stroke="{DynamicResource IconAccentBrush}"
                           StrokeThickness="2"
                           StrokeLineJoin="Round"
@@ -947,7 +949,7 @@
                           Height="30"
                           Margin="10,0,0,4"
                           VerticalAlignment="Center"
-                          Data="M 16.5,2.25 L 30.75,13.88 L 27.38,13.88 L 27.38,24.38 C 27.38,26.03 26.03,27.38 24.38,27.38 L 8.62,27.38 C 6.98,27.38 5.62,26.03 5.62,24.38 L 5.62,13.88 L 2.25,13.88 Z M 12.75,27.38 L 12.75,18.75 C 12.75,17.92 13.42,17.25 14.25,17.25 L 18.75,17.25 C 19.58,17.25 20.25,17.92 20.25,18.75 L 20.25,27.38 Z"
+                          Data="{StaticResource IconTitleHouseGeometry}"
                           Fill="{DynamicResource InkBrush}"
                           IsHitTestVisible="False">
                       <Path.Style>
@@ -995,7 +997,7 @@
                           shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- #154：窗铬改矢量路径，与悬浮窗头部同一几何（12x12 坐标、2px 圆头描边）。 -->
                     <Viewbox Width="13" Height="13" Margin="0,1,0,0">
-                      <Path Data="M 2,10 L 12,10"
+                      <Path Data="{StaticResource IconMinimizeGeometry}"
                             Fill="Transparent"
                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                             StrokeThickness="2"
@@ -1012,7 +1014,7 @@
                           ToolTip="关闭"
                           shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Viewbox Width="13" Height="13" Margin="0,1,0,0">
-                      <Path Data="M 2,2 L 12,12 M 12,2 L 2,12"
+                      <Path Data="{StaticResource IconCloseGeometry}"
                             Fill="Transparent"
                             Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                             StrokeThickness="2"
@@ -1088,7 +1090,7 @@
                         Style="{StaticResource MainSecondaryButton}">
                   <Path Width="18"
                         Height="18"
-                        Data="M 6.95,3.36 L 7.45,1.05 L 10.55,1.05 L 11.05,3.36 A 6,6 0 0 1 12.86,4.4 L 15.11,3.69 L 16.66,6.36 L 14.91,7.96 A 6,6 0 0 1 14.91,10.04 L 16.66,11.64 L 15.11,14.31 L 12.86,13.6 A 6,6 0 0 1 11.05,14.64 L 10.55,16.95 L 7.45,16.95 L 6.95,14.64 A 6,6 0 0 1 5.14,13.6 L 2.89,14.31 L 1.34,11.64 L 3.09,10.04 A 6,6 0 0 1 3.09,7.96 L 1.34,6.36 L 2.89,3.69 L 5.14,4.4 A 6,6 0 0 1 6.95,3.36 Z M 11.7,9 A 2.7,2.7 0 1 0 6.3,9 A 2.7,2.7 0 1 0 11.7,9 Z"
+                        Data="{StaticResource IconMainGearGeometry}"
                         Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}" />
                 </Button>
                 <Button x:Name="FilterButton"
@@ -1103,7 +1105,7 @@
                          同色描边只做边缘平滑。 -->
                     <Path Width="16"
                           Height="16"
-                          Data="M 1.82,2.91 L 14.18,2.91 L 9.82,8.36 L 9.82,13.09 L 6.18,11.27 L 6.18,8.36 Z"
+                          Data="{StaticResource IconFilterFunnelGeometry}"
                           Fill="{DynamicResource InkBrush}"
                           Stroke="{DynamicResource InkBrush}"
                           StrokeThickness="1.8"
@@ -1122,9 +1124,11 @@
                         VerticalAlignment="Center"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
-                    <Path Width="16"
-                          Height="16"
-                          Data="M 1.82,2.55 L 1.82,6.69 C 1.82,7.27 2.04,7.85 2.47,8.29 L 8.44,14.25 C 9.24,15.05 10.47,15.05 11.27,14.25 L 14.25,11.27 C 15.05,10.47 15.05,9.24 14.25,8.44 L 8.29,2.47 C 7.85,2.04 7.27,1.82 6.69,1.82 L 2.55,1.82 C 2.11,1.82 1.82,2.11 1.82,2.55 Z M 5.09,5.09 L 5.11,5.09"
+                    <Path Width="14.83"
+                          Height="14.83"
+                          Margin="0.92,0.92,0.25,0.25"
+                          Stretch="Uniform"
+                          Data="{StaticResource IconTagGeometry}"
                           Stroke="{DynamicResource InkBrush}"
                           StrokeThickness="1.8"
                           StrokeLineJoin="Round"
@@ -1233,7 +1237,7 @@
                                     Margin="12,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 1.88,13.12 L 2.55,10.27 L 10.65,2.17 C 11.25,1.58 12.23,1.58 12.83,2.17 C 13.42,2.78 13.42,3.75 12.83,4.35 L 4.72,12.45 L 1.88,13.12 Z"
+                                    Data="{StaticResource IconPencilGeometry}"
                                     Stroke="{DynamicResource MutedBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
@@ -1280,7 +1284,7 @@
                                     Margin="12,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Data="M 2.25,3.38 L 12.75,3.38 C 13.2,3.38 13.5,3.68 13.5,4.12 L 13.5,12.38 C 13.5,12.83 13.2,13.12 12.75,13.12 L 2.25,13.12 C 1.8,13.12 1.5,12.83 1.5,12.38 L 1.5,4.12 C 1.5,3.68 1.8,3.38 2.25,3.38 Z M 1.5,6.38 L 13.5,6.38 M 4.88,1.88 L 4.88,4.5 M 10.12,1.88 L 10.12,4.5"
+                                    Data="{StaticResource IconCalendarGeometry}"
                                     Stroke="{DynamicResource MutedBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
@@ -1304,7 +1308,7 @@
                                     Style="{StaticResource MainSecondaryButton}">
                               <Path Width="16"
                                     Height="16"
-                                    Data="M 3,5.5 L 8,10.5 L 13,5.5"
+                                    Data="{StaticResource IconChevronDownGeometry}"
                                     Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
                                     StrokeThickness="2"
                                     StrokeStartLineCap="Round"
@@ -1594,7 +1598,7 @@
                             <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
                               <Path Width="13"
                                     Height="13"
-                                    Data="M 2.82,1.81 L 10.18,1.81 C 10.76,1.81 11.19,2.24 11.19,2.82 L 11.19,7.87 L 7.87,11.19 L 2.82,11.19 C 2.24,11.19 1.81,10.76 1.81,10.18 L 1.81,2.82 C 1.81,2.24 2.24,1.81 2.82,1.81 Z M 7.87,7.87 L 7.87,11.19"
+                                    Data="{StaticResource IconStickyNoteGeometry}"
                                     Stroke="{DynamicResource IconAccentBrush}"
                                     StrokeThickness="1.6"
                                     StrokeLineJoin="Round"
@@ -1657,7 +1661,7 @@
                                       Margin="12,0,0,0"
                                       HorizontalAlignment="Left"
                                       VerticalAlignment="Center"
-                                      Data="M 2.25,3.38 L 12.75,3.38 C 13.2,3.38 13.5,3.68 13.5,4.12 L 13.5,12.38 C 13.5,12.83 13.2,13.12 12.75,13.12 L 2.25,13.12 C 1.8,13.12 1.5,12.83 1.5,12.38 L 1.5,4.12 C 1.5,3.68 1.8,3.38 2.25,3.38 Z M 1.5,6.38 L 13.5,6.38 M 4.88,1.88 L 4.88,4.5 M 10.12,1.88 L 10.12,4.5"
+                                      Data="{StaticResource IconCalendarGeometry}"
                                       Stroke="{DynamicResource MutedBrush}"
                                       StrokeThickness="1.6"
                                       StrokeLineJoin="Round"
@@ -1695,7 +1699,7 @@
                             <StackPanel Orientation="Horizontal">
                               <Path Width="13"
                                     Height="13"
-                                    Data="M 6.5,1.59 C 4.48,1.59 3.03,3.18 3.03,5.2 L 3.03,7.51 L 2.02,9.24 L 10.98,9.24 L 9.97,7.51 L 9.97,5.2 C 9.97,3.18 8.52,1.59 6.5,1.59 Z M 5.2,10.54 A 1.37,1.37 0 0 0 7.8,10.54"
+                                    Data="{StaticResource IconBellOutlineGeometry}"
                                     Stroke="{DynamicResource IconAccentBrush}"
                                     StrokeThickness="1.6"
                                     StrokeStartLineCap="Round"
@@ -1709,16 +1713,24 @@
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal">
-                              <Path Width="13"
-                                    Height="13"
-                                    Data="M 1.81,2.53 L 1.81,6.64 C 1.81,7.22 2.02,7.8 2.46,8.23 L 8.38,14.16 C 9.17,14.95 10.4,14.95 11.19,14.16 L 14.16,11.19 C 14.95,10.4 14.95,9.17 14.16,8.38 L 8.23,2.46 C 7.8,2.02 7.22,1.81 6.64,1.81 L 2.53,1.81 C 2.09,1.81 1.81,2.09 1.81,2.53 Z M 5.06,5.06 L 5.07,5.06"
-                                    Stroke="{DynamicResource IconAccentBrush}"
-                                    StrokeThickness="1.8"
-                                    StrokeLineJoin="Round"
-                                    StrokeStartLineCap="Round"
-                                    StrokeEndLineCap="Round"
-                                    VerticalAlignment="Center"
-                                    IsHitTestVisible="False" />
+                              <Canvas Width="13"
+                                      Height="13"
+                                      ClipToBounds="True"
+                                      VerticalAlignment="Center"
+                                      IsHitTestVisible="False">
+                                <Path Canvas.Left="0.908"
+                                      Canvas.Top="0.908"
+                                      Width="14.74"
+                                      Height="14.74"
+                                      Stretch="Uniform"
+                                      Data="{StaticResource IconTagGeometry}"
+                                      Stroke="{DynamicResource IconAccentBrush}"
+                                      StrokeThickness="1.8"
+                                      StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      IsHitTestVisible="False" />
+                              </Canvas>
                               <TextBlock x:Name="NoteTagsLabel"
                                          Margin="6,0,0,0"
                                          Text="标签"
@@ -1993,7 +2005,7 @@
                                   Margin="12,0,0,0"
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Center"
-                                  Data="M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38"
+                                  Data="{StaticResource IconSearchGeometry}"
                                   Stroke="{DynamicResource MutedBrush}"
                                   StrokeThickness="1.6"
                                   StrokeStartLineCap="Round"

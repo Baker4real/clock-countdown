@@ -50,6 +50,7 @@ internal static class Program
     internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
     internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
     internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
+    internal const string SharedIconGeometriesFactName = "SharedIconGeometriesFrozenAndDeduplicated";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -154,6 +155,8 @@ internal static class Program
     private const string FloatingNoteOverflowInteractionsAndMotionFactMeaning =
         "悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、" +
         "Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）";
+    private const string SharedIconGeometriesFactMeaning =
+        "全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）";
 
     [STAThread]
     private static int Main()
@@ -202,7 +205,8 @@ internal static class Program
             [TagManagerAutoSaveFactName] = false,
             [TagManagerErrorsEscDeleteFactName] = false,
             [FloatingNoteOverflowNativeAndLazyFactName] = false,
-            [FloatingNoteOverflowInteractionsAndMotionFactName] = false
+            [FloatingNoteOverflowInteractionsAndMotionFactName] = false,
+            [SharedIconGeometriesFactName] = false
         };
         var failures = new List<string>();
 
@@ -456,6 +460,11 @@ internal static class Program
                 () => FloatingNoteOverflowMenuScenario.RunInteractionsAndMotion(
                     theme,
                     FloatingNoteOverflowInteractionsAndMotionFactMeaning));
+            RunFact(
+                SharedIconGeometriesFactName,
+                SharedIconGeometriesFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunSharedGeometries(
+                    SharedIconGeometriesFactMeaning));
         }
         catch (Exception exception)
         {

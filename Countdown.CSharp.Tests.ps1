@@ -3901,6 +3901,7 @@ exit 23
         TagManagerRenameErrorsEscDiscardAndDelete = '标签管理重名或空名失败时错误贴在该行、保留用户输入并把焦点放回该输入框，修正即清；Esc 放弃未提交改名并关闭弹层返焦，删除标签保持取消默认确认与只解除关联、不删记录语义（#308）'
         FloatingNoteOverflowMenuNativeAndLazy = '悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）'
         FloatingNoteOverflowMenuInteractionsAndMotion = '悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）'
+        SharedIconGeometriesFrozenAndDeduplicated = '全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
@@ -5394,25 +5395,18 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $mainWindowXamlSource -match 'x:Name="NoteDateFilterLabel"') '筛选弹层便签日期带可见标签元素（#153 源码契约）'
     # #274：空态换行改由 WindowVerification 在真实 TextBlock.TextWrapping 上判定，不再匹配 XAML 源码文本。
-    # #154 视觉铬源码契约：漏斗填充与摘要刷新不替换内容、无重复搜索镜、矢量窗铬几何与悬浮窗一致、
-    # 胶囊全圆角、手写体装饰层落点、悬浮去投影、方角窗铬；运行态由 8 个新键探针共同钉住。
+    # #154/#307：漏斗填充、输入框搜索镜、管理窗与悬浮窗最小/关闭矢量路径均已收口为 App.xaml 冻结共享 Geometry，
+    # 由运行态事实（FilterFunnelIconSurvivesAliasedCapture、NotesSearchDuplicateMagnifierRemoved、
+    # MainWindowChromeButtonsUseVectorPaths 与独立窗口验证 SharedIconGeometriesFrozenAndDeduplicated）共同钉住，
+    # 不再按旧内联 Data="M ..." 源码正则断言。
     $floatingXamlSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\FloatingWindow.xaml') -Raw -Encoding UTF8
-    Assert-Equal $true (
-        $mainWindowXamlSource -match '(?s)x:Name="FilterButton".*?L 9\.82,8\.36.*?Fill="\{DynamicResource InkBrush\}"') '筛选漏斗为实心填充（InkBrush），不再是纯描边（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowNotesSource -match 'FilterButtonText\.Text = count == 0 \? "筛选"') '筛选摘要刷新只更新具名文字、不再整体替换 Button.Content 销毁漏斗图标（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowNotesSource -notmatch 'FilterButton\.Content\s*=') '不存在 FilterButton.Content 字符串赋值（#154 源码契约）'
     Assert-Equal $false (
         $mainWindowXamlSource.Contains('M 8,2.5 C 11,2.5 13.5,5 13.5,8')) '便签页标签旁重复搜索镜已移除（#154 源码契约）'
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'M 10\.12,6 A 4\.12,4\.12 0 1 0 1\.88,6 A 4\.12,4\.12 0 1 0 10\.12,6 M 9\.45,9\.45 L 12\.38,12\.38') '输入框内搜索镜为描边圆环+手柄几何（#154 源码契约）'
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'Data="M 2,10 L 12,10"' -and
-        $floatingXamlSource -match 'Data="M 2,10 L 12,10"' -and
-        $mainWindowXamlSource -match 'Data="M 2,2 L 12,12 M 12,2 L 2,12"' -and
-        $floatingXamlSource -match 'Data="M 2,2 L 12,12 M 12,2 L 2,12"') '管理窗与悬浮窗最小/关闭窗铬同一矢量路径几何（#154 源码契约）'
     Assert-Equal $true (
         $mainWindowXamlSource -notmatch 'Content="−"' -and
         $mainWindowXamlSource -notmatch 'Content="×"') '管理窗窗铬不再是文本字形（#154 源码契约）'

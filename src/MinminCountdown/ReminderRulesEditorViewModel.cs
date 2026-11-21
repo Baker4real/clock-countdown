@@ -17,6 +17,12 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     internal const int MinimumFixedIntervalMinutes = 1;
     internal const int MaximumFixedIntervalMinutes = 1440;
     internal const string InvalidFixedIntervalError = "自定义提醒必须是 1 到 1440 分钟。";
+    internal const int MinimumRelativeOffsetMinutes = 0;
+    internal const int MaximumRelativeOffsetMinutes = 5_256_000;
+    internal const string InvalidRelativeOffsetError = "倒计时相对提醒必须提前 0 到 5256000 分钟，且派生时间晚于当前北京时间。";
+    internal const int MinimumCalendarInterval = 1;
+    internal const int MaximumCalendarInterval = 999;
+    internal const string InvalidCalendarIntervalError = "每隔几个周期必须是 1 到 999。";
     private const string IncompleteFirstDueError = "请选择完整的首次提醒日期和时间。";
     private const string IncompleteCalendarScheduleError = "请选择完整的日历起始日期和本地时间。";
 
@@ -42,9 +48,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private int _intervalIndex = 1;
     private int? _customIntervalMinutes;
     private bool _hasInvalidCustomIntervalInput;
-    private string _relativeOffsetMinutes = "0";
+    private int? _relativeOffsetMinutes = 0;
+    private bool _hasInvalidRelativeOffsetInput;
     private int _calendarFrequencyIndex;
-    private string _calendarInterval = "1";
+    private int? _calendarInterval = 1;
+    private bool _hasInvalidCalendarIntervalInput;
     private int _calendarMonthIndex;
     private int _calendarDayIndex;
     private bool _calendarLastDay;
@@ -239,10 +247,16 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         set => SetFormProperty(ref _hasInvalidCustomIntervalInput, value);
     }
 
-    public string RelativeOffsetMinutes
+    public int? RelativeOffsetMinutes
     {
         get => _relativeOffsetMinutes;
-        set => SetFormProperty(ref _relativeOffsetMinutes, value ?? string.Empty);
+        set => SetFormProperty(ref _relativeOffsetMinutes, value);
+    }
+
+    public bool HasInvalidRelativeOffsetInput
+    {
+        get => _hasInvalidRelativeOffsetInput;
+        set => SetFormProperty(ref _hasInvalidRelativeOffsetInput, value);
     }
 
     public int CalendarFrequencyIndex
@@ -260,10 +274,16 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         }
     }
 
-    public string CalendarInterval
+    public int? CalendarInterval
     {
         get => _calendarInterval;
-        set => SetFormProperty(ref _calendarInterval, value ?? string.Empty);
+        set => SetFormProperty(ref _calendarInterval, value);
+    }
+
+    public bool HasInvalidCalendarIntervalInput
+    {
+        get => _hasInvalidCalendarIntervalInput;
+        set => SetFormProperty(ref _hasInvalidCalendarIntervalInput, value);
     }
 
     public int CalendarMonthIndex
@@ -541,9 +561,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             IntervalIndex = 1;
             CustomIntervalMinutes = null;
             HasInvalidCustomIntervalInput = false;
-            RelativeOffsetMinutes = "0";
+            RelativeOffsetMinutes = 0;
+            HasInvalidRelativeOffsetInput = false;
             CalendarFrequencyIndex = 0;
-            CalendarInterval = "1";
+            CalendarInterval = 1;
+            HasInvalidCalendarIntervalInput = false;
             CalendarMonthIndex = 0;
             CalendarDayIndex = 0;
             CalendarLastDay = false;
@@ -597,6 +619,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                 CalendarReminderRule => CalendarModeIndex,
                 _ => 0
             };
+            HasInvalidCustomIntervalInput = false;
+            RelativeOffsetMinutes = 0;
+            HasInvalidRelativeOffsetInput = false;
+            CalendarInterval = 1;
+            HasInvalidCalendarIntervalInput = false;
             if (rule is FixedIntervalReminderRule fixedInterval)
             {
                 var minutes = fixedInterval.Interval.Minutes;
@@ -615,13 +642,15 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
             if (rule is CountdownRelativeReminderRule relative)
             {
-                RelativeOffsetMinutes = relative.OffsetMinutesBefore.ToString(CultureInfo.InvariantCulture);
+                RelativeOffsetMinutes = relative.OffsetMinutesBefore;
+                HasInvalidRelativeOffsetInput = false;
             }
 
             if (rule is CalendarReminderRule calendar)
             {
                 CalendarFrequencyIndex = (int)calendar.Frequency;
-                CalendarInterval = calendar.Interval.ToString(CultureInfo.InvariantCulture);
+                CalendarInterval = calendar.Interval;
+                HasInvalidCalendarIntervalInput = false;
                 foreach (var weekday in Weekdays)
                 {
                     weekday.IsSelected = calendar.Selector is WeeklyCalendarSelector weekly &&
@@ -692,9 +721,9 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
             CustomIntervalMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             _clock.UtcNow,
             _countdownTargetUtc,
-            RelativeOffsetMinutes,
+            RelativeOffsetMinutes?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             SelectedCalendarFrequency,
-            CalendarInterval,
+            CalendarInterval?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             Weekdays.Where(static weekday => weekday.IsSelected)
                 .Select(static weekday => weekday.Day)
                 .ToArray(),
@@ -826,10 +855,25 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         }
 
         var immediateIntervalError = !_updatingForm && HasImmediateCustomIntervalError();
-        ClearErrors(preserveImmediateIntervalError: immediateIntervalError);
+        var immediateRelativeOffsetError = !_updatingForm && HasImmediateRelativeOffsetError();
+        var immediateCalendarIntervalError = !_updatingForm && HasImmediateCalendarIntervalError();
+        ClearErrors(
+            preserveImmediateIntervalError: immediateIntervalError,
+            preserveImmediateRelativeOffsetError: immediateRelativeOffsetError,
+            preserveImmediateCalendarIntervalError: immediateCalendarIntervalError);
         if (immediateIntervalError)
         {
             IntervalError = InvalidFixedIntervalError;
+        }
+
+        if (immediateRelativeOffsetError)
+        {
+            RelativeOffsetError = InvalidRelativeOffsetError;
+        }
+
+        if (immediateCalendarIntervalError)
+        {
+            CalendarIntervalError = InvalidCalendarIntervalError;
         }
     }
 
@@ -838,6 +882,18 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         (_hasInvalidCustomIntervalInput ||
          (_customIntervalMinutes is int minutes &&
           minutes is < MinimumFixedIntervalMinutes or > MaximumFixedIntervalMinutes));
+
+    private bool HasImmediateRelativeOffsetError() =>
+        IsRelativeVisible &&
+        (_hasInvalidRelativeOffsetInput ||
+         (_relativeOffsetMinutes is int minutes &&
+          minutes is < MinimumRelativeOffsetMinutes or > MaximumRelativeOffsetMinutes));
+
+    private bool HasImmediateCalendarIntervalError() =>
+        IsCalendarIntervalVisible &&
+        (_hasInvalidCalendarIntervalInput ||
+         (_calendarInterval is int interval &&
+          interval is < MinimumCalendarInterval or > MaximumCalendarInterval));
 
     private void SetFormDirty(bool value)
     {
@@ -929,7 +985,10 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         ValidationErrorRaised?.Invoke(this, new ReminderRuleEditorErrorEventArgs(target, error));
     }
 
-    private void ClearErrors(bool preserveImmediateIntervalError = false)
+    private void ClearErrors(
+        bool preserveImmediateIntervalError = false,
+        bool preserveImmediateRelativeOffsetError = false,
+        bool preserveImmediateCalendarIntervalError = false)
     {
         ModeError = string.Empty;
         FirstDueError = string.Empty;
@@ -937,8 +996,17 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         {
             IntervalError = string.Empty;
         }
-        RelativeOffsetError = string.Empty;
-        CalendarIntervalError = string.Empty;
+
+        if (!preserveImmediateRelativeOffsetError)
+        {
+            RelativeOffsetError = string.Empty;
+        }
+
+        if (!preserveImmediateCalendarIntervalError)
+        {
+            CalendarIntervalError = string.Empty;
+        }
+
         CalendarSelectorError = string.Empty;
         CollectionError = string.Empty;
         OnPropertyChanged(nameof(IsModeErrorVisible));

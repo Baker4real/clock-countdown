@@ -52,6 +52,8 @@ internal static class Program
     internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
     internal const string CountdownDeadlineTimeTypingFactName = "MainCountdownDeadlineTimeTypingAndStepping";
     internal const string CountdownDeadlineTimeValidationFactName = "MainCountdownDeadlineTimeValidationAndAccessibility";
+    internal const string RuleEditorRepeatAndLeadNumericFactName = "RuleEditorRepeatAndLeadNumericInputs";
+    internal const string MonthlySalaryDecimalAndDownstreamFactName = "MonthlySalaryDecimalInputAndDownstreamContract";
     internal const string RuleEditorTimeInputFactName = "RuleEditorTimeInputTypingValidationAndPreview";
     internal const string ReminderCenterCustomSnoozeTimeInputFactName = "ReminderCenterCustomSnoozeTypeableTimeInput";
     internal const string MainWorkHoursTimeInputFactName = "MainWorkHoursTypeableTimeInputAndValidation";
@@ -165,6 +167,10 @@ internal static class Program
     private const string CountdownDeadlineTimeValidationFactMeaning =
         "倒计时截止时刻在失焦与提交时校验空值、越界与非时刻文本，错误行贴字段下方且礼貌播报，提交失败聚焦时间框（含收起态重展开），" +
         "有效/出错无焦/出错有焦为 2/1/2 DIP 不挤布局且修正即清，保留可见标签 LabeledBy 与等价可访问名并适配系统对比度（#328）";
+    private const string RuleEditorRepeatAndLeadNumericFactMeaning =
+        "规则编辑器每隔几个周期（1..999）与提前分钟（0..5256000）均支持上下键/滚轮步进、范围校验、越界当场提示与不变错误文案，ViewModel 属性均为可空整数，且焦点、错误边、对比度、系统对比度与标签关系均符合契约（#331）";
+    private const string MonthlySalaryDecimalAndDownstreamFactMeaning =
+        "主窗口显示设置月薪支持两位小数与千位分隔显示、上下键与获焦滚轮步进、范围/格式校验及不变错误文案与位置、单层暖金焦点与 1/2 DIP 危险错误边（不挤布局）、对比度与系统对比度、LabeledBy 标签关系、零 WPF-UI 资源污染，且月薪为零时悬浮窗仍显示鼓励语等下游行为不变（#331）";
     private const string RuleEditorTimeInputFactMeaning =
         "规则编辑器首次提醒与日历本地时刻改为单一可键入 HH:mm 文本框：支持直接键入与上下键分段步进、失焦与提交校验、暖金/危险边框不挤布局、" +
         "实时规则预览同步与精确持久化领域值，保留 LabeledBy 标签关系并适配系统对比度（#329）";
@@ -225,6 +231,8 @@ internal static class Program
             [FloatingNoteOverflowInteractionsAndMotionFactName] = false,
             [CountdownDeadlineTimeTypingFactName] = false,
             [CountdownDeadlineTimeValidationFactName] = false,
+            [RuleEditorRepeatAndLeadNumericFactName] = false,
+            [MonthlySalaryDecimalAndDownstreamFactName] = false,
             [RuleEditorTimeInputFactName] = false,
             [ReminderCenterCustomSnoozeTimeInputFactName] = false,
             [MainWorkHoursTimeInputFactName] = false
@@ -491,6 +499,16 @@ internal static class Program
                 CountdownDeadlineTimeValidationFactMeaning,
                 () => CountdownDeadlineTimeInputScenario.RunValidationAndAccessibility(
                     CountdownDeadlineTimeValidationFactMeaning));
+            RunFact(
+                RuleEditorRepeatAndLeadNumericFactName,
+                RuleEditorRepeatAndLeadNumericFactMeaning,
+                () => ExtendedNumericInputsScenario.RunRuleEditorRepeatAndLeadInputs(
+                    RuleEditorRepeatAndLeadNumericFactMeaning));
+            RunFact(
+                MonthlySalaryDecimalAndDownstreamFactName,
+                MonthlySalaryDecimalAndDownstreamFactMeaning,
+                () => ExtendedNumericInputsScenario.RunMonthlySalaryDecimalInputAndDownstream(
+                    MonthlySalaryDecimalAndDownstreamFactMeaning));
             RunFact(
                 RuleEditorTimeInputFactName,
                 RuleEditorTimeInputFactMeaning,

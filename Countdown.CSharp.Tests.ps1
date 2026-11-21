@@ -3903,6 +3903,8 @@ exit 23
         FloatingNoteOverflowMenuInteractionsAndMotion = '悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）'
         MainCountdownDeadlineTimeTypingAndStepping = '管理窗口倒计时截止时刻改为单一可键入 HH:mm:ss 文本框：新增默认当前北京时间、直接键入与编辑保存保持精确领域值，光标按时/分/秒分段支持上下键步进与边界回绕，复用 TimeInputBehavior 兼顾 HH:mm 格式（#328）'
         MainCountdownDeadlineTimeValidationAndAccessibility = '倒计时截止时刻在失焦与提交时校验空值、越界与非时刻文本，错误行贴字段下方且礼貌播报，提交失败聚焦时间框（含收起态重展开），有效/出错无焦/出错有焦为 2/1/2 DIP 不挤布局且修正即清，保留可见标签 LabeledBy 与等价可访问名并适配系统对比度（#328）'
+        RuleEditorRepeatAndLeadNumericInputs = '规则编辑器每隔几个周期（1..999）与提前分钟（0..5256000）均支持上下键/滚轮步进、范围校验、越界当场提示与不变错误文案，ViewModel 属性均为可空整数，且焦点、错误边、对比度、系统对比度与标签关系均符合契约（#331）'
+        MonthlySalaryDecimalInputAndDownstreamContract = '主窗口显示设置月薪支持两位小数与千位分隔显示、上下键与获焦滚轮步进、范围/格式校验及不变错误文案与位置、单层暖金焦点与 1/2 DIP 危险错误边（不挤布局）、对比度与系统对比度、LabeledBy 标签关系、零 WPF-UI 资源污染，且月薪为零时悬浮窗仍显示鼓励语等下游行为不变（#331）'
         RuleEditorTimeInputTypingValidationAndPreview = '规则编辑器首次提醒与日历本地时刻改为单一可键入 HH:mm 文本框：支持直接键入与上下键分段步进、失焦与提交校验、暖金/危险边框不挤布局、实时规则预览同步与精确持久化领域值，保留 LabeledBy 标签关系并适配系统对比度（#329）'
         ReminderCenterCustomSnoozeTypeableTimeInput = '提醒中心懒创建自定义稍后时间改为单一可键入 HH:mm 文本框：保留懒创建与默认值、支持直接键入与上下键步进、非法格式与不晚于当前北京时间错误紧贴下方且带错误边框、合法稍后精确持久化，保留 LabeledBy 与系统对比度（#329）'
         MainWorkHoursTypeableTimeInputAndValidation = '管理窗口显示设置上下班时间接入可键入 HH:mm 与上下键分段步进：支持失焦与提交校验非法格式与下班不晚于上班、错误贴于对应字段下方并带错误边框、保留 LabeledBy 标签关系，保存后精确持久化并驱动工作日计算（#329）'

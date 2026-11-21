@@ -898,12 +898,25 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
 
     private void UpdateCountdownListHeight()
     {
+        var decorationBandHeight = MainDecorationBandSpacer.Visibility == Visibility.Visible
+            ? MainDecorationBandSpacer.Height
+            : 0;
         var fixedHeight = MainWorkbenchLayout.RowDefinitions[0].Height.Value +
-            MainWorkbenchLayout.RowDefinitions[1].Height.Value + MainWorkbenchLayout.RowDefinitions[3].Height.Value;
+            MainWorkbenchLayout.RowDefinitions[1].Height.Value +
+            decorationBandHeight +
+            MainWorkbenchLayout.RowDefinitions[4].Height.Value;
         var bodyTop = CountdownWorkspaceBody.Margin.Top;
-        var minimumCountdownHeight = fixedHeight + bodyTop + CountdownEditorSurface.ActualHeight +
-            CountdownWorkspaceBody.RowDefinitions[1].Height.Value + CountdownListContent.MinHeight +
-            CountdownWorkspaceBody.RowDefinitions[5].Height.Value;
+        var countdownDecoTop = CountdownDecorationSpacer.Visibility == Visibility.Visible
+            ? CountdownDecorationSpacer.Height
+            : 0;
+        var countdownBottomHeight = 5 + (CountdownDecorationBottomSpacer.Visibility == Visibility.Visible
+            ? CountdownDecorationBottomSpacer.Height
+            : 0);
+        var minimumCountdownHeight = fixedHeight + bodyTop + countdownDecoTop +
+            CountdownEditorSurface.ActualHeight +
+            CountdownWorkspaceBody.RowDefinitions[2].Height.Value +
+            CountdownListContent.MinHeight +
+            countdownBottomHeight;
         var height = _workspace == WorkspaceKind.Countdowns
             ? Math.Max(minimumCountdownHeight, ActualHeight > 0 ? ActualHeight : Height)
             : PreferredHeight;
@@ -911,9 +924,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         MainLayoutSurface.Height = height;
         MainContentProjection.Height = height;
         MainWorkbenchLayout.Height = height;
-        MainWorkbenchLayout.RowDefinitions[2].Height = new GridLength(height - fixedHeight);
-        CountdownWorkspace.Height = height - fixedHeight;
-        CountdownWorkspaceBody.Height = height - fixedHeight - bodyTop;
+        var workspaceHeight = height - fixedHeight;
+        MainWorkbenchLayout.RowDefinitions[3].Height = new GridLength(workspaceHeight);
+        CountdownWorkspace.Height = workspaceHeight;
+        CountdownWorkspaceBody.Height = workspaceHeight - bodyTop;
+        NotesWorkspace.Height = workspaceHeight;
+        NotesWorkspaceBody.Height = workspaceHeight - NotesWorkspaceBody.Margin.Top - 5;
         Canvas.SetTop(CountdownDecoTextBottom, CountdownWorkspace.Height - 20);
     }
 
@@ -4092,6 +4108,10 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         var contrast = ApplicationTheme.HighContrastEnabled;
         var decorationVisibility = contrast ? Visibility.Collapsed : Visibility.Visible;
         MainReferenceDecorationLayer.Visibility = decorationVisibility;
+        MainDecorationBandSpacer.Visibility = decorationVisibility;
+        CountdownDecorationSpacer.Visibility = decorationVisibility;
+        CountdownDecorationBottomSpacer.Visibility = decorationVisibility;
+        NotesDecorationSpacer.Visibility = decorationVisibility;
         CountdownDecoTextTop.Visibility = decorationVisibility;
         CountdownDecoTextBottom.Visibility = decorationVisibility;
         NotesDecoText.Visibility = decorationVisibility;
@@ -4117,6 +4137,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             useReferenceDecorations && _workspace == WorkspaceKind.Notes
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        UpdateCountdownListHeight();
     }
 
     internal static BitmapImage? LoadImage(string path, int decodePixelWidth = 0, int decodePixelHeight = 0)

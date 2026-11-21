@@ -89,13 +89,77 @@
               <Setter Property="MinHeight" Value="28" />
               <Setter Property="MinWidth" Value="30" />
             </Style>
-            <!-- #248：空态填写引导。常态无底无边、只留文字，悬停底色与键盘焦点环沿用共享按钮模板；
-                 它只把焦点交给表单输入，每页的添加入口只有表单里的实心主行动。 -->
+            <!-- #248/#304：空态填写引导。基于次级按钮语言，使用柔和暖粉底（PinkTintSoftBrush）、
+                 ≥3:1 控件边（ControlBorderBrush）与不可命中上指箭头，常态即可辨认为可点，
+                 同时保持比表单唯一实心主行动（MainActionBrush）更轻的视觉权重；悬停切深暖粉底与暖边，
+                 焦点沿用常驻 2px ActiveBrush 环，系统对比度下映射 Window / WindowText / Highlight。 -->
             <Style x:Key="MainEmptyStateGuideButton"
                    TargetType="{x:Type Button}"
                    BasedOn="{StaticResource MainSecondaryButton}">
-              <Setter Property="Background" Value="Transparent" />
-              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="Background" Value="{DynamicResource PinkTintSoftBrush}" />
+              <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+              <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+              <Setter Property="Padding" Value="13,0" />
+              <Setter Property="MinHeight" Value="32" />
+              <Setter Property="Template">
+                <Setter.Value>
+                  <ControlTemplate TargetType="{x:Type Button}">
+                    <Grid x:Name="InteractionSurface"
+                          Background="Transparent"
+                          focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
+                          focus:MotionBehavior.HoverBackgroundResourceKey="PinkTintBrush"
+                          focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
+                      <Border x:Name="FocusRing"
+                              Background="Transparent"
+                              BorderBrush="Transparent"
+                              BorderThickness="{DynamicResource FocusBorderThickness}"
+                              CornerRadius="{DynamicResource RadiusControl}" />
+                      <Border x:Name="Surface"
+                              Margin="{DynamicResource FocusBorderThickness}"
+                              Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="{DynamicResource RadiusControl}"
+                              Padding="{TemplateBinding Padding}"
+                              RenderTransformOrigin="0.5,0.5">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                          <ContentPresenter VerticalAlignment="Center"
+                                            RecognizesAccessKey="True" />
+                          <Path Width="10"
+                                Height="10"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                Data="M 5,8.75 L 5,1.75 M 2,4.75 L 5,1.75 L 8,4.75"
+                                Stroke="{TemplateBinding Foreground}"
+                                StrokeThickness="1.5"
+                                StrokeStartLineCap="Round"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                IsHitTestVisible="False" />
+                        </StackPanel>
+                      </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <!-- #194/#304：悬停底色（PinkTintBrush）与边色（ActiveHoverBrush）由 MotionBehavior 插值。 -->
+                      </Trigger>
+                      <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </Trigger>
+                      <MultiTrigger>
+                        <MultiTrigger.Conditions>
+                          <Condition Property="IsKeyboardFocused" Value="True" />
+                          <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
+                        </MultiTrigger.Conditions>
+                        <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                      </MultiTrigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Setter.Value>
+              </Setter>
             </Style>
             <Style x:Key="MainNoteSegmentButton" TargetType="{x:Type ToggleButton}">
               <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
@@ -111,6 +175,7 @@
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PeachTintBrush">
@@ -148,19 +213,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -181,6 +233,7 @@
                   <ControlTemplate TargetType="{x:Type Button}">
                     <Grid x:Name="InteractionSurface"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
                       <Border x:Name="FocusRing"
@@ -206,7 +259,7 @@
                       <Trigger Property="IsMouseOver" Value="True">
                         <!-- #194：日期披露悬停色由 MotionBehavior 插值。 -->
                       </Trigger>
-                      <!-- #152：按压与键盘焦点同语言（环 ActiveBrush），替代原 Opacity 0.9；补齐禁用 0.45。 -->
+                      <!-- #152：按压与键盘焦点同语言（环 ActiveBrush），替代原 Opacity 0.9；禁用态由 DisabledStateBehavior 统一提供。 -->
                       <Trigger Property="IsPressed" Value="True">
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </Trigger>
@@ -216,19 +269,6 @@
                           <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                      </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -253,6 +293,7 @@
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="MainActionHoverBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="MainActionHoverBrush"
                           focus:MotionBehavior.PressedBackgroundResourceKey="MainActionPressedBrush">
@@ -289,19 +330,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -324,6 +352,7 @@
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush">
                       <Border x:Name="FocusRing"
@@ -358,19 +387,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -394,6 +410,7 @@
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
@@ -433,19 +450,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -458,10 +462,11 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <!-- #152：未选中「便签」页签悬停改「边换 ActiveBrush」，不复用选中实心底 PeachTintBrush；
-                       按压/焦点与键盘焦点同语言（环 ActiveBrush），补齐禁用 0.45。 -->
+                       按压/焦点与键盘焦点同语言（环 ActiveBrush），禁用态由 DisabledStateBehavior 统一提供。 -->
                   <ControlTemplate TargetType="{x:Type ToggleButton}">
                     <Grid x:Name="InteractionSurface"
                           focus:MotionBehavior.IsEnabled="True"
+                          focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
                           focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
@@ -501,19 +506,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="InteractionSurface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -534,7 +526,9 @@
               <Setter Property="Template">
                 <Setter.Value>
                   <ControlTemplate TargetType="{x:Type CheckBox}">
-                    <Grid x:Name="Surface" Background="Transparent">
+                    <Grid x:Name="Surface"
+                          Background="Transparent"
+                          focus:DisabledStateBehavior.IsEnabled="True">
                       <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -586,19 +580,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource MainActionFocusBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -613,7 +594,11 @@
                   <ControlTemplate TargetType="{x:Type CheckBox}">
                     <!-- #152/#208：真实 DIP 命中槽位 28（≥ 桌面紧凑下限 24），
                          可见勾选框 18 居中；边框常驻 2px、焦点只换色。 -->
-                    <Grid x:Name="Surface" Width="28" Height="28" Background="Transparent">
+                    <Grid x:Name="Surface"
+                          Width="28"
+                          Height="28"
+                          Background="Transparent"
+                          focus:DisabledStateBehavior.IsEnabled="True">
                       <Border x:Name="Box"
                               Width="18"
                               Height="18"
@@ -652,19 +637,6 @@
                           <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
                         </MultiTrigger.Conditions>
                         <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                      </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -733,7 +705,8 @@
                   <ControlTemplate TargetType="{x:Type RadioButton}">
                     <Grid x:Name="Surface"
                           Background="{TemplateBinding Background}"
-                          RenderTransformOrigin="0.5,0.5">
+                          RenderTransformOrigin="0.5,0.5"
+                          focus:DisabledStateBehavior.IsEnabled="True">
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
@@ -785,19 +758,6 @@
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                       </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
-                      </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
                 </Setter.Value>
@@ -817,7 +777,8 @@
                   <ControlTemplate TargetType="{x:Type Button}">
                     <Grid x:Name="Surface"
                           Background="Transparent"
-                          RenderTransformOrigin="0.5,0.5">
+                          RenderTransformOrigin="0.5,0.5"
+                          focus:DisabledStateBehavior.IsEnabled="True">
                       <Border x:Name="FocusRing"
                               Background="Transparent"
                               BorderBrush="Transparent"
@@ -836,7 +797,7 @@
                       <Trigger Property="IsMouseOver" Value="True">
                         <Setter TargetName="Circle" Property="Stroke" Value="{DynamicResource ActiveHoverBrush}" />
                       </Trigger>
-                      <!-- #152：帮助图标补齐按压（环 ActiveBrush）与禁用 0.45；聚焦说明见代码behind接线。 -->
+                      <!-- #152：帮助图标补齐按压（环 ActiveBrush），禁用态由 DisabledStateBehavior 统一提供；聚焦说明见代码behind接线。 -->
                       <Trigger Property="IsPressed" Value="True">
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
                         <Setter TargetName="Surface" Property="RenderTransform">
@@ -851,19 +812,6 @@
                           <Condition Property="focus:FocusVisualState.IsKeyboardFocusVisible" Value="True" />
                         </MultiTrigger.Conditions>
                         <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
-                      </MultiTrigger>
-                      <Trigger Property="IsEnabled" Value="False">
-                        <Setter TargetName="Surface" Property="Opacity" Value="0.45" />
-                      </Trigger>
-                      <MultiTrigger>
-                        <MultiTrigger.Conditions>
-                          <Condition Property="IsEnabled" Value="False" />
-                          <Condition Property="focus:ApplicationTheme.IsSystemContrast" Value="True" />
-                        </MultiTrigger.Conditions>
-                        <Setter Property="Foreground" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter Property="Background" Value="{DynamicResource SystemContrastControlBrush}" />
-                        <Setter Property="BorderBrush" Value="{DynamicResource SystemContrastDisabledTextBrush}" />
-                        <Setter TargetName="Surface" Property="Opacity" Value="1" />
                       </MultiTrigger>
                     </ControlTemplate.Triggers>
                   </ControlTemplate>
@@ -945,13 +893,14 @@
                       ClipToBounds="True"><Image x:Name="KuromiPanelCharacter" Height="119" Stretch="Uniform" /></Border>
             </Canvas>
 
-            <!-- 工作台骨架：顶部身份区 / 命令栏 / 当前工作区主卡与列表区 / 底部动作区（issue #131 #135）。 -->
+            <!-- 工作台骨架：顶部身份区 / 命令栏 / 装饰带占位 / 当前工作区主卡与列表区 / 底部动作区（issue #131 #135 #304）。 -->
             <Grid x:Name="MainWorkbenchLayout"
                   Width="864"
                   Height="1000">
               <Grid.RowDefinitions>
                 <RowDefinition Height="130" />
-                <RowDefinition Height="86" />
+                <RowDefinition Height="51" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="738" />
                 <RowDefinition Height="46" />
               </Grid.RowDefinitions>
@@ -965,30 +914,15 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel x:Name="MainTitleZone">
                   <StackPanel Orientation="Horizontal">
-                    <!-- 便签页目标图标题左侧的房子标识；倒计时页保持标题右侧心形（§12 各页对齐各自 AI 图）。 -->
-                    <Path Width="33"
-                          Height="30"
-                          Margin="0,0,12,4"
-                          VerticalAlignment="Center"
-                          Data="M 16.5,2.25 L 30.75,13.88 L 27.38,13.88 L 27.38,24.38 C 27.38,26.03 26.03,27.38 24.38,27.38 L 8.62,27.38 C 6.98,27.38 5.62,26.03 5.62,24.38 L 5.62,13.88 L 2.25,13.88 Z M 12.75,27.38 L 12.75,18.75 C 12.75,17.92 13.42,17.25 14.25,17.25 L 18.75,17.25 C 19.58,17.25 20.25,17.92 20.25,18.75 L 20.25,27.38 Z"
-                          Fill="{DynamicResource InkBrush}"
-                          IsHitTestVisible="False">
-                      <Path.Style>
-                        <Style TargetType="{x:Type Path}">
-                          <Setter Property="Visibility" Value="Collapsed" />
-                          <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsChecked, ElementName=NotesTab}" Value="True">
-                              <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                          </Style.Triggers>
-                        </Style>
-                      </Path.Style>
-                    </Path>
-                    <TextBlock Text="敏敏子的时光小屋"
+                    <!-- #304：采用「装饰放在标题之后」方案——主标题始终与副标题、页签栏左缘对齐，
+                         切页水平位置不变；倒计时页心形与便签页小屋分别保留在标题右侧。 -->
+                    <TextBlock x:Name="MainTitleText"
+                               Text="敏敏子的时光小屋"
                                FontSize="{DynamicResource TypeDisplayFontSize}"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource InkBrush}" />
-                    <Path Width="24"
+                    <Path x:Name="CountdownTitleMotif"
+                          Width="24"
                           Height="21"
                           Margin="9,0,0,0"
                           VerticalAlignment="Center"
@@ -1002,6 +936,25 @@
                           <Setter Property="Visibility" Value="Collapsed" />
                           <Style.Triggers>
                             <DataTrigger Binding="{Binding IsChecked, ElementName=CountdownTab}" Value="True">
+                              <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </Path.Style>
+                    </Path>
+                    <Path x:Name="NotesTitleMotif"
+                          Width="33"
+                          Height="30"
+                          Margin="10,0,0,4"
+                          VerticalAlignment="Center"
+                          Data="M 16.5,2.25 L 30.75,13.88 L 27.38,13.88 L 27.38,24.38 C 27.38,26.03 26.03,27.38 24.38,27.38 L 8.62,27.38 C 6.98,27.38 5.62,26.03 5.62,24.38 L 5.62,13.88 L 2.25,13.88 Z M 12.75,27.38 L 12.75,18.75 C 12.75,17.92 13.42,17.25 14.25,17.25 L 18.75,17.25 C 19.58,17.25 20.25,17.92 20.25,18.75 L 20.25,27.38 Z"
+                          Fill="{DynamicResource InkBrush}"
+                          IsHitTestVisible="False">
+                      <Path.Style>
+                        <Style TargetType="{x:Type Path}">
+                          <Setter Property="Visibility" Value="Collapsed" />
+                          <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NotesTab}" Value="True">
                               <Setter Property="Visibility" Value="Visible" />
                             </DataTrigger>
                           </Style.Triggers>
@@ -1070,8 +1023,20 @@
                 </Grid>
               </Grid>
 
-              <!-- 命令栏：工作区页签 + 筛选 / 标签 / 数量 -->
-              <Grid x:Name="MainCommandBarZone" Grid.Row="1" Margin="30,0,6,0" VerticalAlignment="Top">
+              <!-- 命令栏：工作区页签 + 设置齿轮 / 筛选 / 标签 / 数量。
+                   #304：三枚命令按钮统一 41 DIP 高并垂直居中，数量文字共用同一中线；
+                   命令栏右缘对齐当前内容区右缘（倒计时 835 / 便签 829），页签容器与选中指示条几何不变。 -->
+              <Grid x:Name="MainCommandBarZone" Grid.Row="1" VerticalAlignment="Top">
+                <Grid.Style>
+                  <Style TargetType="{x:Type Grid}">
+                    <Setter Property="Margin" Value="30,0,29,0" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsChecked, ElementName=NotesTab}" Value="True">
+                        <Setter Property="Margin" Value="30,0,35,0" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" />
                   <ColumnDefinition Width="*" />
@@ -1118,7 +1083,7 @@
                      原「⚙」文本字形在 v52–v57 参考帧里被裁得只剩一截：共享按钮左右 13 的内边距把 41 宽按钮的
                      内容区挤到 9 DIP，比图标还窄，所以 Padding 归零。 -->
                 <Button x:Name="PreferencesButton" Grid.Column="1" Width="41" Height="41" Padding="0"
-                        Margin="0,0,12,0" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,0,8,0" HorizontalAlignment="Right" VerticalAlignment="Center"
                         ToolTip="显示设置" AutomationProperties.Name="打开显示设置"
                         Style="{StaticResource MainSecondaryButton}">
                   <Path Width="18"
@@ -1129,7 +1094,8 @@
                 <Button x:Name="FilterButton"
                         Grid.Column="2"
                         Width="99"
-                        Height="51"
+                        Height="41"
+                        VerticalAlignment="Center"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
                     <!-- #154：漏斗改实心填充（InkBrush）——1.8px 描边漏斗在现役 Aliased 确定性捕获口径下
@@ -1152,7 +1118,8 @@
                 <Button x:Name="TagManagerButton"
                         Grid.Column="4"
                         Width="98"
-                        Height="51"
+                        Height="41"
+                        VerticalAlignment="Center"
                         Style="{StaticResource MainSecondaryButton}">
                   <StackPanel Orientation="Horizontal">
                     <Path Width="16"
@@ -1171,45 +1138,51 @@
                 </Button>
                 <TextBlock x:Name="RecordCountText"
                            Grid.Column="6"
-                           Margin="0,8,0,0"
-                           Height="36"
-                           Padding="0,8,0,0"
                            FontSize="{DynamicResource TypeBodyFontSize}"
                            Foreground="{DynamicResource BodyBrush}"
-                           VerticalAlignment="Top" />
+                           VerticalAlignment="Center" />
               </Grid>
 
+              <!-- #304：顶部装饰带上沿占位（35 DIP）；系统对比度隐藏装饰带时收起为 Collapsed，消除空白带。 -->
+              <Border x:Name="MainDecorationBandSpacer"
+                      Grid.Row="2"
+                      Height="35"
+                      IsHitTestVisible="False" />
+
               <!-- 当前工作区主卡 + 列表/管理区 -->
-              <Grid x:Name="MainWorkspaceZone" Grid.Row="2">
+              <Grid x:Name="MainWorkspaceZone" Grid.Row="3">
                 <Canvas x:Name="CountdownWorkspace"
                         Width="864"
                         Height="738">
-                  <!-- 编辑卡顶边落在装饰带下沿（画布 DIP 292.6）之下，与便签页同样留约 7 DIP：
-                       不透明编辑卡与列表底层不得盖住三只玩偶。高度由 UpdateCountdownListHeight 按 Margin.Top 重算。
-                       #251：编辑卡到列表消费 §13.3 SpacingBlockGap（12），与便签页区块节奏一致；末行 21 DIP
-                       留给右下手写体装饰（画布 718），不回收。 -->
+                  <!-- 编辑卡顶边在日间态落在装饰带下沿（画布 DIP 292.6）之下，与便签页同样留约 7 DIP：
+                       不透明编辑卡与列表底层不得盖住三只玩偶。高度由 UpdateCountdownListHeight 按装饰带占位重算。
+                       #251：编辑卡到列表消费 §13.3 SpacingBlockGap（12），与便签页区块节奏一致；
+                       #304：装饰带上下占位拆为可收起元素，系统对比度隐藏装饰带时一并 Collapsed。 -->
                   <Grid x:Name="CountdownWorkspaceBody"
-                        Margin="28,84,29,0"
+                        Margin="28,12,29,0"
                         Width="807"
-                        Height="654">
+                        Height="726">
                     <Grid.RowDefinitions>
                       <RowDefinition Height="Auto" />
-                      <RowDefinition Height="12" />
                       <RowDefinition Height="Auto" />
-                      <RowDefinition Height="0" />
+                      <RowDefinition Height="12" />
                       <RowDefinition Height="*" />
-                      <RowDefinition Height="21" />
+                      <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Border x:Name="CountdownWorkspaceBackdrop"
+                    <Border x:Name="CountdownDecorationSpacer"
                             Grid.Row="0"
-                            Grid.RowSpan="6"
+                            Height="72"
+                            IsHitTestVisible="False" />
+                    <Border x:Name="CountdownWorkspaceBackdrop"
+                            Grid.Row="1"
+                            Grid.RowSpan="4"
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="0"
                             CornerRadius="{DynamicResource RadiusOverlay}"
                             IsHitTestVisible="False" />
                     <Border x:Name="CountdownEditorSurface"
-                            Grid.Row="0"
+                            Grid.Row="1"
                             Background="{DynamicResource BackgroundBrush}"
                             BorderBrush="{DynamicResource PeachLineBrush}"
                             BorderThickness="1"
@@ -1454,7 +1427,7 @@
                       </Grid>
                     </Border>
                     <ScrollViewer x:Name="CountdownListRegion"
-                                  Grid.Row="4"
+                                  Grid.Row="3"
                                   Margin="2,0,1,0"
                                   FocusVisualStyle="{StaticResource MainKeyboardFocusVisual}"
                                   Focusable="True"
@@ -1509,8 +1482,13 @@
                         </StackPanel>
                       </Grid>
                     </ScrollViewer>
-                    <!-- #154：原右下角手写体「生活很忙…」已迁至 CountdownWorkspace 装饰层；
-                         本行保留为列表与页面下缘之间的结构间距，不再承载装饰文案。 -->
+                    <!-- #154/#304：日间态保留 5 + 16 = 21 DIP 给右下手写体装饰；系统对比度收起 16 DIP 占位，与状态栏保持 12 DIP 间距。 -->
+                    <StackPanel Grid.Row="4" IsHitTestVisible="False">
+                      <Border Height="5" IsHitTestVisible="False" />
+                      <Border x:Name="CountdownDecorationBottomSpacer"
+                              Height="16"
+                              IsHitTestVisible="False" />
+                    </StackPanel>
                   </Grid>
                   <!-- #154：倒计时页手写体装饰落点（§4/§5 装饰层合同）——设计坐标绝对落点，
                        IsHitTestVisible=False、不参与表单测量、不挤字段。右上 (395,55) 右对齐宽 305：
@@ -1552,19 +1530,24 @@
                              Foreground="{DynamicResource DecoTextBrush}"
                              IsHitTestVisible="False"
                              x:Name="NotesDecoText" />
-                  <!-- #251：编辑卡按内容取高（新增态无空行，编辑态标题与字段错误不再被固定 215 行裁切），
-                       编辑卡到列表卡、列表卡到状态栏都是 §13.3 SpacingBlockGap（12）：画布 99 + 634 止于状态栏上方 12 DIP，
-                       其余高度全给列表卡。 -->
+                  <!-- #251/#304：编辑卡按内容取高，编辑卡到列表卡、列表卡到状态栏都是 §13.3 SpacingBlockGap（12）；
+                       日间态由 NotesDecorationSpacer（87 DIP）与顶部 12 DIP 共留 99 DIP 装饰带空间，
+                       系统对比度隐藏装饰带时收起为 Collapsed，消除空白带并把高度还给列表。 -->
                   <Grid x:Name="NotesWorkspaceBody"
-                        Margin="34,99,35,0"
+                        Margin="34,12,35,0"
                         Width="795"
-                        Height="634">
+                        Height="721">
                     <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="12" />
                       <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Grid Grid.Row="0" x:Name="NoteEditorCard">
+                    <Border x:Name="NotesDecorationSpacer"
+                            Grid.Row="0"
+                            Height="87"
+                            IsHitTestVisible="False" />
+                    <Grid Grid.Row="1" x:Name="NoteEditorCard">
                       <Border x:Name="NoteEditorPanel"
                               Panel.ZIndex="-2"
                               Background="{DynamicResource WorkspacePanelBrush}"
@@ -1579,7 +1562,8 @@
                                 BorderBrush="{DynamicResource PeachLineBrush}"
                                 BorderThickness="1"
                                 CornerRadius="{DynamicResource RadiusOverlay}">
-                          <StackPanel Margin="18,10,0,10">
+                          <!-- #304：左右对称 18 DIP 内边距，新增态与编辑态行尾留白等于行首留白。 -->
+                          <StackPanel Margin="18,10,18,10">
                           <TextBlock x:Name="NoteEditorTitle" Text="编辑便签"
                                      Visibility="Collapsed" Margin="0,0,0,6"
                                      FontSize="{DynamicResource TypeH2FontSize}" FontWeight="SemiBold"
@@ -1591,19 +1575,23 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                           </Grid.RowDefinitions>
-                          <Grid Grid.Row="0" x:Name="MainNotePrimaryLabels">
+                          <!-- #304：便签主字段标签与输入共用同一 Grid 列定义，正文列 Width="*" 在新增态与编辑态
+                               吸收剩余宽度，日期标签随日期框同步对齐；「取消」继承 MainSecondaryButton 统一内边距。 -->
+                          <Grid Grid.Row="0" x:Name="MainNotePrimaryInputs">
+                            <Grid.RowDefinitions>
+                              <RowDefinition Height="Auto" />
+                              <RowDefinition Height="7" />
+                              <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="364" />
+                              <ColumnDefinition Width="*" />
                               <ColumnDefinition Width="11" />
                               <ColumnDefinition Width="242" />
-                              <ColumnDefinition Width="5" />
-                              <ColumnDefinition Width="98" />
-                              <ColumnDefinition Width="6" />
-                              <ColumnDefinition Width="49" />
+                              <ColumnDefinition Width="8" />
+                              <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal">
+                            <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
                               <Path Width="13"
                                     Height="13"
                                     Data="M 2.82,1.81 L 10.18,1.81 C 10.76,1.81 11.19,2.24 11.19,2.82 L 11.19,7.87 L 7.87,11.19 L 2.82,11.19 C 2.24,11.19 1.81,10.76 1.81,10.18 L 1.81,2.82 C 1.81,2.24 2.24,1.81 2.82,1.81 Z M 7.87,7.87 L 7.87,11.19"
@@ -1617,19 +1605,12 @@
                                          Text="便签内容"
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
-                            <TextBlock x:Name="NoteDateLabel" Grid.Column="2" Text="便签日期" Style="{StaticResource MainCompactFieldLabel}" />
-                          </Grid>
-                          <Grid Grid.Row="1" x:Name="MainNotePrimaryInputs" Margin="0,7,0,0">
-                            <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="364" />
-                              <ColumnDefinition Width="11" />
-                              <ColumnDefinition Width="242" />
-                              <ColumnDefinition Width="5" />
-                              <ColumnDefinition Width="98" />
-                              <ColumnDefinition Width="6" />
-                              <ColumnDefinition Width="49" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0">
+                            <TextBlock x:Name="NoteDateLabel"
+                                       Grid.Row="0"
+                                       Grid.Column="2"
+                                       Text="便签日期"
+                                       Style="{StaticResource MainCompactFieldLabel}" />
+                            <StackPanel Grid.Row="2" Grid.Column="0">
                               <Grid>
                                 <TextBox x:Name="NoteText"
                                          MinHeight="50"
@@ -1663,7 +1644,7 @@
                                          TextWrapping="Wrap"
                                          Visibility="Collapsed" />
                             </StackPanel>
-                            <StackPanel Grid.Column="2">
+                            <StackPanel Grid.Row="2" Grid.Column="2">
                               <Grid>
                                 <!-- 管理窗等比收缩后正文降一档，共享模板的 38px 下拉列不随之收缩；
                                      日期列由便签内容列让出宽度，保证「2031 年 12 月 31 日」完整可见。 -->
@@ -1689,30 +1670,27 @@
                                          TextWrapping="Wrap"
                                          Visibility="Collapsed" />
                             </StackPanel>
-                            <Button x:Name="SaveNoteButton"
-                                    Grid.Column="4"
-                                    Width="98"
-                                    Height="50"
-                                    Padding="7,0"
-                                    Content="＋ 添加"
-                                    Style="{StaticResource MainPrimaryButton}" />
-                            <Button x:Name="CancelNoteEdit"
-                                    Grid.Column="6"
-                                    Width="49"
-                                    Height="50"
-                                    Padding="6,0"
-                                    Content="取消"
-                                    Visibility="Collapsed"
-                                    Style="{StaticResource MainSecondaryButton}" />
+                            <StackPanel Grid.Row="2" Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top">
+                              <Button x:Name="SaveNoteButton"
+                                      Width="98"
+                                      Height="50"
+                                      Padding="7,0"
+                                      Content="＋ 添加"
+                                      Style="{StaticResource MainPrimaryButton}" />
+                              <Button x:Name="CancelNoteEdit"
+                                      Height="50"
+                                      Margin="6,0,0,0"
+                                      Content="取消"
+                                      Visibility="Collapsed"
+                                      Style="{StaticResource MainSecondaryButton}" />
+                            </StackPanel>
                           </Grid>
-                          <Grid Grid.Row="2" x:Name="MainNoteSecondaryLabels" Margin="0,6,0,0">
+                          <Grid Grid.Row="1" x:Name="MainNoteSecondaryLabels" Margin="0,6,0,0">
                             <Grid.ColumnDefinitions>
                               <ColumnDefinition Width="150" />
                               <ColumnDefinition Width="11" />
                               <ColumnDefinition Width="128" />
-                              <ColumnDefinition Width="300" />
-                              <ColumnDefinition Width="163" />
-                              <ColumnDefinition Width="23" />
+                              <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal">
                               <Path Width="13"
@@ -1747,14 +1725,12 @@
                                          Style="{StaticResource MainCompactFieldLabel}" />
                             </StackPanel>
                           </Grid>
-                          <Grid Grid.Row="3" x:Name="MainNoteSecondaryInputs" Margin="0,2,0,0">
+                          <Grid Grid.Row="2" x:Name="MainNoteSecondaryInputs" Margin="0,2,0,0">
                             <Grid.ColumnDefinitions>
                               <ColumnDefinition Width="150" />
                               <ColumnDefinition Width="11" />
                               <ColumnDefinition Width="128" />
-                              <ColumnDefinition Width="300" />
-                              <ColumnDefinition Width="163" />
-                              <ColumnDefinition Width="23" />
+                              <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="ManageNoteReminderRulesButton"
                                     Grid.Column="0"
@@ -1768,8 +1744,7 @@
                                                Height="51" />
                           </Grid>
                           <TextBlock x:Name="NoteReminderRulesSummary"
-                                     Grid.Row="4"
-                                     Width="586"
+                                     Grid.Row="3"
                                      HorizontalAlignment="Left"
                                      Margin="0,3,0,0"
                                      FontSize="{DynamicResource TypeCaptionFontSize}"
@@ -1777,8 +1752,7 @@
                                      TextWrapping="Wrap"
                                      Text="不提醒" />
                           <TextBlock x:Name="NoteMessage"
-                                     Grid.Row="5"
-                                     Width="586"
+                                     Grid.Row="4"
                                      Margin="0,2,0,0"
                                      FontSize="{DynamicResource TypeCaptionFontSize}"
                                      Foreground="{DynamicResource DangerBrush}"
@@ -1789,7 +1763,7 @@
                         </Border>
                       </Border>
                     </Grid>
-                    <Grid Grid.Row="2" x:Name="NotesListCard">
+                    <Grid Grid.Row="3" x:Name="NotesListCard">
                       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                       <Border x:Name="NotesListSurface" Grid.RowSpan="3"
                               Background="{DynamicResource CardBrush}"
@@ -2134,7 +2108,7 @@
 
               <!-- 底部动作区：北京时间与状态。#151：状态栏消费状态条表面（StatusBarBrush），
                    错误字在该表面上达信息文本对比（#217 DangerBrush 实测 4.92 ≥ 4.5）。 -->
-              <Grid x:Name="MainStatusBarZone" Grid.Row="3" Margin="30,7,33,0" VerticalAlignment="Top">
+              <Grid x:Name="MainStatusBarZone" Grid.Row="4" Margin="30,7,33,0" VerticalAlignment="Top">
                 <Border x:Name="MainStatusBarSurface"
                         Background="{DynamicResource StatusBarBrush}"
                         BorderBrush="{DynamicResource PeachLineBrush}"

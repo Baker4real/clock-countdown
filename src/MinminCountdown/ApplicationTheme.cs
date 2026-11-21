@@ -144,7 +144,10 @@ internal sealed class ApplicationTheme : IDisposable
     internal static event EventHandler? PaletteChanged;
     public static readonly DependencyProperty IsSystemContrastProperty = DependencyProperty.RegisterAttached(
         "IsSystemContrast", typeof(bool), typeof(ApplicationTheme),
-        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.Inherits));
+        new FrameworkPropertyMetadata(
+            false,
+            FrameworkPropertyMetadataOptions.Inherits,
+            static (dependencyObject, _) => DisabledStateBehavior.OnSystemContrastChanged(dependencyObject)));
     public static bool GetIsSystemContrast(DependencyObject element) => (bool)element.GetValue(IsSystemContrastProperty);
     public static void SetIsSystemContrast(DependencyObject element, bool value) => element.SetValue(IsSystemContrastProperty, value);
 

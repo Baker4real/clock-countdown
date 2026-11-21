@@ -341,6 +341,21 @@ internal static class EmptyStateScenario
         var save = Required<Button>(main, countdowns ? "SaveCountdownButton" : "SaveNoteButton");
         guide.ApplyTemplate();
         var surface = guide.Template?.FindName("Surface", guide) as Border;
+        var primaryBrush = main.FindResource("MainActionBrush") as SolidColorBrush;
+        var outerSurfaceBrush = main.FindResource(countdowns ? "BackgroundBrush" : "CardBrush") as SolidColorBrush;
+        var hasRestingClickableAffordance =
+            surface is not null &&
+            primaryBrush is not null &&
+            outerSurfaceBrush is not null &&
+            surface.Background is SolidColorBrush { Color.A: byte.MaxValue } surfaceBg &&
+            surfaceBg.Color != primaryBrush.Color &&
+            surface.BorderBrush is SolidColorBrush { Color.A: byte.MaxValue } surfaceBorder &&
+            surface.BorderThickness.Left >= 1 &&
+            surface.BorderThickness.Top >= 1 &&
+            guide.Foreground is SolidColorBrush { Color.A: byte.MaxValue } guideFg &&
+            ApplicationTheme.MeetsContrast(outerSurfaceBrush.Color, surfaceBorder.Color, 3.0) &&
+            ApplicationTheme.MeetsContrast(surfaceBg.Color, surfaceBorder.Color, 3.0) &&
+            ApplicationTheme.MeetsContrast(surfaceBg.Color, guideFg.Color, 4.5);
         return new MainEmptyStateView(
             content.IsVisible,
             message.IsVisible ? message.Text : null,
@@ -349,11 +364,7 @@ internal static class EmptyStateScenario
             guide.IsVisible,
             guide.Content as string ?? string.Empty,
             AutomationProperties.GetName(guide),
-            BrushIsClear(guide.Background) &&
-                BrushIsClear(guide.BorderBrush) &&
-                surface is not null &&
-                BrushIsClear(surface.Background) &&
-                BrushIsClear(surface.BorderBrush),
+            hasRestingClickableAffordance,
             reset.IsVisible,
             VisualDescendants<ButtonBase>(content)
                 .Count(button => button.IsVisible && SaysAdd(button)),
@@ -364,9 +375,6 @@ internal static class EmptyStateScenario
     private static bool SaysAdd(ButtonBase button) =>
         (button.Content as string ?? string.Empty).Contains("添加", StringComparison.Ordinal) ||
         AutomationProperties.GetName(button).Contains("添加", StringComparison.Ordinal);
-
-    private static bool BrushIsClear(Brush? brush) =>
-        brush is null || brush is SolidColorBrush { Color.A: 0 };
 
     private static void WithEmptyMainWindow(
         EmptyStateWindowCase windowCase,

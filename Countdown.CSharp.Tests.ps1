@@ -3897,6 +3897,8 @@ exit 23
         MainNoteSearchCoalescesAndPreservesTagControls = '管理窗口便签搜索连续输入合并约 150 毫秒后仅渲染一次，按 Enter 立即单次渲染无重复尾随，清除与悬浮窗共享筛选同步双向一致；搜索不重建标签选择器、筛选标签和标签管理行，仅标签集合变化时更新（#302）'
         MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame = '管理窗口隐藏期间多次工作区改动不重建行控件并保留未保存草稿与筛选条件，经提醒“打开来源”、悬浮窗入口和托盘菜单重新显示时在首帧前仅刷新一次且首帧内容与最新设置一致（#302）'
         SpacingTokensWiredAcrossWindows = 'SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）'
+        TagManagerAutoSaveOnEnterAndBlur = '标签管理行移除“保存”按钮并保留“删除”与新建流程；名称输入框按 Enter 与失焦各提交一次改名并同步四处界面，内容未变化（含仅首尾空白）不产生提交也不重建行（#308）'
+        TagManagerRenameErrorsEscDiscardAndDelete = '标签管理重名或空名失败时错误贴在该行、保留用户输入并把焦点放回该输入框，修正即清；Esc 放弃未提交改名并关闭弹层返焦，删除标签保持取消默认确认与只解除关联、不删记录语义（#308）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

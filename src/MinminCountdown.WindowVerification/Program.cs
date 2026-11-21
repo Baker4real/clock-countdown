@@ -46,6 +46,8 @@ internal static class Program
     internal const string MainNoteSearchCoalesceFactName = "MainNoteSearchCoalescesAndPreservesTagControls";
     internal const string MainHiddenDeferRefreshFactName = "MainWindowHiddenDefersRebuildsAndRefreshesFirstFrame";
     internal const string SpacingTokensWiredFactName = "SpacingTokensWiredAcrossWindows";
+    internal const string TagManagerAutoSaveFactName = "TagManagerAutoSaveOnEnterAndBlur";
+    internal const string TagManagerErrorsEscDeleteFactName = "TagManagerRenameErrorsEscDiscardAndDelete";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -140,6 +142,10 @@ internal static class Program
     private const string SpacingTokensWiredFactMeaning =
         "SpacingUnit/SpacingFieldRow/SpacingBlockGap/SpacingCardPadding 四个间距 token 在主窗口、悬浮窗、提醒中心、规则编辑器与标签选择器" +
         "的同值同义位置真正消费资源值，碰巧同值但语义不同的字面量保持不变，默认值几何与现役一致（#311）";
+    private const string TagManagerAutoSaveFactMeaning =
+        "标签管理行移除“保存”按钮并保留“删除”与新建流程；名称输入框按 Enter 与失焦各提交一次改名并同步四处界面，内容未变化（含仅首尾空白）不产生提交也不重建行（#308）";
+    private const string TagManagerErrorsEscDeleteFactMeaning =
+        "标签管理重名或空名失败时错误贴在该行、保留用户输入并把焦点放回该输入框，修正即清；Esc 放弃未提交改名并关闭弹层返焦，删除标签保持取消默认确认与只解除关联、不删记录语义（#308）";
 
     [STAThread]
     private static int Main()
@@ -184,7 +190,9 @@ internal static class Program
             [DatePickerSingleBoxInteractionFactName] = false,
             [MainNoteSearchCoalesceFactName] = false,
             [MainHiddenDeferRefreshFactName] = false,
-            [SpacingTokensWiredFactName] = false
+            [SpacingTokensWiredFactName] = false,
+            [TagManagerAutoSaveFactName] = false,
+            [TagManagerErrorsEscDeleteFactName] = false
         };
         var failures = new List<string>();
 
@@ -416,6 +424,16 @@ internal static class Program
                 SpacingTokensWiredFactName,
                 SpacingTokensWiredFactMeaning,
                 () => SpacingTokenWiringScenario.Run(SpacingTokensWiredFactMeaning));
+            RunFact(
+                TagManagerAutoSaveFactName,
+                TagManagerAutoSaveFactMeaning,
+                () => TagManagerAutoSaveScenario.RunAutoSaveOnEnterAndBlur(
+                    TagManagerAutoSaveFactMeaning));
+            RunFact(
+                TagManagerErrorsEscDeleteFactName,
+                TagManagerErrorsEscDeleteFactMeaning,
+                () => TagManagerAutoSaveScenario.RunErrorsEscDiscardAndDelete(
+                    TagManagerErrorsEscDeleteFactMeaning));
         }
         catch (Exception exception)
         {

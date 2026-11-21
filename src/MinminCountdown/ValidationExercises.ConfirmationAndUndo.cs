@@ -106,17 +106,18 @@ internal static partial class ValidationExercises
 
             var row = FindRow("工作");
             var input = row.Children.OfType<TextBox>().Single();
-            var save = row.Children.OfType<Button>().Single(button => Equals(button.Content, "保存"));
+            Must(!row.Children.OfType<Button>().Any(button => Equals(button.Content, "保存")),
+                "#308：标签管理行已移除每行“保存”按钮，改由 Enter 或失焦提交改名。");
             input.Text = "工作重命名";
             Must(DesktopWorkspace.Load(path).Snapshot.Settings.Tags.Single().Name == "工作",
-                "#257：仅编辑标签文本、尚未点击保存时不应提前落盘。");
-            Must(WindowValidationInput.InvokeButton(save), "#257：无法点击真实标签保存动作。");
+                "#257/#308：仅编辑标签文本、尚未按 Enter 或失焦时不应提前落盘。");
+            Must(WindowValidationInput.RaisePreviewKey(input, Key.Enter), "#308：标签名称输入框按 Enter 必须提交改名。");
             WindowValidationInput.Pump(main.Dispatcher);
             var renamed = DesktopWorkspace.Load(path).Snapshot.Settings;
             Must(renamed.Tags.Single().Id == tag.Id && renamed.Tags.Single().Name == "工作重命名" &&
                  renamed.Countdowns.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase) &&
                  renamed.Notes.Single().TagIds.Contains(tag.Id, StringComparer.OrdinalIgnoreCase),
-                "#257：标签保存点击必须按原 ID 重命名落盘并保留记录关联。");
+                "#257/#308：标签改名按 Enter 必须按原 ID 重命名落盘并保留记录关联。");
 
             row = FindRow("工作重命名");
             var delete = row.Children.OfType<Button>().Single(button => Equals(button.Content, "删除"));

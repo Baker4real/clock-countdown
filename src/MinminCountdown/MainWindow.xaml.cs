@@ -237,6 +237,12 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     private string? _tagPickersRenderSignature;
     private string? _filterTagsRenderSignature;
     private string? _tagManagerRenderSignature;
+    private readonly List<TagManagerRowState> _tagManagerRowStates = [];
+    private bool _committingTagRename;
+    private bool _restoringTagRenameFocus;
+    private bool _suppressTagRenameOnClose;
+    private bool _deletingTagInProgress;
+    private string? _pendingDeleteTagId;
     private string? _lastSyncedFilterNoteSearch;
     private NoteCompletionExit? _noteCompletionExit;
 
@@ -333,7 +339,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         };
         _noteSearchDebounceTimer.Tick += (_, _) => ApplyNoteSearchInput();
         PopupFocusLifecycle.Attach(FilterPopup, FilterButton, FilterInitialFocusTarget);
-        PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput);
+        PopupFocusLifecycle.Attach(TagManagerPopup, TagManagerButton, () => NewTagInput, DiscardPendingTagManagerEdits);
         PopupFocusLifecycle.Attach(PreferencesPopup, PreferencesButton, () => DisplayPrecision);
         PopupFocusLifecycle.ClipToCanvas(FilterPopup, MainLayoutSurface);
         PopupFocusLifecycle.ClipToCanvas(TagManagerPopup, MainLayoutSurface);
@@ -1456,6 +1462,17 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         {
             RenderTagManager();
             PopupMotionBehavior.Toggle(TagManagerPopup);
+        };
+        TagManagerPopup.Opened += (_, _) =>
+        {
+            _suppressTagRenameOnClose = false;
+            _pendingDeleteTagId = null;
+        };
+        TagManagerPopup.Closed += (_, _) =>
+        {
+            _suppressTagRenameOnClose = false;
+            _pendingDeleteTagId = null;
+            ResetTagManagerRowsToPersistedState();
         };
         CountdownReminderNoRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.None);
         CountdownReminderTimeRadio.Click += (_, _) => ApplyCountdownReminderMode(CountdownReminderMode.AtDeadline);
@@ -3819,51 +3836,362 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         }
 
         _tagManagerRenderSignature = tagSignature;
+        foreach (var previous in _tagManagerRowStates)
+        {
+            previous.Detached = true;
+        }
+
+        _tagManagerRowStates.Clear();
         TagManagerRows.Children.Clear();
         foreach (var tag in tags)
         {
+            var tagId = tag.Id;
             var name = UiAccessibility.Name(
                 new TextBox { Text = tag.Name, MaxLength = 30 },
                 $"标签名称 {tag.Name}");
-            var save = InlineActionButton.Create(
-                this, InlineActionSurface.TagManager, InlineActionIntent.Save, tag.Id, $"保存标签 {tag.Name}");
             var delete = InlineActionButton.Create(
                 this, InlineActionSurface.TagManager, InlineActionIntent.Delete, tag.Id, $"删除标签 {tag.Name}");
-            save.Click += (_, _) =>
+            var rowError = new TextBlock
             {
-                var result = _desktopWorkspace.Apply(new RenameTagChange(
-                    tag.Id,
-                    name.Text,
-                    tag.Color));
-                if (!result.Succeeded)
-                {
-                    SetMessage(TagManagerMessage, result.Error, true);
-                }
+                Margin = new Thickness(0, SpacingTokens.Resolve(this, SpacingTokens.Unit), 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed
             };
-            delete.Click += (_, _) =>
+            rowError.SetResourceReference(TextBlock.FontSizeProperty, "TypeCaptionFontSize");
+            rowError.SetResourceReference(TextBlock.ForegroundProperty, "DangerBrush");
+            UiAccessibility.MarkLive(rowError);
+
+            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(name, 0);
+            Grid.SetColumn(name, 0);
+            Grid.SetRow(delete, 0);
+            Grid.SetColumn(delete, 1);
+            Grid.SetRow(rowError, 1);
+            Grid.SetColumn(rowError, 0);
+            Grid.SetColumnSpan(rowError, 2);
+            row.Children.Add(name);
+            row.Children.Add(delete);
+            row.Children.Add(rowError);
+
+            var entry = new TagManagerRowState(tagId, row, name, delete, rowError);
+            _tagManagerRowStates.Add(entry);
+            TagManagerRows.Children.Add(row);
+
+            name.TextChanged += (_, _) =>
             {
-                if (new ConfirmationDialog(this, "删除标签", "标签会从记录中解除，但记录本身不会删除。").ShowDialog() != true)
+                if (entry.Detached)
                 {
                     return;
                 }
 
-                var result = _desktopWorkspace.Apply(new DeleteTagChange(tag.Id));
-                if (!result.Succeeded)
+                ClearTagRowError(entry);
+            };
+            AttachSingleLineSubmit(
+                name,
+                () => CommitTagRename(entry, blurNewFocus: null, fromEnter: true),
+                () => !entry.Detached && IsEnabled && TagManagerPopup.IsOpen);
+            name.LostKeyboardFocus += (_, args) =>
+            {
+                if (entry.Detached ||
+                    _committingTagRename ||
+                    _restoringTagRenameFocus ||
+                    _suppressTagRenameOnClose ||
+                    _deletingTagInProgress ||
+                    _pendingDeleteTagId is not null)
                 {
-                    SetMessage(TagManagerMessage, result.Error, true);
+                    return;
+                }
+
+                CommitTagRename(entry, blurNewFocus: args.NewFocus, fromEnter: false);
+            };
+
+            delete.PreviewMouseLeftButtonDown += (_, _) =>
+            {
+                if (!entry.Detached)
+                {
+                    _pendingDeleteTagId = tagId;
                 }
             };
-            var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
-            row.ColumnDefinitions.Add(new ColumnDefinition());
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Grid.SetColumn(save, 1);
-            Grid.SetColumn(delete, 2);
-            row.Children.Add(name);
-            row.Children.Add(save);
-            row.Children.Add(delete);
-            TagManagerRows.Children.Add(row);
+            delete.LostMouseCapture += (_, _) =>
+            {
+                if (string.Equals(_pendingDeleteTagId, tagId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _pendingDeleteTagId = null;
+                }
+            };
+            delete.Click += (_, _) =>
+            {
+                _pendingDeleteTagId = null;
+                _deletingTagInProgress = true;
+                try
+                {
+                    if (new ConfirmationDialog(this, "删除标签", "标签会从记录中解除，但记录本身不会删除。").ShowDialog() != true)
+                    {
+                        return;
+                    }
+
+                    var result = _desktopWorkspace.Apply(new DeleteTagChange(tagId));
+                    if (!result.Succeeded)
+                    {
+                        SetMessage(TagManagerMessage, result.Error, true);
+                    }
+                }
+                finally
+                {
+                    _deletingTagInProgress = false;
+                }
+            };
         }
+    }
+
+    // #308：标签管理行按 Enter 或失焦提交改名；仅在修剪后名称确实变化时才提交，
+    // 失败时错误贴在该行、保留输入并归还焦点，Esc 关闭前先放弃未提交改名。
+    private void CommitTagRename(TagManagerRowState entry, IInputElement? blurNewFocus, bool fromEnter)
+    {
+        if (entry.Detached ||
+            _committingTagRename ||
+            _restoringTagRenameFocus ||
+            _suppressTagRenameOnClose ||
+            _deletingTagInProgress)
+        {
+            return;
+        }
+
+        var currentTag = _desktopWorkspace.Snapshot.Settings.Tags.FirstOrDefault(
+            item => string.Equals(item.Id, entry.TagId, StringComparison.OrdinalIgnoreCase));
+        if (currentTag is null)
+        {
+            return;
+        }
+
+        var trimmed = entry.Input.Text.Trim();
+        if (string.Equals(trimmed, currentTag.Name, StringComparison.Ordinal))
+        {
+            if (!string.Equals(entry.Input.Text, currentTag.Name, StringComparison.Ordinal))
+            {
+                entry.Input.Text = currentTag.Name;
+                if (fromEnter)
+                {
+                    entry.Input.CaretIndex = entry.Input.Text.Length;
+                }
+            }
+
+            ClearTagRowError(entry);
+            return;
+        }
+
+        var focusTarget = fromEnter
+            ? new TagManagerFocusTarget(entry.TagId, TagManagerRowControlKind.Input, PointerInitiated: false)
+            : ResolveTagManagerFocusTarget(blurNewFocus);
+
+        DesktopWorkspaceChangeResult result;
+        _committingTagRename = true;
+        try
+        {
+            result = _desktopWorkspace.Apply(new RenameTagChange(currentTag.Id, trimmed, currentTag.Color));
+        }
+        finally
+        {
+            _committingTagRename = false;
+        }
+
+        if (result.Succeeded)
+        {
+            UiAccessibility.Announce(TagManagerMessage, string.Empty);
+            if (focusTarget is not null &&
+                TagManagerPopup.IsOpen &&
+                !PopupMotionBehavior.IsClosing(TagManagerPopup) &&
+                !_suppressTagRenameOnClose)
+            {
+                RestoreTagManagerFocusAfterRebuild(focusTarget);
+            }
+
+            return;
+        }
+
+        ShowTagRowError(entry, result.Error);
+        if (TagManagerPopup.IsOpen &&
+            !PopupMotionBehavior.IsClosing(TagManagerPopup) &&
+            !_suppressTagRenameOnClose)
+        {
+            RestoreTagRenameInputFocus(entry);
+        }
+    }
+
+    private TagManagerFocusTarget? ResolveTagManagerFocusTarget(IInputElement? target)
+    {
+        if (target is null)
+        {
+            return null;
+        }
+
+        var pointerInitiated = target is UIElement uiElement &&
+                               uiElement.IsMouseOver &&
+                               Mouse.LeftButton == MouseButtonState.Pressed;
+        foreach (var candidate in _tagManagerRowStates)
+        {
+            if (ReferenceEquals(target, candidate.Input))
+            {
+                return new TagManagerFocusTarget(candidate.TagId, TagManagerRowControlKind.Input, pointerInitiated);
+            }
+
+            if (ReferenceEquals(target, candidate.DeleteButton))
+            {
+                return new TagManagerFocusTarget(candidate.TagId, TagManagerRowControlKind.DeleteButton, pointerInitiated);
+            }
+        }
+
+        return null;
+    }
+
+    private void RestoreTagManagerFocusAfterRebuild(TagManagerFocusTarget focusTarget)
+    {
+        var rebuilt = _tagManagerRowStates.FirstOrDefault(
+            item => string.Equals(item.TagId, focusTarget.TagId, StringComparison.OrdinalIgnoreCase));
+        if (rebuilt is null)
+        {
+            return;
+        }
+
+        Control targetControl = focusTarget.Kind == TagManagerRowControlKind.Input
+            ? rebuilt.Input
+            : rebuilt.DeleteButton;
+        _restoringTagRenameFocus = true;
+        try
+        {
+            if (focusTarget.PointerInitiated)
+            {
+                KeyboardFocusPolicy.FocusFromPointer(targetControl);
+            }
+            else
+            {
+                targetControl.Focus();
+                Keyboard.Focus(targetControl);
+            }
+
+            if (targetControl is TextBox textBox)
+            {
+                textBox.CaretIndex = textBox.Text.Length;
+            }
+        }
+        finally
+        {
+            _restoringTagRenameFocus = false;
+        }
+    }
+
+    private void RestoreTagRenameInputFocus(TagManagerRowState entry)
+    {
+        _restoringTagRenameFocus = true;
+        try
+        {
+            entry.Input.Focus();
+            Keyboard.Focus(entry.Input);
+            KeyboardFocusPolicy.ShowForKeyboardInput(entry.Input);
+            entry.Input.CaretIndex = entry.Input.Text.Length;
+            entry.Row.BringIntoView();
+        }
+        finally
+        {
+            _restoringTagRenameFocus = false;
+        }
+    }
+
+    private void ShowTagRowError(TagManagerRowState entry, string message)
+    {
+        UiAccessibility.Announce(TagManagerMessage, string.Empty);
+        SetFieldError(entry.ErrorText, message);
+        AutomationProperties.SetHelpText(entry.Input, message);
+        InputErrorState.SetHasError(entry.Input, !string.IsNullOrWhiteSpace(message));
+    }
+
+    private static void ClearTagRowError(TagManagerRowState entry)
+    {
+        var previousMessage = entry.ErrorText.Text;
+        if (string.IsNullOrEmpty(previousMessage) &&
+            entry.ErrorText.Visibility != Visibility.Visible &&
+            !InputErrorState.GetHasError(entry.Input))
+        {
+            return;
+        }
+
+        SetFieldError(entry.ErrorText, string.Empty);
+        InputErrorState.SetHasError(entry.Input, false);
+        if (!string.IsNullOrEmpty(previousMessage) &&
+            string.Equals(
+                AutomationProperties.GetHelpText(entry.Input),
+                previousMessage,
+                StringComparison.Ordinal))
+        {
+            AutomationProperties.SetHelpText(entry.Input, string.Empty);
+        }
+    }
+
+    private void DiscardPendingTagManagerEdits()
+    {
+        _suppressTagRenameOnClose = true;
+        _pendingDeleteTagId = null;
+        ResetTagManagerRowsToPersistedState();
+    }
+
+    private void ResetTagManagerRowsToPersistedState()
+    {
+        var tagsById = _desktopWorkspace.Snapshot.Settings.Tags
+            .ToDictionary(tag => tag.Id, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in _tagManagerRowStates)
+        {
+            if (entry.Detached)
+            {
+                continue;
+            }
+
+            if (tagsById.TryGetValue(entry.TagId, out var persisted) &&
+                !string.Equals(entry.Input.Text, persisted.Name, StringComparison.Ordinal))
+            {
+                entry.Input.Text = persisted.Name;
+            }
+
+            ClearTagRowError(entry);
+        }
+    }
+
+    private enum TagManagerRowControlKind
+    {
+        Input,
+        DeleteButton
+    }
+
+    private sealed record TagManagerFocusTarget(
+        string TagId,
+        TagManagerRowControlKind Kind,
+        bool PointerInitiated);
+
+    private sealed class TagManagerRowState
+    {
+        internal TagManagerRowState(
+            string tagId,
+            Grid row,
+            TextBox input,
+            Button deleteButton,
+            TextBlock errorText)
+        {
+            TagId = tagId;
+            Row = row;
+            Input = input;
+            DeleteButton = deleteButton;
+            ErrorText = errorText;
+        }
+
+        internal string TagId { get; }
+        internal Grid Row { get; }
+        internal TextBox Input { get; }
+        internal Button DeleteButton { get; }
+        internal TextBlock ErrorText { get; }
+        internal bool Detached { get; set; }
     }
 
     private void CreateTagFromSelector(object? sender, string name)

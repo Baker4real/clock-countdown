@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineVersion": "2026-11-21-v80",
+  "baselineVersion": "2026-11-21-v81",
   "captureKind": "actual-wpf-floating-window",
   "canvas": {
     "width": 520,
@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
-    "aggregateSha256": "0AE50B3DD6E5AD427B9C36B2A28CE880954BB6BCD472C4302CA96AA020E07659",
+    "aggregateSha256": "58BEF982369803933EE97E087E4E57BECB9A6A255F4390DF8A8EABBAB4D73AAE",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -85,7 +85,7 @@
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.Notes.cs",
-        "sha256": "C43DD4DBCE51A2E788FF1C39A055FCBDA18A3A897CC97093BA40C0AEDB02309E"
+        "sha256": "2FEF233739A8CAAD4A02F25F0B1A9E8FF86968037E277DC009DB9BF2AF8C320B"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.ScrollContext.cs",
@@ -148,8 +148,8 @@
         "topCaptureId": "long-notes-day-top",
         "bottomCaptureId": "long-notes-day-bottom",
         "maxAbsoluteChannelDelta": 240,
-        "meanAbsoluteError": 5.788025,
-        "rootMeanSquareError": 27.917562,
+        "meanAbsoluteError": 5.566399,
+        "rootMeanSquareError": 27.379911,
         "changedPixelCount": 43173
       }
     ]
@@ -160,7 +160,7 @@
       "scenario": "floating-countdowns-baseline",
       "theme": "Day",
       "state": "Baseline",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/floating-countdowns-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v81/floating-countdowns-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "DE1A4EE5A8EED50F49650F11A7910EFB6B572B87DF56F9A37EB70C8964F62419",
@@ -206,7 +206,7 @@
       "scenario": "floating-workday-complete",
       "theme": "Day",
       "state": "Complete",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/floating-workday-complete-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v81/floating-workday-complete-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "EF2A2D33E755D0C177FA6753E1F7E2501E97E235C8A96B2124C3D4221FEC85BD",
@@ -252,20 +252,20 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Top",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/long-notes-day-top.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v81/long-notes-day-top.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "D7899D48E04E4FB78F4001FB4C5178256D5961452E799231F6BF073D83FAA10D",
+      "pngSha256": "2F1D80D82CE281ED8AF297B56D0E6A5B1B06CCE39BFA0179E477055837EADB90",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "B5D61AB35EED07443DA62CD258CD9600D41280E186506F693138FCFDF4B2F202",
+        "sha256": "3E3C55FAB3EA099926AEAC2B45A82BE68F7792ED6FF0EB916C69478192AFDD28",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-6",
         "noteTextSha256": "EDD146B6B25D26BD5A0BC7964B73DAAD9544C3EC194275D126E1768BFD5982C3",
         "viewportState": "Top",
         "verticalOffset": 0,
-        "scrollableHeight": 891.79,
+        "scrollableHeight": 915.79,
         "firstVisibleAnchor": "reference-note-6:中段锚点6：这是一条没有",
         "lastVisibleAnchor": "reference-note-6:的末尾校验文字，尾锚点。"
       },
@@ -298,20 +298,20 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Bottom",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/long-notes-day-bottom.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v81/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "C809CBBEFE2C0CFD649856BB3F24DAD3627A5FF227B51B44F9FA55B285109B10",
+      "pngSha256": "CA8BEDCB44A8C08F749A7158412A52786B1BF4BFFF8A13F0642C9087BF30E7AE",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "12AF1ED8FF7F6C86428AEBDD280A3F65082D445CF746D1F51A71C130B247A90E",
+        "sha256": "623AD617CDAF4328580D64EC45B545BEF590865748E3BBBBEE41EA137B35A669",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "reference-note-1",
         "noteTextSha256": "F5F77918BA836A251A5CC842AA8FC6BE8AA2DE0F0EC7C35A4E0D97689E18ED52",
         "viewportState": "Bottom",
-        "verticalOffset": 891.79,
-        "scrollableHeight": 891.79,
+        "verticalOffset": 915.79,
+        "scrollableHeight": 915.79,
         "firstVisibleAnchor": "reference-note-1:首锚点：这是一条没有手工",
         "lastVisibleAnchor": "reference-note-1:号 1 的末尾校验文字。"
       },
@@ -344,20 +344,20 @@
       "scenario": "notes-search-expanded",
       "theme": "Day",
       "state": "Expanded",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v80/notes-search-expanded-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-21-v81/notes-search-expanded-day.png",
       "width": 520,
       "height": 390,
-      "pngSha256": "E0BD78B8EF6D7F231875FB3B56D361AB623EF2F08995ABE74C286F8A6B6263F3",
+      "pngSha256": "B9566240C8E2590F0666C7F846EDD685A28228E001718A0F5F2D7E9101E829A7",
       "stateFingerprint": {
         "algorithm": "SHA-256 of canonical UTF-8 floating capture state",
-        "sha256": "2A593ED782EE98EE00229B0181E76C943DC01F5A113F2D05DDE1439C11BD5860",
+        "sha256": "E71EAD712E03C3B058EF33660EC62EF5E40883F780BC4A0AEA3FD9018F54389D",
         "theme": "Day",
         "workspace": "Notes",
         "noteId": "",
         "noteTextSha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
         "viewportState": "Expanded",
         "verticalOffset": 0,
-        "scrollableHeight": 935.79,
+        "scrollableHeight": 959.79,
         "firstVisibleAnchor": "search-expanded",
         "lastVisibleAnchor": "search-expanded"
       },

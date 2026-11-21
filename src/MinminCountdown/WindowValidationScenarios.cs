@@ -5600,8 +5600,7 @@ public sealed partial class FloatingWindow
     }
 
     internal static Border? FindNoteCardDateStamp(Border card) =>
-        ValidationDescendants<Border>(card).FirstOrDefault(border =>
-            Math.Abs(border.ActualWidth - 48) <= 0.5);
+        ValidationDescendants<Border>(card).FirstOrDefault(IsNoteCardDateStamp);
 
     private static bool BrushMatchesResource(Brush? actual, object? expected) =>
         ReferenceEquals(actual, expected) ||

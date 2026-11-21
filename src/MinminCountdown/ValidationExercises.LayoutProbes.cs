@@ -1084,10 +1084,8 @@ internal static partial class ValidationExercises
                 .ToArray();
             var clippedCard = cards.FirstOrDefault();
             var stamp = clippedCard is null ? null : FloatingWindow.FindNoteCardDateStamp(clippedCard);
-            var lines = stamp?.Child is StackPanel stampContent
-                ? stampContent.Children.OfType<TextBlock>().ToArray()
-                : Array.Empty<TextBlock>();
-            if (clippedCard is null || stamp is null || lines.Length != 3)
+            var label = stamp?.Child as TextBlock;
+            if (clippedCard is null || stamp is null || label is null)
             {
                 return false;
             }
@@ -1107,13 +1105,19 @@ internal static partial class ValidationExercises
 
             var cardIsClippedByViewport =
                 cardBounds.Top < -0.5 || cardBounds.Bottom > scroller.ViewportHeight + 0.5;
-            var threeStampLinesStayVisible = lines.All(line =>
-            {
-                var bounds = line.TransformToVisual(scroller).TransformBounds(
-                    new Rect(new Point(0, 0), line.RenderSize));
-                return bounds.Top >= -0.5 && bounds.Bottom <= scroller.ViewportHeight + 0.5;
-            });
-            return cardIsClippedByViewport && threeStampLinesStayVisible;
+            var stampBounds = stamp.TransformToVisual(scroller).TransformBounds(
+                new Rect(new Point(0, 0), stamp.RenderSize));
+            var labelBounds = label.TransformToVisual(scroller).TransformBounds(
+                new Rect(new Point(0, 0), label.RenderSize));
+            var stickyEngagedWhenTopClipped =
+                cardBounds.Top >= -(clippedCard.BorderThickness.Top + stamp.Margin.Top + 0.5) ||
+                stamp.RenderTransform is TranslateTransform { Y: > 0.5 };
+            var stampStaysVisible =
+                stampBounds.Top >= -0.5 &&
+                stampBounds.Bottom <= scroller.ViewportHeight + 0.5 &&
+                labelBounds.Top >= -0.5 &&
+                labelBounds.Bottom <= scroller.ViewportHeight + 0.5;
+            return cardIsClippedByViewport && stickyEngagedWhenTopClipped && stampStaysVisible;
         }
         finally
         {
@@ -1233,10 +1237,10 @@ internal static partial class ValidationExercises
             {
                 stamps = VisualDescendants<Border>(floating)
                     .Where(border =>
+                        FloatingWindow.IsNoteCardDateStamp(border) &&
                         !border.IsHitTestVisible &&
                         !border.Focusable &&
-                        border.BorderThickness.Left >= 1.5 &&
-                        (border.Child as StackPanel)?.Children.OfType<TextBlock>().Count() == 3)
+                        border.Child is TextBlock)
                     .ToArray();
             }
 
@@ -1331,77 +1335,65 @@ internal static partial class ValidationExercises
 
         return rows.Children.OfType<Border>()
             .SelectMany(VisualDescendants<Border>)
-            .Where(border =>
-                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
-                border.BorderThickness.Left >= 1.5)
+            .Where(FloatingWindow.IsNoteCardDateStamp)
             .ToArray();
     }
 
-    private static bool StampShowsUndatedFallback(Border stamp)
-    {
-        var labels = (stamp.Child as StackPanel)?.Children.OfType<TextBlock>().ToArray()
-            ?? Array.Empty<TextBlock>();
-        return labels.Length == 3 &&
-               string.Equals(labels[0].Text, "无日期", StringComparison.Ordinal) &&
-               string.Equals(labels[1].Text, "--", StringComparison.Ordinal) &&
-               string.Equals(labels[2].Text, " ", StringComparison.Ordinal);
-    }
+    private static bool StampShowsUndatedFallback(Border stamp) =>
+        stamp.Child is TextBlock label &&
+        string.Equals(label.Text, "无日期", StringComparison.Ordinal);
 
     private static bool StampTypographyMatches(Border stamp)
     {
-        if (stamp.Child is not StackPanel stack ||
+        if (stamp.Child is not TextBlock label ||
             stamp.Parent is not Grid layout ||
             layout.Background is not DrawingBrush ruleBrush)
         {
             return false;
         }
 
-        var labels = stack.Children.OfType<TextBlock>().ToArray();
-        if (labels.Length != 3)
-        {
-            return false;
-        }
-
-        var dayFamily = labels[1].FontFamily?.Source ?? string.Empty;
-        return labels[0].FontWeight == FontWeights.Regular &&
-               labels[1].FontWeight == FontWeights.SemiBold &&
-               labels[2].FontWeight == FontWeights.Regular &&
-               dayFamily.Contains("Bahnschrift SemiCondensed", StringComparison.Ordinal) &&
-               dayFamily.Contains("Bahnschrift", StringComparison.Ordinal) &&
-               dayFamily.Contains("Microsoft YaHei UI", StringComparison.Ordinal) &&
-               Typography.GetNumeralAlignment(labels[1]) == FontNumeralAlignment.Tabular &&
+        var fontFamily = label.FontFamily?.Source ?? string.Empty;
+        return label.FontWeight == FontWeights.Regular &&
+               Math.Abs(label.FontSize - 13) <= 0.01 &&
+               fontFamily.Contains("Microsoft YaHei UI", StringComparison.Ordinal) &&
+               fontFamily.Contains("Microsoft YaHei", StringComparison.Ordinal) &&
+               Typography.GetNumeralAlignment(label) == FontNumeralAlignment.Tabular &&
+               label.TextTrimming == TextTrimming.CharacterEllipsis &&
                Math.Abs(ruleBrush.Viewport.Height - 18) <= 0.1 &&
                !stamp.IsHitTestVisible &&
                !stamp.Focusable &&
-               Math.Abs(stamp.ActualWidth - 48) <= 0.5;
+               Math.Abs(stamp.ActualHeight - 18) <= 0.5 &&
+               Math.Abs(stamp.ActualWidth - 237) <= 1.0;
     }
 
     private static bool StampDensityMatches(Border stamp)
     {
-        if (stamp.Child is not StackPanel stack)
+        if (stamp.Child is not TextBlock ||
+            stamp.Parent is not Grid layout)
         {
             return false;
         }
 
-        var labels = stack.Children.OfType<TextBlock>().ToArray();
-        if (labels.Length != 3)
+        var body = layout.Children.OfType<StackPanel>()
+            .SingleOrDefault(element => Grid.GetColumn(element) == 1);
+        if (body is null)
         {
             return false;
         }
 
         var padding = stamp.Padding;
-        var firstBottom = labels[0].TranslatePoint(new Point(0, labels[0].ActualHeight), stamp).Y;
-        var secondTop = labels[1].TranslatePoint(new Point(0, 0), stamp).Y;
-        var secondBottom = labels[1].TranslatePoint(new Point(0, labels[1].ActualHeight), stamp).Y;
-        var thirdTop = labels[2].TranslatePoint(new Point(0, 0), stamp).Y;
-        var gap1 = secondTop - firstBottom;
-        var gap2 = thirdTop - secondBottom;
-        return Math.Abs(padding.Left - 4) <= 0.1 &&
-               Math.Abs(padding.Right - 4) <= 0.1 &&
-               Math.Abs(padding.Top - 8) <= 0.1 &&
-               Math.Abs(padding.Bottom - 8) <= 0.1 &&
-               gap1 is >= 1.5 and <= 3.5 &&
-               gap2 is >= 1.5 and <= 3.5;
+        var stampBottomAtRest = VisualTreeHelper.GetOffset(stamp).Y + stamp.ActualHeight;
+        var bodyTop = VisualTreeHelper.GetOffset(body).Y;
+        var gap = bodyTop - stampBottomAtRest;
+        var expectedRadius = (CornerRadius)Application.Current.FindResource("RadiusChip");
+        return Math.Abs(stamp.ActualHeight - 18) <= 0.5 &&
+               Math.Abs(padding.Left - 7) <= 0.1 &&
+               Math.Abs(padding.Right - 7) <= 0.1 &&
+               Math.Abs(padding.Top) <= 0.1 &&
+               Math.Abs(padding.Bottom) <= 0.1 &&
+               stamp.BorderThickness == new Thickness(1) &&
+               stamp.CornerRadius == expectedRadius &&
+               gap is >= 3.0 and <= 5.0;
     }
 
     private static bool IsWhitelistedFontWeight(TextBlock label) =>
@@ -1746,12 +1738,14 @@ internal static partial class ValidationExercises
             var topLeft = layout.InputHitTest(new Point(2, 12));
             var slotEdge = layout.InputHitTest(new Point(Math.Max(2, slotWidth - 2), 12));
             var stampHit = layout.InputHitTest(new Point(layout.ActualWidth - 8, 12));
+            var dateStripHit = layout.InputHitTest(new Point(slotWidth + 24, 18));
             return slotWidth >= 33.5 &&
                    check.ActualWidth >= 32 &&
                    check.Tag as string == noteId &&
                    IsSelfOrVisualDescendant(check, topLeft as DependencyObject) &&
                    IsSelfOrVisualDescendant(check, slotEdge as DependencyObject) &&
-                   !IsSelfOrVisualDescendant(check, stampHit as DependencyObject);
+                   !IsSelfOrVisualDescendant(check, stampHit as DependencyObject) &&
+                   !IsSelfOrVisualDescendant(check, dateStripHit as DependencyObject);
         }
         finally
         {

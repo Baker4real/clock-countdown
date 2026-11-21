@@ -1556,7 +1556,7 @@ internal static partial class ValidationReport
                 "禁用 CheckBox/ComboBox 与主窗口专用复选模板表面透明度为 0.45"),
             ["FloatingDateStampTypographyMatches"] = Must(floatingDateStampTypographyMatches, "日期印记字重、字体 fallback、表格数字与规则线间距符合 §3"),
             ["FloatingTypographyWeightWhitelist"] = Must(floatingTypographyWeightWhitelist, "悬浮窗字重只使用 Regular 与 SemiBold"),
-            ["FloatingDateStampDensityMatches"] = Must(floatingDateStampDensityMatches, "日期印记上下留白与三行间距降低拥挤感"),
+            ["FloatingDateStampDensityMatches"] = Must(floatingDateStampDensityMatches, "日期印记上缘单行内边距、圆角与正文间距符合 §10"),
             ["FloatingDateStampStickyAtScrollBottom"] = floatingDateStampStickyAtScrollBottom,
             ["FloatingNotesListBottomPaddingMatches"] = floatingNotesListBottomPaddingMatches,
             ["NoteCancelFitsEditorPanel"] = Must(noteCancelFitsEditorPanel, "便签编辑取消按钮完全位于面板右缘内并与保存同高同行"),

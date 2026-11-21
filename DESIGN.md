@@ -536,8 +536,8 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 ### 便签：pastel 分格索引
 
 - #226：标题为“待办便签”，无筛选空态为“还没有待办便签。”，不暗示只展示今日记录。浮窗与管理窗共享领域排序：未完成先于已完成，每个状态内日期从新到旧、同日按添加顺序从新到旧、无日期最后；浮窗只展示其中未完成的便签，不为历史日期引入逾期语义。
-- 每条便签是固定宽度 `319px` 的规则线纸面，该宽度**已内含**右侧 `48px` 日期印记列，不得再把 `58+319+48` 相加去核对 `x=396`。卡片必须完整收在滚动内容视口内；卡片、日期印记和滚动热区最右都不得超过 `x=396`。
-- 右侧 `48px` 日期印记按条目 pastel 轮换：粉（`StampPinkBrush` 底、`StampPinkTextBrush` 数字）→ 蓝（`StampBlueBrush` / `StampBlueTextBrush`）→ 绿（`StampGreenBrush` / `StampGreenTextBrush`），按列表顺序循环。印记显示 `M月`、`dd`、`周X` 三行，只有 `dd` 是当日数字并与印记同色。长卡被视口裁切时，印记三行以「卡片可见区域内居中」的粘性方式整体保持可见（#149），不得只剩「日 / 周」；粘性位置按卡片布局位置计算，完成补位的过渡位移不参与（#243）；当卡片可见条带本身低于印记高度时（如搜索展开态压缩视口），印记按可达的最大可见度对齐可见条带底部，不再是空白列。pastel 背景列仍铺满卡片高度，仅三行文字位移，印记继续不可点击、不可聚焦。
+- 每条便签是固定宽度 `319px` 的规则线纸面（#335 方案 B：`319 = 2px 左右边框 + 36px 复选框槽位 + 245px 正文列 + 36px「…」列`，正文列右侧留 `8px` 间距，可用文字宽 `237 DIP`，较原右侧 `48px` 印记列方案拓宽 `48 DIP`）。卡片必须完整收在滚动内容视口内；卡片、日期条和滚动热区最右都不得超过 `x=396`。
+- 正文列上缘放置 `18px` 高、宽 `237 DIP`（右留 `8px`）的单行圆角日期条（`RadiusChip` 5 DIP、与下方正文静止间距 `4 DIP`、左右内边距 `7px` + `1px` 边框形成 `8px` 左文字缩进），按条目 pastel 轮换：粉（`StampPinkBrush` 底、`StampPinkTextBrush` 文字）→ 蓝（`StampBlueBrush` / `StampBlueTextBrush`）→ 绿（`StampGreenBrush` / `StampGreenTextBrush`），按列表顺序循环；日间边框同色融于 pastel 圆角条，系统对比度主题开启时映射到 `ControlBorderBrush`（`WindowText`）。日期条以 `TypeCaptionFontSize`（13 DIP）、Regular、表格数字、左对齐单行省略显示 `M 月 d 日 · 周X`（如 `7 月 15 日 · 周一`），无日期历史便签完整显示 `无日期`。长卡顶部滚出视口时，单行日期条按卡片布局位置（不含完成补位的过渡位移，#243）在卡片可见条带内粘性置顶并夹紧在卡片底内边距之前，始终不覆盖搜索槽、底部命令区、复选框、`…` 菜单或相邻卡片；未滚出顶部的卡片位移归零并保持 `4 DIP` 静止间距；日期条继续不可点击、不可聚焦（#149/#335）。
 - 便签列表滚动内容以 `12 DIP` 尾随内边距收尾（#149）：滚到底时末卡与底部状态行、命令区之间保留稳定空隙，不视觉顶住。
 - 便签卡底也参与轮换：暖黄 `NoteBrush` 与白纸 `NoteWhiteBrush` 交替，形成条带节奏。
 - 日期印记只帮助扫读，不是侧栏、筛选器或新导航；它不可点击、不可聚焦，也不能覆盖复选框、正文、提醒或 `…` 菜单。
@@ -586,7 +586,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 `520 x 390` 外壳内全部快速操作的命中区按 `36px` 下限执行，相邻命令按钮横向间距 `8px`：
 
 - 头部：托盘/管理/退出图标按钮 `36 x 36`；倒计时/便签页签命中高度 `36`。头部三枚图标按钮之间保持既有紧凑 `3px` 间距例外：目标已达 `36 x 36` 尺寸口径（WCAG 2.5.8 尺寸口径达标），加宽间距会挤压标题列实测可用宽度（现仅约 `3px` 余量）造成标题裁切。
-- 便签卡：完成复选框命中槽位 `36px`（仍不覆盖日期印记）；右侧 `…` 菜单触发器 `36 x 36`，该两列加宽由正文列（固定 `319px` 卡宽不变）吸收。滚动条 `10px` 命中热区维持 §10「局部滚动条」的例外口径。
+- 便签卡：完成复选框命中槽位 `36px`（不覆盖日期条或正文）；右侧 `…` 菜单触发器 `36 x 36`，中间正文列为 `245px`（含上缘 `18px` 单行日期条与 `8px` 右留白，正文可用宽 `237px`；固定 `319px` 卡宽不变，#335）。滚动条 `10px` 命中热区维持 §10「局部滚动条」的例外口径。
 - 底部命令区与搜索槽：`＋ 添加便签` / `搜索便签` / `设置` 保持 `38px` 命中高度，搜索输入行与提示行（词钮、清除钮）`36px` 且两态等高；`便签→托盘`、`搜索→设置`、`词钮→清除钮` 等相邻命令间距 `8px`。
 - 几何值由 `Countdown.CSharp.Tests.ps1` 的 #143 源码契约断言钉住；改动上述任一数值须同步该断言块。
 
@@ -596,14 +596,14 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定 apphost `app/MinminCountdown.exe`，钉不住 `MinminCountdown.dll`；像素语义以本版 PNG 为准，不改该弱绑定算法。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v80 基线 `assets/ui-references/floating-window/520x390/2026-11-21-v80/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v81 基线 `assets/ui-references/floating-window/520x390/2026-11-21-v81/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
 | `floating-countdowns-day` | 倒计时工作区：距离下班主项 + 一条次级倒计时、数字色块分格、`超期待！` 徽章、粉红主项底、角色安全区、底部已赚/鼓励文案 |
-| `long-notes-day-top` | 长便签列表顶部：pastel 分格索引、319px 卡（内含 48px 印记）、正文 13/18 与提醒 12/17、`…` 菜单 |
-| `long-notes-day-bottom` | 长便签列表底部：外层滚动可达、无卡片内滚动容器、底部命令区与 `设置` 按钮常驻 |
-| `notes-search-expanded-day` | 便签搜索展开态：搜索槽右缘 x=396、`＋ 添加便签` 位置不动 |
+| `long-notes-day-top` | 长便签列表顶部：pastel 上缘单行日期条、319px 卡（36/245/36 列，正文可用 237 DIP、18px 日期条与 4px 间距）、正文 13/18 与提醒 13/17、`…` 菜单 |
+| `long-notes-day-bottom` | 长便签列表底部：外层滚动可达、长卡顶部裁切时上缘日期条在可见条带内粘性置顶、无卡片内滚动容器、底部命令区与 `设置` 按钮常驻 |
+| `notes-search-expanded-day` | 便签搜索展开态：搜索槽右缘 x=396、上缘单行日期条与缩小视口互不遮挡、`＋ 添加便签` 位置不动 |
 
 ## 11. 元素与状态清单
 
@@ -688,11 +688,13 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 PRD #296 统一重拍（2026-11-21，#327，v80）：合并六项可见外观改动（#304 管理窗对齐/标题装饰置于标题后/便签对称留白/空态常态可点按钮、#305 四类弹层边界加强至 `ControlBorderBrush` 与筛选匹配方式仅 ≥2 标签显示、#306 共享滚动条静止 4 DIP 变细、#307 25 份冻结共享图标几何去重与四处文本字形矢量化、#312 六处日期框单框化、#317 下班收尾期间悬浮底栏改显鼓励语）以及同集成分支 `integration/prd-296` 上其余改到源码绑定文件的功能与收口提交（#298/#302/#303/#308/#310/#311/#313/#314/#315/#316/#318/#319/#325/#326/#328/#329/#331/#333），统一分配未使用编号 `2026-11-21-v80`（跨分支已用最大号为 v79，上游 `origin/main` 仍为 `73ad5f4`）。官方 Clean + R2R Build `20261121T170542978-fb9c1ad5` 与独立 BaselineGenerate `20261121T170716659-2c125d2c` 均退出 0；v80 主窗源码绑定聚合 SHA-256 `16C8844D75F22BB5F97DA7C20276E72097D333B71302119D033A493D62B1474B`（11 份绑定文件更新），悬浮窗 `0AE50B3DD6E5AD427B9C36B2A28CE880954BB6BCD472C4302CA96AA020E07659`（15 份绑定文件更新），双 manifest `executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，候选 DLL SHA-256 `74272D226EAFAB3951D34CA862A1FEA3AE8A759B7904945C2726851FDC812A76`。经 `tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-14-v79 -To 2026-11-21-v80` 逐帧核对，全部 14 帧状态指纹与 v79 一致：悬浮窗 2 帧（`floating-countdowns-day`、`long-notes-day-bottom`）与 v79 逐字节一致，变化 3 帧分别归因于 #317（`floating-workday-complete-day` 1000 px，底部金额改鼓励语）与 #307（`long-notes-day-top`、`notes-search-expanded-day` 各 34 px，便签 `…` 矢量化）；主窗 9 帧均归因于五项主窗视觉票——`main-day-countdowns-empty`（16990 px：#304 命令栏对齐与空态可点按钮 + #312 单框截止日期 + #307 添加加号矢量）、`main-day-countdowns-representative`（10025 px：#304 + #312 + #307）、`main-day-countdowns-stress`（13391 px：#304 + #306 静止 4 DIP 细滚动条 + #312 + #307）、`main-day-notes-empty`（36848 px：#304 标题固定左缘/命令栏对齐/便签对称留白/空态可点按钮 + #312 单框便签日期 + #307）、`main-day-notes-representative`（35525 px：#304 + #306 + #312 + #307）、`main-day-notes-stress`（34371 px：#304 + #306 + #312 + #307）、`main-day-notes-edit`（35887 px：#304 含编辑态取消按钮内边距 + #306 + #312 + #307）、`main-day-notes-filter-open`（89730 px：#304 + #305 筛选弹层 `ControlBorderBrush` 边界/无标签并组/匹配方式折叠 + #306 + #312 含筛选日期框 + #307）、`main-day-notes-selected`（34741 px：#304 + #306 + #312 + #307）。生成器按 #268 自动移除 v79 目录，随后经独立 CSharp 与 CleanR2R 全绿门禁复验。
 
-1. #189 的 WPF 改版使用纯日间 **v80** 真实渲染系列，版本目录为 `2026-11-21-v80`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+悬浮窗便签方案 B 上缘单行日期重拍（2026-11-21，#335，v81）：按用户在 #334 选定的方案 B 实现悬浮窗便签正文列加宽——移除右侧 `48 DIP` 日期列，在不变的 `520 × 390` 外壳、玩偶锚点、`x ≤ 396` 安全区和 `319 DIP` 卡宽内改为 `36 / 245 / 36` 三列布局（正文可用宽由 `189 DIP` 拓宽至 `237 DIP`），日期改在正文列上缘以 `18 DIP` 高、`RadiusChip`（5 DIP）圆角、与正文静止间距 `4 DIP` 的单行 pastel 条展示（`M 月 d 日 · 周X` / `无日期`），长卡顶部滚出视口时在可见条带内粘性置顶（按实际布局偏移对齐顶缘、日间边界同 pastel 底色、系统对比度映射 `ControlBorderBrush`）。分配未使用编号 `2026-11-21-v81`（当前 worktree 增量构建 `20261121T183557875-c8d618c8` + 独立 BaselineGenerate `20261121T183724423-c2758d1f` 均退出 0）；主窗源码绑定聚合 SHA-256 保持 `16C8844D75F22BB5F97DA7C20276E72097D333B71302119D033A493D62B1474B`（无绑定文件变化），悬浮窗聚合更新为 `58BEF982369803933EE97E087E4E57BECB9A6A255F4390DF8A8EABBAB4D73AAE`（仅改动 `src/MinminCountdown/FloatingWindow.Notes.cs`），双 manifest `executable.sha256` 均为 `FE8A141A1F896F9CB3ACC814BB5A13628A9691830D8F4235952E28C0E4086EF5`，候选 DLL SHA-256 `A916C574C7F5A26F22111065026A371A78D79121AF5B570408ADE43B131D9CA9`。经 `tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-21-v80 -To 2026-11-21-v81` 核对，主窗全部 9 帧及悬浮窗 2 帧倒计时（`floating-countdowns-day`、`floating-workday-complete-day`）与 v80 逐字节及状态指纹完全一致；仅悬浮窗 3 帧便签发生变化且全部落在 `x 61–395` 正文安全区内——`long-notes-day-top`（17125 px，y 149–273）、`long-notes-day-bottom`（9716 px，y 135–258，粘性置顶绿色日期条贴合视口上缘无文字渗漏）、`notes-search-expanded-day`（11860 px，y 184–273）。独立窗口验证新增 `FloatingNoteBodyWidthOptionBGeometryAndDateStrip` 与 `FloatingNoteBodyWidthOptionBScrollSearchTagsAndSticky` 两条事实覆盖 3 列几何、5 标签绑定、搜索展开、滚动提示、粘性置顶、高对比度与命中回归。生成器按 #268 自动移除 v80 目录，随后经独立全套验证复核。
 
-2. v80 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-21-v80/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v80 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. #268 起工作树只保留现役版本（当前 v80）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v80，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
+1. #189 的 WPF 改版使用纯日间 **v81** 真实渲染系列，版本目录为 `2026-11-21-v81`；双 manifest、当前源码绑定、实际应用 EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+
+2. v81 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-21-v81/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v81 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. #268 起工作树只保留现役版本（当前 v81）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v81，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项
@@ -757,7 +759,7 @@ PRD #296 统一重拍（2026-11-21，#327，v80）：合并六项可见外观改
 | `RadiusOverlay` | 12 | 区块表面（管理窗口编辑区、列表区、状态栏）与 Popup / 下拉 / 日历浮层、悬浮便签 `…` 菜单 |
 | `RadiusControl` | 9 | 按钮及其焦点环、输入框、分段控件、页签与状态分段容器、单选焦点环 |
 | `RadiusCard` | 8 | 卡片圆角（§5 卡片刻度）：倒计时与便签条目卡、悬浮倒计时行底、提醒卡、规则行，及确认框的窗口外壳（提醒中心与规则编辑器外壳自 #324 起改由 DWM 原生圆角承担，内容根 Border 保持直角 0） |
-| `RadiusChip` | 5 | 复选框（含置顶开关与便签完成勾选）、标签芯片、日历日、小芯片、ToolTip |
+| `RadiusChip` | 5 | 复选框（含置顶开关与便签完成勾选）、标签芯片、悬浮便签上缘日期条（#335）、日历日、小芯片、ToolTip |
 | `RadiusThumb` | 4 | 滚动条 thumb |
 | `FocusBorderThickness` | 2 | 键盘焦点/按压边粗细（`Thickness` 资源，可直接绑定 `BorderThickness`） |
 

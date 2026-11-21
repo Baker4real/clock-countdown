@@ -718,7 +718,7 @@ internal static partial class ValidationReport
                         StringComparison.Ordinal)));
             var datedStampTexts = CalendarIndexStampTexts(datedCard);
             var datedStampSemanticsMatch =
-                datedStampTexts.SequenceEqual(new[] { "7 月", "15", "周一" });
+                datedStampTexts.SequenceEqual(new[] { "7 月 15 日 · 周一" });
             var undatedNoteSaved = referenceWorkspace.Apply(new SaveNoteChange(
                 "reference-undated",
                 "无日期历史便签",
@@ -736,7 +736,7 @@ internal static partial class ValidationReport
                         StringComparison.Ordinal)));
             var undatedStampTexts = CalendarIndexStampTexts(undatedCard);
             var undatedStampSemanticsMatch =
-                undatedStampTexts.SequenceEqual(new[] { "无日期", "--", " " });
+                undatedStampTexts.SequenceEqual(new[] { "无日期" });
             var undatedNoteDeleted = referenceWorkspace.Apply(new DeleteNoteChange("reference-undated")).Succeeded;
             WaitForStableFloatingReferenceLayout(referenceWindow, root, rows, 6);
 
@@ -1419,9 +1419,9 @@ internal static partial class ValidationReport
                     .First(element => string.Equals(element.Text, note.Text, StringComparison.Ordinal));
                 var reminderText = body.Children.OfType<TextBlock>()
                     .SingleOrDefault(element => element.Text.StartsWith("下次提醒：", StringComparison.Ordinal));
-                // #117 收尾起：列 2 是日期印记，列 3 是“…”菜单按钮（对齐 AI 目标图右缘顺序）。
+                // #335（方案 B）：上缘单行日期条与正文同处列 1，列 2 为“…”菜单按钮。
                 var dateStamp = layout.Children.OfType<Border>()
-                    .Single(element => Grid.GetColumn(element) == 2);
+                    .Single(element => Grid.GetColumn(element) == 1 && FloatingWindow.IsNoteCardDateStamp(element));
                 return new FloatingNoteCardBinding(
                     card,
                     layout,
@@ -1456,9 +1456,26 @@ internal static partial class ValidationReport
             var card = BoundsIn(binding.Card, root);
             var text = BoundsIn(binding.BodyText, root);
             var completion = BoundsIn(binding.Completion, root);
+            var overflow = binding.Layout.Children.OfType<Button>()
+                .SingleOrDefault(button => Grid.GetColumn(button) == 2);
+            var overflowBounds = overflow is null ? Rect.Empty : BoundsIn(overflow, root);
             var dateStamp = BoundsIn(binding.DateStamp, root);
-            return !text.IntersectsWith(completion) &&
-                   !text.IntersectsWith(dateStamp) &&
+            var restingStampBottom = VisualTreeHelper.GetOffset(binding.DateStamp).Y + binding.DateStamp.ActualHeight;
+            var bodyTopInLayout = binding.BodyText.TranslatePoint(new Point(0, 0), binding.Layout).Y;
+            var restingGap = bodyTopInLayout - restingStampBottom;
+            var stickyY = binding.DateStamp.RenderTransform is TranslateTransform translate ? translate.Y : 0;
+            var atRestNoTextOverlap = Math.Abs(stickyY) > 0.5 || !text.IntersectsWith(dateStamp);
+            return overflow is not null &&
+                   restingGap is >= 3.0 and <= 5.0 &&
+                   atRestNoTextOverlap &&
+                   !text.IntersectsWith(completion) &&
+                   !text.IntersectsWith(overflowBounds) &&
+                   !dateStamp.IntersectsWith(completion) &&
+                   !dateStamp.IntersectsWith(overflowBounds) &&
+                   dateStamp.Left >= card.Left - 0.5 &&
+                   dateStamp.Right <= card.Right + 0.5 &&
+                   dateStamp.Top >= card.Top - 0.5 &&
+                   dateStamp.Bottom <= card.Bottom + 0.5 &&
                    text.Left >= card.Left &&
                    text.Right <= card.Right + 0.5 &&
                    text.Top >= card.Top &&
@@ -2074,9 +2091,7 @@ internal static partial class ValidationReport
         var noteEntryBounds = BoundsIn(noteEntry, root);
         var noteDateStamps = renderedCards
             .SelectMany(Descendants<Border>)
-            .Where(border =>
-                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
-                border.BorderThickness.Left >= 1.5)
+            .Where(FloatingWindow.IsNoteCardDateStamp)
             .ToArray();
         var noteDateStampBounds = noteDateStamps
             .Select(stamp => BoundsIn(stamp, root))
@@ -2175,9 +2190,7 @@ internal static partial class ValidationReport
 
     private static string[] CalendarIndexStampTexts(Border card) =>
         Descendants<Border>(card)
-            .Where(border =>
-                Math.Abs(border.ActualWidth - 48) <= 0.5 &&
-                border.BorderThickness.Left >= 1.5)
+            .Where(FloatingWindow.IsNoteCardDateStamp)
             .SelectMany(Descendants<TextBlock>)
             .Select(text => text.Text)
             .ToArray();

@@ -442,23 +442,6 @@ internal sealed class InteractiveStatusTextBlock : TextBlock
         }
     }
 }
-/// <summary>
-/// 便签行「…」溢出菜单：把弹出层挂在其触发按钮上，供真实渲染验证读取。
-/// </summary>
-internal static class NoteRowOverflowMenuBehavior
-{
-    private static readonly DependencyProperty PopupProperty = DependencyProperty.RegisterAttached(
-        "Popup",
-        typeof(Popup),
-        typeof(NoteRowOverflowMenuBehavior),
-        new PropertyMetadata(null));
-
-    public static Popup? GetPopup(Button trigger) =>
-        (Popup?)trigger.GetValue(PopupProperty);
-
-    public static void SetPopup(Button trigger, Popup popup) =>
-        trigger.SetValue(PopupProperty, popup);
-}
 
 internal static class PopupFocusLifecycle
 {

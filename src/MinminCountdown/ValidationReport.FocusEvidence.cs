@@ -494,6 +494,24 @@ internal static partial class ValidationReport
 
         // 弹层单独渲染整块表面：叠回宿主窗口时会被窗口右缘裁掉（真实弹层是独立顶层窗口，可越出宿主）。
         // 宿主上下文看同组的窗口帧与参考基线的筛选打开帧。
+        BitmapSource ContextMenuFrame(ContextMenu? candidate)
+        {
+            PumpDispatcher();
+            if (candidate is not { IsOpen: true } menu)
+            {
+                throw new InvalidOperationException("菜单实拍要求 ContextMenu 已打开。");
+            }
+
+            if (!WaitForRenderedCaptureState(menu, () =>
+                    menu.IsOpen && !PopupMotionBehavior.IsContextMenuClosing(menu) &&
+                    menu.Opacity == 1 && menu.RenderTransform.Value.IsIdentity))
+            {
+                throw new InvalidOperationException("原生菜单未在 300ms 内完成入场。");
+            }
+
+            return CompositeOverOpaqueBackground(CaptureVisual(menu), OpaqueBackdrop());
+        }
+
         BitmapSource PopupFrame(Popup? candidate)
         {
             PumpDispatcher();
@@ -688,10 +706,10 @@ internal static partial class ValidationReport
                 Capture("floating-notes-high-contrast", "悬浮窗", "系统高对比度：便签", () => WindowFrame(floating));
             });
             var overflowMenu = floating.OpenFirstNoteOverflowMenuForValidation();
-            Capture("floating-note-overflow-menu", "便签「…」菜单", "首张便签打开「…」：编辑 / 删除", () => PopupFrame(overflowMenu));
+            Capture("floating-note-overflow-menu", "便签「…」菜单", "首张便签打开「…」：编辑 / 删除", () => ContextMenuFrame(overflowMenu));
             if (overflowMenu is not null)
             {
-                overflowMenu.IsOpen = false;
+                PopupMotionBehavior.CloseContextMenu(overflowMenu, immediate: true);
                 PumpDispatcher();
             }
 

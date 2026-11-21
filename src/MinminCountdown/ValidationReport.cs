@@ -657,7 +657,7 @@ internal static partial class ValidationReport
 
     // #251：悬浮窗滚动提示实拍。每个状态一张 <状态>.png（520×390 DIP，96 DPI，叠在不透明主题底色上）；
     // 菜单态另拍弹层 <状态>-popup.png（真实弹层是独立顶层窗口，叠回宿主会被窗口右缘裁掉）。发布包模式返回 null。
-    private static Action<FloatingWindow, System.Windows.Controls.Primitives.Popup?, string>?
+    private static Action<FloatingWindow, System.Windows.Controls.ContextMenu?, string>?
         CreateFloatingScrollContextEvidenceWriter()
     {
         var directory = ResolveDefaultVisualEvidenceDirectory("scroll-hint");
@@ -667,7 +667,7 @@ internal static partial class ValidationReport
         }
 
         Directory.CreateDirectory(directory);
-        return (window, popup, state) =>
+        return (window, menu, state) =>
         {
             if (window.Content is not FrameworkElement root)
             {
@@ -684,12 +684,12 @@ internal static partial class ValidationReport
             WriteNewBytes(
                 Path.Combine(directory, state + ".png"),
                 EncodePng(CompositeOverOpaqueBackground(CaptureVisual(root), background.Color)));
-            if (popup is { IsOpen: true, Child: FrameworkElement child })
+            if (menu is { IsOpen: true })
             {
-                _ = WaitForRenderedCaptureState(child, () => child.Opacity == 1 && child.RenderTransform.Value.IsIdentity);
+                _ = WaitForRenderedCaptureState(menu, () => menu.Opacity == 1 && menu.RenderTransform.Value.IsIdentity);
                 WriteNewBytes(
                     Path.Combine(directory, state + "-popup.png"),
-                    EncodePng(CompositeOverOpaqueBackground(CaptureVisual(child), background.Color)));
+                    EncodePng(CompositeOverOpaqueBackground(CaptureVisual(menu), background.Color)));
             }
         };
     }

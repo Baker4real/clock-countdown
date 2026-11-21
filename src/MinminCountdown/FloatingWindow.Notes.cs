@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -30,6 +31,27 @@ public sealed partial class FloatingWindow
 
     // #149：当前渲染批次内每张便签卡的日期印记粘性位移入口（RenderRows 重建时清空重填）。
     private readonly List<FloatingDateStampStickyEntry> _noteDateStampStickyEntries = new();
+
+    // #319：单一懒创建并跨卡复用的原生 ContextMenu，避免每张便签卡预创建弹层与按钮。
+    private MotionContextMenu? _noteOverflowMenu;
+    private MenuItem? _noteOverflowEditItem;
+    private MenuItem? _noteOverflowDeleteItem;
+    private NoteRecord? _activeOverflowNote;
+    private Button? _activeOverflowTrigger;
+    private bool _overflowOpenedByPointer;
+    private bool _overflowEscapeClosePending;
+    private bool _overflowFocusRestoredForCurrentOpen;
+
+    private bool IsNoteOverflowMenuOpen =>
+        _noteOverflowMenu is { IsOpen: true };
+
+    private bool IsNoteOverflowMenuOpenFor(Button trigger) =>
+        _noteOverflowMenu is { IsOpen: true } &&
+        ReferenceEquals(_activeOverflowTrigger, trigger);
+
+    private bool IsNoteOverflowMenuActivelyOpenFor(Button trigger) =>
+        IsNoteOverflowMenuOpenFor(trigger) &&
+        !PopupMotionBehavior.IsContextMenuClosing(_noteOverflowMenu);
 
     internal sealed record FloatingDateStampStickyEntry(
         Border Card,
@@ -182,7 +204,7 @@ public sealed partial class FloatingWindow
             if (args.Handled || args.Key != Key.Delete ||
                 MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None ||
                 !IsEnabled || FloatingTags.IsPopupOpen || FloatingNoteDate.IsDropDownOpen ||
-                NoteRowOverflowMenuBehavior.GetPopup(overflowMenu)?.IsOpen == true) return;
+                IsNoteOverflowMenuOpen) return;
             args.Handled = true;
             RequestNoteDelete(note);
         };
@@ -290,7 +312,8 @@ public sealed partial class FloatingWindow
     internal void ClearNoteDateStampStickyEntries() => _noteDateStampStickyEntries.Clear();
 
     /// <summary>
-    ///     每条便签右侧的“…”菜单：提供编辑/删除，编辑复用主窗口编辑流程（悬浮窗首次获得编辑能力）。
+    ///     #319：每条便签右侧的“…”按钮不再预创建弹层与菜单按钮，仅在首次打开时懒创建并复用
+    ///     共享暖粉原生 ContextMenu / MenuItem（#309）。
     /// </summary>
     private Button BuildNoteOverflowMenu(NoteRecord note)
     {
@@ -319,61 +342,308 @@ public sealed partial class FloatingWindow
         trigger.SetResourceReference(Control.ForegroundProperty, ActiveTheme.MutedBrushKey);
         trigger.SetValue(NoteControlRoleProperty, NoteControlRoleOverflow);
 
-        var menuEdit = UiAccessibility.Name(
-            new Button
-            {
-                Content = "编辑",
-                Tag = note.Id,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Margin = new Thickness(0, 2, 0, 2),
-                Style = (Style)FindResource("SecondaryButton")
-            },
-            $"编辑便签 {note.Text}");
-        var menuDelete = UiAccessibility.Name(
-            new Button
-            {
-                Content = "删除",
-                Tag = note.Id,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Left,
-                Margin = new Thickness(0, 2, 0, 2),
-                Style = (Style)FindResource("DangerButton")
-            },
-            $"删除便签 {note.Text}");
+        var pointerOpening = false;
+        var suppressNextClickReopen = false;
 
-        var items = new StackPanel { Margin = new Thickness(4) };
-        items.Children.Add(menuEdit);
-        items.Children.Add(menuDelete);
-        var surface = new Border
+        trigger.PreviewMouseLeftButtonDown += (_, _) =>
         {
-            MinWidth = 132,
-            Padding = new Thickness(6),
-            BorderThickness = new Thickness(1),
-            Child = items
+            if (IsNoteOverflowMenuActivelyOpenFor(trigger))
+            {
+                suppressNextClickReopen = true;
+                pointerOpening = false;
+            }
+            else
+            {
+                pointerOpening = true;
+                suppressNextClickReopen = false;
+            }
         };
-        surface.SetResourceReference(Border.CornerRadiusProperty, "RadiusOverlay");
-        surface.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
-        surface.SetResourceReference(Border.BorderBrushProperty, "PeachLineBrush");
-        var popup = new Popup
+        trigger.PreviewKeyDown += (_, args) =>
         {
-            PlacementTarget = trigger,
-            Placement = PlacementMode.Bottom,
-            StaysOpen = false,
-            AllowsTransparency = true,
-            PopupAnimation = PopupAnimation.None,
-            Child = surface
+            pointerOpening = false;
+            suppressNextClickReopen = false;
+            if (args.Key == Key.Escape && IsNoteOverflowMenuOpenFor(trigger))
+            {
+                CloseNoteOverflowMenu(immediate: true);
+                RestoreNoteOverflowTriggerFocus(trigger);
+                args.Handled = true;
+            }
         };
-        NoteRowOverflowMenuBehavior.SetPopup(trigger, popup);
-        // #149：接入与筛选/标签选择器同一套弹层焦点生命周期——打开聚焦首项（编辑）、
-        // Esc 关闭并归还触发器、层内 Tab 循环，键盘可走完「编辑 / 删除」。
-        PopupFocusLifecycle.Attach(popup, trigger, () => menuEdit);
-        trigger.Click += (_, _) => popup.IsOpen = !popup.IsOpen;
-        menuEdit.Click += (_, _) => popup.IsOpen = false;
-        menuEdit.Click += (_, _) => RequestNoteEdit(note);
-        menuDelete.Click += (_, _) => popup.IsOpen = false;
-        menuDelete.Click += (_, _) => RequestNoteDelete(note);
+        trigger.LostKeyboardFocus += (_, _) => pointerOpening = false;
+        trigger.Unloaded += (_, _) => pointerOpening = false;
+        trigger.KeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Down &&
+                MainShortcutInput.ResolveModifiers(args) == ModifierKeys.None &&
+                !IsNoteOverflowMenuActivelyOpenFor(trigger))
+            {
+                pointerOpening = false;
+                suppressNextClickReopen = false;
+                args.Handled = true;
+                OpenNoteOverflowMenu(note, trigger, immediate: true, openedByPointer: false);
+            }
+        };
+        trigger.Click += (_, _) =>
+        {
+            if (suppressNextClickReopen)
+            {
+                suppressNextClickReopen = false;
+                CloseNoteOverflowMenu(immediate: false);
+                return;
+            }
+
+            var openedByPointer = pointerOpening;
+            pointerOpening = false;
+            if (IsNoteOverflowMenuActivelyOpenFor(trigger))
+            {
+                CloseNoteOverflowMenu(immediate: !openedByPointer);
+                return;
+            }
+
+            OpenNoteOverflowMenu(note, trigger, immediate: !openedByPointer, openedByPointer: openedByPointer);
+        };
+        trigger.ContextMenuOpening += (_, args) =>
+        {
+            args.Handled = true;
+            OpenNoteOverflowMenu(note, trigger, immediate: false, openedByPointer: true);
+        };
         return trigger;
+    }
+
+    private MotionContextMenu EnsureNoteOverflowMenu()
+    {
+        if (_noteOverflowMenu is not null)
+        {
+            return _noteOverflowMenu;
+        }
+
+        var menu = new MotionContextMenu
+        {
+            Placement = PlacementMode.Bottom,
+            VerticalOffset = 4
+        };
+        SharedMenuStyles.Apply(menu);
+        // 交由 PopupMotionBehavior 统一驱动进入/退出动效，避免叠加 WPF 自带菜单动画。
+        menu.Resources[SystemParameters.MenuPopupAnimationKey] = PopupAnimation.None;
+        PopupMotionBehavior.AttachContextMenu(menu);
+        AutomationProperties.SetAutomationId(menu, "FloatingNoteOverflowMenu");
+
+        var editItem = new MenuItem { Header = "编辑" };
+        AutomationProperties.SetAutomationId(editItem, "FloatingNoteOverflowMenuEdit");
+        var deleteItem = new MenuItem { Header = "删除" };
+        AutomationProperties.SetAutomationId(deleteItem, "FloatingNoteOverflowMenuDelete");
+        SharedMenuStyles.ApplyDangerItemStyle(deleteItem, menu);
+
+        WireOverflowMenuItemSpaceActivation(editItem);
+        WireOverflowMenuItemSpaceActivation(deleteItem);
+
+        editItem.Click += (_, _) =>
+        {
+            var note = _activeOverflowNote;
+            CloseNoteOverflowMenu(immediate: true);
+            if (note is not null)
+            {
+                RequestNoteEdit(note);
+            }
+        };
+        deleteItem.Click += (_, _) =>
+        {
+            var note = _activeOverflowNote;
+            CloseNoteOverflowMenu(immediate: true);
+            if (note is not null)
+            {
+                RequestNoteDelete(note);
+            }
+        };
+
+        menu.Items.Add(editItem);
+        menu.Items.Add(deleteItem);
+
+        menu.Opened += (_, _) =>
+        {
+            if (menu.Parent is Popup parentPopup)
+            {
+                parentPopup.PopupAnimation = PopupAnimation.None;
+            }
+
+            _overflowEscapeClosePending = false;
+            _overflowFocusRestoredForCurrentOpen = false;
+            if (!_overflowOpenedByPointer)
+            {
+                Keyboard.Focus(editItem);
+                menu.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                {
+                    if (menu.IsOpen &&
+                        !PopupMotionBehavior.IsContextMenuClosing(menu) &&
+                        !_overflowOpenedByPointer &&
+                        !menu.IsKeyboardFocusWithin)
+                    {
+                        Keyboard.Focus(editItem);
+                    }
+                }));
+            }
+            else
+            {
+                Keyboard.Focus(menu);
+            }
+        };
+        menu.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key == Key.Escape)
+            {
+                _overflowEscapeClosePending = true;
+                args.Handled = true;
+                var triggerToRestore = _activeOverflowTrigger;
+                CloseNoteOverflowMenu(immediate: true);
+                RestoreNoteOverflowTriggerFocus(triggerToRestore);
+            }
+        };
+        menu.AddHandler(
+            Keyboard.KeyDownEvent,
+            new KeyEventHandler((_, args) =>
+            {
+                if (args.Key != Key.Escape)
+                {
+                    return;
+                }
+
+                var triggerToRestore = _activeOverflowTrigger;
+                if (menu.IsOpen)
+                {
+                    _overflowEscapeClosePending = true;
+                    args.Handled = true;
+                    CloseNoteOverflowMenu(immediate: true);
+                }
+
+                RestoreNoteOverflowTriggerFocus(triggerToRestore);
+            }),
+            handledEventsToo: true);
+        menu.AddHandler(
+            Mouse.PreviewMouseDownOutsideCapturedElementEvent,
+            new MouseButtonEventHandler((_, _) =>
+            {
+                if (menu.IsOpen && !PopupMotionBehavior.IsContextMenuClosing(menu))
+                {
+                    CloseNoteOverflowMenu(immediate: false);
+                }
+            }),
+            handledEventsToo: true);
+        menu.Closed += (_, _) =>
+        {
+            var triggerToRestore = _activeOverflowTrigger;
+            _activeOverflowNote = null;
+            _activeOverflowTrigger = null;
+            menu.ClearValue(ContextMenu.PlacementTargetProperty);
+            if (_overflowEscapeClosePending)
+            {
+                RestoreNoteOverflowTriggerFocus(triggerToRestore);
+            }
+        };
+
+        _noteOverflowMenu = menu;
+        _noteOverflowEditItem = editItem;
+        _noteOverflowDeleteItem = deleteItem;
+        return menu;
+    }
+
+    private static void WireOverflowMenuItemSpaceActivation(MenuItem item)
+    {
+        // 原生 WPF MenuItem 默认仅处理 Enter 激活；按 #319 合同在 KeyDown 补齐空格键激活（与 Enter 同阶段）。
+        item.KeyDown += (_, args) =>
+        {
+            if (args.Handled || args.Key != Key.Space || args.IsRepeat ||
+                MainShortcutInput.ResolveModifiers(args) != ModifierKeys.None)
+            {
+                return;
+            }
+
+            args.Handled = true;
+            item.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent, item));
+        };
+    }
+
+    private void OpenNoteOverflowMenu(NoteRecord note, Button trigger, bool immediate, bool openedByPointer)
+    {
+        var menu = EnsureNoteOverflowMenu();
+        if (menu.IsOpen && !ReferenceEquals(_activeOverflowTrigger, trigger))
+        {
+            CloseNoteOverflowMenu(immediate: true);
+        }
+
+        _activeOverflowNote = note;
+        _activeOverflowTrigger = trigger;
+        _overflowOpenedByPointer = openedByPointer;
+        _overflowEscapeClosePending = false;
+        _overflowFocusRestoredForCurrentOpen = false;
+
+        AutomationProperties.SetName(menu, $"更多操作：编辑或删除便签 {note.Text}");
+        AutomationProperties.SetName(_noteOverflowEditItem!, $"编辑便签 {note.Text}");
+        AutomationProperties.SetName(_noteOverflowDeleteItem!, $"删除便签 {note.Text}");
+        _noteOverflowEditItem!.Tag = note.Id;
+        _noteOverflowDeleteItem!.Tag = note.Id;
+
+        menu.PlacementTarget = trigger;
+        menu.Placement = PlacementMode.Bottom;
+        menu.VerticalOffset = 4;
+        if (!IsActive)
+        {
+            Activate();
+        }
+
+        PopupMotionBehavior.OpenContextMenu(menu, immediate: immediate);
+    }
+
+    private void CloseNoteOverflowMenu(bool immediate)
+    {
+        if (_noteOverflowMenu is not { } menu)
+        {
+            return;
+        }
+
+        if (menu.IsOpen)
+        {
+            PopupMotionBehavior.CloseContextMenu(menu, immediate: immediate);
+        }
+
+        if (!menu.IsOpen)
+        {
+            _activeOverflowNote = null;
+            _activeOverflowTrigger = null;
+            menu.ClearValue(ContextMenu.PlacementTargetProperty);
+        }
+    }
+
+    private void RestoreNoteOverflowTriggerFocus(Button? trigger)
+    {
+        if (_overflowFocusRestoredForCurrentOpen ||
+            trigger is null ||
+            !trigger.IsEnabled ||
+            !trigger.IsVisible ||
+            !IsVisible)
+        {
+            return;
+        }
+
+        _overflowFocusRestoredForCurrentOpen = true;
+        _overflowEscapeClosePending = false;
+        Activate();
+        FocusManager.SetFocusedElement(this, trigger);
+        trigger.Focus();
+        Keyboard.Focus(trigger);
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            if (_noteOverflowMenu is not { IsOpen: true } &&
+                trigger.IsEnabled &&
+                trigger.IsVisible &&
+                IsVisible &&
+                !ReferenceEquals(Keyboard.FocusedElement, trigger))
+            {
+                Activate();
+                FocusManager.SetFocusedElement(this, trigger);
+                trigger.Focus();
+                Keyboard.Focus(trigger);
+            }
+        }));
     }
 
     private void RequestNoteEdit(NoteRecord note)

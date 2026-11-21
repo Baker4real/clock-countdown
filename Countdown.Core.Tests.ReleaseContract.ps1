@@ -78,6 +78,7 @@ foreach ($windowVerificationInput in @(
     'src\MinminCountdown.WindowVerification\FloatingNoteSearchScenario.cs',
     'src\MinminCountdown.WindowVerification\FloatingBottomStatusAutomationScenario.cs',
     'src\MinminCountdown.WindowVerification\FloatingWorkdayCompletionScenario.cs',
+    'src\MinminCountdown.WindowVerification\FloatingNoteOverflowMenuScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterLongTitleScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderCenterSnoozeMenuScenario.cs',
     'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
@@ -300,7 +301,7 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
 }
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.SourceBuildFiles | Where-Object { $_ -notin @($releaseContract.BuildInputFiles) }).Count 'Deploy checks every source-build input by commit identity'
-Assert-Equal 140 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #302 main refresh scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #308 tag-manager auto-save scenario, #310 disabled-state scenario, #311 spacing-token scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330/#331 rule editor and numeric-input scenarios, #324 secondary DWM chrome scenario and #333 CsWin32 NativeMethods.txt to the product closure, preflight, license and repository-only window verification project'
+Assert-Equal 141 @($releaseContract.BuildInputFiles).Count 'Build inputs add the exact shared menu resources, #297 smoke scenarios, #298 tag-rename scenario, #302 main refresh scenario, #303 input scenario, #304 main alignment scenario, #305 overlay border & filter match-mode scenario, #306 shared scrollbar scenario, #308 tag-manager auto-save scenario, #310 disabled-state scenario, #311 spacing-token scenario, #312 single-box datepicker scenario, #315 floating search scenario, #316 floating bottom status scenario, #317 workday completion scenario, #318 floating quick-add scenario, #319 floating note overflow menu scenario, #320 snooze menu scenario, #321 long-title scenario, #322/#323/#330/#331 rule editor and numeric-input scenarios, #324 secondary DWM chrome scenario and #333 CsWin32 NativeMethods.txt to the product closure, preflight, license and repository-only window verification project'
 Assert-Equal 2 @($releaseContract.BuildInputFiles | Where-Object { $_ -in @('src\MinminCountdown\SharedMenuStyles.cs', 'src\MinminCountdown\SharedMenuStyles.xaml') }).Count 'Deploy checks the shared native menu style and its palette helper by commit identity (#309)'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 Assert-Equal 0 `

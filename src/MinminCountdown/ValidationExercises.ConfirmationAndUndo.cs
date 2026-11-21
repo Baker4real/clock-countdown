@@ -1207,21 +1207,16 @@ internal static partial class ValidationExercises
                     $"更多操作：编辑或删除便签 {note.Text}",
                     StringComparison.Ordinal));
             Must(trigger is not null, $"无法定位便签「{note.Text}」的更多操作。");
-            var popup = NoteRowOverflowMenuBehavior.GetPopup(trigger!);
-            Must(popup is not null, "便签更多操作没有弹出层。");
-            if (!popup!.IsOpen)
-            {
-                trigger!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                WindowValidationInput.Pump(floating.Dispatcher);
-                floating.UpdateLayout();
-            }
-
-            Must(popup.IsOpen, "便签更多操作没有打开。");
+            trigger!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WindowValidationInput.Pump(floating.Dispatcher);
+            floating.UpdateLayout();
+            var menu = floating.ActiveNoteOverflowMenuForValidation;
+            Must(menu is { IsOpen: true }, "便签更多操作没有打开。");
             QueueConfirmationDialogResponse(floating, confirm, inspect);
-            var menuDelete = VisualDescendants<Button>(popup.Child).FirstOrDefault(candidate =>
-                string.Equals(candidate.Content as string, "删除", StringComparison.Ordinal));
-            Must(menuDelete is not null, "无法定位悬浮便签删除按钮。");
-            menuDelete!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var menuDelete = menu!.Items.OfType<MenuItem>().FirstOrDefault(candidate =>
+                string.Equals(candidate.Header as string, "删除", StringComparison.Ordinal));
+            Must(menuDelete is not null, "无法定位悬浮便签删除菜单项。");
+            menuDelete!.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
             WindowValidationInput.Pump(floating.Dispatcher);
         }
 

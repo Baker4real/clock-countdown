@@ -42,7 +42,7 @@ public static class PopupValidationContractHarness
         if (attach)
         {
             var attachMethod = lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static);
-            var arguments = new object[] { popup, trigger, new Func<IInputElement>(() => initial) };
+            var arguments = new object[] { popup, trigger, new Func<IInputElement>(() => initial), null };
             attachMethod.Invoke(null, arguments);
             attachMethod.Invoke(null, arguments);
         }
@@ -244,7 +244,7 @@ public static class PopupValidationContractHarness
         popup.Opened += (sender, args) => opened++;
         motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { popup });
         lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-            null, new object[] { popup, trigger, new Func<IInputElement>(() => initial) });
+            null, new object[] { popup, trigger, new Func<IInputElement>(() => initial), null });
         try
         {
             window.Show();
@@ -363,10 +363,10 @@ public static class PopupValidationContractHarness
                     null, new object[] { popup });
             }
             lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-                null, new object[] { popup, trigger, new Func<IInputElement>(() => initial) });
+                null, new object[] { popup, trigger, new Func<IInputElement>(() => initial), null });
             // Reattaching must retain the first focus callback and handlers.
             lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-                null, new object[] { popup, trigger, new Func<IInputElement>(() => outside) });
+                null, new object[] { popup, trigger, new Func<IInputElement>(() => outside), null });
             KeyEventHandler recordEscape = (sender, args) =>
             {
                 if (args.Key == Key.Escape && args.Handled) handledEscapeCount++;

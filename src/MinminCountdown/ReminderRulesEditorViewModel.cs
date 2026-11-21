@@ -11,7 +11,7 @@ namespace MinminCountdown;
 /// The window builds the WPF surface and binds it to this object; validation,
 /// draft commands and all mutable form state stay here.
 /// </summary>
-internal sealed class ReminderRulesEditorViewModel : ObservableObject
+internal sealed partial class ReminderRulesEditorViewModel : ObservableObject
 {
     internal const string IncompleteRulePreviewText = "请完善上方设置以生成预览";
     internal const int MinimumFixedIntervalMinutes = 1;
@@ -37,34 +37,8 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     private readonly ObservableCollection<ReminderRuleItemViewModel> _ruleItems = new();
     private readonly ReadOnlyObservableCollection<ReminderRuleItemViewModel> _readOnlyRuleItems;
     private bool _updatingForm;
-    private bool _formDirty;
     private IReadOnlyList<ReminderRule> _rules;
     private IReadOnlyList<ReminderRule> _resultRules;
-    private string? _editingRuleId;
-    private int _modeIndex;
-    private DateTime? _firstDueDate;
-    private TimeSpan? _firstDueTime;
-    private bool _hasInvalidFirstDueTimeInput;
-    private int _intervalIndex = 1;
-    private int? _customIntervalMinutes;
-    private bool _hasInvalidCustomIntervalInput;
-    private int? _relativeOffsetMinutes = 0;
-    private bool _hasInvalidRelativeOffsetInput;
-    private int _calendarFrequencyIndex;
-    private int? _calendarInterval = 1;
-    private bool _hasInvalidCalendarIntervalInput;
-    private int _calendarMonthIndex;
-    private int _calendarDayIndex;
-    private bool _calendarLastDay;
-    private string _modeError = string.Empty;
-    private string _firstDueError = string.Empty;
-    private string _intervalError = string.Empty;
-    private string _relativeOffsetError = string.Empty;
-    private string _calendarIntervalError = string.Empty;
-    private string _calendarSelectorError = string.Empty;
-    private string _collectionError = string.Empty;
-    private string _saveRuleButtonText = "添加规则";
-    private bool _isCancelRuleEditVisible;
 
     public ReminderRulesEditorViewModel(
         IReadOnlyList<ReminderRule> initialRules,
@@ -114,10 +88,15 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
                     pair.Item1,
                     pair.Item2,
                     MarkFormDirty))));
-        SaveRuleCommand = new RelayCommand(SaveDraftRule);
-        CancelRuleEditCommand = new RelayCommand(BeginAddRule);
-        AcceptDraftCommand = new RelayCommand(AcceptDraft);
-        CancelDraftCommand = new RelayCommand(CancelDraft);
+
+        SaveRuleButtonText = "添加规则";
+        ModeError = string.Empty;
+        FirstDueError = string.Empty;
+        IntervalError = string.Empty;
+        RelativeOffsetError = string.Empty;
+        CalendarIntervalError = string.Empty;
+        CalendarSelectorError = string.Empty;
+        CollectionError = string.Empty;
 
         ReplaceRules(_rules);
         BeginAddRule();
@@ -145,9 +124,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     public string EmptyText => "当前不提醒";
 
-    public string? EditingRuleId => _editingRuleId;
+    [ObservableProperty]
+    public partial string? EditingRuleId { get; private set; }
 
-    public bool IsFormDirty => _formDirty;
+    [ObservableProperty]
+    public partial bool IsFormDirty { get; private set; }
 
     public IReadOnlyList<ReminderRule> ResultRules => _resultRules;
 
@@ -161,169 +142,74 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     public DateTimeOffset? CountdownTargetUtc => _countdownTargetUtc;
 
-    public int ModeIndex
-    {
-        get => _modeIndex;
-        set
-        {
-            if (!SetFormProperty(ref _modeIndex, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial int ModeIndex { get; set; }
 
-            EnsureWeeklySelection();
-            UpdateVisibility();
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueDateErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueTimeErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(FirstDueDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(FirstDueTimeHelpText))]
+    public partial DateTime? FirstDueDate { get; set; }
 
-    public DateTime? FirstDueDate
-    {
-        get => _firstDueDate;
-        set
-        {
-            if (!SetFormProperty(ref _firstDueDate, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueDateErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueTimeErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(FirstDueDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(FirstDueTimeHelpText))]
+    public partial TimeSpan? FirstDueTime { get; set; }
 
-            NotifyFirstDueErrorStateChanged();
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueDateErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueTimeErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(FirstDueDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(FirstDueTimeHelpText))]
+    public partial bool HasInvalidFirstDueTimeInput { get; set; }
 
-    public TimeSpan? FirstDueTime
-    {
-        get => _firstDueTime;
-        set
-        {
-            if (!SetFormProperty(ref _firstDueTime, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial int IntervalIndex { get; set; }
 
-            NotifyFirstDueErrorStateChanged();
-        }
-    }
+    [ObservableProperty]
+    public partial int? CustomIntervalMinutes { get; set; }
 
-    public bool HasInvalidFirstDueTimeInput
-    {
-        get => _hasInvalidFirstDueTimeInput;
-        set
-        {
-            if (!SetFormProperty(ref _hasInvalidFirstDueTimeInput, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial bool HasInvalidCustomIntervalInput { get; set; }
 
-            NotifyFirstDueErrorStateChanged();
-        }
-    }
+    [ObservableProperty]
+    public partial int? RelativeOffsetMinutes { get; set; }
 
-    public int IntervalIndex
-    {
-        get => _intervalIndex;
-        set
-        {
-            if (!SetFormProperty(ref _intervalIndex, value))
-            {
-                return;
-            }
+    [ObservableProperty]
+    public partial bool HasInvalidRelativeOffsetInput { get; set; }
 
-            UpdateVisibility();
-        }
-    }
+    [ObservableProperty]
+    public partial int CalendarFrequencyIndex { get; set; }
 
-    public int? CustomIntervalMinutes
-    {
-        get => _customIntervalMinutes;
-        set => SetFormProperty(ref _customIntervalMinutes, value);
-    }
+    [ObservableProperty]
+    public partial int? CalendarInterval { get; set; }
 
-    public bool HasInvalidCustomIntervalInput
-    {
-        get => _hasInvalidCustomIntervalInput;
-        set => SetFormProperty(ref _hasInvalidCustomIntervalInput, value);
-    }
+    [ObservableProperty]
+    public partial bool HasInvalidCalendarIntervalInput { get; set; }
 
-    public int? RelativeOffsetMinutes
-    {
-        get => _relativeOffsetMinutes;
-        set => SetFormProperty(ref _relativeOffsetMinutes, value);
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCalendarFrequencyErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarMonthErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarDayErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(CalendarFrequencyHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarMonthHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarDayHelpText))]
+    public partial int CalendarMonthIndex { get; set; }
 
-    public bool HasInvalidRelativeOffsetInput
-    {
-        get => _hasInvalidRelativeOffsetInput;
-        set => SetFormProperty(ref _hasInvalidRelativeOffsetInput, value);
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCalendarFrequencyErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarMonthErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarDayErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(CalendarFrequencyHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarMonthHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarDayHelpText))]
+    public partial int CalendarDayIndex { get; set; }
 
-    public int CalendarFrequencyIndex
-    {
-        get => _calendarFrequencyIndex;
-        set
-        {
-            if (!SetFormProperty(ref _calendarFrequencyIndex, value))
-            {
-                return;
-            }
-
-            EnsureWeeklySelection();
-            UpdateVisibility();
-        }
-    }
-
-    public int? CalendarInterval
-    {
-        get => _calendarInterval;
-        set => SetFormProperty(ref _calendarInterval, value);
-    }
-
-    public bool HasInvalidCalendarIntervalInput
-    {
-        get => _hasInvalidCalendarIntervalInput;
-        set => SetFormProperty(ref _hasInvalidCalendarIntervalInput, value);
-    }
-
-    public int CalendarMonthIndex
-    {
-        get => _calendarMonthIndex;
-        set
-        {
-            if (!SetFormProperty(ref _calendarMonthIndex, value))
-            {
-                return;
-            }
-
-            NotifyCalendarSelectorErrorStateChanged();
-        }
-    }
-
-    public int CalendarDayIndex
-    {
-        get => _calendarDayIndex;
-        set
-        {
-            if (!SetFormProperty(ref _calendarDayIndex, value))
-            {
-                return;
-            }
-
-            NotifyCalendarSelectorErrorStateChanged();
-        }
-    }
-
-    public bool CalendarLastDay
-    {
-        get => _calendarLastDay;
-        set
-        {
-            if (!SetFormProperty(ref _calendarLastDay, value))
-            {
-                return;
-            }
-
-            UpdateVisibility();
-        }
-    }
+    [ObservableProperty]
+    public partial bool CalendarLastDay { get; set; }
 
     public string FirstDueLabel => IsCalendarMode ? "开始日期" : "首次提醒";
 
@@ -364,105 +250,53 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         ? Describe(previewRule!)
         : IncompleteRulePreviewText;
 
-    public string SaveRuleButtonText
-    {
-        get => _saveRuleButtonText;
-        private set => SetProperty(ref _saveRuleButtonText, value);
-    }
+    [ObservableProperty]
+    public partial string SaveRuleButtonText { get; private set; }
 
-    public bool IsCancelRuleEditVisible
-    {
-        get => _isCancelRuleEditVisible;
-        private set => SetProperty(ref _isCancelRuleEditVisible, value);
-    }
+    [ObservableProperty]
+    public partial bool IsCancelRuleEditVisible { get; private set; }
 
-    public string ModeError
-    {
-        get => _modeError;
-        private set
-        {
-            if (SetProperty(ref _modeError, value))
-            {
-                OnPropertyChanged(nameof(IsModeErrorVisible));
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsModeErrorVisible))]
+    public partial string ModeError { get; private set; }
 
-    public string FirstDueError
-    {
-        get => _firstDueError;
-        private set
-        {
-            if (SetProperty(ref _firstDueError, value))
-            {
-                OnPropertyChanged(nameof(IsFirstDueErrorVisible));
-                NotifyFirstDueErrorStateChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueDateErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsFirstDueTimeErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(FirstDueDateHelpText))]
+    [NotifyPropertyChangedFor(nameof(FirstDueTimeHelpText))]
+    public partial string FirstDueError { get; private set; }
 
-    public string IntervalError
-    {
-        get => _intervalError;
-        private set
-        {
-            if (SetProperty(ref _intervalError, value))
-            {
-                OnPropertyChanged(nameof(IsIntervalErrorVisible));
-                NotifyIntervalErrorStateChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIntervalErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsIntervalComboErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IntervalComboHelpText))]
+    [NotifyPropertyChangedFor(nameof(CustomIntervalHelpText))]
+    public partial string IntervalError { get; private set; }
 
-    public string RelativeOffsetError
-    {
-        get => _relativeOffsetError;
-        private set
-        {
-            if (SetProperty(ref _relativeOffsetError, value))
-            {
-                OnPropertyChanged(nameof(IsRelativeOffsetErrorVisible));
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRelativeOffsetErrorVisible))]
+    public partial string RelativeOffsetError { get; private set; }
 
-    public string CalendarIntervalError
-    {
-        get => _calendarIntervalError;
-        private set
-        {
-            if (SetProperty(ref _calendarIntervalError, value))
-            {
-                OnPropertyChanged(nameof(IsCalendarIntervalErrorVisible));
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCalendarIntervalErrorVisible))]
+    public partial string CalendarIntervalError { get; private set; }
 
-    public string CalendarSelectorError
-    {
-        get => _calendarSelectorError;
-        private set
-        {
-            if (SetProperty(ref _calendarSelectorError, value))
-            {
-                OnPropertyChanged(nameof(IsCalendarSelectorErrorVisible));
-                OnPropertyChanged(nameof(IsCalendarSelectorVisible));
-                NotifyCalendarSelectorErrorStateChanged();
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCalendarSelectorErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarSelectorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarFrequencyErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarMonthErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarDayErrorVisible))]
+    [NotifyPropertyChangedFor(nameof(CalendarFrequencyHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarMonthHelpText))]
+    [NotifyPropertyChangedFor(nameof(CalendarDayHelpText))]
+    public partial string CalendarSelectorError { get; private set; }
 
-    public string CollectionError
-    {
-        get => _collectionError;
-        private set
-        {
-            if (SetProperty(ref _collectionError, value))
-            {
-                OnPropertyChanged(nameof(IsCollectionErrorVisible));
-            }
-        }
-    }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCollectionErrorVisible))]
+    public partial string CollectionError { get; private set; }
 
     public bool IsModeErrorVisible => !string.IsNullOrEmpty(ModeError);
 
@@ -518,14 +352,6 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     public string CalendarDayHelpText => IsCalendarDayErrorVisible ? CalendarSelectorError : string.Empty;
 
     public bool IsCollectionErrorVisible => !string.IsNullOrEmpty(CollectionError);
-
-    public RelayCommand SaveRuleCommand { get; }
-
-    public RelayCommand CancelRuleEditCommand { get; }
-
-    public RelayCommand AcceptDraftCommand { get; }
-
-    public RelayCommand CancelDraftCommand { get; }
 
     internal event EventHandler? DraftAccepted;
 
@@ -594,13 +420,63 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         _ => ReminderIntervalSelection.Custom
     };
 
+    partial void OnModeIndexChanged(int value)
+    {
+        OnFormFieldChanged();
+        EnsureWeeklySelection();
+        UpdateVisibility();
+    }
+
+    partial void OnFirstDueDateChanged(DateTime? value) => OnFormFieldChanged();
+
+    partial void OnFirstDueTimeChanged(TimeSpan? value) => OnFormFieldChanged();
+
+    partial void OnHasInvalidFirstDueTimeInputChanged(bool value) => OnFormFieldChanged();
+
+    partial void OnIntervalIndexChanged(int value)
+    {
+        OnFormFieldChanged();
+        UpdateVisibility();
+    }
+
+    partial void OnCustomIntervalMinutesChanged(int? value) => OnFormFieldChanged();
+
+    partial void OnHasInvalidCustomIntervalInputChanged(bool value) => OnFormFieldChanged();
+
+    partial void OnRelativeOffsetMinutesChanged(int? value) => OnFormFieldChanged();
+
+    partial void OnHasInvalidRelativeOffsetInputChanged(bool value) => OnFormFieldChanged();
+
+    partial void OnCalendarFrequencyIndexChanged(int value)
+    {
+        OnFormFieldChanged();
+        EnsureWeeklySelection();
+        UpdateVisibility();
+    }
+
+    partial void OnCalendarIntervalChanged(int? value) => OnFormFieldChanged();
+
+    partial void OnHasInvalidCalendarIntervalInputChanged(bool value) => OnFormFieldChanged();
+
+    partial void OnCalendarMonthIndexChanged(int value) => OnFormFieldChanged();
+
+    partial void OnCalendarDayIndexChanged(int value) => OnFormFieldChanged();
+
+    partial void OnCalendarLastDayChanged(bool value)
+    {
+        OnFormFieldChanged();
+        UpdateVisibility();
+    }
+
+    [RelayCommand]
+    private void CancelRuleEdit() => BeginAddRule();
+
     private void BeginAddRule()
     {
         _updatingForm = true;
         try
         {
-            _editingRuleId = null;
-            OnPropertyChanged(nameof(EditingRuleId));
+            EditingRuleId = null;
             ModeIndex = 0;
             IntervalIndex = 1;
             CustomIntervalMinutes = null;
@@ -631,7 +507,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         finally
         {
             _updatingForm = false;
-            SetFormDirty(false);
+            IsFormDirty = false;
         }
 
         UpdateVisibility();
@@ -642,8 +518,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         _updatingForm = true;
         try
         {
-            _editingRuleId = copy ? null : rule.Id;
-            OnPropertyChanged(nameof(EditingRuleId));
+            EditingRuleId = copy ? null : rule.Id;
             var dueUtc = rule switch
             {
                 AbsoluteOnceReminderRule once => once.ScheduledUtc,
@@ -723,14 +598,15 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         finally
         {
             _updatingForm = false;
-            SetFormDirty(false);
+            IsFormDirty = false;
         }
 
         UpdateVisibility();
         RequestFormFocus();
     }
 
-    private void SaveDraftRule()
+    [RelayCommand]
+    private void SaveRule()
     {
         ClearErrors();
         var result = _editor.SaveRule(_rules, BuildEditingRequest());
@@ -749,7 +625,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     {
         var hasValidTime = !HasInvalidFirstDueTimeInput && FirstDueTime is not null;
         return new ReminderRuleEditingRequest(
-            _editingRuleId,
+            EditingRuleId,
             ModeIndex switch
             {
                 0 => ReminderEditingMode.Once,
@@ -794,18 +670,19 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
         _rules = Freeze(result.Rules);
         ReplaceRules(_rules);
-        if (string.Equals(_editingRuleId, ruleId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(EditingRuleId, ruleId, StringComparison.OrdinalIgnoreCase))
         {
             BeginAddRule();
         }
     }
 
+    [RelayCommand]
     private void AcceptDraft()
     {
-        if (_formDirty)
+        if (IsFormDirty)
         {
-            SaveDraftRule();
-            if (_formDirty)
+            SaveRule();
+            if (IsFormDirty)
             {
                 return;
             }
@@ -815,6 +692,7 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         DraftAccepted?.Invoke(this, EventArgs.Empty);
     }
 
+    [RelayCommand]
     private void CancelDraft()
     {
         _resultRules = _initialRules;
@@ -901,26 +779,19 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsRulePreviewValid));
     }
 
-    private bool SetFormProperty<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+    private void OnFormFieldChanged()
     {
-        if (!SetProperty(ref field, value, propertyName))
-        {
-            return false;
-        }
-
         if (!_updatingForm)
         {
             MarkFormDirty();
         }
-
-        return true;
     }
 
     private void MarkFormDirty()
     {
         if (!_updatingForm)
         {
-            SetFormDirty(true);
+            IsFormDirty = true;
             NotifyPreviewChanged();
         }
 
@@ -949,32 +820,21 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
 
     private bool HasImmediateCustomIntervalError() =>
         IsCustomIntervalVisible &&
-        (_hasInvalidCustomIntervalInput ||
-         (_customIntervalMinutes is int minutes &&
+        (HasInvalidCustomIntervalInput ||
+         (CustomIntervalMinutes is int minutes &&
           minutes is < MinimumFixedIntervalMinutes or > MaximumFixedIntervalMinutes));
 
     private bool HasImmediateRelativeOffsetError() =>
         IsRelativeVisible &&
-        (_hasInvalidRelativeOffsetInput ||
-         (_relativeOffsetMinutes is int minutes &&
+        (HasInvalidRelativeOffsetInput ||
+         (RelativeOffsetMinutes is int minutes &&
           minutes is < MinimumRelativeOffsetMinutes or > MaximumRelativeOffsetMinutes));
 
     private bool HasImmediateCalendarIntervalError() =>
         IsCalendarIntervalVisible &&
-        (_hasInvalidCalendarIntervalInput ||
-         (_calendarInterval is int interval &&
+        (HasInvalidCalendarIntervalInput ||
+         (CalendarInterval is int interval &&
           interval is < MinimumCalendarInterval or > MaximumCalendarInterval));
-
-    private void SetFormDirty(bool value)
-    {
-        if (_formDirty == value)
-        {
-            return;
-        }
-
-        _formDirty = value;
-        OnPropertyChanged(nameof(IsFormDirty));
-    }
 
     private void ReplaceRules(IEnumerable<ReminderRule> rules)
     {
@@ -1155,14 +1015,11 @@ internal sealed class ReminderRulesEditorViewModel : ObservableObject
     };
 }
 
-internal sealed class ReminderRuleItemViewModel : ObservableObject
+internal sealed partial class ReminderRuleItemViewModel : ObservableObject
 {
     public ReminderRuleItemViewModel(ReminderRule rule)
     {
         Rule = rule;
-        EditCommand = new RelayCommand(() => EditRequested?.Invoke(this, EventArgs.Empty));
-        CopyCommand = new RelayCommand(() => CopyRequested?.Invoke(this, EventArgs.Empty));
-        DeleteCommand = new RelayCommand(() => DeleteRequested?.Invoke(this, EventArgs.Empty));
     }
 
     public ReminderRule Rule { get; }
@@ -1171,23 +1028,25 @@ internal sealed class ReminderRuleItemViewModel : ObservableObject
 
     public string Description => ReminderRulesEditorViewModel.Describe(Rule);
 
-    public RelayCommand EditCommand { get; }
-
-    public RelayCommand CopyCommand { get; }
-
-    public RelayCommand DeleteCommand { get; }
-
     internal event EventHandler? EditRequested;
 
     internal event EventHandler? CopyRequested;
 
     internal event EventHandler? DeleteRequested;
+
+    [RelayCommand]
+    private void Edit() => EditRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private void Copy() => CopyRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private void Delete() => DeleteRequested?.Invoke(this, EventArgs.Empty);
 }
 
-internal sealed class ReminderRuleWeekdayViewModel : ObservableObject
+internal sealed partial class ReminderRuleWeekdayViewModel : ObservableObject
 {
     private readonly Action _changed;
-    private bool _isSelected;
 
     public ReminderRuleWeekdayViewModel(DayOfWeek day, string text, Action changed)
     {
@@ -1200,17 +1059,10 @@ internal sealed class ReminderRuleWeekdayViewModel : ObservableObject
 
     public string Text { get; }
 
-    public bool IsSelected
-    {
-        get => _isSelected;
-        set
-        {
-            if (SetProperty(ref _isSelected, value))
-            {
-                _changed();
-            }
-        }
-    }
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    partial void OnIsSelectedChanged(bool value) => _changed();
 }
 
 internal sealed record ReminderRuleEditorErrorEventArgs(

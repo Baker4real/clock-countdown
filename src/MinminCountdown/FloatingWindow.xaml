@@ -210,9 +210,18 @@
                     Height="36"
                     Padding="0"
                     Margin="{local:SpacingThickness Left=SpacingUnit}"
-                    Content="✕"
                     FontSize="{DynamicResource TypeCaptionFontSize}"
-                    Style="{DynamicResource SecondaryButton}" />
+                    Style="{DynamicResource SecondaryButton}">
+              <Path Width="11"
+                    Height="11"
+                    Stretch="Uniform"
+                    Data="{StaticResource IconCloseGeometry}"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                    StrokeThickness="1.8"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    IsHitTestVisible="False" />
+            </Button>
           </Grid>
         </Grid>
 

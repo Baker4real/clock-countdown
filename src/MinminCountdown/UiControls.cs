@@ -2034,6 +2034,7 @@ internal static class IconGeometries
     public const string Search = "IconSearchGeometry";
     public const string Trash = "IconTrashGeometry";
     public const string ExternalLink = "IconExternalLinkGeometry";
+    public const string OverflowDots = "IconOverflowDotsGeometry";
 
     public static Geometry Resolve(FrameworkElement element, string resourceKey) =>
         element.TryFindResource(resourceKey) is Geometry elementGeometry

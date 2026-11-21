@@ -78,6 +78,7 @@
     <StreamGeometry x:Key="IconSearchGeometry" po:Freeze="True">M 10.12,6 A 4.12,4.12 0 1 0 1.88,6 A 4.12,4.12 0 1 0 10.12,6 M 9.45,9.45 L 12.38,12.38</StreamGeometry>
     <StreamGeometry x:Key="IconTrashGeometry" po:Freeze="True">M 3.4,4.5 L 14.6,4.5 M 6.2,4.5 L 6.2,3 C 6.2,2.4 6.7,2 7.3,2 L 10.7,2 C 11.3,2 11.8,2.4 11.8,3 L 11.8,4.5 M 4.6,4.5 L 5.3,14.2 C 5.3,15.2 6.1,16 7.1,16 L 10.9,16 C 11.9,16 12.7,15.2 12.7,14.2 L 13.4,4.5</StreamGeometry>
     <StreamGeometry x:Key="IconExternalLinkGeometry" po:Freeze="True">M 6.5,3.5 L 3.5,3.5 L 3.5,12.5 L 12.5,12.5 L 12.5,9.5 M 8.2,7.8 L 13.5,2.5 M 9.5,2.5 L 13.5,2.5 L 13.5,6.5</StreamGeometry>
+    <StreamGeometry x:Key="IconOverflowDotsGeometry" po:Freeze="True">M 3.5,8 L 3.52,8 M 8,8 L 8.02,8 M 12.5,8 L 12.52,8</StreamGeometry>
 
     <Style TargetType="{x:Type Window}">
       <Setter Property="FontFamily" Value="{DynamicResource UiFontFamily}" />
@@ -1100,10 +1101,24 @@
                         BorderThickness="1"
                         CornerRadius="{DynamicResource RadiusControl}" />
                 <Button x:Name="PART_PreviousButton"
-                        Content="‹"
                         Style="{StaticResource CalendarNavigationButton}"
                         ToolTip="上一个月"
-                        AutomationProperties.Name="上一个月" />
+                        AutomationProperties.Name="上一个月">
+                  <Path Width="16"
+                        Height="16"
+                        Data="{StaticResource IconChevronDownGeometry}"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                        StrokeThickness="2"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Round"
+                        RenderTransformOrigin="0.5,0.5"
+                        IsHitTestVisible="False">
+                    <Path.RenderTransform>
+                      <RotateTransform Angle="90" />
+                    </Path.RenderTransform>
+                  </Path>
+                </Button>
                 <Button x:Name="PART_HeaderButton"
                         Grid.Column="1"
                         MinWidth="112"
@@ -1111,10 +1126,24 @@
                         ToolTip="切换月份或年份" />
                 <Button x:Name="PART_NextButton"
                         Grid.Column="2"
-                        Content="›"
                         Style="{StaticResource CalendarNavigationButton}"
                         ToolTip="下一个月"
-                        AutomationProperties.Name="下一个月" />
+                        AutomationProperties.Name="下一个月">
+                  <Path Width="16"
+                        Height="16"
+                        Data="{StaticResource IconChevronDownGeometry}"
+                        Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                        StrokeThickness="2"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round"
+                        StrokeLineJoin="Round"
+                        RenderTransformOrigin="0.5,0.5"
+                        IsHitTestVisible="False">
+                    <Path.RenderTransform>
+                      <RotateTransform Angle="-90" />
+                    </Path.RenderTransform>
+                  </Path>
+                </Button>
               </Grid>
               <!-- CalendarItem 只给格子写 Grid.Row/Column，行列定义由模板提供：月视图 1 行星期标题
                    + 6 行日期 × 7 列，年/十年视图 3 × 4。缺定义时全部格子叠进同一格。 -->

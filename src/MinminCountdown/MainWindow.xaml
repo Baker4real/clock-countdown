@@ -275,6 +275,24 @@
                 </Setter.Value>
               </Setter>
             </Style>
+            <!-- #307：管理窗主添加按钮（添加倒计时 / 添加）用共享冻结矢量加号取代文本字形「＋」，
+                 保留 Content 字符串语义；切换到编辑态（保存修改 / 保存）时自动还原纯文本。 -->
+            <DataTemplate x:Key="MainAddButtonContentTemplate">
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Path Width="11"
+                      Height="11"
+                      Margin="0,0,6,0"
+                      Stretch="Uniform"
+                      VerticalAlignment="Center"
+                      Data="{StaticResource IconPlusGeometry}"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Button}}}"
+                      StrokeThickness="1.8"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      IsHitTestVisible="False" />
+                <TextBlock Text="{Binding}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
             <Style x:Key="MainPrimaryButton" TargetType="{x:Type Button}">
               <Setter Property="Foreground" Value="{DynamicResource MainActionTextBrush}" />
               <Setter Property="Background" Value="{DynamicResource MainActionBrush}" />
@@ -334,6 +352,14 @@
                   </ControlTemplate>
                 </Setter.Value>
               </Setter>
+              <Style.Triggers>
+                <Trigger Property="Content" Value="添加倒计时">
+                  <Setter Property="ContentTemplate" Value="{StaticResource MainAddButtonContentTemplate}" />
+                </Trigger>
+                <Trigger Property="Content" Value="添加">
+                  <Setter Property="ContentTemplate" Value="{StaticResource MainAddButtonContentTemplate}" />
+                </Trigger>
+              </Style.Triggers>
             </Style>
             <!-- #217：「保存设置」使用 CardAlt + ControlBorder，保留既有尺寸和主次角色。 -->
             <Style x:Key="MainSecondarySolidButton" TargetType="{x:Type Button}">
@@ -1299,7 +1325,7 @@
                           </StackPanel>
                           <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,19,0,0">
                             <Button x:Name="SaveCountdownButton" Width="133" Height="41" MinHeight="41"
-                                    Content="＋ 添加倒计时" Style="{StaticResource MainPrimaryButton}" />
+                                    Content="添加倒计时" Style="{StaticResource MainPrimaryButton}" />
                             <!-- 展开入口为矢量 V 形（与便签日期分组箭头同一画法，2px 圆头描边绑定按钮前景）：
                                  收起态朝下，展开态转 180°。原「⌄」「⌃」文本字形在 v52–v57 参考帧里只剩一个小点：
                                  共享内边距让 36 宽按钮的内容区只剩 4 DIP，所以 Padding 归零。 -->
@@ -1679,7 +1705,7 @@
                                       Width="98"
                                       Height="50"
                                       Padding="7,0"
-                                      Content="＋ 添加"
+                                      Content="添加"
                                       Style="{StaticResource MainPrimaryButton}" />
                               <Button x:Name="CancelNoteEdit"
                                       Height="50"

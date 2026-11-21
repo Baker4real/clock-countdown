@@ -3351,7 +3351,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             SyncCountdownReminderModeFromRules();
             CountdownEditorTitle.Text = "新增倒计时";
             SetCountdownEditorExpanded(false);
-            SaveCountdownButton.Content = "＋ 添加倒计时";
+            SaveCountdownButton.Content = "添加倒计时";
             CancelCountdownEdit.Visibility = Visibility.Collapsed;
             ClearCountdownFieldErrors();
             UiAccessibility.Announce(CountdownMessage, string.Empty);
@@ -3382,7 +3382,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NoteTags.SetSelection(snapshot.Filter.SelectedTagIds);
         _noteReminderRules = Array.Empty<ReminderRule>();
         UpdateNoteReminderRulesSummary();
-        SaveNoteButton.Content = "＋ 添加";
+        SaveNoteButton.Content = "添加";
         CancelNoteEdit.Visibility = Visibility.Collapsed;
         UiAccessibility.Announce(NoteMessage, string.Empty);
     }

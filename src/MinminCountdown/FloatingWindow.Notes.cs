@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using MinminCountdown.Core;
+using WpfPath = System.Windows.Shapes.Path;
 
 namespace MinminCountdown;
 
@@ -317,6 +318,29 @@ public sealed partial class FloatingWindow
     /// </summary>
     private Button BuildNoteOverflowMenu(NoteRecord note)
     {
+        var overflowIcon = new WpfPath
+        {
+            Width = 16,
+            Height = 16,
+            Data = IconGeometries.Resolve(this, IconGeometries.OverflowDots),
+            StrokeThickness = 2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        overflowIcon.SetBinding(
+            System.Windows.Shapes.Shape.StrokeProperty,
+            new System.Windows.Data.Binding(nameof(Control.Foreground))
+            {
+                RelativeSource = new System.Windows.Data.RelativeSource(
+                    System.Windows.Data.RelativeSourceMode.FindAncestor,
+                    typeof(Button),
+                    1)
+            });
+
         var trigger = UiAccessibility.Name(
             new Button
             {
@@ -330,13 +354,7 @@ public sealed partial class FloatingWindow
                 VerticalAlignment = VerticalAlignment.Center,
                 FocusVisualStyle = null,
                 Style = (Style)FindResource("FloatingHeaderIconButton"),
-                Content = new TextBlock
-                {
-                    Text = "…",
-                    FontSize = (double)FindResource("TypeCaptionFontSize"),
-                    FontWeight = FontWeights.SemiBold,
-                    HorizontalAlignment = HorizontalAlignment.Center
-                }
+                Content = overflowIcon
             },
             $"更多操作：编辑或删除便签 {note.Text}");
         trigger.SetResourceReference(Control.ForegroundProperty, ActiveTheme.MutedBrushKey);

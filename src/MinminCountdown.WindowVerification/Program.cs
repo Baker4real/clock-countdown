@@ -51,6 +51,7 @@ internal static class Program
     internal const string FloatingNoteOverflowNativeAndLazyFactName = "FloatingNoteOverflowMenuNativeAndLazy";
     internal const string FloatingNoteOverflowInteractionsAndMotionFactName = "FloatingNoteOverflowMenuInteractionsAndMotion";
     internal const string SharedIconGeometriesFactName = "SharedIconGeometriesFrozenAndDeduplicated";
+    internal const string VectorizedTextGlyphIconsFactName = "VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry";
 
     private const string ViewportFactMeaning =
         "两个列表的首次、筛选无结果与分段无内容空态在首选、工作区缩小、720×560 与 DPI 变化窗口里都没有虚假滚动范围，" +
@@ -157,6 +158,8 @@ internal static class Program
         "Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）";
     private const string SharedIconGeometriesFactMeaning =
         "全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）";
+    private const string VectorizedTextGlyphIconsFactMeaning =
+        "日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）";
 
     [STAThread]
     private static int Main()
@@ -206,7 +209,8 @@ internal static class Program
             [TagManagerErrorsEscDeleteFactName] = false,
             [FloatingNoteOverflowNativeAndLazyFactName] = false,
             [FloatingNoteOverflowInteractionsAndMotionFactName] = false,
-            [SharedIconGeometriesFactName] = false
+            [SharedIconGeometriesFactName] = false,
+            [VectorizedTextGlyphIconsFactName] = false
         };
         var failures = new List<string>();
 
@@ -465,6 +469,11 @@ internal static class Program
                 SharedIconGeometriesFactMeaning,
                 () => IconGeometryAndVectorIconsScenario.RunSharedGeometries(
                     SharedIconGeometriesFactMeaning));
+            RunFact(
+                VectorizedTextGlyphIconsFactName,
+                VectorizedTextGlyphIconsFactMeaning,
+                () => IconGeometryAndVectorIconsScenario.RunVectorizedTextGlyphIcons(
+                    VectorizedTextGlyphIconsFactMeaning));
         }
         catch (Exception exception)
         {

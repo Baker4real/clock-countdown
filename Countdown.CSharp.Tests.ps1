@@ -3902,6 +3902,7 @@ exit 23
         FloatingNoteOverflowMenuNativeAndLazy = '悬浮窗便签「…」不再为每张卡预创建弹层与按钮，打开时懒创建并跨卡复用共享暖粉原生 ContextMenu / MenuItem（#309），自动化角色为 Menu / MenuItem 且名称包含动作与便签对象，打开期间跟随系统对比度切换并产出实拍（#319）'
         FloatingNoteOverflowMenuInteractionsAndMotion = '悬浮窗便签「…」支持方向键移动、Enter/空格激活编辑与删除（删除保持以取消为安全默认的确认框与 10 秒撤销，卡片 Delete 行为不变）、Esc 立即关闭并把焦点还给「…」触发器、点外部关闭；指针打开消费既有弹层进入与退出动效，键盘打开与系统关闭动画均即时到位（#319）'
         SharedIconGeometriesFrozenAndDeduplicated = '全部图标几何集中为 App.xaml 冻结共享 Geometry 资源，同类图标跨窗口与代码复用同一冻结实例，管理窗实心齿轮与浮窗描边齿轮保留各自独立几何（#307）'
+        VectorizedTextGlyphIconsPreserveAccessibilityAndGeometry = '日历翻月、悬浮搜索清除、主窗添加按钮加号与悬浮便签「…」四处文本字形改为共享冻结矢量 Path，描边规格一致，可访问名、命中区、Tab 顺序、提示与 #319 原生菜单不变（#307）'
     }
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `

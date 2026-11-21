@@ -36,6 +36,7 @@ internal static class Program
     internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
+    internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
     internal const string OverlaySurfaceBordersFactName = "OverlaySurfaceBordersMeetContrastWithoutShadow";
     internal const string FilterMatchModeAndFocusFactName = "FilterMatchModeDisclosureAndOverlayFocusLifecycle";
 
@@ -105,6 +106,9 @@ internal static class Program
     private const string MainEmptyAndHighContrastRibbonFactMeaning =
         "管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；" +
         "系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）";
+    private const string FloatingWorkdayCompletionFactMeaning =
+        "下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；" +
+        "月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）";
     private const string OverlaySurfaceBordersFactMeaning =
         "筛选、标签管理、显示设置与标签选择四个弹层（含主窗两处与浮窗一处标签选择器）表面边界均消费 ControlBorderBrush，" +
         "对自身底色与各邻近页面/卡片表面对比度均不低于 3:1，保持原底色与 RadiusOverlay 圆角且无投影，并在系统对比度主题开启、换色与恢复时正确映射（#305）";
@@ -146,6 +150,7 @@ internal static class Program
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
             [MainEmptyAndHighContrastRibbonFactName] = false,
+            [FloatingWorkdayCompletionFactName] = false,
             [OverlaySurfaceBordersFactName] = false,
             [FilterMatchModeAndFocusFactName] = false
         };
@@ -326,6 +331,11 @@ internal static class Program
                 () => MainWindowAlignmentAndPolishScenario.RunEmptyStateAndHighContrastRibbon(
                     theme,
                     MainEmptyAndHighContrastRibbonFactMeaning));
+            RunFact(FloatingWorkdayCompletionFactName, FloatingWorkdayCompletionFactMeaning, () =>
+            {
+                FloatingWorkdayCompletionScenario.Run();
+                return (true, FloatingWorkdayCompletionFactMeaning);
+            });
             RunFact(
                 OverlaySurfaceBordersFactName,
                 OverlaySurfaceBordersFactMeaning,

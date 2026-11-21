@@ -19,7 +19,8 @@ internal sealed record FloatingBottomStatusPresentation(
 
 /// <summary>
 ///     悬浮窗两个工作区（倒计时、便签）共用的底部区域规则：
-///     月薪大于 0 且日历就绪时显示今日已赚金额；月薪等于 0 且日历就绪时显示手写体鼓励文案；
+///     月薪大于 0 且日历就绪时显示今日已赚金额（下班收尾卡展示金额期间改为鼓励文案以避免重复，#317）；
+///     月薪等于 0 且日历就绪时显示手写体鼓励文案；
 ///     日历未就绪时统一显示 <see cref="CalendarUnavailableText" />（#218），其余情况显示日历状态文本。
 ///     便签工作区直接复用本组件，仅鼓励文案可以不同。
 /// </summary>
@@ -39,10 +40,16 @@ internal static class FloatingBottomStatus
         string calendarState,
         string calendarStatusText,
         string encouragementText,
-        bool hideEarnings = false)
+        bool hideEarnings = false,
+        bool suppressEarnings = false)
     {
         if (earnings is not null)
         {
+            if (suppressEarnings)
+            {
+                return new(FloatingBottomStatusKind.Encouragement, encouragementText);
+            }
+
             return new(FloatingBottomStatusKind.Earnings,
                 hideEarnings ? HiddenEarningsText : $"今日已赚 ￥{earnings.Value:N2}");
         }

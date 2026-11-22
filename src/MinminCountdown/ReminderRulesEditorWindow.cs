@@ -98,6 +98,7 @@ internal sealed class ReminderRulesEditorWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         // #324：改为不透明无边框窗口，向 DWM 请求系统圆角、投影与 1 DIP 暖边。
         SetResourceReference(BackgroundProperty, "CanvasBrush");
+        SetResourceReference(Window.FontFamilyProperty, "UiFontFamily");
         DwmWindowChrome.ConfigureOpaqueBorderlessChrome(this);
         ResizeMode = ResizeMode.CanResizeWithGrip;
         DataContext = _viewModel;

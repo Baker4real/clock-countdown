@@ -61,11 +61,121 @@ internal static partial class ValidationReport
         Check("FloatingScrollContextHint", ValidationExercises.RunFloatingScrollContextHintPreflight);
         Check("DisclosureArrowMotion", ValidationExercises.RunDisclosureArrowMotionBehavior);
         Check("ReminderCenterEntryVisualIdentity", ValidationExercises.ProbeReminderCenterEntryVisualIdentity);
+        Check("WindowUiFontFamily", () => RunWindowUiFontFamilyPreflight(assetRoot));
         if (Check("MainWindowWorkAreaFit", () => ValidationExercises.RunMainWindowWorkAreaFitBehavior(assetRoot)))
         {
             Check("ConfirmationDialog", () => RunConfirmationWindowPreflight(theme, assetRoot));
         }
         return new { Passed = passed, Total = checks.Count, Failed = failures.Count, Checks = checks, Failures = failures };
+    }
+
+    private static bool RunWindowUiFontFamilyPreflight(string assetRoot)
+    {
+        var expectedUiFont = (Application.Current.FindResource("UiFontFamily") as FontFamily)?.Source
+            ?? throw new InvalidOperationException("Application.Resources 缺少 UiFontFamily。");
+        var allowedTextBlockFonts = new HashSet<string>(StringComparer.Ordinal)
+        {
+            expectedUiFont,
+            (Application.Current.FindResource("HandwrittenDecoFontFamily") as FontFamily)?.Source ?? string.Empty,
+            (Application.Current.FindResource("NumeralFontFamily") as FontFamily)?.Source ?? string.Empty
+        };
+
+        var settingsPath = Path.Combine(Path.GetTempPath(), $"window-font-preflight-{Guid.NewGuid():N}.settings.json");
+        var diagnosticPath = settingsPath + ".diagnostic.jsonl";
+        var workspace = DesktopWorkspace.Load(settingsPath, new SettingsStore());
+        using var calendar = new HolidayCalendar(assetRoot);
+        var logger = new DiagnosticLogger(diagnosticPath);
+
+        var main = new MainWindow(workspace, calendar, logger, assetRoot)
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        var floating = new FloatingWindow(workspace, calendar, main, assetRoot)
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        var reminderCenter = new ReminderCenterWindow
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        var reminderRules = new ReminderRulesEditorWindow(Array.Empty<ReminderRule>(), SystemClock.Instance)
+        {
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Opacity = 0
+        };
+        var settingsRecovery = SettingsRecoveryWindow.CreateForValidation("预检字体绑定", canRecover: true);
+        settingsRecovery.ShowInTaskbar = false;
+        settingsRecovery.ShowActivated = false;
+        settingsRecovery.Opacity = 0;
+        var activationFailure = InstanceActivationFailureWindow.CreateForValidation();
+        activationFailure.ShowInTaskbar = false;
+        activationFailure.ShowActivated = false;
+        activationFailure.Opacity = 0;
+
+        Window[] windows = [main, floating, reminderCenter, reminderRules, settingsRecovery, activationFailure];
+        try
+        {
+            foreach (var window in windows)
+            {
+                window.Show();
+                PumpDispatcher();
+                window.UpdateLayout();
+                var actual = window.FontFamily?.Source ?? string.Empty;
+                if (!string.Equals(actual, expectedUiFont, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"{window.GetType().Name}.FontFamily 未绑定 UiFontFamily（actual=\"{actual}\"）。");
+                }
+            }
+
+            foreach (Window surface in new Window[] { main, floating })
+            {
+                var stack = new Stack<DependencyObject>();
+                stack.Push(surface);
+                while (stack.Count > 0)
+                {
+                    var current = stack.Pop();
+                    if (current is TextBlock textBlock && textBlock.TemplatedParent is null)
+                    {
+                        var font = textBlock.FontFamily?.Source ?? string.Empty;
+                        if (!allowedTextBlockFonts.Contains(font))
+                        {
+                            throw new InvalidOperationException(
+                                $"{surface.GetType().Name} 内的 TextBlock（Name=\"{textBlock.Name}\"）未继承主题字体（actual=\"{font}\"）。");
+                        }
+                    }
+
+                    var count = VisualTreeHelper.GetChildrenCount(current);
+                    for (var index = 0; index < count; index++)
+                    {
+                        stack.Push(VisualTreeHelper.GetChild(current, index));
+                    }
+                }
+            }
+
+            if (File.Exists(settingsPath))
+            {
+                throw new InvalidOperationException("WindowUiFontFamily preflight wrote its empty settings file.");
+            }
+
+            return true;
+        }
+        finally
+        {
+            foreach (var window in windows)
+            {
+                try { window.Close(); } catch { }
+            }
+            PumpDispatcher();
+            if (File.Exists(diagnosticPath)) { File.Delete(diagnosticPath); }
+        }
     }
 
     private static bool RunConfirmationWindowPreflight(ApplicationTheme theme, string assetRoot)

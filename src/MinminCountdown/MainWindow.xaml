@@ -13,6 +13,7 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         Topmost="{Binding IsChecked, ElementName=TopmostCheck, Mode=OneWay}"
+        FontFamily="{DynamicResource UiFontFamily}"
         Background="{DynamicResource BackgroundBrush}">
   <shell:WindowChrome.WindowChrome>
     <!-- #211：标题拖动区覆盖整个身份区（行高 130）的空白；身份区内置顶/最小化/关闭

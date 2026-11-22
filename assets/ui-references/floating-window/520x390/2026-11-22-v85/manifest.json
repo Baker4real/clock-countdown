@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineVersion": "2026-11-22-v84",
+  "baselineVersion": "2026-11-22-v85",
   "captureKind": "actual-wpf-floating-window",
   "canvas": {
     "width": 520,
@@ -9,7 +9,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
-    "aggregateSha256": "104D3432816BA5DA584D6386F4F6644C93A4E2AC502B5173842FF73A7D1C3898",
+    "aggregateSha256": "0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783",
     "files": [
       {
         "path": "assets/floating-plush/component-day-card-blank.png",
@@ -93,7 +93,7 @@
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml",
-        "sha256": "D980459D95B474B3B707FFAC7FD96A06CA893DC23D49AA442E2A6DC645230AB9"
+        "sha256": "AE48B4412E3D0C37D5D3DCF606890A2E4204EBD48DE9A95268D499012EA19F2F"
       },
       {
         "path": "src/MinminCountdown/FloatingWindow.xaml.cs",
@@ -160,7 +160,7 @@
       "scenario": "floating-countdowns-baseline",
       "theme": "Day",
       "state": "Baseline",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v84/floating-countdowns-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v85/floating-countdowns-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "DE1A4EE5A8EED50F49650F11A7910EFB6B572B87DF56F9A37EB70C8964F62419",
@@ -206,7 +206,7 @@
       "scenario": "floating-workday-complete",
       "theme": "Day",
       "state": "Complete",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v84/floating-workday-complete-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v85/floating-workday-complete-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "EF2A2D33E755D0C177FA6753E1F7E2501E97E235C8A96B2124C3D4221FEC85BD",
@@ -252,7 +252,7 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Top",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v84/long-notes-day-top.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v85/long-notes-day-top.png",
       "width": 520,
       "height": 390,
       "pngSha256": "2F1D80D82CE281ED8AF297B56D0E6A5B1B06CCE39BFA0179E477055837EADB90",
@@ -298,7 +298,7 @@
       "scenario": "long-notes",
       "theme": "Day",
       "state": "Bottom",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v84/long-notes-day-bottom.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v85/long-notes-day-bottom.png",
       "width": 520,
       "height": 390,
       "pngSha256": "CA8BEDCB44A8C08F749A7158412A52786B1BF4BFFF8A13F0642C9087BF30E7AE",
@@ -344,7 +344,7 @@
       "scenario": "notes-search-expanded",
       "theme": "Day",
       "state": "Expanded",
-      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v84/notes-search-expanded-day.png",
+      "path": "assets/ui-references/floating-window/520x390/2026-11-22-v85/notes-search-expanded-day.png",
       "width": 520,
       "height": 390,
       "pngSha256": "B9566240C8E2590F0666C7F846EDD685A28228E001718A0F5F2D7E9101E829A7",

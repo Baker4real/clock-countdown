@@ -2,7 +2,15 @@
 
 # 安装事务生命周期：真实事务原语跑在隔离根下，计划任务、时间服务、进程与桌面图标经记录调用顺序的
 # 测试 port 注入；覆盖延迟提交、事务验收、回滚、启动器归属冲突、阶段故障回执与 reparse point 复查。
-$lifecycleTestRoot = Join-Path $PSScriptRoot ("install-lifecycle-test-" + [guid]::NewGuid().ToString('N'))
+# 测试根放在工作树外：中途强杀也不会把未跟踪目录留在 worktree 里卡住 git worktree remove。
+$lifecycleParentRoot = if ($env:GITHUB_ACTIONS -ne 'true' -and (Test-Path -LiteralPath 'D:\agents\run-evidence' -PathType Container)) {
+    'D:\agents\run-evidence\clock-countdown-core-tests'
+}
+else {
+    [System.IO.Path]::GetTempPath()
+}
+[void] [System.IO.Directory]::CreateDirectory($lifecycleParentRoot)
+$lifecycleTestRoot = Join-Path $lifecycleParentRoot ("install-lifecycle-test-" + [guid]::NewGuid().ToString('N'))
 $lifecycleStagingRoot = Join-Path $lifecycleTestRoot 'staging'
 $lifecycleJunctionTarget = Join-Path $lifecycleTestRoot 'junction-target'
 $lifecycleJunctionPath = $null

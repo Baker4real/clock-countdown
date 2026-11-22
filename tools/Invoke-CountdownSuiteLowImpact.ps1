@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    低影响官方套件入口。Build 串行门禁通过后，其余阶段最多并行 2 个。
+    低影响官方套件入口。Build 串行门禁通过后，常规阶段默认最多并行 2 个，-Closeout 默认串行（1）。
     窗口与控制台默认进入不可见 Win32 桌面，BelowNormal；用户桌面泄漏即失败。
     每次启动立即写 run.json / summary.json，阶段超时默认 1800 秒。
     创建 run.json 中的 CancellationPath 可请求取消；Ctrl+C 也执行终态收口。
@@ -65,6 +65,7 @@ if ('TauriGate' -in $Stage) {
     throw 'Tauri 参数只能用于 TauriGate 阶段。'
 }
 if ('Build' -in $Stage -and 'IncrementalBuild' -in $Stage) { throw 'Build（Clean + R2R）与 IncrementalBuild 不能出现在同一轮。' }
+$MaxParallel = Resolve-CountdownSuiteMaxParallel -RequestedMaxParallel $MaxParallel -MaxParallelBound:($PSBoundParameters.ContainsKey('MaxParallel')) -Closeout:([bool]$Closeout)
 $closeoutPreflight = $null
 if ($Closeout) {
     $missing = @(@(Get-CountdownRequiredSuiteStage) | Where-Object { $_ -notin $Stage })

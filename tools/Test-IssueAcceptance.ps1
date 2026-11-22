@@ -2,6 +2,7 @@
 [CmdletBinding()]
 param(
     [string] $SchemaPath = (Join-Path $PSScriptRoot '..\docs\agents\issue-acceptance.json'),
+    [Alias('Path')]
     [string] $RecordPath,
     [switch] $Json,
     [switch] $SelfTest

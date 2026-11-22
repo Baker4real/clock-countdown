@@ -63,6 +63,7 @@ internal sealed class ReminderCenterWindow : Window
         Topmost = false;
         // #324：改为不透明无边框窗口，向 DWM 请求系统圆角、投影与 1 DIP 暖边。
         SetResourceReference(BackgroundProperty, "ReminderPageBrush");
+        SetResourceReference(Window.FontFamilyProperty, "UiFontFamily");
         DwmWindowChrome.ConfigureOpaqueBorderlessChrome(this);
         DataContext = _viewModel;
         AutomationProperties.SetName(this, "提醒中心");

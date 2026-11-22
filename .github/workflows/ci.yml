@@ -110,7 +110,7 @@ jobs:
       - name: Run low-impact tooling and popup guards
         shell: pwsh
         run: |
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling -StageTimeoutSeconds 300
+          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\tools\Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling -MaxParallel 1 -StageTimeoutSeconds 300
           $suiteExit = $LASTEXITCODE
           if ($suiteExit -ne 0) { exit $suiteExit }
 

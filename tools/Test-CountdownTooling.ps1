@@ -39,13 +39,44 @@ function Add-ToolingCheck {
 }
 
 function Invoke-ToolingValidationDiagnostics {
-    $output = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownValidationDiagnostics.ps1') -Json)
-    $exitCode = $LASTEXITCODE
-    $text = $output -join "`n"
+    $pwsh = (Get-Command pwsh -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new($pwsh)
+    foreach ($argument in @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'Test-CountdownValidationDiagnostics.ps1'), '-Json')) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+    $process = [System.Diagnostics.Process]::Start($startInfo)
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+        $text = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult().Trim()
+    }
+    finally {
+        $process.Dispose()
+    }
     $report = try { $text | ConvertFrom-Json -Depth 12 -ErrorAction Stop } catch { $null }
+    $passed = $exitCode -eq 0 -and $null -ne $report -and [bool] $report.Valid
+    $detail = if ($null -ne $report) {
+        $report | ConvertTo-Json -Compress -Depth 12
+    }
+    else {
+        $combined = if ([string]::IsNullOrWhiteSpace($stderr)) { $text } else { "$text | stderr: $stderr" }
+        $combined -replace '\s+', ' '
+    }
+    if (-not $passed -and $null -ne $report -and -not [string]::IsNullOrWhiteSpace($stderr)) {
+        $detail = "$detail | stderr: $($stderr -replace '\s+', ' ')"
+    }
     [pscustomobject]@{
-        Passed = $exitCode -eq 0 -and $null -ne $report -and [bool] $report.Valid
-        Detail = if ($null -ne $report) { $report | ConvertTo-Json -Compress -Depth 12 } else { $text -replace '\s+', ' ' }
+        Passed = $passed
+        Detail = $detail
     }
 }
 
@@ -80,6 +111,8 @@ foreach ($requiredPath in @(
         'tools/Test-IssueWriteback.ps1',
         'tools/Test-CountdownPublicationDiff.ps1',
         'tools/Test-CountdownPublicationDiff.Tests.ps1',
+        'tools/Test-CountdownUtf8BomDrift.ps1',
+        'tools/Invoke-CountdownPreCommit.ps1',
         'tools/Test-DesignTokenDrift.ps1',
         'tools/Test-CountdownBuildPreflight.ps1',
         'tools/Countdown.BuildPreflight.psm1',
@@ -100,9 +133,11 @@ foreach ($requiredPath in @(
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
 $schemaTest = & (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
-Add-ToolingCheck -Name 'issue-acceptance:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $schemaTest.Valid) -Detail ($schemaTest | ConvertTo-Json -Compress)
+$schemaPathAliasOk = (Get-Command (Join-Path $PSScriptRoot 'Test-IssueAcceptance.ps1')).Parameters['RecordPath'].Aliases -contains 'Path'
+Add-ToolingCheck -Name 'issue-acceptance:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $schemaTest.Valid -and $schemaPathAliasOk) -Detail ("$($schemaTest | ConvertTo-Json -Compress); pathAlias=$schemaPathAliasOk")
 $writebackTest = & (Join-Path $PSScriptRoot 'Invoke-IssueWriteback.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
-Add-ToolingCheck -Name 'issue-writeback:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackTest.Valid) -Detail ($writebackTest | ConvertTo-Json -Compress)
+$writebackPathAliasOk = (Get-Command (Join-Path $PSScriptRoot 'Invoke-IssueWriteback.ps1')).Parameters['RecordPath'].Aliases -contains 'Path'
+Add-ToolingCheck -Name 'issue-writeback:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackTest.Valid -and $writebackPathAliasOk) -Detail ("$($writebackTest | ConvertTo-Json -Compress); pathAlias=$writebackPathAliasOk")
 $writebackRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-IssueWriteback.ps1') -Json | ConvertFrom-Json -Depth 20
 Add-ToolingCheck -Name 'issue-writeback:regression' -Passed ($LASTEXITCODE -eq 0 -and [bool] $writebackRegression.Valid) -Detail ($writebackRegression | ConvertTo-Json -Compress -Depth 20)
 $diffRegression = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.Tests.ps1') -Json | ConvertFrom-Json -Depth 10
@@ -506,6 +541,72 @@ $focusVisualProblems = @($focusVisualSelfTestFailures) + @($focusVisualScan.Leak
 $focusVisualDetail = if ($focusVisualProblems.Count -eq 0) { "扫描 $($focusXaml.Count) 个 XAML，$($focusVisualScan.SelfDrawing) 个自画焦点的样式都清了 FocusVisualStyle；自检 5 例通过" } else { $focusVisualProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:focus-visual-style-null' -Passed ($focusVisualProblems.Count -eq 0) -Detail $focusVisualDetail
 
+# App.xaml 的隐式 <Style TargetType="{x:Type Window}"> 不会应用到 Window 子类，
+# 每个 XAML 窗口根和纯代码 : Window 子类都必须显式绑定 UiFontFamily，避免子类退回系统默认字体。
+function Get-WindowUiFontFamilyLeaks {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $XamlByName,
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $CodeByName
+    )
+    $xamlNamespace = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $xamlWindowClasses = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $checkedWindows = 0
+    foreach ($entry in $XamlByName.GetEnumerator()) {
+        $doc = [xml] $entry.Value
+        $root = $doc.DocumentElement
+        if ($null -eq $root -or $root.LocalName -ne 'Window') { continue }
+        $checkedWindows++
+        $className = $root.GetAttribute('Class', $xamlNamespace)
+        if (-not [string]::IsNullOrWhiteSpace($className)) {
+            [void] $xamlWindowClasses.Add(($className -split '\.')[-1])
+        }
+        $fontFamily = $root.GetAttribute('FontFamily')
+        if ($fontFamily -notmatch '^\{(DynamicResource|StaticResource)\s+UiFontFamily\}$') {
+            $leaks.Add("$($entry.Key) 的 <Window> 根缺少 FontFamily=""{DynamicResource UiFontFamily}""")
+        }
+    }
+    $classDeclPattern = [regex]'(?m)\bclass\s+(?<name>[A-Za-z_]\w*)\b'
+    $windowSubclassPattern = [regex]'(?m)\bclass\s+(?<name>[A-Za-z_]\w*)\s*:\s*(?:System\.Windows\.)?Window\b'
+    $fontBindingPattern = [regex]'SetResourceReference\s*\(\s*(?:(?:Window|Control|TextElement)\.)?FontFamilyProperty\s*,\s*"UiFontFamily"\s*\)|FontFamily\s*=\s*\(FontFamily\)FindResource\(\s*"UiFontFamily"\s*\)'
+    foreach ($entry in $CodeByName.GetEnumerator()) {
+        $source = [string] $entry.Value
+        $allClasses = @($classDeclPattern.Matches($source))
+        foreach ($match in $windowSubclassPattern.Matches($source)) {
+            $name = $match.Groups['name'].Value
+            if ($xamlWindowClasses.Contains($name)) { continue }
+            $checkedWindows++
+            $nextClass = $allClasses | Where-Object { $_.Index -gt $match.Index } | Select-Object -First 1
+            $sliceLength = if ($null -ne $nextClass) { $nextClass.Index - $match.Index } else { $source.Length - $match.Index }
+            $slice = $source.Substring($match.Index, $sliceLength)
+            if (-not $fontBindingPattern.IsMatch($slice)) {
+                $leaks.Add("$($entry.Key) 的 Window 子类 $name 缺少 UiFontFamily 资源绑定（SetResourceReference(Window.FontFamilyProperty, ""UiFontFamily"")）")
+            }
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); CheckedWindows = $checkedWindows }
+}
+
+$windowFontSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'xaml-missing'; Leaks = 1; Xaml = @{ 'A.xaml' = '<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="App.WinA" />' }; Code = @{ 'A.xaml.cs' = 'public sealed partial class WinA : Window { }' } },
+        @{ Name = 'xaml-valid'; Leaks = 0; Xaml = @{ 'A.xaml' = '<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="App.WinA" FontFamily="{DynamicResource UiFontFamily}" />' }; Code = @{ 'A.xaml.cs' = 'public sealed partial class WinA : Window { }' } },
+        @{ Name = 'code-missing'; Leaks = 1; Xaml = @{}; Code = @{ 'B.cs' = 'internal sealed class WinB : Window { public WinB() { Title = "B"; } }' } },
+        @{ Name = 'code-valid'; Leaks = 0; Xaml = @{}; Code = @{ 'B.cs' = 'internal sealed class WinB : Window { public WinB() { SetResourceReference(Window.FontFamilyProperty, "UiFontFamily"); } }' } },
+        @{ Name = 'two-classes-second-missing'; Leaks = 1; Xaml = @{}; Code = @{ 'Pair.cs' = 'internal sealed class Win1 : Window { public Win1() { SetResourceReference(Window.FontFamilyProperty, "UiFontFamily"); } } internal sealed class Win2 : Window { public Win2() { Title = "2"; } }' } }
+    )) {
+    $caseLeaks = @((Get-WindowUiFontFamilyLeaks -XamlByName $case.Xaml -CodeByName $case.Code).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $windowFontSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+$windowCodeByName = [ordered]@{}
+foreach ($csFile in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown') -Filter '*.cs' -File) {
+    $windowCodeByName[$csFile.Name] = [System.IO.File]::ReadAllText($csFile.FullName)
+}
+$windowFontScan = Get-WindowUiFontFamilyLeaks -XamlByName $focusXaml -CodeByName $windowCodeByName
+$windowFontProblems = @($windowFontSelfTestFailures) + @($windowFontScan.Leaks)
+$windowFontDetail = if ($windowFontProblems.Count -eq 0) { "检查 $($windowFontScan.CheckedWindows) 个 Window 子类均显式绑定 UiFontFamily；自检 5 例通过" } else { $windowFontProblems -join ' | ' }
+Add-ToolingCheck -Name 'xaml:window-uifont-family' -Passed ($windowFontProblems.Count -eq 0) -Detail $windowFontDetail
+
 # Move-Item -Force 第一次改名撞上读句柄就先删目标再改名：失败时旧文件已经没了（安装 journal 与启动回执都这样坏过）。
 # 生产脚本里的存量只减不增；替换文件用 [System.IO.File]::Move(源, 目标, $true) 一次改名，撞上占用时有界退避重试。
 function Get-ForcedMoveItemCount {
@@ -569,10 +670,94 @@ $forcedMoveProblems = @($forcedMoveSelfTestFailures) + @($forcedMoveFailures)
 $forcedMoveDetail = if ($forcedMoveProblems.Count -eq 0) { "$(@($forcedMoveCounts) -join '; ')；扫描 $($forcedMovePaths.Count) 个生产脚本；自检 5 例通过" } else { $forcedMoveProblems -join ' | ' }
 Add-ToolingCheck -Name 'powershell:forced-move-item' -Passed ($forcedMoveProblems.Count -eq 0) -Detail $forcedMoveDetail
 
+# 外部脚本与子进程调用守卫：禁止引用已退役的 invoke-safe-tree-delete 批处理 shim，也禁止把 *.ps1
+# 直接传给 Start-Process -FilePath（Windows 下非可执行文件会报「%1 不是有效的 Win32 应用程序」）。
+function Get-ExternalScriptInvocationIssues {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Ast)
+    $retiredShimPattern = 'invoke-safe-tree-delete' + '\.cmd'
+    $issues = [System.Collections.Generic.List[string]]::new()
+    foreach ($strNode in $Ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+                $node -is [System.Management.Automation.Language.ExpandableStringExpressionAst]
+            }, $true)) {
+        if ($strNode.Value -match $retiredShimPattern) {
+            $issues.Add("第 $($strNode.Extent.StartLineNumber) 行引用已退役 shim（改用 pwsh.exe -File Invoke-SafeTreeDelete.ps1）")
+        }
+    }
+    foreach ($cmd in $Ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -in @('Start-Process', 'saps', 'start')
+            }, $true)) {
+        $elements = $cmd.CommandElements
+        $filePathElement = $null
+        for ($i = 1; $i -lt $elements.Count; $i++) {
+            $el = $elements[$i]
+            if ($el -is [System.Management.Automation.Language.CommandParameterAst]) {
+                if ($el.ParameterName -in @('FilePath', 'File', 'Path')) {
+                    if ($null -ne $el.Argument) { $filePathElement = $el.Argument; break }
+                    elseif ($i + 1 -lt $elements.Count) { $filePathElement = $elements[$i + 1]; break }
+                }
+                elseif ($null -eq $el.Argument -and $el.ParameterName -notin @('NoNewWindow', 'PassThru', 'Wait', 'LoadUserProfile', 'UseNewEnvironment')) {
+                    $i++
+                }
+            }
+            elseif ($null -eq $filePathElement) {
+                $filePathElement = $el
+                break
+            }
+        }
+        if ($filePathElement -is [System.Management.Automation.Language.StringConstantExpressionAst] -or
+            $filePathElement -is [System.Management.Automation.Language.ExpandableStringExpressionAst]) {
+            if ($filePathElement.Value.Trim() -match '\.ps1$') {
+                $issues.Add("第 $($cmd.Extent.StartLineNumber) 行将 .ps1 直接传给 $($cmd.GetCommandName())（应改用 pwsh.exe -File）")
+            }
+        }
+    }
+    @($issues)
+}
+
+$retiredShimSample = 'invoke-safe-tree-delete' + '.cmd'
+$externalInvocationSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'retired-cmd'; Issues = 1; Source = "`$p = 'D:\Codex\.codex\scripts\$retiredShimSample'" },
+        @{ Name = 'active-ps1'; Issues = 0; Source = "`$p = 'D:\Codex\.codex\scripts\Invoke-SafeTreeDelete.ps1'" },
+        @{ Name = 'start-process-named-ps1'; Issues = 1; Source = "Start-Process -FilePath '.\tools\Run.ps1'" },
+        @{ Name = 'start-process-positional-ps1'; Issues = 1; Source = "saps '.\tools\Run.ps1' -NoNewWindow" },
+        @{ Name = 'start-process-pwsh-file'; Issues = 0; Source = "Start-Process -FilePath `$pwsh -ArgumentList @('-File', '.\tools\Run.ps1')" },
+        @{ Name = 'comment-only'; Issues = 0; Source = "# Start-Process -FilePath foo.ps1 $retiredShimSample" }
+    )) {
+    $tokens = $null
+    $errors = $null
+    $caseIssues = @(Get-ExternalScriptInvocationIssues -Ast ([System.Management.Automation.Language.Parser]::ParseInput($case.Source, [ref] $tokens, [ref] $errors))).Count
+    if ($caseIssues -ne $case.Issues) { $externalInvocationSelfTestFailures.Add("self-test $($case.Name): expected $($case.Issues), got $caseIssues") }
+}
+$externalInvocationFailures = [System.Collections.Generic.List[string]]::new()
+$externalInvocationPaths = @(@(
+    Get-ChildItem -LiteralPath $repoRoot -File
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools') -File
+) | Where-Object { $_.Extension -in @('.ps1', '.psm1') } | Sort-Object FullName -Unique)
+foreach ($scriptFile in $externalInvocationPaths) {
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptFile.FullName, [ref] $tokens, [ref] $errors)
+    foreach ($issue in @(Get-ExternalScriptInvocationIssues -Ast $ast)) {
+        $externalInvocationFailures.Add("$([System.IO.Path]::GetRelativePath($repoRoot, $scriptFile.FullName))：$issue")
+    }
+}
+$externalInvocationProblems = @($externalInvocationSelfTestFailures) + @($externalInvocationFailures)
+$externalInvocationDetail = if ($externalInvocationProblems.Count -eq 0) { "扫描 $($externalInvocationPaths.Count) 个脚本无退役 shim 或裸 Start-Process *.ps1；自检 6 例通过" } else { $externalInvocationProblems -join ' | ' }
+Add-ToolingCheck -Name 'powershell:external-script-invocation' -Passed ($externalInvocationProblems.Count -eq 0) -Detail $externalInvocationDetail
+
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }
 $diffCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownPublicationDiff.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10
 Add-ToolingCheck -Name 'git:publication-diff-check' -Passed ($LASTEXITCODE -eq 0 -and [bool] $diffCheck.Valid) -Detail ($diffCheck | ConvertTo-Json -Compress -Depth 10)
+$bomSelfTest = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownUtf8BomDrift.ps1') -SelfTest -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'utf8-bom-drift:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $bomSelfTest.Valid) -Detail ($bomSelfTest | ConvertTo-Json -Compress -Depth 10)
+$bomDriftCheck = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownUtf8BomDrift.ps1') -RepositoryRoot $repoRoot -BaseCommit $BaseCommit -CandidateCommit $CandidateCommit -Json | ConvertFrom-Json -Depth 10
+Add-ToolingCheck -Name 'git:utf8-bom-drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $bomDriftCheck.Valid) -Detail ($bomDriftCheck | ConvertTo-Json -Compress -Depth 10)
 
 $testRootDetail = if ($testRootLeaks.Count -eq 0) { '通过的子测试没在 logs\ 与仓库根留下 *-test-* 测试根' } else { "$($testRootLeaks -join ' | ')：断言全部通过后删掉测试根，断言失败时才留作现场" }
 Add-ToolingCheck -Name 'tests:leftover-test-roots' -Passed ($testRootLeaks.Count -eq 0) -Detail $testRootDetail

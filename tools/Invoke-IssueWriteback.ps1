@@ -2,6 +2,7 @@
 
 [CmdletBinding()]
 param(
+    [Alias('Path')]
     [string] $RecordPath,
     [string] $Repo,
     [switch] $Apply,

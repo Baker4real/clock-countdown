@@ -13,7 +13,7 @@ Countdown.Validation.psm1 的 Get-CountdownVisualBaseline 读取它。本工具�
 基线目录和现役版本的编号。作废且没留下目录的编号只记在 DESIGN.md，需人工核对。-WhatIf 只列出将改的文件。
 
 .EXAMPLE
-pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-22-v84 -WhatIf
+pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-22-v85 -WhatIf
 
 -Version 换成重拍当天的日期和下一个未用编号。与现役版本相同或编号不够大时工具拒绝执行，后者会报出下一个可用编号。
 #>
@@ -183,3 +183,4 @@ if ($documents.Lines.Count -gt 0) {
 '  2. 按 README「本机验证」经启动器跑 Build，再单独跑 BaselineGenerate 生成 {0} 的双 manifest。' -f $Version
 '  3. 运行 tools/Compare-CountdownVisualBaseline.ps1 -From {0} -To {1} 比对两版（旧版默认读 HEAD，不要求旧目录仍在工作树；其他历史用 -FromCommit 固定提交），在 DESIGN.md 记录新基线与聚合哈希，并把其中指向现役基线的锚点改到 {1}（Tooling 的 visual-baseline:design-anchors 逐条核对）。' -f $oldVersion, $Version
 '  4. 经启动器跑 CSharp 复验；Tooling 放在生成与 DESIGN.md 更新之后跑。'
+$global:LASTEXITCODE = 0

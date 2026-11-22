@@ -11,6 +11,9 @@ $run=[pscustomobject]@{Status='Completed';ExitCode=0;Stages=$stages}
 $checks=[Collections.Generic.List[string]]::new()
 function Check([bool]$Value,[string]$Name) { if (-not $Value) { throw "Suite completion regression: $Name" }; $checks.Add($Name) }
 Check (($required -join ',') -ceq 'Build,Core,CSharp,SourceValidation,InstallValidate') 'required-stage-list-is-five-without-ui'
+Check ((Resolve-CountdownSuiteMaxParallel -RequestedMaxParallel 2 -MaxParallelBound $false -Closeout $false) -eq 2) 'non-closeout-keeps-default-max-parallel'
+Check ((Resolve-CountdownSuiteMaxParallel -RequestedMaxParallel 2 -MaxParallelBound $false -Closeout $true) -eq 1) 'closeout-defaults-to-serial-max-parallel'
+Check ((Resolve-CountdownSuiteMaxParallel -RequestedMaxParallel 2 -MaxParallelBound $true -Closeout $true) -eq 2) 'closeout-honors-explicit-max-parallel'
 $launcherPath=Join-Path $PSScriptRoot 'Invoke-CountdownSuiteLowImpact.ps1'
 $priorNativePreference=$PSNativeCommandUseErrorActionPreference
 $PSNativeCommandUseErrorActionPreference=$false

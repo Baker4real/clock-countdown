@@ -28,6 +28,26 @@ public sealed class PopupValidationContractResult
 
 public static class PopupValidationContractHarness
 {
+    internal static object InvokeMethodWithDefaults(MethodInfo method, object owner, params object[] args)
+    {
+        if (method == null) throw new ArgumentNullException(nameof(method));
+        var parameters = method.GetParameters();
+        if (args.Length > parameters.Length)
+            throw new TargetParameterCountException(method.Name);
+        var bound = new object[parameters.Length];
+        for (int index = 0; index < parameters.Length; index++)
+        {
+            if (index < args.Length)
+                bound[index] = args[index];
+            else if (parameters[index].HasDefaultValue)
+                bound[index] = parameters[index].DefaultValue;
+            else
+                throw new TargetParameterCountException(method.Name);
+        }
+        try { return method.Invoke(owner, bound); }
+        catch (TargetInvocationException error) { throw error.InnerException ?? error; }
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference[] MakePopupReferences(string assemblyPath, bool attach, bool clip)
     {
@@ -43,12 +63,13 @@ public static class PopupValidationContractHarness
         {
             var attachMethod = lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static);
             var arguments = new object[] { popup, trigger, new Func<IInputElement>(() => initial), null };
-            attachMethod.Invoke(null, arguments);
-            attachMethod.Invoke(null, arguments);
+            InvokeMethodWithDefaults(attachMethod, null, arguments);
+            InvokeMethodWithDefaults(attachMethod, null, arguments);
         }
         if (clip)
-            lifecycle.GetMethod("ClipToCanvas", BindingFlags.Public | BindingFlags.Static)
-                .Invoke(null, new object[] { popup, canvas });
+            InvokeMethodWithDefaults(
+                lifecycle.GetMethod("ClipToCanvas", BindingFlags.Public | BindingFlags.Static),
+                null, popup, canvas);
         // Match discarded note menus: no explicit Detach and no menu open is needed.
         // Every edge in the menu/trigger/canvas cycle must be collectible together.
         return new[] { new WeakReference(popup), new WeakReference(trigger),
@@ -242,9 +263,9 @@ public static class PopupValidationContractHarness
         var popup = new Popup { Child = initial, PlacementTarget = trigger, StaysOpen = true };
         int opened = 0;
         popup.Opened += (sender, args) => opened++;
-        motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { popup });
-        lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-            null, new object[] { popup, trigger, new Func<IInputElement>(() => initial), null });
+        InvokeMethodWithDefaults(motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static), null, popup);
+        InvokeMethodWithDefaults(lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static),
+            null, popup, trigger, new Func<IInputElement>(() => initial), null);
         try
         {
             window.Show();
@@ -359,14 +380,14 @@ public static class PopupValidationContractHarness
         {
             if (scenario == "real-close-motion")
             {
-                motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static).Invoke(
-                    null, new object[] { popup });
+                InvokeMethodWithDefaults(motion.GetMethod("Attach", BindingFlags.NonPublic | BindingFlags.Static),
+                    null, popup);
             }
-            lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-                null, new object[] { popup, trigger, new Func<IInputElement>(() => initial), null });
+            InvokeMethodWithDefaults(lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static),
+                null, popup, trigger, new Func<IInputElement>(() => initial), null);
             // Reattaching must retain the first focus callback and handlers.
-            lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static).Invoke(
-                null, new object[] { popup, trigger, new Func<IInputElement>(() => outside), null });
+            InvokeMethodWithDefaults(lifecycle.GetMethod("Attach", BindingFlags.Public | BindingFlags.Static),
+                null, popup, trigger, new Func<IInputElement>(() => outside), null);
             KeyEventHandler recordEscape = (sender, args) =>
             {
                 if (args.Key == Key.Escape && args.Handled) handledEscapeCount++;
@@ -548,6 +569,12 @@ public static class MotionValidationContractHarness
     // token. One- or two-tick frame gaps cannot skip that band; a longer stall can.
     private static readonly double StallGapMilliseconds =
         EnabledMilliseconds.Min() * (Math.Pow(0.9, 0.25) - Math.Pow(0.1, 0.25));
+    // Second-frame wall-clock ceiling (1.5 nominal 60 Hz frames): when the first
+    // callback carries a stale RenderingTime but the second callback arrives on a
+    // regular ~16 ms tick (CI 38334714613), the frame-clock step is not a stall;
+    // when the second callback itself is delayed past 24 ms AND RenderingTime jumps
+    // >= StallGapMilliseconds (CI 44927405880), the sample window was starved.
+    private const double SecondFrameStaleClockWallCeilingMilliseconds = 24.0;
     private const int MaxStallRetriesPerScenario = 2;
     private const int MaxStallRetriesPerRun = 4;
     private const int InjectedStallMilliseconds = 150;
@@ -564,17 +591,46 @@ public static class MotionValidationContractHarness
 
     private static Type AppType(string name) => _assembly.GetType("MinminCountdown." + name, true);
 
+    private static bool ArgumentsMatch(ParameterInfo[] parameters, object[] args)
+    {
+        if (args.Length > parameters.Length) return false;
+        for (int index = 0; index < parameters.Length; index++)
+        {
+            if (index < args.Length)
+            {
+                if (args[index] == null)
+                {
+                    if (parameters[index].ParameterType.IsValueType &&
+                        Nullable.GetUnderlyingType(parameters[index].ParameterType) == null)
+                        return false;
+                }
+                else if (!parameters[index].ParameterType.IsInstanceOfType(args[index]))
+                {
+                    return false;
+                }
+            }
+            else if (!parameters[index].HasDefaultValue)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static object Invoke(Type type, object owner, string name, params object[] args)
     {
         var flags = BindingFlags.Public | BindingFlags.NonPublic |
             (owner == null ? BindingFlags.Static : BindingFlags.Instance);
-        var method = type.GetMethods(flags).Single(candidate =>
-            candidate.Name == name && candidate.GetParameters().Length == args.Length &&
-            candidate.GetParameters().Select((parameter, index) =>
-                args[index] == null || parameter.ParameterType.IsInstanceOfType(args[index])).All(value => value));
-        try { return method.Invoke(owner, args); }
-        catch (TargetInvocationException error) { throw error.InnerException ?? error; }
+        var candidates = type.GetMethods(flags).Where(candidate =>
+            candidate.Name == name && ArgumentsMatch(candidate.GetParameters(), args)).ToArray();
+        var method = candidates.Length == 1
+            ? candidates[0]
+            : candidates.Single(candidate => candidate.GetParameters().Length == args.Length);
+        return PopupValidationContractHarness.InvokeMethodWithDefaults(method, owner, args);
     }
+
+    private static string OptionalReflectionProbe(int required, string optional = "default-tag", bool flag = true) =>
+        $"{required}:{optional}:{flag}";
 
     private static object Call(string type, string name, params object[] args) =>
         Invoke(AppType(type), null, name, args);
@@ -959,8 +1015,9 @@ public static class MotionValidationContractHarness
 
     // Longest stretch in which a window could not see the transition: Stopwatch
     // time from the window start, between distinct rendered frames and up to the
-    // deadline, or frame-clock advance between frames. The first callback can
-    // carry a stale RenderingTime, so its frame-clock step is not counted.
+    // deadline, or frame-clock advance between frames. A stale first-frame
+    // RenderingTime followed by a regular ~16 ms tick is ignored, while a
+    // delayed second frame (> 24 ms wall gap) with a frame-clock jump IS counted.
     private static double LongestFrameGap(MotionSamplingWindow sampling)
     {
         double longest = 0, entered = 0;
@@ -970,8 +1027,10 @@ public static class MotionValidationContractHarness
         {
             if (callback.EnteredMilliseconds > DeadlineMilliseconds) break;
             if (callback.RenderingTimeMilliseconds == rendering) continue;
-            longest = Math.Max(longest, callback.EnteredMilliseconds - entered);
-            if (++frames > 2) longest = Math.Max(longest, callback.RenderingTimeMilliseconds - rendering.Value);
+            var enteredGap = callback.EnteredMilliseconds - entered;
+            longest = Math.Max(longest, enteredGap);
+            if (++frames > 2 || (frames == 2 && enteredGap > SecondFrameStaleClockWallCeilingMilliseconds))
+                longest = Math.Max(longest, callback.RenderingTimeMilliseconds - rendering.Value);
             entered = callback.EnteredMilliseconds;
             rendering = callback.RenderingTimeMilliseconds;
         }
@@ -2401,6 +2460,16 @@ public static class MotionValidationContractHarness
                 Enumerable.Range(0, 19).Where(tick => tick != 9),
                 tick => tick == 0 ? 0.4 : 4 + 15.625 * tick,
                 tick => tick == 0 ? 9956.7 : 9991.2 + 15.625 * tick)) == null,
+            // CI 44927405880 calendar-closing-middle: second frame itself arrived
+            // 28.09 ms late alongside a +44.0 ms RenderingTime jump, starving the band.
+            ["second-frame-delayed-clock-jump-stall"] = SamplingGap(SyntheticWindow(
+                Enumerable.Range(0, 18),
+                tick => tick == 0 ? 0.10 : 28.19 + 15.625 * (tick - 1),
+                tick => tick == 0 ? 8020.26 : 8064.26 + 15.625 * (tick - 1)))?.Kind == "sampling-gap",
+            ["optional-parameter-reflection-defaults"] =
+                Equals(Invoke(typeof(MotionValidationContractHarness), null, "OptionalReflectionProbe", 7), "7:default-tag:True") &&
+                Equals(Invoke(typeof(MotionValidationContractHarness), null, "OptionalReflectionProbe", 7, "custom"), "7:custom:True") &&
+                Equals(Invoke(typeof(MotionValidationContractHarness), null, "OptionalReflectionProbe", 7, "custom", false), "7:custom:False"),
             // CI 38281951585 90 ms transition: no callback for 50.9 ms after the first one.
             ["callback-gap-stall"] = SamplingGap(SyntheticWindow(Enumerable.Range(0, 17),
                 tick => tick == 0 ? 0.12 : 51.05 + 15.625 * (tick - 1),

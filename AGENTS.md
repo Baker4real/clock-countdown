@@ -5,7 +5,7 @@
 1. 从当前仓库根检查 `git status --short`，把既有工作树改动视为用户工作并原样保留。
 2. 按任务分支加载上下文：领域术语和时间语义见 `CONTEXT.md`；视觉、交互、主题、窗口尺寸或参考图工作必须先读 `DESIGN.md`，它一次 Read 读不完：先 `rg -n '^#{1,3} ' DESIGN.md` 取目录，读完跨界面的 §2、§7、§9、§13，再读所改界面的章节（悬浮窗在 §10）；办公室部署必须先读 `docs/办公室部署.md`。
 3. 读取将要修改的源码及其现有测试。项目结构、运行入口和完整验证命令以 `README.md` 与实际脚本为准，不在本文件缓存文件清单或测试数量。窗口套件与本机验证只经 README「本机验证」的低影响启动器；禁止直跑会渲染窗口的 CSharp / SourceValidation。`Countdown.Core.Tests.ps1` 与安装器 `-ValidateOnly` 的嵌套窗口步骤由 README 约定自行隔离，仍禁止把内层窗口脚本当模板直跑。
-4. 临时跑 `dotnet` 命令用 `D:\Codex\tools\dotnet\10.0\dotnet.exe`（设了 `COUNTDOWN_DOTNET_EXE` 时用它）：PATH 上的 `dotnet` 是系统 SDK（2026-11-14 只有 6.0），过不了 `global.json` 的 SDK 钉值；构建脚本的选择顺序见 `tools/Countdown.BuildPreflight.psm1` 的 `Resolve-CountdownBuildDotnet`。
+4. 临时跑 `dotnet` 命令用 `D:\Codex\tools\dotnet\10.0\dotnet.exe`（设了 `COUNTDOWN_DOTNET_EXE` 时用它）；PATH 上的系统 SDK 未必满足 `global.json` 钉值，按 `tools/Test-CountdownBuildPreflight.ps1` 核实，构建脚本解析顺序见 `tools/Countdown.BuildPreflight.psm1` 的 `Resolve-CountdownBuildDotnet`。
 
 ## Git 边界
 
@@ -24,3 +24,4 @@
 - GitHub Issues：`docs/agents/issue-tracker.md`
 - Triage 标签：`docs/agents/triage-labels.md`
 - 领域文档与 ADR 路由：`docs/agents/domain.md`
+- 大文件索引与并行热点：`docs/agents/large-files-and-hotspots.md`

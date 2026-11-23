@@ -1717,9 +1717,9 @@ internal static partial class ValidationReport
             ["MainSelectedTabWeightDominates"] = Must(
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
-                "选中页签使用 PinkTint 底与 SemiBold 权重"),
-            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口分段指示条对齐选中胶囊平直底边，落在焦点环之外、容器之内"),
-            ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "#245 两个指示条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状"),
+                "选中页签由底层 PinkTint 滑动胶囊与 SemiBold 权重表达"),
+            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口工作区滑动胶囊对齐选中 Surface；便签状态分段保留 legacy 底条至 #338"),
+            ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "便签状态分段 legacy 底条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状（#338 迁移）"),
             ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
             ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),
             ["MotionClientAreaAnimationSwitchReadable"] = Must(

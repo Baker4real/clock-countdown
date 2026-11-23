@@ -329,7 +329,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _workspaceTabIndicator = new SegmentIndicator(
             MainWorkspaceTabHost,
             MainWorkspaceTabIndicatorLayer,
-            MainWorkspaceTabIndicator);
+            MainWorkspaceTabIndicator,
+            SegmentIndicator.IndicatorMode.SlidingPill);
         _notesSegmentIndicator = new SegmentIndicator(
             NotesSegmentHost,
             NotesSegmentIndicatorLayer,
@@ -371,6 +372,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             {
                 RefreshBeforeShow();
                 ApplyWorkAreaGeometry();
+                // 隐藏期间选定的工作区在揭示首帧直接对齐，不恢复不可见时遗留的过渡。
+                UpdateWorkspaceTabIndicator(immediate: true);
                 UpdateTime(ChinaStandardTime.ToBeijingTime(_desktopWorkspace.Snapshot.UtcNow));
             }
             else if (args.NewValue is false && _noteSearchDebounceTimer.IsEnabled)
@@ -381,7 +384,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         Loaded += (_, _) =>
         {
             CountdownTab.Focus();
-            UpdateSegmentIndicators();
+            UpdateWorkspaceTabIndicator(immediate: true);
+            UpdateNotesSegmentIndicator(_completedSegmentSelected);
         };
     }
 
@@ -2464,14 +2468,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SetNoteStatusSegmentState(CompletedNotesSegment, "已完成", completedCount);
         UpdateNoteSelection();
     }
-
-    private void UpdateSegmentIndicators()
-    {
-        UpdateWorkspaceTabIndicator();
-        UpdateNotesSegmentIndicator(_completedSegmentSelected);
-    }
-
-    private void UpdateWorkspaceTabIndicator() => UpdateWorkspaceTabIndicator(immediate: false);
 
     private void UpdateWorkspaceTabIndicator(bool immediate)
     {

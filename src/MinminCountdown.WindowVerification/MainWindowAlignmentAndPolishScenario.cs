@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -41,6 +42,39 @@ internal static class MainWindowAlignmentAndPolishScenario
             : (false, $"{meaning}；{string.Join(" | ", failures)}");
     }
 
+    internal static (bool Passed, string Explanation) RunWorkspaceSlidingPill(
+        ApplicationTheme theme,
+        string meaning)
+    {
+        var failures = new List<string>();
+        try
+        {
+            WithMainWindow(seedData: true, (main, _) =>
+            {
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(false))
+                {
+                    theme.Apply();
+                    VerifyWorkspacePillGeometryAndStates(main, theme, failures);
+                }
+
+                using (ApplicationTheme.OverrideAnimationPreferenceForValidation(true))
+                {
+                    theme.Apply();
+                    VerifyWorkspacePillFirstFrames(main, failures);
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            failures.Add($"工作区滑动胶囊验收异常：{exception.Message}");
+        }
+
+        theme.Apply();
+        return failures.Count == 0
+            ? (true, meaning)
+            : (false, $"{meaning}；{string.Join(" | ", failures)}");
+    }
+
     internal static (bool Passed, string Explanation) RunEmptyStateAndHighContrastRibbon(
         ApplicationTheme theme,
         string meaning)
@@ -68,6 +102,283 @@ internal static class MainWindowAlignmentAndPolishScenario
             ? (true, meaning)
             : (false, $"{meaning}；{string.Join(" | ", failures)}");
     }
+
+    private static void VerifyWorkspacePillGeometryAndStates(
+        MainWindow main,
+        ApplicationTheme theme,
+        ICollection<string> failures)
+    {
+        var probe = new MainWindowEmptyStateProbe(main);
+        var layout = Required<Canvas>(main, "MainLayoutSurface");
+        var commandBar = Required<Grid>(main, "MainCommandBarZone");
+        var host = Required<Grid>(main, "MainWorkspaceTabHost");
+        var container = host.Parent as Border
+            ?? throw new InvalidOperationException("工作区页签缺少外层槽 Border。");
+        var layer = Required<Canvas>(main, "MainWorkspaceTabIndicatorLayer");
+        var indicator = Required<Border>(main, "MainWorkspaceTabIndicator");
+        var countdownTab = Required<ToggleButton>(main, "CountdownTab");
+        var notesTab = Required<ToggleButton>(main, "NotesTab");
+        var buttons = host.Children.OfType<StackPanel>().Single();
+        var contentTops = new Dictionary<WorkspaceKind, double>();
+
+        foreach (var (kind, tab, contentName) in new[]
+                 {
+                     (WorkspaceKind.Countdowns, countdownTab, "CountdownEditorSurface"),
+                     (WorkspaceKind.Notes, notesTab, "NoteEditorSurface")
+                 })
+        {
+            probe.ShowWorkspace(kind);
+            SettleLayout(main);
+            _ = WindowValidationInput.WaitUntil(
+                main.Dispatcher,
+                () => main.VisibleSegmentIndicatorsSettledForCapture,
+                1000);
+            tab.ApplyTemplate();
+            var surface = RequiredTemplate<Border>(tab, "Surface");
+            var ring = RequiredTemplate<Border>(tab, "FocusRing");
+            var surfaceBounds = Bounds(surface, host);
+            var pillBounds = Bounds(indicator, host);
+            var surfaceInContainer = Bounds(surface, container);
+            var commandBounds = Bounds(commandBar, layout);
+            var containerBounds = Bounds(container, layout);
+
+            if (Math.Abs(commandBounds.Height - 51) > GeometryTolerance ||
+                Math.Abs(containerBounds.Width - 190) > GeometryTolerance ||
+                Math.Abs(containerBounds.Height - 50) > GeometryTolerance ||
+                Math.Abs(CenterY(containerBounds) - CenterY(commandBounds)) > GeometryTolerance ||
+                container.Padding != new Thickness(3, 2, 2, 2) ||
+                container.BorderThickness != new Thickness(1) ||
+                container.CornerRadius != (CornerRadius)main.FindResource("RadiusControl") ||
+                !BrushMatches(container.Background, RequiredBrush(container, "CardAltBrush")) ||
+                !BrushMatches(container.BorderBrush, RequiredBrush(container, "PeachLineBrush")))
+            {
+                failures.Add($"{kind}：工作区槽几何/画刷不符（bar={FormatRect(commandBounds)}, container={FormatRect(containerBounds)}, padding={container.Padding}, border={container.BorderThickness}, radius={container.CornerRadius}）。");
+            }
+
+            if (!RectClose(surfaceBounds, pillBounds) ||
+                Math.Abs(pillBounds.Height - 38) > GeometryTolerance ||
+                indicator.CornerRadius != new CornerRadius(19))
+            {
+                failures.Add($"{kind}：滑动胶囊未与 Surface 全矩形重合或不是 38/19 全圆角（surface={FormatRect(surfaceBounds)}, pill={FormatRect(pillBounds)}）。");
+            }
+
+            if (Math.Abs(surfaceInContainer.Top -
+                    (container.ActualHeight - surfaceInContainer.Bottom)) > GeometryTolerance ||
+                surface.Margin != new Thickness(3) || ring.BorderThickness != new Thickness(2))
+            {
+                failures.Add($"{kind}：胶囊上下净空不对称，或 2 DIP 环 + 1 DIP 间隙发生变化。");
+            }
+
+            if (Panel.GetZIndex(layer) >= Panel.GetZIndex(buttons) ||
+                layer.IsHitTestVisible || indicator.IsHitTestVisible || indicator.Focusable ||
+                UIElementAutomationPeer.CreatePeerForElement(indicator) is not null)
+            {
+                failures.Add($"{kind}：滑动胶囊未位于按钮底层、仍可命中/聚焦或进入了自动化树。");
+            }
+
+            var hitPoint = surface.TransformToAncestor(host).Transform(
+                new Point(surface.RenderSize.Width / 2, surface.RenderSize.Height / 2));
+            var hit = host.InputHitTest(hitPoint) as DependencyObject;
+            while (hit is not null && hit != tab)
+            {
+                hit = VisualTreeHelper.GetParent(hit);
+            }
+            if (hit != tab)
+            {
+                failures.Add($"{kind}：胶囊中心的真实命中未到达激活页签。");
+            }
+
+            contentTops[kind] = Bounds(
+                Required<FrameworkElement>(main, contentName), layout).Top;
+            var decorationTop = Bounds(
+                Required<FrameworkElement>(main, "MainDecorationBandSpacer"), layout).Top;
+            if (Math.Abs(decorationTop - commandBounds.Bottom) > GeometryTolerance)
+            {
+                failures.Add($"{kind}：命令栏/装饰带纵向漂移（bar={FormatRect(commandBounds)}, decorationTop={decorationTop:0.##}）。");
+            }
+        }
+
+        // 未选中 hover 使用暖底/暖边；选中 hover 的自身 Surface 必须保持透明。
+        probe.ShowWorkspace(WorkspaceKind.Countdowns);
+        SettleLayout(main);
+        var selectedSurface = RequiredTemplate<Border>(countdownTab, "Surface");
+        var unselectedSurface = RequiredTemplate<Border>(notesTab, "Surface");
+        if (!WindowValidationInput.WaitUntil(main.Dispatcher, () =>
+                IsTransparentBrush(selectedSurface.Background) &&
+                IsTransparentBrush(selectedSurface.BorderBrush), 1000))
+        {
+            failures.Add("选中页签自身 Surface 未保持透明背景与边框。");
+        }
+        WithPointerHover(main, notesTab, () =>
+        {
+            if (!BrushMatches(unselectedSurface.Background, RequiredBrush(notesTab, "CardAltBrush")) ||
+                !BrushMatches(unselectedSurface.BorderBrush, RequiredBrush(notesTab, "ActiveHoverBrush")))
+            {
+                failures.Add("未选中页签 hover 未呈现 CardAlt 暖底与 ActiveHover 暖边。");
+            }
+        });
+        WithPointerHover(main, countdownTab, () =>
+        {
+            if (!IsTransparentBrush(selectedSurface.Background) ||
+                !IsTransparentBrush(selectedSurface.BorderBrush))
+            {
+                failures.Add("选中页签 hover 回落到第二层底色或边框。");
+            }
+        });
+
+        // 真实 WPF Tab 遍历：单层 2 DIP Active 环对槽底达到非文本对比度。
+        main.Activate();
+        Keyboard.Focus(countdownTab);
+        FocusVisualState.SetIsKeyboardFocusVisible(countdownTab, true);
+        SettleLayout(main);
+        var tabMoved = countdownTab.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        SettleLayout(main);
+        var notesRing = RequiredTemplate<Border>(notesTab, "FocusRing");
+        if (!tabMoved || !notesTab.IsKeyboardFocused ||
+            !FocusVisualState.GetIsKeyboardFocusVisible(notesTab) ||
+            notesTab.FocusVisualStyle is not null ||
+            notesRing.BorderThickness != new Thickness(2) ||
+            !BrushMatches(notesRing.BorderBrush, RequiredBrush(notesTab, "ActiveBrush")) ||
+            !ApplicationTheme.MeetsContrast(
+                notesRing.BorderBrush,
+                container.Background,
+                3.0))
+        {
+            failures.Add("Tab 聚焦未保持单层 2 DIP Active 焦点环或环对槽底低于 3:1。");
+        }
+        var pointerFocused = WindowValidationInput.ClickForFocusValidation(notesTab);
+        SettleLayout(main);
+        if (!pointerFocused || FocusVisualState.GetIsKeyboardFocusVisible(notesTab) ||
+            !IsTransparentBrush(notesRing.BorderBrush))
+        {
+            failures.Add("鼠标点击后仍残留键盘焦点环。");
+        }
+
+        // 系统对比度只给底层胶囊增加 2 DIP Highlight 轮廓；关闭后完整恢复日间。
+        probe.ShowWorkspace(WorkspaceKind.Countdowns);
+        SettleLayout(main);
+        VerifyDayPill(indicator, "初始日间", failures);
+        using (ApplicationTheme.OverrideHighContrastForValidation(true))
+        {
+            SettleLayout(main);
+            if (indicator.BorderThickness != new Thickness(2) ||
+                !BrushMatchesColor(indicator.Background, SystemColors.WindowColor) ||
+                !BrushMatchesColor(indicator.BorderBrush, SystemColors.HighlightColor))
+            {
+                failures.Add("系统对比度下胶囊不是 Window 底 + 2 DIP Highlight 轮廓。");
+            }
+        }
+        theme.Apply();
+        SettleLayout(main);
+        VerifyDayPill(indicator, "对比度往返后", failures);
+
+        foreach (var (kind, contentName) in new[]
+                 {
+                     (WorkspaceKind.Countdowns, "CountdownEditorSurface"),
+                     (WorkspaceKind.Notes, "NoteEditorSurface")
+                 })
+        {
+            probe.ShowWorkspace(kind);
+            SettleLayout(main);
+            var currentTop = Bounds(Required<FrameworkElement>(main, contentName), layout).Top;
+            if (Math.Abs(currentTop - contentTops[kind]) > GeometryTolerance)
+            {
+                failures.Add($"{kind}：交互与对比度往返后内容区纵向位置漂移。");
+            }
+        }
+    }
+
+    private static void VerifyWorkspacePillFirstFrames(MainWindow main, ICollection<string> failures)
+    {
+        var host = Required<Grid>(main, "MainWorkspaceTabHost");
+        var indicator = Required<Border>(main, "MainWorkspaceTabIndicator");
+        var countdownTab = Required<ToggleButton>(main, "CountdownTab");
+        var notesTab = Required<ToggleButton>(main, "NotesTab");
+
+        void Verify(string label, WorkspaceKind start, WorkspaceKind expected, Key key)
+        {
+            main.ShowWorkspace(start, immediateIndicator: true);
+            SettleLayout(main);
+            var observed = false;
+            var handled = WindowValidationInput.RaisePreviewKey(countdownTab, key, ModifierKeys.Control);
+            var firstFrame = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 1000, () =>
+            {
+                var tab = expected == WorkspaceKind.Countdowns ? countdownTab : notesTab;
+                tab.ApplyTemplate();
+                var surface = RequiredTemplate<Border>(tab, "Surface");
+                observed = main.CurrentWorkspace == expected &&
+                    RectClose(Bounds(indicator, host), Bounds(surface, host)) &&
+                    !WorkspacePillAnimating(indicator);
+                return true;
+            });
+            if (!handled || !firstFrame.Completed || !observed)
+            {
+                failures.Add($"{label}：Ctrl 首帧未对齐目标胶囊，或 Width/Translate 仍有动画时钟。");
+            }
+        }
+
+        Verify("Ctrl+2", WorkspaceKind.Countdowns, WorkspaceKind.Notes, Key.D2);
+        Verify("Ctrl+1", WorkspaceKind.Notes, WorkspaceKind.Countdowns, Key.D1);
+
+        main.ShowWorkspace(WorkspaceKind.Countdowns, immediateIndicator: true);
+        SettleLayout(main);
+        var visibilityChanges = new List<bool>();
+        main.IsVisibleChanged += (_, args) => visibilityChanges.Add((bool)args.NewValue);
+        main.Hide();
+        new MainWindowEmptyStateProbe(main).ShowWorkspace(WorkspaceKind.Notes);
+        WindowValidationInput.Pump(main.Dispatcher);
+        main.Show();
+        var revealObserved = false;
+        var revealActual = default(Rect);
+        var revealExpected = default(Rect);
+        var revealAnimated = false;
+        var revealFrame = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 1000, () =>
+        {
+            notesTab.ApplyTemplate();
+            var surface = RequiredTemplate<Border>(notesTab, "Surface");
+            revealActual = Bounds(indicator, host);
+            revealExpected = Bounds(surface, host);
+            revealAnimated = WorkspacePillAnimating(indicator);
+            revealObserved = RectClose(revealActual, revealExpected) && !revealAnimated;
+            return true;
+        });
+        if (!revealFrame.Completed || !revealObserved)
+        {
+            var laterAligned = WindowValidationInput.WaitUntil(main.Dispatcher, () =>
+                main.VisibleSegmentIndicatorsSettledForCapture, 1000);
+            failures.Add($"隐藏后首次揭示未即时对齐（actual={FormatRect(revealActual)}, expected={FormatRect(revealExpected)}, animated={revealAnimated}, visible={main.IsVisible}, hostLoaded={host.IsLoaded}, hostVisible={host.IsVisible}, notesLoaded={notesTab.IsLoaded}, notesVisible={notesTab.IsVisible}, visibility={string.Join(',', visibilityChanges)}, laterAligned={laterAligned}）。");
+        }
+    }
+
+    private static void VerifyDayPill(Border indicator, string label, ICollection<string> failures)
+    {
+        if (indicator.BorderThickness != new Thickness(0) ||
+            !IsTransparentBrush(indicator.BorderBrush) ||
+            !BrushMatches(indicator.Background, RequiredBrush(indicator, "PinkTintBrush")))
+        {
+            failures.Add($"{label}：胶囊不是零边框透明边 + PinkTint 填充。");
+        }
+    }
+
+    private static bool WorkspacePillAnimating(Border indicator) =>
+        DependencyPropertyHelper.GetValueSource(indicator, FrameworkElement.WidthProperty).IsAnimated ||
+        indicator.RenderTransform is Transform { HasAnimatedProperties: true };
+
+    private static T RequiredTemplate<T>(Control control, string name) where T : class
+    {
+        control.ApplyTemplate();
+        return control.Template?.FindName(name, control) as T
+            ?? throw new InvalidOperationException($"{control.Name} 缺少模板部件 {name}。");
+    }
+
+    private static bool IsTransparentBrush(Brush? brush) =>
+        brush is SolidColorBrush { Color.A: 0 };
+
+    private static bool BrushMatches(Brush? actual, Brush? expected) =>
+        actual is SolidColorBrush left && expected is SolidColorBrush right && left.Color == right.Color;
+
+    private static bool BrushMatchesColor(Brush? actual, Color expected) =>
+        actual is SolidColorBrush brush && brush.Color == expected;
 
     private static void VerifyCommandBarAlignment(MainWindow main, ICollection<string> failures)
     {
@@ -118,8 +429,8 @@ internal static class MainWindowAlignmentAndPolishScenario
 
             if (Math.Abs(tabContainerBounds.Left - 30) > GeometryTolerance ||
                 Math.Abs(tabContainerBounds.Width - 190) > GeometryTolerance ||
-                Math.Abs(tabContainerBounds.Height - 51) > GeometryTolerance ||
-                tabContainer.Padding != new Thickness(4, 3, 3, 4) ||
+                Math.Abs(tabContainerBounds.Height - 50) > GeometryTolerance ||
+                tabContainer.Padding != new Thickness(3, 2, 2, 2) ||
                 Math.Abs(countdownTab.ActualWidth - 99) > GeometryTolerance ||
                 Math.Abs(countdownTab.ActualHeight - 44) > GeometryTolerance ||
                 Math.Abs(notesTab.ActualWidth - 82) > GeometryTolerance ||

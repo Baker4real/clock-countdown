@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 [CmdletBinding()]
 param(
@@ -3911,7 +3911,8 @@ exit 23
         SharedScrollBarMotionAndInteractionsWork = '共享滚动条展开与收起仅以变换消费 MotionHoverDuration 缓出过渡并在系统关闭动画时直接到位，滚轮、拖动滑块、键盘翻页与点击轨道翻页照常可用（#306）'
         FloatingBottomStatusPublicAutomationTree = '悬浮窗底部状态以互斥的鼓励语无 peer 元素与可朗读/可调用状态元素进出自动化树；鼓励语不在树中，金额与日历状态名称同步，遮罩态子树不泄密且指针与键盘均可切换，三模式往返同步，直播区播报正常工作（#316）'
         DisabledStateUnifiedAndPreserved = '全部受影响控件的禁用透明度与系统对比度分支收为单一可复用定义；日间与系统对比度（含换色与恢复）下禁用外观、分段样式继承保留与退出确认死代码删除均通过（#310）'
-        MainWindowCommandBarHeaderAndNoteRowsAligned = '管理窗口命令栏三枚命令按钮等高居中并与数量文字共用垂直中线、右缘对齐内容区右缘且页签与选中指示条几何不变；切页前后主标题水平位置不变并保留两页标题装饰；便签新增与编辑态正文列吸收剩余宽度、行尾留白等于行首留白且取消内边距与次级按钮一致（#304）'
+        MainWindowCommandBarHeaderAndNoteRowsAligned = '管理窗口命令栏三枚命令按钮等高居中并与数量文字共用垂直中线、右缘对齐内容区右缘，页签对称槽保持 51 DIP 外部高度；切页前后主标题水平位置不变并保留两页标题装饰；便签新增与编辑态正文列吸收剩余宽度、行尾留白等于行首留白且取消内边距与次级按钮一致（#304）'
+        MainWorkspaceSlidingPillGeometryFocusAndContrast = '管理窗口工作区页签使用 190×50 对称暖边槽与底层 38/19 PinkTint 滑动胶囊；胶囊与 Surface 重合、不可命中且退出自动化树，选中/未选中 hover、单层焦点环、Ctrl+1/2 与隐藏揭示首帧及系统对比度 2 DIP Highlight 往返均符合 #337，命令栏和内容区零漂移'
         MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse = '管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）'
         FloatingWorkdayCompletionBottomNoDuplicateAndCardMask = '下班收尾期间悬浮窗底部改为鼓励语并退出自动化树、不含金额文字；收尾卡内金额支持指针、键盘回车/空格与自动化 Invoke 切换遮罩且遮罩态子树与 ToolTip 不泄密、焦点环规范且状态不持久化；月薪为零显示鼓励文案不伪造金额或遮罩按钮，下班起点、北京时间次日零点终点、筛选与日历未覆盖当年守卫均保持不变（#317）'
         ReminderRulesEditorFixedIntervalNumericInput = '规则编辑器固定间隔支持上下键与滚轮在 1 到 1440 整数范围内增减、超出范围或非法输入当场提示且错误文案不变；ViewModel 属性为可空数值且对外保存、脏态与预览行为不变（#330）'
@@ -5844,23 +5845,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.TabRingGapAvoidsSelectedFill) '选中粉底页签的焦点环以 1px 间隙避开粉底，邻色为容器浅色'
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast) '悬浮选中实心粉胶囊焦点环（暖金）对深粉邻色达到 3:1'
     Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken) '悬浮实心粉胶囊焦点环使用主按钮焦点色暖金且无旧强调色放过分支'
-    $segmentIndicatorSource = Get-Content -LiteralPath (
-        Join-Path $PSScriptRoot 'src\MinminCountdown\SegmentIndicator.cs') -Raw -Encoding UTF8
-    Assert-Equal $true (
-        $mainWindowXamlSource -match 'x:Name="MainWorkspaceTabIndicatorLayer"' -and
-        $mainWindowXamlSource -match 'x:Name="MainWorkspaceTabIndicator"' -and
-        $mainWindowXamlSource -match 'x:Name="NotesSegmentIndicatorLayer"' -and
-        $mainWindowXamlSource -match 'x:Name="NotesSegmentIndicator"') '主窗页签与便签状态分段声明独立选中指示条层（#196 源码契约）'
-    Assert-Equal $true (
-        $mainWindowCodeSource -match 'new SegmentIndicator\(' -and
-        $mainWindowCodeSource -match 'UpdateWorkspaceTabIndicator\(\)' -and
-        $mainWindowCodeSource -match 'UpdateNotesSegmentIndicator\(') '主窗状态切换会把指示条目标更新到选中项（#196 源码契约）'
-    Assert-Equal $true (
-        $segmentIndicatorSource -match 'MotionIndicatorDuration' -and
-        $segmentIndicatorSource -match 'HandoffBehavior\.SnapshotAndReplace' -and
-        $segmentIndicatorSource -match 'EffectiveDuration\(' -and
-        $segmentIndicatorSource -match 'clientAreaAnimationsEnabled' -and
-        $segmentIndicatorSource -match 'TransformGroup') '指示条动画消费 160ms token、从当前值可中断续接并提供 reduced-motion 即时等价（#196 源码契约）'
     $countdownDesignSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'DESIGN.md') -Raw -Encoding UTF8
     Assert-Equal $true (

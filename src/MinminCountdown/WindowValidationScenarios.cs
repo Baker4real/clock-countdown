@@ -2182,8 +2182,7 @@ public sealed partial class MainWindow
             var mouseClickDoesNotLeaveFocusRing = MouseClickDoesNotLeaveFocusRing();
             var keyboardFocusRingShowsOnTab = KeyboardFocusRingShowsOnTab();
 
-            // #191：选中页签必须以 PinkTint 底 + SemiBold 建立高于未选中页签
-            // 的权重，悬停只补充反馈，不能反转层级。
+            // 选中页签保留 SemiBold；#337 的 PinkTint 底层胶囊与透明 Surface 由独立窗口事实验收。
             var selectedTabWeightDominates = SelectedTabWeightDominates();
 
             // 按压视觉无法在无鼠标隔离桌面驱动（ButtonBase 需真实 IsMouseOver 才置 IsPressed），
@@ -2271,11 +2270,8 @@ public sealed partial class MainWindow
         }
     }
 
-    // #196：页签与便签状态分段共享一个可中断指示条。这里以真实控件的
-    // TransformToAncestor 几何作断言，并快速往返切换，确保过期回调不会把
-    // 指示条留在旧段；关闭系统动画时只保留同一目标几何的即时等价。
-    // #245：四个静止目标的终态均须保持零圆角、宽 1、高 3；可见宽度只取胶囊平直底边，
-    // 落在焦点环之外、容器之内。
+    // 快速往返与关闭动画继续覆盖两个实例的既有终态。顶部新胶囊的几何、边框和对比度
+    // 由独立 WindowVerification 验收；这里只保留便签状态分段的 legacy 底条断言至 #338。
     private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
     {
         var originalWorkspace = _workspace;
@@ -2313,7 +2309,7 @@ public sealed partial class MainWindow
                 observations.All(observation => observation.Aligned),
                 reducedMotionIsImmediate,
                 rapidSwitchStaysAligned,
-                observations.All(observation => observation.StaticThicknessIsUniform));
+                activeSegment.StaticThicknessIsUniform && completedSegment.StaticThicknessIsUniform);
         }
         finally
         {
@@ -2329,8 +2325,10 @@ public sealed partial class MainWindow
             FrameworkElement root,
             Border border)
         {
+            var isLegacyUnderline = !ReferenceEquals(indicator, _workspaceTabIndicator);
             var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target)) &&
-                IndicatorSitsUnderPillClearOfFocusRing(indicator.CurrentVisualBounds, target, root);
+                (!isLegacyUnderline ||
+                    IndicatorSitsUnderPillClearOfFocusRing(indicator.CurrentVisualBounds, target, root));
             if (!aligned)
             {
                 var targetBounds = target.TransformToAncestor(root).TransformBounds(new Rect(target.RenderSize));
@@ -2345,16 +2343,17 @@ public sealed partial class MainWindow
                     }));
             }
 
-            var staticThicknessIsUniform = aligned &&
-                border.Width == 1 &&
-                border.Height == 3 &&
-                border.CornerRadius == new CornerRadius(0) &&
-                Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001;
+            var staticThicknessIsUniform = !isLegacyUnderline ||
+                (aligned &&
+                 border.Width == 1 &&
+                 border.Height == 3 &&
+                 border.CornerRadius == new CornerRadius(0) &&
+                 Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001);
             return (aligned, staticThicknessIsUniform);
         }
     }
 
-    // 静止指示条只覆盖胶囊（Surface）的平直底边，顶边在焦点环外缘之下至少 1 DIP，整条留在
+    // legacy 静止底条只覆盖胶囊（Surface）的平直底边，顶边在焦点环外缘之下至少 1 DIP，整条留在
     // 容器可见底色之内。按模板部件与容器独立推导，不复用 SegmentIndicator 的算式。
     private static bool IndicatorSitsUnderPillClearOfFocusRing(Rect bar, Control target, FrameworkElement root)
     {
@@ -2560,11 +2559,13 @@ public sealed partial class MainWindow
         workspace == WorkspaceKind.Countdowns ? CountdownTab : NotesTab;
 
     private bool WorkspaceIndicatorAnimating() =>
-        MainWorkspaceTabIndicator.RenderTransform is TransformGroup group &&
-        group.Children.Any(transform => transform.HasAnimatedProperties);
+        DependencyPropertyHelper.GetValueSource(
+            MainWorkspaceTabIndicator,
+            FrameworkElement.WidthProperty).IsAnimated ||
+        MainWorkspaceTabIndicator.RenderTransform is Transform { HasAnimatedProperties: true };
 
-    // 鼠标路径的动画结束后 HoldEnd 时钟仍挂在变换上，等待就位只看几何；
-    // “没有动画时钟”只用来判定即时路径（即时提交会清掉旧时钟）。
+    // 动画结束后 HoldEnd 时钟仍可能挂在 Width/RenderTransform 上，等待就位只看几何；
+    // “没有动画时钟”只用来判定即时路径（即时提交会清掉两类旧时钟）。
     private bool WaitForWorkspaceIndicatorAligned(FrameworkElement tab) =>
         WindowValidationInput.WaitUntil(Dispatcher, () => _workspaceTabIndicator.IsAlignedTo(tab), 1000);
 
@@ -2681,8 +2682,8 @@ public sealed partial class MainWindow
         }
     }
 
-    // 未选中「便签」页签的 IsMouseOver 触发器不得把 Surface 底换成选中实心底 PeachTintBrush
-    // （#152 换成「边换 ActiveBrush」）；IsChecked 触发器才允许设置选中底。
+    // 未选中「便签」页签 hover 使用独立暖底/暖边；选中态显式解析透明资源，
+    // 避免 checked+hover 回落到 hover，PinkTint 只由底层滑动胶囊绘制。
     private bool NotesTabHoverDoesNotReuseSelectedFill()
     {
         if (NotesTab.Template is not { } template)
@@ -2718,7 +2719,7 @@ public sealed partial class MainWindow
                 StringComparison.Ordinal) &&
             string.Equals(
                 MotionBehavior.GetCheckedBackgroundResourceKey(motionSurface),
-                "PinkTintBrush",
+                "MainWorkspaceTabTransparentBrush",
                 StringComparison.Ordinal);
 
         return motionUsesDistinctTokens ||
@@ -2949,8 +2950,7 @@ public sealed partial class MainWindow
         }
     }
 
-    // #191：两枚主窗页签的选中态都使用 PinkTintBrush + SemiBold；未选中态不
-    // 预先加粗，确保视觉权重不会被悬停红环反转。
+    // #337 后 PinkTint 由独立验证的底层滑动胶囊承载；这里仅保留既有 SemiBold 权重回归。
     private bool SelectedTabWeightDominates()
     {
         var originalWorkspace = _workspace;
@@ -2970,21 +2970,9 @@ public sealed partial class MainWindow
 
     private bool SelectedTabHasWeight(ToggleButton selected, ToggleButton unselected)
     {
-        selected.ApplyTemplate();
-        unselected.ApplyTemplate();
-        if (selected.Template?.FindName("Surface", selected) is not Border selectedSurface ||
-            unselected.Template?.FindName("Surface", unselected) is not Border unselectedSurface)
-        {
-            return false;
-        }
-
-        // Observe the actual color after the bounded transition; a declared token
-        // or a trigger setter alone does not prove that the selected fill rendered.
         return WindowValidationInput.WaitUntil(Dispatcher, () =>
             selected.IsChecked == true &&
             unselected.IsChecked == false &&
-            UsesResourceBrush(selectedSurface.Background, "PinkTintBrush") &&
-            !UsesResourceBrush(unselectedSurface.Background, "PinkTintBrush") &&
             selected.FontWeight == FontWeights.SemiBold &&
             unselected.FontWeight == FontWeights.Normal);
     }

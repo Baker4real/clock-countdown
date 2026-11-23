@@ -8,44 +8,69 @@ namespace MinminCountdown;
 
 /// <summary>
 /// Moves one visual indicator between sibling segments without changing their layout.
-/// The indicator has a one-DIP layout width; its visible width and position are carried
-/// by a ScaleTransform and a TranslateTransform so rapid changes can continue from the
-/// currently rendered geometry.
+/// SlidingPill animates Translate X/Y and the Border Width so both ends keep their
+/// semicircular radius. LegacyUnderline is retained only for the notes status segments
+/// until #338 migrates that second instance.
 /// </summary>
 internal sealed class SegmentIndicator
 {
+    internal enum IndicatorMode
+    {
+        LegacyUnderline,
+        SlidingPill
+    }
+
     private const double GeometryTolerance = 0.75;
 
-    // 指示条顶边与选中控件外缘（常驻焦点环）之间的空隙，选中与焦点不叠在同一条槽里。
+    // legacy 指示条顶边与选中控件外缘（常驻焦点环）之间的空隙。
     private const double FocusRingClearance = 1;
 
     private readonly FrameworkElement _coordinateRoot;
     private readonly Canvas _layer;
     private readonly Border _indicator;
-    private readonly ScaleTransform _scale;
+    private readonly IndicatorMode _mode;
+    private readonly ScaleTransform? _scale;
     private readonly TranslateTransform _translate;
     private long _requestVersion;
     private FrameworkElement? _target;
     private Rect _lastTargetBounds;
+    private bool _hasPresentedPill;
 
     internal SegmentIndicator(
         FrameworkElement coordinateRoot,
         Canvas layer,
         Border indicator)
+        : this(coordinateRoot, layer, indicator, IndicatorMode.LegacyUnderline)
+    {
+    }
+
+    internal SegmentIndicator(
+        FrameworkElement coordinateRoot,
+        Canvas layer,
+        Border indicator,
+        IndicatorMode mode)
     {
         _coordinateRoot = coordinateRoot;
         _layer = layer;
         _indicator = indicator;
-        _scale = new ScaleTransform(1, 1);
+        _mode = mode;
         _translate = new TranslateTransform();
-        _indicator.RenderTransform = new TransformGroup
+        if (_mode == IndicatorMode.SlidingPill)
         {
-            Children =
+            _indicator.RenderTransform = _translate;
+        }
+        else
+        {
+            _scale = new ScaleTransform(1, 1);
+            _indicator.RenderTransform = new TransformGroup
             {
-                _scale,
-                _translate
-            }
-        };
+                Children =
+                {
+                    _scale,
+                    _translate
+                }
+            };
+        }
         _indicator.RenderTransformOrigin = new Point(0, 0.5);
         _indicator.Visibility = Visibility.Collapsed;
     }
@@ -56,8 +81,12 @@ internal sealed class SegmentIndicator
         new(
             _translate.X,
             _translate.Y,
-            Math.Abs(_indicator.Width * _scale.ScaleX),
-            Math.Abs(_indicator.Height * _scale.ScaleY));
+            Math.Abs(_mode == IndicatorMode.SlidingPill
+                ? _indicator.Width
+                : _indicator.Width * _scale!.ScaleX),
+            Math.Abs(_mode == IndicatorMode.SlidingPill
+                ? _indicator.Height
+                : _indicator.Height * _scale!.ScaleY));
 
     internal FrameworkElement? CurrentTarget => _target;
 
@@ -82,10 +111,11 @@ internal sealed class SegmentIndicator
     {
         _target = target;
         var version = ++_requestVersion;
-        if (immediate)
+        var immediateGeometry = immediate || (_mode == IndicatorMode.SlidingPill && !_hasPresentedPill);
+        if (immediateGeometry)
         {
-            // #242：键盘路径的下一帧就必须停在目标上。先把本轮选中变化排版完，
-            // 再按真实几何直接写入终值；下面的 Loaded 复核仍会再对齐一次。
+            // 键盘路径与第一次可用几何都必须在下一真实帧前直接写入终值。
+            // 先把本轮选中变化排版完；下面的延迟复核仍会再对齐一次。
             _coordinateRoot.UpdateLayout();
             if (TryGetTargetBounds(target, out var bounds))
             {
@@ -94,11 +124,12 @@ internal sealed class SegmentIndicator
             }
         }
 
-        // Selection can change the segment's text weight and badge width in
-        // this same turn. Measure only after WPF has arranged those changes.
+        // Selection can change the segment's text weight and badge width in this same turn.
+        // If an immediate request cannot measure during IsVisibleChanged, its deferred retry
+        // must run before Rendering; ordinary pointer transitions retain the Loaded commit.
         _coordinateRoot.Dispatcher.BeginInvoke(
-            DispatcherPriority.Loaded,
-            new Action(() => ApplyWhenReady(version, immediate)));
+            immediateGeometry ? DispatcherPriority.Send : DispatcherPriority.Loaded,
+            new Action(() => ApplyWhenReady(version, immediateGeometry)));
     }
 
     private void ApplyWhenReady(long version, bool immediate)
@@ -112,7 +143,7 @@ internal sealed class SegmentIndicator
         {
             // A hidden workspace has no usable target geometry. The owner calls MoveTo
             // again when that workspace becomes visible; never enqueue a self-repeating
-            // Loaded callback while the target remains collapsed.
+            // deferred callback while the target remains collapsed.
             if (_coordinateRoot.IsVisible && _target.IsVisible)
             {
                 _coordinateRoot.Dispatcher.BeginInvoke(
@@ -139,24 +170,35 @@ internal sealed class SegmentIndicator
     private void ApplyTarget(Rect targetBounds, bool immediate)
     {
         _layer.IsHitTestVisible = false;
+        _indicator.IsHitTestVisible = false;
+        _indicator.Focusable = false;
+        var firstPillPresentation = _mode == IndicatorMode.SlidingPill && !_hasPresentedPill;
         _indicator.Visibility = Visibility.Visible;
 
         var configuredDuration = _coordinateRoot.TryFindResource("MotionIndicatorDuration") is Duration duration &&
             duration.HasTimeSpan
                 ? duration.TimeSpan
                 : MotionTokens.IndicatorDuration;
-        var effectiveDuration = immediate
+        var effectiveDuration = immediate || firstPillPresentation
             ? TimeSpan.Zero
             : EffectiveDuration(configuredDuration, ApplicationTheme.ClientAreaAnimationEnabled);
         var easing = _coordinateRoot.TryFindResource("MotionEaseOut") as IEasingFunction ??
             MotionTokens.CreateEaseOut();
 
-        var currentScale = _scale.ScaleX;
+        var currentWidth = _mode == IndicatorMode.SlidingPill ? _indicator.Width : _scale!.ScaleX;
         var currentX = _translate.X;
         var currentY = _translate.Y;
-        BeginBaseValue(_scale, ScaleTransform.ScaleXProperty, targetBounds.Width);
+        if (_mode == IndicatorMode.SlidingPill)
+        {
+            BeginBaseValue(_indicator, FrameworkElement.WidthProperty, targetBounds.Width);
+        }
+        else
+        {
+            BeginBaseValue(_scale!, ScaleTransform.ScaleXProperty, targetBounds.Width);
+        }
         BeginBaseValue(_translate, TranslateTransform.XProperty, targetBounds.Left);
         BeginBaseValue(_translate, TranslateTransform.YProperty, targetBounds.Top);
+        _hasPresentedPill |= _mode == IndicatorMode.SlidingPill;
 
         if (effectiveDuration <= TimeSpan.Zero)
         {
@@ -164,9 +206,9 @@ internal sealed class SegmentIndicator
         }
 
         Animate(
-            _scale,
-            ScaleTransform.ScaleXProperty,
-            currentScale,
+            _mode == IndicatorMode.SlidingPill ? _indicator : _scale!,
+            _mode == IndicatorMode.SlidingPill ? FrameworkElement.WidthProperty : ScaleTransform.ScaleXProperty,
+            currentWidth,
             targetBounds.Width,
             effectiveDuration,
             easing);
@@ -187,16 +229,26 @@ internal sealed class SegmentIndicator
     }
 
     private static void BeginBaseValue(
-        Animatable target,
+        DependencyObject target,
         DependencyProperty property,
         double value)
     {
-        target.BeginAnimation(property, null);
+        switch (target)
+        {
+            case UIElement element:
+                element.BeginAnimation(property, null);
+                break;
+            case Animatable animatable:
+                animatable.BeginAnimation(property, null);
+                break;
+            default:
+                throw new ArgumentException("Indicator animation target must support BeginAnimation.", nameof(target));
+        }
         target.SetValue(property, value);
     }
 
     private static void Animate(
-        Animatable target,
+        DependencyObject target,
         DependencyProperty property,
         double from,
         double to,
@@ -208,16 +260,24 @@ internal sealed class SegmentIndicator
             return;
         }
 
-        target.BeginAnimation(
-            property,
-            new DoubleAnimation
-            {
-                From = from,
-                To = to,
-                Duration = new Duration(duration),
-                EasingFunction = easing
-            },
-            HandoffBehavior.SnapshotAndReplace);
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = to,
+            Duration = new Duration(duration),
+            EasingFunction = easing
+        };
+        switch (target)
+        {
+            case UIElement element:
+                element.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
+                break;
+            case Animatable animatable:
+                animatable.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
+                break;
+            default:
+                throw new ArgumentException("Indicator animation target must support BeginAnimation.", nameof(target));
+        }
     }
 
     private bool TryGetTargetBounds(FrameworkElement target, out Rect bounds)
@@ -228,8 +288,15 @@ internal sealed class SegmentIndicator
             !_coordinateRoot.IsVisible ||
             target.ActualWidth <= 0 ||
             target.ActualHeight <= 0 ||
-            !target.IsVisible)
+            !target.IsVisible ||
+            (_mode == IndicatorMode.SlidingPill && PillSurface(target) is null))
         {
+            if (_mode == IndicatorMode.SlidingPill && (!_coordinateRoot.IsVisible || !target.IsVisible))
+            {
+                // A hidden window/workspace reveals directly at its current target instead of
+                // resuming an invisible transition or entering from the previous geometry.
+                _hasPresentedPill = false;
+            }
             return false;
         }
 
@@ -243,10 +310,21 @@ internal sealed class SegmentIndicator
         return transform.TransformBounds(new Rect(new Point(0, 0), target.RenderSize));
     }
 
-    // 可见宽度只取选中胶囊（模板 Surface）的平直底边：Surface 外边距加底部圆角之内，按布局值
-    // 计算，不受按压缩放影响；整条落在控件外缘之下 FocusRingClearance 处。
     private Rect IndicatorBounds(FrameworkElement target, Rect targetBounds)
     {
+        if (_mode == IndicatorMode.SlidingPill)
+        {
+            // Use the Surface layout rectangle, not TransformToAncestor on Surface itself:
+            // its 0.97 press RenderTransform must never move or resize the underlying pill.
+            var margin = PillSurface(target)?.Margin ?? new Thickness(0);
+            return new Rect(
+                targetBounds.Left + margin.Left,
+                targetBounds.Top + margin.Top,
+                Math.Max(0, targetBounds.Width - margin.Left - margin.Right),
+                Math.Max(0, targetBounds.Height - margin.Top - margin.Bottom));
+        }
+
+        // #338 前保留便签状态分段的旧底条：只覆盖 Surface 平直底边，位于焦点环之外。
         var height = _indicator.Height > 0 ? _indicator.Height : 4;
         var (leftInset, rightInset) = PillSurface(target) is { } surface
             ? (surface.Margin.Left + surface.CornerRadius.BottomLeft,

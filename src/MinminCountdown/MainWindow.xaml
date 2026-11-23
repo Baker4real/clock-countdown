@@ -73,6 +73,8 @@
               TextElement.FontSize="{DynamicResource TypeCaptionFontSize}"
               Background="Transparent">
           <Grid.Resources>
+            <!-- 顶部选中态由底层滑动胶囊承担；显式透明资源让 checked+hover 不回落到 hover。 -->
+            <SolidColorBrush x:Key="MainWorkspaceTabTransparentBrush" Color="Transparent" />
             <Style x:Key="MainFieldLabel"
                    TargetType="{x:Type TextBlock}"
                    BasedOn="{StaticResource FieldLabel}">
@@ -431,8 +433,8 @@
               <Setter Property="FocusVisualStyle" Value="{x:Null}" />
               <Setter Property="Template">
                 <Setter.Value>
-                  <!-- #152：页签改常驻 2px 透明环 + 1px 间隙；选中粉底（PinkTintBrush）上
-                       ActiveBrush 环不再直接贴粉底（实测 2.90 <3:1），环对容器/间隙浅色 ≥3:1。 -->
+                  <!-- #337：按钮 Surface 透明，PinkTint 由底层滑动胶囊承载；常驻 2px 环 + 1px
+                       间隙保持不变，ActiveBrush 环对容器/间隙浅色 ≥3:1。 -->
                   <ControlTemplate TargetType="{x:Type ToggleButton}">
                     <Grid x:Name="InteractionSurface"
                           Background="Transparent"
@@ -440,8 +442,8 @@
                           focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
-                          focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
-                          focus:MotionBehavior.CheckedBorderBrushResourceKey="PinkTintBrush">
+                          focus:MotionBehavior.CheckedBackgroundResourceKey="MainWorkspaceTabTransparentBrush"
+                          focus:MotionBehavior.CheckedBorderBrushResourceKey="MainWorkspaceTabTransparentBrush">
                       <!-- #154：激活胶囊短边一半全圆角——环包按钮高 44 → 22；Surface 高 44-2×3=38 → 19。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
@@ -496,8 +498,8 @@
                           focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
-                          focus:MotionBehavior.CheckedBackgroundResourceKey="PinkTintBrush"
-                          focus:MotionBehavior.CheckedBorderBrushResourceKey="PinkTintBrush">
+                          focus:MotionBehavior.CheckedBackgroundResourceKey="MainWorkspaceTabTransparentBrush"
+                          focus:MotionBehavior.CheckedBorderBrushResourceKey="MainWorkspaceTabTransparentBrush">
                       <!-- #154：同 MainSegmentButton——短边一半全圆角（环 22 / Surface 高 38 → 19）。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
@@ -1054,8 +1056,8 @@
 
               <!-- 命令栏：工作区页签 + 设置齿轮 / 筛选 / 标签 / 数量。
                    #304：三枚命令按钮统一 41 DIP 高并垂直居中，数量文字共用同一中线；
-                   命令栏右缘对齐当前内容区右缘（倒计时 835 / 便签 829），页签容器与选中指示条几何不变。 -->
-              <Grid x:Name="MainCommandBarZone" Grid.Row="1" VerticalAlignment="Top">
+                   命令栏右缘对齐当前内容区右缘（倒计时 835 / 便签 829），外部 51 DIP 高度不变。 -->
+              <Grid x:Name="MainCommandBarZone" Grid.Row="1" MinHeight="51" VerticalAlignment="Top">
                 <Grid.Style>
                   <Style TargetType="{x:Type Grid}">
                     <Setter Property="Margin" Value="30,0,29,0" />
@@ -1075,25 +1077,42 @@
                   <ColumnDefinition Width="12" />
                   <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <!-- 页签宿主正好 183×44（99 + 2 + 82），不再被容器裁掉 1 DIP；宿主下方留 4 DIP 给
-                     选中指示条：离页签外缘（焦点环）1 DIP，贴容器底边（§9）。 -->
+                <!-- #337：50 高暖边槽保持 51 DIP 命令栏外部高度；1+2+44+2+1 对称留白，
+                     宿主仍为 183×44（99 + 2 + 82）。底层滑动胶囊不改同级页签布局。 -->
                 <Border Grid.Column="0"
                         Width="190"
-                        Height="51"
-                        Padding="4,3,3,4"
+                        Height="50"
+                        Padding="3,2,2,2"
+                        VerticalAlignment="Center"
                         Background="{DynamicResource CardAltBrush}"
+                        BorderBrush="{DynamicResource PeachLineBrush}"
+                        BorderThickness="1"
                         CornerRadius="{DynamicResource RadiusControl}">
                   <Grid x:Name="MainWorkspaceTabHost">
-                    <!-- #196：选中指示条只改变 RenderTransform，避免切换时重排同级页签。 -->
                     <Canvas x:Name="MainWorkspaceTabIndicatorLayer"
-                            Panel.ZIndex="2"
+                            Panel.ZIndex="0"
                             IsHitTestVisible="False">
                       <Border x:Name="MainWorkspaceTabIndicator"
                               Width="1"
-                              Height="3"
-                              Background="{DynamicResource PinkAccentStrongBrush}"
-                              CornerRadius="0"
-                              Visibility="Collapsed" />
+                              Height="38"
+                              Background="{DynamicResource PinkTintBrush}"
+                              CornerRadius="19"
+                              IsHitTestVisible="False"
+                              Focusable="False"
+                              Visibility="Collapsed">
+                        <Border.Style>
+                          <Style TargetType="{x:Type Border}">
+                            <Setter Property="BorderBrush" Value="Transparent" />
+                            <Setter Property="BorderThickness" Value="0" />
+                            <Style.Triggers>
+                              <Trigger Property="focus:ApplicationTheme.IsSystemContrast" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                                <Setter Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                              </Trigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Border.Style>
+                      </Border>
                     </Canvas>
                     <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
                       <ToggleButton x:Name="CountdownTab"

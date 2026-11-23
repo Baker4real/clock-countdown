@@ -1325,8 +1325,8 @@ internal static partial class ValidationReport
                 var surface = probe.Template?.FindName("Surface", probe) as Border;
                 var probeUsesExpected = BrushMatchesExpected(surface?.BorderBrush, expected);
 
-                // #152：选中粉底页签（PinkTintBrush）上的焦点环——环与粉底之间常驻 1px 间隙，
-                // 实际邻色是容器 CardAltBrush；对实际邻色以主题公式核 ≥3:1。
+                // 页签焦点环与底层 PinkTint 滑动胶囊之间由 Surface 外缩保留常驻 1px 间隙，
+                // 实际邻色仍是容器 CardAltBrush；对实际邻色以主题公式核 ≥3:1。
                 // 每处环按上下文钉唯一期望 token（常规 ActiveBrush / 实心粉邻色暖金），
                 // 不存在「不达标但匹配旧强调色则放过」的分支。
                 var countdownTab = Required<ToggleButton>(main, "CountdownTab");
@@ -1361,10 +1361,7 @@ internal static partial class ValidationReport
                     Math.Abs(tabSurface.Margin.Left - 3) <= 0.01 &&
                     Math.Abs(tabSurface.Margin.Top - 3) <= 0.01 &&
                     Math.Abs(tabSurface.Margin.Right - 3) <= 0.01 &&
-                    Math.Abs(tabSurface.Margin.Bottom - 3) <= 0.01 &&
-                    tabSurface.Background is SolidColorBrush selectedFill &&
-                    Application.Current.FindResource("PinkTintColor") is Color pinkTint &&
-                    selectedFill.Color == pinkTint;
+                    Math.Abs(tabSurface.Margin.Bottom - 3) <= 0.01;
 
                 if (tabRing?.BorderBrush is SolidColorBrush focusBrush)
                 {

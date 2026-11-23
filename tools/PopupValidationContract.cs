@@ -2341,6 +2341,126 @@ public static class MotionValidationContractHarness
         finally { window?.Close(); Pump(); }
     }
 
+    private static void PillIndicator(MotionScenarioResult result, bool immediateMove = false)
+    {
+        var root = new Grid { Width = 240, Height = 44 };
+        var targets = new Canvas();
+        Func<double, double, ToggleButton> target = (width, x) => {
+            var surface = new FrameworkElementFactory(typeof(Border), "Surface");
+            surface.SetValue(Border.MarginProperty, new Thickness(3));
+            surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(19));
+            var control = new ToggleButton {
+                Width = width,
+                Height = 44,
+                Template = new ControlTemplate(typeof(ToggleButton)) { VisualTree = surface }
+            };
+            Canvas.SetLeft(control, x);
+            return control;
+        };
+        var left = target(99, 0);
+        var right = target(82, 101);
+        targets.Children.Add(left);
+        targets.Children.Add(right);
+        var layer = new Canvas();
+        var indicator = new Border { Width = 1, Height = 38, CornerRadius = new CornerRadius(19) };
+        layer.Children.Add(indicator);
+        root.Children.Add(targets);
+        root.Children.Add(layer);
+        var type = AppType("SegmentIndicator");
+        var mode = Enum.Parse(type.GetNestedType("IndicatorMode", BindingFlags.Public | BindingFlags.NonPublic), "SlidingPill");
+        var controller = Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic |
+            BindingFlags.Instance, null, new object[] { root, layer, indicator, mode }, null);
+        Window window = null;
+        try
+        {
+            window = ShowFixture(root);
+            left.ApplyTemplate();
+            right.ApplyTemplate();
+            root.UpdateLayout();
+            Func<ToggleButton, double[]> targetValues = segment => {
+                var bounds = segment.TransformToAncestor(root).TransformBounds(new Rect(segment.RenderSize));
+                return new[] { bounds.Left + 3, bounds.Width - 6, bounds.Top + 3, bounds.Height - 6 };
+            };
+            var leftTarget = targetValues(left);
+            var rightTarget = targetValues(right);
+            Func<double[]> values = () => {
+                Require(indicator.RenderTransform is TranslateTransform,
+                    "滑动胶囊仍在使用 TransformGroup/ScaleTransform。");
+                Require(indicator.Height == 38 && indicator.CornerRadius == new CornerRadius(19),
+                    "滑动胶囊帧几何不再保持 38 DIP 高与 19 DIP 全圆角。");
+                Require(Math.Abs(left.ActualWidth - 99) <= 0.75 && left.ActualHeight == 44 &&
+                    Math.Abs(right.ActualWidth - 82) <= 0.75 && right.ActualHeight == 44 &&
+                    Canvas.GetLeft(right) == 101,
+                    "滑动胶囊重排了同级页签。left=" + left.ActualWidth.ToString("R") + "x" +
+                    left.ActualHeight.ToString("R") + ", right=" + right.ActualWidth.ToString("R") +
+                    "x" + right.ActualHeight.ToString("R") + ", rightX=" + Canvas.GetLeft(right).ToString("R"));
+                var bounds = (Rect)Property(type, controller, "CurrentVisualBounds");
+                return new[] { bounds.X, bounds.Width, bounds.Y, bounds.Height };
+            };
+            Func<bool> animated = () =>
+                Animated(indicator, FrameworkElement.WidthProperty) ||
+                Translation(indicator)?.HasAnimatedProperties == true;
+            Action<FrameworkElement> move = targetElement => Invoke(type, controller, "MoveTo", targetElement);
+
+            // 第一次可用几何不得从 1 DIP/原点播放入场动画。
+            move(left);
+            var initial = ObserveFrame(result, "pill-initial-first-frame", indicator, values, animated);
+            Require(Immediate(initial.Values, leftTarget, initial.HasAnimation, 0.00001),
+                "滑动胶囊首次显示未在首帧即时对齐。");
+
+            if (immediateMove)
+            {
+                var destination = right;
+                var expected = rightTarget;
+                if (result.Enabled)
+                {
+                    move(right);
+                    WaitFor(result, "pill-immediate-before", indicator, values, animated,
+                        value => Intermediate(leftTarget, value, rightTarget));
+                    destination = left;
+                    expected = leftTarget;
+                }
+                Invoke(type, controller, "MoveTo", destination, true);
+                var immediate = ObserveFrame(result, "pill-immediate-first-frame", indicator, values, animated);
+                Require(Immediate(immediate.Values, expected, immediate.HasAnimation, 0.00001),
+                    "滑动胶囊即时调用的首帧仍有 Width/Translate 动画时钟或几何偏差。");
+                _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+                var afterCommit = Observe(result, "pill-immediate-after-commit", values, animated);
+                Require(Immediate(afterCommit.Values, expected, afterCommit.HasAnimation, 0.00001) &&
+                    (bool)Invoke(type, controller, "IsAlignedTo", destination, 0.0),
+                    "滑动胶囊即时路径在 Loaded 复核后重新启动或偏离。");
+                return;
+            }
+
+            move(right);
+            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            var committed = Observe(result, "pill-right-committed", values, animated);
+            if (!result.Enabled)
+            {
+                Require(Immediate(committed.Values, rightTarget, animated(), 0.00001),
+                    "减弱动画下指针切换未同时即时完成 Width 与 Translate。");
+                return;
+            }
+            WaitFor(result, "pill-middle", indicator, values, animated,
+                value => Intermediate(leftTarget, value, rightTarget));
+            var before = Observe(result, "pill-reverse-before", values, animated);
+            move(left);
+            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            var reverseCommitted = Observe(result, "pill-reverse-committed", values, animated);
+            var after = ObserveFrame(result, "pill-reverse-first-frame", indicator, values, animated);
+            Require(ContinuesFromSnapshot(before, reverseCommitted, after, leftTarget, 160, 0.02),
+                "滑动胶囊中途反向没有从当前 X/Width 快照折返。", LateFirstFrame(before, after, 160));
+            WaitFor(result, "pill-reverse-middle", indicator, values, animated,
+                value => Intermediate(before.Values, value, leftTarget), firstFrame: after);
+            move(right);
+            WaitFor(result, "pill-last-target", indicator, values, animated,
+                value => Near(value, rightTarget, 0.00001));
+            Require((bool)Invoke(type, controller, "IsAlignedTo", right, 0.01),
+                "滑动胶囊终态没有在 0.01 DIP 内重合右侧 Surface。");
+        }
+        finally { window?.Close(); Pump(); }
+    }
+
     // Proves the stall gate on the production popup exit clock: blocking the
     // dispatcher at the first frame for longer than the whole 90 ms transition
     // leaves the 10%-90% band unobservable and must count as starved. It runs
@@ -2424,6 +2544,10 @@ public static class MotionValidationContractHarness
                 result => Indicator(result), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("segment-indicator-immediate", enabled,
                 result => Indicator(result, immediateMove: true), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("segment-pill", enabled,
+                result => PillIndicator(result), ref stallRetriesLeft));
+            results.Add(RunCaseWithStallRetry("segment-pill-immediate", enabled,
+                result => PillIndicator(result, immediateMove: true), ref stallRetriesLeft));
         }
         results.Add(RunCaseWithStallRetry("tooltip-chain-expired-previous-owner", true,
             ExerciseToolTipChainExpiredPreviousOwner, ref stallRetriesLeft));

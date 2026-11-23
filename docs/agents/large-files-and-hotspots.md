@@ -2,7 +2,7 @@
 type: reference
 title: 大文件索引与并行热点
 tags: [agents, navigation, hotspots, large-files]
-intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引命令，以及并行波次合并冲突热点的串行化边界。
+intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引命令、并行波次合并冲突热点边界与视觉实拍证据定位。
 ---
 
 # 大文件索引与并行热点
@@ -20,6 +20,10 @@ intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引
 | `src/MinminCountdown/MainWindow.xaml` | `rg -n 'x:Key="|x:Name="' src/MinminCountdown/MainWindow.xaml` |
 | `src/MinminCountdown/MainWindow.xaml.cs` | `rg -n '^\s*(public|private|internal)\s+' src/MinminCountdown/MainWindow.xaml.cs` |
 | `src/MinminCountdown/App.xaml` | `rg -n 'x:Key="|TargetType=' src/MinminCountdown/App.xaml` |
+| `src/MinminCountdown/UiControls.cs` | `rg -n '^\s*(public|private|internal)\s+(sealed\s+|static\s+|readonly\s+)?(class|enum|struct)\s+|^\s*(public|internal)\s+' src/MinminCountdown/UiControls.cs` |
+| `src/MinminCountdown/ReminderWindow.cs` | `rg -n '^\s*(public|private|internal)\s+(sealed\s+|static\s+)?(class\s+|\S+\s+\w+\s*\()' src/MinminCountdown/ReminderWindow.cs` |
+| `src/MinminCountdown/ReminderRulesEditorWindow.cs` | `rg -n '^\s*(public|private|internal)\s+(sealed\s+|static\s+)?(class\s+|\S+\s+\w+\s*\()' src/MinminCountdown/ReminderRulesEditorWindow.cs` |
+| `src/MinminCountdown/FloatingWindow.Notes.cs` | `rg -n '^\s*(public|private|internal)\s+' src/MinminCountdown/FloatingWindow.Notes.cs` |
 | `src/MinminCountdown/MotionBehavior.cs` | `rg -n '^\s*(public|private|internal)\s+(sealed\s+|static\s+)?class\s+|^\s*(public|internal)\s+' src/MinminCountdown/MotionBehavior.cs` |
 | `src/MinminCountdown/WindowValidationScenarios.cs` | `rg -n '^\s*(private|internal)\s+.*\b(Probe|Run|Observe|Validate)' src/MinminCountdown/WindowValidationScenarios.cs` |
 | `src/MinminCountdown/ValidationReport.*.cs` | `rg -n '^\s*private\s+static\s+' src/MinminCountdown -g 'ValidationReport*.cs'` |
@@ -40,3 +44,11 @@ intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引
 建议做法：
 - 并行票只改各自独立的功能源码与独立场景类文件（如 `src/MinminCountdown.WindowVerification/*Scenario.cs`），把上述热点注册或基线叙述统一留到集成波次一次落地；
 - 若必须修改其中一个热点文件，同波次只安排单一 owner 写入该文件，其他票排在下一波或集成阶段。
+
+## 3. 视觉参考图与实拍证据定位
+
+审计或核对多表面画面表现时，直接按以下三处路径定位，省去多轮目录枚举（同一流列文件名用 `-Name` 或 `-ExpandProperty`，避免混排异构 `Select-Object` 列）：
+
+- **方向参考图与现役双窗基线**：`assets/ui-references/` 根级 `*-ai-optimized-*.png`（5 张方向参考图），现役版本号由 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 唯一声明，对应 `assets/ui-references/main-window/864x1000/<Version>/`（9 帧）与 `assets/ui-references/floating-window/520x390/<Version>/`（5 帧）。
+- **版本化次级窗口与状态实拍证据**：`docs/evidence/clock-countdown-issue-250-surfaces/`（提醒中心、规则编辑器、确认框、四大弹层、错误态与系统高对比度）及同级 `issue-247-countdown-rows`、`issue-249-note-rows`、`issue-251-density-scroll-context`、`issue-255-focus-policy` 目录。
+- **本机最近验证实拍（未跟踪）**：`logs/ui-captures/` 下按时间戳命名的子目录（如 `*-validate-only`、`*-density`、`*-scroll-hint`）。

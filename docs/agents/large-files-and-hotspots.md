@@ -1,6 +1,15 @@
+---
+type: reference
+title: 大文件索引与并行热点
+tags: [agents, navigation, hotspots, large-files]
+intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引命令，以及并行波次合并冲突热点的串行化边界。
+---
+
 # 大文件索引与并行热点
 
-本仓库有少量超长脚本与单点注册文件，直接整篇读取会快速消耗上下文，并行分支同时改动同一热点文件也会制造重复冲突。按以下约定处理：
+本仓库没有 `tests/` 目录：产品与独立验证 C# 源码在 `src/`，工具与自检在 `tools/`，核心与窗口套件 PowerShell 脚本在仓库根（用 `rg <模式> . --max-depth 1 -g 'Countdown*.ps*'` 检索；全仓搜索务必加 `-g '!logs/**' -g '!assets/**'` 避免扫入日志与参考图）。
+
+本仓库有若干超长源码、XAML 与测试文件，直接多轮分段盲读会快速消耗上下文，并行分支同时改动同一热点文件也会制造重复冲突。按以下约定处理：
 
 ## 1. 超长文件先查符号索引，再按行分段读
 
@@ -8,6 +17,12 @@
 
 | 文件 | 推荐索引命令 |
 | --- | --- |
+| `src/MinminCountdown/MainWindow.xaml` | `rg -n 'x:Key="|x:Name="' src/MinminCountdown/MainWindow.xaml` |
+| `src/MinminCountdown/MainWindow.xaml.cs` | `rg -n '^\s*(public|private|internal)\s+' src/MinminCountdown/MainWindow.xaml.cs` |
+| `src/MinminCountdown/App.xaml` | `rg -n 'x:Key="|TargetType=' src/MinminCountdown/App.xaml` |
+| `src/MinminCountdown/MotionBehavior.cs` | `rg -n '^\s*(public|private|internal)\s+(sealed\s+|static\s+)?class\s+|^\s*(public|internal)\s+' src/MinminCountdown/MotionBehavior.cs` |
+| `src/MinminCountdown/WindowValidationScenarios.cs` | `rg -n '^\s*(private|internal)\s+.*\b(Probe|Run|Observe|Validate)' src/MinminCountdown/WindowValidationScenarios.cs` |
+| `src/MinminCountdown/ValidationReport.*.cs` | `rg -n '^\s*private\s+static\s+' src/MinminCountdown -g 'ValidationReport*.cs'` |
 | `Countdown.CSharp.Tests.ps1` | `rg -n '^function |Write-TestSegmentTiming|WindowVerification|#' Countdown.CSharp.Tests.ps1` |
 | `tools/PopupValidationContract.cs` | `rg -n '^\s*(public|private|internal)\s+(static\s+)?' tools/PopupValidationContract.cs` |
 | `Countdown.Core.Tests.ReleaseContract.ps1` | `rg -n '^#\s|Assert-' Countdown.Core.Tests.ReleaseContract.ps1` |

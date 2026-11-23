@@ -21,4 +21,5 @@ intent: 规定本仓库问题、PRD 和 ticket 的 GitHub Issues 操作方式。
 - PR 不作为默认 triage 请求入口
 - skill 要求发布问题时，创建 GitHub Issue
 - skill 要求读取 ticket 时，读取对应 GitHub Issue
+- `/to-spec` 与 `/to-tickets` 直接发布为 GitHub Issue（PRD 父票与挂原生 `parent` + `blocked-by` 边的子票，默认标签 `ready-for-agent`），不在仓库 `docs/specs/` 新建重复副本；本地草稿、tickets 清单与 `.created.json` 状态回执归位 `D:\agents\run-evidence\<task-slug>\<YYYYMMDD>\`，发布核验通过后回收 `.bodies/` 临时切片目录
 - `/wayfinder` 使用一个 map issue 及其子 issue；优先使用 GitHub 原生子任务和依赖关系

@@ -541,6 +541,219 @@ $focusVisualProblems = @($focusVisualSelfTestFailures) + @($focusVisualScan.Leak
 $focusVisualDetail = if ($focusVisualProblems.Count -eq 0) { "扫描 $($focusXaml.Count) 个 XAML，$($focusVisualScan.SelfDrawing) 个自画焦点的样式都清了 FocusVisualStyle；自检 5 例通过" } else { $focusVisualProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:focus-visual-style-null' -Passed ($focusVisualProblems.Count -eq 0) -Detail $focusVisualDetail
 
+# 挂载 MotionBehavior.IsEnabled="True" 的控件样式，其模板 Surface/Box 若保留非零边框厚度且未由宿主代画焦点，
+# 样式（含 BasedOn 链）必须显式设置 BorderBrush（无边框填 Transparent），否则 MotionBehavior 会回退读取
+# WPF Control 默认冷灰色（#707070）覆盖模板表面边框（如 MainNoteSegmentButton 曾泄漏灰黑细框，由 #338 修复）。
+function Get-MotionSurfaceBorderBrushLeaks {
+    param([Parameter(Mandatory)] [System.Collections.IDictionary] $XamlByName)
+    $presentation = 'http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+    $xamlNamespace = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $styles = @(foreach ($entry in $XamlByName.GetEnumerator()) {
+            foreach ($style in ([xml] $entry.Value).GetElementsByTagName('Style', $presentation)) {
+                [pscustomobject]@{ File = $entry.Key; Element = $style }
+            }
+        })
+    $stylesByKey = @{}
+    foreach ($style in $styles) {
+        $key = $style.Element.GetAttribute('Key', $xamlNamespace)
+        if (-not $key) { $key = $style.Element.GetAttribute('TargetType') -replace '^\{x:Type\s+|\}$', '' }
+        if ($key) { $stylesByKey[$key] = $style.Element }
+    }
+    $setters = { param($element) @($element.ChildNodes | Where-Object { $_.LocalName -eq 'Setter' }) }
+    $resolveChainSetter = {
+        param($startElement, [regex] $propertyPattern)
+        $current = $startElement
+        for ($depth = 0; $null -ne $current -and $depth -lt 16; $depth++) {
+            $hit = @(& $setters $current | Where-Object { $_.GetAttribute('Property') -match $propertyPattern } | Select-Object -First 1)
+            if ($hit.Count -gt 0) { return $hit[0].GetAttribute('Value') }
+            $basedOn = [regex]::Match($current.GetAttribute('BasedOn'), '^\{StaticResource\s+(?:\{x:Type\s+)?([^\s{}]+)\}?\}$')
+            $current = if ($basedOn.Success) { $stylesByKey[$basedOn.Groups[1].Value] } else { $null }
+        }
+        return $null
+    }
+    $isZeroThickness = {
+        param([string] $raw)
+        -not [string]::IsNullOrWhiteSpace($raw) -and $raw.Trim() -match '^0(?:\s*,\s*0){0,3}$'
+    }
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $checkedStyles = 0
+    foreach ($style in $styles) {
+        $template = @(& $setters $style.Element | Where-Object { $_.GetAttribute('Property') -eq 'Template' } |
+            ForEach-Object { $_.GetElementsByTagName('ControlTemplate', $presentation) } | Select-Object -First 1)
+        if ($template.Count -eq 0) { continue }
+        $allNodes = @($template[0].SelectNodes('.//*'))
+        $motionEnabled = @($allNodes | Where-Object {
+                @($_.Attributes | Where-Object { $_.LocalName -eq 'MotionBehavior.IsEnabled' -and $_.Value -eq 'True' }).Count -gt 0
+            }).Count -gt 0
+        if (-not $motionEnabled) { continue }
+        $hostDraws = & $resolveChainSetter $style.Element '(?:^|:|\.)FocusVisualState\.HostDrawsFocus$'
+        if ($hostDraws -eq 'True') { continue }
+        $surface = @($allNodes | Where-Object { $_.GetAttribute('Name', $xamlNamespace) -eq 'Surface' } | Select-Object -First 1)
+        if ($surface.Count -eq 0) {
+            $surface = @($allNodes | Where-Object { $_.GetAttribute('Name', $xamlNamespace) -eq 'Box' } | Select-Object -First 1)
+        }
+        if ($surface.Count -eq 0) { continue }
+        $surfaceThickness = $surface[0].GetAttribute('BorderThickness')
+        if (& $isZeroThickness $surfaceThickness) { continue }
+        if ($surfaceThickness -match '^\{TemplateBinding\s+BorderThickness\}$') {
+            $styleThickness = & $resolveChainSetter $style.Element '^(?:Control\.)?BorderThickness$'
+            if (& $isZeroThickness $styleThickness) { continue }
+        }
+        $checkedStyles++
+        $borderBrushValue = & $resolveChainSetter $style.Element '^(?:Control\.)?BorderBrush$'
+        if ([string]::IsNullOrWhiteSpace($borderBrushValue)) {
+            $name = $style.Element.GetAttribute('Key', $xamlNamespace)
+            if (-not $name) { $name = "TargetType=$($style.Element.GetAttribute('TargetType'))" }
+            $leaks.Add("$($style.File):$name")
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); CheckedStyles = $checkedStyles }
+}
+
+$motionBorderSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+$motionSurfaceTemplate = '<Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">' +
+    '<Grid focus:MotionBehavior.IsEnabled="True"><Border x:Name="Surface" BorderThickness="{0}" BorderBrush="Transparent" /></Grid>' +
+    '</ControlTemplate></Setter.Value></Setter>'
+foreach ($case in @(
+        @{ Name = 'missing-borderbrush'; Leaks = 1; Body = "<Style x:Key=""A"" TargetType=""ToggleButton""><Setter Property=""BorderThickness"" Value=""0"" />$($motionSurfaceTemplate -f '1')</Style>" },
+        @{ Name = 'explicit-transparent'; Leaks = 0; Body = "<Style x:Key=""A"" TargetType=""ToggleButton""><Setter Property=""BorderBrush"" Value=""Transparent"" />$($motionSurfaceTemplate -f '1')</Style>" },
+        @{ Name = 'based-on-inherits'; Leaks = 0; Body = "<Style x:Key=""Base"" TargetType=""ToggleButton""><Setter Property=""BorderBrush"" Value=""Transparent"" /></Style><Style x:Key=""Derived"" TargetType=""ToggleButton"" BasedOn=""{StaticResource Base}"">$($motionSurfaceTemplate -f '1')</Style>" },
+        @{ Name = 'zero-template-bound'; Leaks = 0; Body = "<Style x:Key=""A"" TargetType=""Button""><Setter Property=""BorderThickness"" Value=""0"" />$($motionSurfaceTemplate -f '{TemplateBinding BorderThickness}')</Style>" },
+        @{ Name = 'host-draws-focus'; Leaks = 0; Body = "<Style x:Key=""A"" TargetType=""Button""><Setter Property=""focus:FocusVisualState.HostDrawsFocus"" Value=""True"" />$($motionSurfaceTemplate -f '1')</Style>" }
+    )) {
+    $caseLeaks = @((Get-MotionSurfaceBorderBrushLeaks -XamlByName @{ 'case.xaml' = ($focusXamlRoot -f $case.Body) }).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $motionBorderSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+# #338 落地修复 MainNoteSegmentButton 冷灰边框后从豁免集移除该项；存量只减不增。
+$motionBorderKnownExemptions = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]] @('MainWindow.xaml:MainNoteSegmentButton'),
+    [System.StringComparer]::Ordinal)
+$motionBorderScan = Get-MotionSurfaceBorderBrushLeaks -XamlByName $focusXaml
+$motionBorderActualSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($motionBorderScan.Leaks), [System.StringComparer]::Ordinal)
+$motionBorderFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($leak in $motionBorderScan.Leaks) {
+    if (-not $motionBorderKnownExemptions.Contains($leak)) {
+        $motionBorderFailures.Add("$leak 启用了 MotionBehavior 且模板表面有非零边框，样式未显式设置 BorderBrush（会泄漏系统默认 #707070 冷灰边）")
+    }
+}
+foreach ($exempt in $motionBorderKnownExemptions) {
+    if (-not $motionBorderActualSet.Contains($exempt)) {
+        $motionBorderFailures.Add("豁免项 $exempt 已补齐 BorderBrush：请从 motionBorderKnownExemptions 移除以收紧棘轮")
+    }
+}
+$motionBorderProblems = @($motionBorderSelfTestFailures) + @($motionBorderFailures)
+$motionBorderDetail = if ($motionBorderProblems.Count -eq 0) {
+    "检查 $($motionBorderScan.CheckedStyles) 个有边框 MotionBehavior 样式（存量豁免 $($motionBorderKnownExemptions.Count) 项待 #338 收零）；自检 5 例通过"
+} else { $motionBorderProblems -join ' | ' }
+Add-ToolingCheck -Name 'xaml:motion-surface-border-brush' -Passed ($motionBorderProblems.Count -eq 0) -Detail $motionBorderDetail
+
+# CONTEXT.md 须持续满足 to-spec / to-tickets 的 glossary_hits.py 解析规则：每个「## 词条」小节下须有匹配的
+# ASCII 冒号「**词条**: 说明」声明，_Avoid_: 行须紧跟定义段且不隔空行，不得出现中文冒号词条头或无词空表。
+function Get-GlossaryFormatIssues {
+    param([Parameter(Mandatory)] [string] $Text)
+    $entryRegex = [regex]'^\s*(?:[-*+]\s+)?\*\*(?<names>[^*\r\n]+?)(?::\*\*|\*\*\s*:)\s*(?<rest>.*)$'
+    $avoidRegex = [regex]'(?i)^\s*(?:[-*+]\s+)?_Avoid_\s*:\s*(?<words>.+)$'
+    $entryStartRegex = [regex]'^\s*(?:[-*+]\s+)?\*\*'
+    $boldPrefixRegex = [regex]'^\s*(?:[-*+]\s+)?\*\*(?<names>[^*\r\n]+)\*\*(?<tail>.*)$'
+    $avoidStartRegex = [regex]'(?i)^\s*(?:[-*+]\s+)?_Avoid(?:_|\b)'
+    $h2Regex = [regex]'^##\s+(?<heading>\S.*)$'
+    $headingRegex = [regex]'^\s*#'
+    $lines = $Text.Replace("`r`n", "`n") -split "`n"
+    $startIndex = 0
+    if ($lines.Count -gt 0 -and $lines[0].Trim() -eq '---') {
+        for ($i = 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i].Trim() -eq '---') { $startIndex = $i + 1; break }
+        }
+    }
+    $issues = [System.Collections.Generic.List[string]]::new()
+    $entryCount = 0
+    $inEntry = $false
+    $pendingHeading = $null
+    $pendingHeadingLine = 0
+    for ($idx = $startIndex; $idx -lt $lines.Count; $idx++) {
+        $lineNo = $idx + 1
+        $line = $lines[$idx]
+        $h2Match = $h2Regex.Match($line)
+        if ($h2Match.Success) {
+            if ($null -ne $pendingHeading) {
+                $issues.Add("第 $pendingHeadingLine 行小节 '## $pendingHeading' 缺少 '**${pendingHeading}**:' 词条声明")
+            }
+            $pendingHeading = $h2Match.Groups['heading'].Value.Trim()
+            $pendingHeadingLine = $lineNo
+            $inEntry = $false
+            continue
+        }
+        $entryMatch = $entryRegex.Match($line)
+        if ($entryStartRegex.IsMatch($line) -and -not $entryMatch.Success) {
+            $boldMatch = $boldPrefixRegex.Match($line)
+            $names = if ($boldMatch.Success) { $boldMatch.Groups['names'].Value.TrimEnd() } else { '' }
+            $tail = if ($boldMatch.Success) { $boldMatch.Groups['tail'].Value } else { '' }
+            $continuation = $inEntry -and $boldMatch.Success -and $tail.Trim().Length -gt 0 -and
+                -not $tail.TrimStart().StartsWith(':') -and -not $tail.TrimStart().StartsWith('：') -and
+                -not $names.EndsWith(':') -and -not $names.EndsWith('：')
+            if (-not $continuation) {
+                $issues.Add("第 $lineNo 行词条声明格式错误（应使用 ASCII 半角冒号 '**词条**: 说明'）")
+            }
+        }
+        if ($avoidStartRegex.IsMatch($line)) {
+            $avoidMatch = $avoidRegex.Match($line)
+            $words = @(if ($avoidMatch.Success) { $avoidMatch.Groups['words'].Value -split '[,，、]' | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
+            if ($words.Count -eq 0) {
+                $issues.Add("第 $lineNo 行 _Avoid_ 格式错误（应为 '_Avoid_: 禁用词1, 禁用词2'）")
+            }
+            elseif (-not $inEntry) {
+                $issues.Add("第 $lineNo 行 _Avoid_ 必须紧跟词条定义段，中间不能有空行或标题")
+            }
+            continue
+        }
+        if ($entryMatch.Success) {
+            $namesList = @($entryMatch.Groups['names'].Value -split '\s+/\s+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            if ($namesList.Count -eq 0) {
+                $issues.Add("第 $lineNo 行词条声明缺少名称")
+            }
+            else {
+                $entryCount++
+                $inEntry = $true
+                if ($null -ne $pendingHeading) {
+                    if ($namesList -contains $pendingHeading) {
+                        $pendingHeading = $null
+                    }
+                    else {
+                        $issues.Add("第 $lineNo 行词条声明 '$($namesList -join ' / ')' 与第 $pendingHeadingLine 行小节标题 '## $pendingHeading' 不一致")
+                        $pendingHeading = $null
+                    }
+                }
+            }
+        }
+        elseif (-not $line.Trim() -or $headingRegex.IsMatch($line)) {
+            $inEntry = $false
+        }
+    }
+    if ($null -ne $pendingHeading) {
+        $issues.Add("第 $pendingHeadingLine 行小节 '## $pendingHeading' 缺少 '**${pendingHeading}**:' 词条声明")
+    }
+    if ($entryCount -eq 0) {
+        $issues.Add('未解析到任何 glossary 词条声明')
+    }
+    [pscustomobject]@{ Issues = @($issues); EntryCount = $entryCount }
+}
+
+$glossarySelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'valid'; Issues = 0; Text = "---`ntype: reference`n---`n# 领域词汇`n`n## 管理窗口`n`n**管理窗口**: 完整窗口。`n_Avoid_: 主界面, 主窗口`n" },
+        @{ Name = 'missing-declaration'; Issues = 2; Text = "# 领域词汇`n`n## 倒计时`n`n纯正文没有粗体词条头。`n" },
+        @{ Name = 'fullwidth-colon'; Issues = 3; Text = "# 领域词汇`n`n## 倒计时`n`n**倒计时**：误用中文冒号。`n" },
+        @{ Name = 'blank-before-avoid'; Issues = 1; Text = "# 领域词汇`n`n## 管理窗口`n`n**管理窗口**: 完整窗口。`n`n_Avoid_: 主窗口`n" },
+        @{ Name = 'empty'; Issues = 1; Text = "# 领域词汇`n" }
+    )) {
+    $caseCount = @((Get-GlossaryFormatIssues -Text $case.Text).Issues).Count
+    if ($caseCount -ne $case.Issues) { $glossarySelfTestFailures.Add("self-test $($case.Name): expected $($case.Issues), got $caseCount") }
+}
+$contextGlossaryScan = Get-GlossaryFormatIssues -Text ([System.IO.File]::ReadAllText((Join-Path $repoRoot 'CONTEXT.md')))
+$glossaryProblems = @($glossarySelfTestFailures) + @($contextGlossaryScan.Issues)
+$glossaryDetail = if ($glossaryProblems.Count -eq 0) { "CONTEXT.md $($contextGlossaryScan.EntryCount) 个词条全部通过 glossary 格式校验；自检 5 例通过" } else { $glossaryProblems -join ' | ' }
+Add-ToolingCheck -Name 'glossary:context-md-format' -Passed ($glossaryProblems.Count -eq 0) -Detail $glossaryDetail
+
 # App.xaml 的隐式 <Style TargetType="{x:Type Window}"> 不会应用到 Window 子类，
 # 每个 XAML 窗口根和纯代码 : Window 子类都必须显式绑定 UiFontFamily，避免子类退回系统默认字体。
 function Get-WindowUiFontFamilyLeaks {

@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "issue": 339,
+  "baseline_version": "2026-11-23-v86",
+  "commands": [
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json",
+      "exit_code": 0,
+      "run_id": null,
+      "result": "Valid=true; managed dotnet 10.0.404; fresh build paths absent"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-23-v86 -WhatIf",
+      "exit_code": 0,
+      "run_id": null,
+      "result": "Highest used version v85; three code pins previewed; no files changed"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-23-v86",
+      "exit_code": 0,
+      "run_id": null,
+      "result": "Three files changed, one replacement each"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Update-CountdownIntegrityHashes.ps1",
+      "exit_code": 0,
+      "run_id": null,
+      "result": "29 pins, zero mismatches, no contract diff"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build",
+      "exit_code": 0,
+      "run_id": "20261123T155821807-c4774d9f",
+      "result": "Completed; CleanR2R; 62 seconds"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate",
+      "exit_code": 1,
+      "run_id": null,
+      "result": "Load preflight refused before launch: CPU 5%, GPU 3D 100% (kryptex_peakminer); no process stopped"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate -SkipLoadPreflight",
+      "exit_code": 0,
+      "run_id": "20261123T155943755-e0ae9b76",
+      "result": "Completed; 9 main + 5 floating captures; 97 seconds; previous v85 directories removed by generator"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-22-v85 -To 2026-11-23-v86",
+      "exit_code": 0,
+      "run_id": null,
+      "result": "Compared from commit 7b173e4ad408bb1b1bc8058fa4af851344855c23; also persisted as v85-v86-comparison.txt"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp",
+      "exit_code": 1,
+      "run_id": null,
+      "job_id": "pwsh-f7010cad80574be4",
+      "result": "Load preflight refused before launch: CPU 5%, GPU 3D 101% (kryptex_peakminer 100%); no process stopped"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight",
+      "exit_code": 0,
+      "run_id": "20261123T161005265-4f2144af",
+      "job_id": "pwsh-9ec25b152be644a2",
+      "result": "Completed with no deferred baseline items; 374 seconds"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling",
+      "exit_code": 1,
+      "run_id": null,
+      "result": "Load preflight refused before launch: CPU 9%, GPU 3D 101% (kryptex_peakminer 101%); no process stopped"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness,Tooling -SkipLoadPreflight",
+      "exit_code": 1,
+      "run_id": "20261123T162026605-dd0b88f8",
+      "result": "ValidationHarness exit 1; Tooling exit 130 cancelled. Only popup-flipped failed: sampling-gap 193.5897 ms > 37.0496 ms, two scenario retries used. segment-pill and segment-pill-immediate passed; no assertion weakened"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Tooling",
+      "exit_code": 0,
+      "run_id": "20261123T162216319-9222224b",
+      "result": "Completed; 104 seconds; documentation links, UTF-8/BOM, design-token drift and baseline anchors passed"
+    },
+    {
+      "command": "pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness -SkipLoadPreflight",
+      "exit_code": 1,
+      "run_id": "20261123T162408904-3e00df3a",
+      "result": "Failed on real sampling starvation: popup-flipped gap 206.1002 ms and datepicker-text-interrupted-input selection-escape-final gap 205.6986 ms, threshold 37.0496 ms; four retries used. No complete passing run; result remains unverified"
+    }
+  ],
+  "custom_red_green": [
+    {
+      "check": "Test-Issue339DesignContract.ps1",
+      "red_exit_code": 1,
+      "red_failures": 5,
+      "green_exit_code": 0,
+      "green_checks": 6
+    },
+    {
+      "check": "Test-Issue339BaselineCloseout.ps1",
+      "red_exit_code": 1,
+      "red_failures": 6,
+      "green_exit_code": 0,
+      "green_checks": 7
+    }
+  ],
+  "final_closeout": {
+    "status": "unverified",
+    "owner": "orchestrator",
+    "reason": "Must run on a fresh gate worktree at the final merged commit; this ticket worktree must not run a second Clean/Closeout"
+  }
+}

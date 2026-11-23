@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "hash_scope": "git-blob",
+  "issue": 339,
+  "baseline_version": "2026-11-23-v86",
+  "baseline_run": "20261123T155943755-e0ae9b76",
+  "build_run": "20261123T155821807-c4774d9f",
+  "integration_base_commit": "7b173e4ad408bb1b1bc8058fa4af851344855c23",
+  "capture_directory": "logs/ui-captures/20261123T080044503-validate-only",
+  "candidate_dll_sha256": "5267DF171B621FA17374A1FA3FA72FDC70E1B3E2F56A27B94ADABBD4B2DCFE37",
+  "run_artifact_validation_report_sha256": "D37DA17642F34E4C55BCCC2BCB044E6A1E66F8F186EFAF75AFCB1911FCA240C0",
+  "run_artifact_focus_manifest_sha256": "BB355AFA695E6486E65FBD7E51EF831D994241F028A9FDE9072368CA23AC6D42",
+  "run_artifact_surface_manifest_sha256": "D8E9FB915A0742D5490BCD2D38EDA713BA53235C9ACBF91BA875C0F091E38BC2",
+  "current_source_bindings": {
+    "main-window": {
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-23-v86/manifest.json",
+      "manifest_sha256": "787EC764BA4751639E8FBC6B145DC86542ABA6637659F496287DDF80A0C1A345",
+      "aggregate_sha256": "B50BDC68F369FEE65E1D4604F67EBB3A3844FD4A627A6C4A97284184BCCC4967"
+    },
+    "floating-window": {
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-23-v86/manifest.json",
+      "manifest_sha256": "1990D1D19FB8B42E0A236B72B29121B0EDC98A4682EED937FF46E821669C2B43",
+      "aggregate_sha256": "0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783"
+    }
+  },
+  "required_count": 6,
+  "copied_and_verified": 6,
+  "entries": [
+    {
+      "id": "main-countdowns-normal",
+      "path": "main-countdowns-normal.png",
+      "kind": "segment-normal",
+      "state": "倒计时页：对称暖边槽与滑动全圆角胶囊，无底部横条",
+      "sha256": "B5B086FF1F74AD603842ACA6122D71D0789C68040F0DD7D7183876874494192A",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "pixelWidth": 864,
+      "pixelHeight": 1000
+    },
+    {
+      "id": "main-notes-normal",
+      "path": "main-notes-normal.png",
+      "kind": "segment-normal",
+      "state": "便签页：状态分段对称暖边槽、透明表面与滑动蜜桃胶囊，无冷灰边或底部横条",
+      "sha256": "0CAFFD3FA80F0FCCC9E1B92ABF2FD1F91AB2969C7D38205DBFD42F7B314065C8",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "pixelWidth": 864,
+      "pixelHeight": 1000
+    },
+    {
+      "id": "Countdowns-CountdownTab",
+      "path": "Countdowns-CountdownTab.png",
+      "kind": "keyboard-focus",
+      "state": "倒计时页签：单层 2 DIP 暖色焦点环与选中粉底保持间隙",
+      "sha256": "D44AF41B6F687335CC802A678B9E5D9F942166BAAB0B7D9170698BFFC294358A",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "focusedType": "ToggleButton",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 26,
+        "y": 125.5,
+        "width": 115,
+        "height": 60
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    },
+    {
+      "id": "Notes-NotesTab",
+      "path": "Notes-NotesTab.png",
+      "kind": "keyboard-focus",
+      "state": "便签页签：单层 2 DIP 暖色焦点环与选中粉底保持间隙",
+      "sha256": "358574410D82165546591866368577F42D9AEE12CAA2267FDB0A0EA6BE98EDFB",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "focusedType": "ToggleButton",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 127,
+        "y": 125.5,
+        "width": 98,
+        "height": 60
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    },
+    {
+      "id": "Notes-ActiveNotesSegment",
+      "path": "Notes-ActiveNotesSegment.png",
+      "kind": "keyboard-focus",
+      "state": "未完成分段：单层焦点环、左竖轨与数量徽章，无冷灰边",
+      "sha256": "359DC79AAFF81DF2CD67D53C2386F5CB7DDFFDF28CD24A8047F9FAE0714EEDAD",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "focusedType": "ToggleButton",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 44,
+        "y": 521.53,
+        "width": 131,
+        "height": 52
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    },
+    {
+      "id": "Notes-CompletedNotesSegment",
+      "path": "Notes-CompletedNotesSegment.png",
+      "kind": "keyboard-focus",
+      "state": "已完成分段：单层焦点环，未选中透明表面无冷灰边",
+      "sha256": "0D3920FB0710A6FE2CB1DB822037FF578A6E984C0B92794076E73207E40C9191",
+      "visual_review": "read_image reviewed; source and copied pixels unchanged",
+      "result": "pass",
+      "focusedType": "ToggleButton",
+      "keyboardIsMostRecentInputDevice": true,
+      "templateDrawsFocus": true,
+      "singleFocusStroke": true,
+      "focusVisualAdorner": false,
+      "cropDip": {
+        "x": 161,
+        "y": 521.53,
+        "width": 121,
+        "height": 52
+      },
+      "dpiScale": {
+        "x": 1.5,
+        "y": 1.5
+      },
+      "magnification": 4
+    }
+  ]
+}

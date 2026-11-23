@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 1,
+  "issue": 339,
+  "oldCommit": "7b173e4ad408bb1b1bc8058fa4af851344855c23",
+  "oldVersion": "2026-11-22-v85",
+  "newVersion": "2026-11-23-v86",
+  "frameCount": 14,
+  "frames": [
+    {
+      "surface": "main",
+      "captureId": "main-day-countdowns-empty",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-countdowns-empty.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-countdowns-empty.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-countdowns-empty.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 1866,
+      "bbox": [
+        30,
+        130,
+        219,
+        180
+      ],
+      "xRuns": [
+        [
+          30,
+          219
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-countdowns-representative",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-countdowns-representative.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-countdowns-representative.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-countdowns-representative.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 1866,
+      "bbox": [
+        30,
+        130,
+        219,
+        180
+      ],
+      "xRuns": [
+        [
+          30,
+          219
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-countdowns-stress",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-countdowns-stress.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-countdowns-stress.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-countdowns-stress.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 1866,
+      "bbox": [
+        30,
+        130,
+        219,
+        180
+      ],
+      "xRuns": [
+        [
+          30,
+          219
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-empty",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-empty.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-empty.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-empty.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 11215,
+      "bbox": [
+        30,
+        130,
+        813,
+        568
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          526,
+          568
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-representative",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-representative.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-representative.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-representative.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 11202,
+      "bbox": [
+        30,
+        130,
+        813,
+        568
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          526,
+          568
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-stress",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-stress.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-stress.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-stress.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 11198,
+      "bbox": [
+        30,
+        130,
+        813,
+        568
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          526,
+          568
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-edit",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-edit.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-edit.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-edit.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 10629,
+      "bbox": [
+        30,
+        130,
+        813,
+        599
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          558,
+          599
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-filter-open",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-filter-open.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-filter-open.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-filter-open.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 11202,
+      "bbox": [
+        30,
+        130,
+        813,
+        568
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          526,
+          568
+        ]
+      ]
+    },
+    {
+      "surface": "main",
+      "captureId": "main-day-notes-selected",
+      "oldPath": "assets/ui-references/main-window/864x1000/2026-11-22-v85/main-day-notes-selected.png",
+      "newPath": "assets/ui-references/main-window/864x1000/2026-11-23-v86/main-day-notes-selected.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\main\\main-day-notes-selected.png",
+      "pngByteIdentical": false,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 11202,
+      "bbox": [
+        30,
+        130,
+        813,
+        568
+      ],
+      "xRuns": [
+        [
+          30,
+          276
+        ],
+        [
+          591,
+          642
+        ],
+        [
+          651,
+          813
+        ]
+      ],
+      "yRuns": [
+        [
+          130,
+          180
+        ],
+        [
+          526,
+          568
+        ]
+      ]
+    },
+    {
+      "surface": "floating",
+      "captureId": "floating-countdowns-day",
+      "oldPath": "assets/ui-references/floating-window/520x390/2026-11-22-v85/floating-countdowns-day.png",
+      "newPath": "assets/ui-references/floating-window/520x390/2026-11-23-v86/floating-countdowns-day.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\floating\\floating-countdowns-day.png",
+      "pngByteIdentical": true,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 0,
+      "bbox": null,
+      "xRuns": [],
+      "yRuns": []
+    },
+    {
+      "surface": "floating",
+      "captureId": "floating-workday-complete-day",
+      "oldPath": "assets/ui-references/floating-window/520x390/2026-11-22-v85/floating-workday-complete-day.png",
+      "newPath": "assets/ui-references/floating-window/520x390/2026-11-23-v86/floating-workday-complete-day.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\floating\\floating-workday-complete-day.png",
+      "pngByteIdentical": true,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 0,
+      "bbox": null,
+      "xRuns": [],
+      "yRuns": []
+    },
+    {
+      "surface": "floating",
+      "captureId": "long-notes-day-top",
+      "oldPath": "assets/ui-references/floating-window/520x390/2026-11-22-v85/long-notes-day-top.png",
+      "newPath": "assets/ui-references/floating-window/520x390/2026-11-23-v86/long-notes-day-top.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\floating\\long-notes-day-top.png",
+      "pngByteIdentical": true,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 0,
+      "bbox": null,
+      "xRuns": [],
+      "yRuns": []
+    },
+    {
+      "surface": "floating",
+      "captureId": "long-notes-day-bottom",
+      "oldPath": "assets/ui-references/floating-window/520x390/2026-11-22-v85/long-notes-day-bottom.png",
+      "newPath": "assets/ui-references/floating-window/520x390/2026-11-23-v86/long-notes-day-bottom.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\floating\\long-notes-day-bottom.png",
+      "pngByteIdentical": true,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 0,
+      "bbox": null,
+      "xRuns": [],
+      "yRuns": []
+    },
+    {
+      "surface": "floating",
+      "captureId": "notes-search-expanded-day",
+      "oldPath": "assets/ui-references/floating-window/520x390/2026-11-22-v85/notes-search-expanded-day.png",
+      "newPath": "assets/ui-references/floating-window/520x390/2026-11-23-v86/notes-search-expanded-day.png",
+      "oldExtractedPath": "D:\\agents\\run-evidence\\clock-countdown-implement-spec\\prd-336-20261123\\issue-339\\old-v85\\floating\\notes-search-expanded-day.png",
+      "pngByteIdentical": true,
+      "stateFingerprintIdentical": true,
+      "changedPixels": 0,
+      "bbox": null,
+      "xRuns": [],
+      "yRuns": []
+    }
+  ]
+}

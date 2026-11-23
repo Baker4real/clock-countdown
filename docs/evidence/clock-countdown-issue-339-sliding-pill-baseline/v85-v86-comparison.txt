@@ -1,0 +1,28 @@
+2026-11-22-v85 -> 2026-11-23-v86
+旧版来源：7b173e4ad408bb1b1bc8058fa4af851344855c23；新版来源：工作树
+
+[主窗] assets/ui-references/main-window/864x1000
+  源码绑定聚合 DD971ED82A72BF16F2AA2BDC8F8A617F66532D2E9D0A57A0EE248E24307EECDE -> B50BDC68F369FEE65E1D4604F67EBB3A3844FD4A627A6C4A97284184BCCC4967
+  绑定文件变化：改动 src/MinminCountdown/MainWindow.xaml；改动 src/MinminCountdown/MainWindow.xaml.cs；改动 src/MinminCountdown/SegmentIndicator.cs
+  executable.sha256 B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD -> B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD
+  main-day-countdowns-empty：PNG 1866 px，差异框 x 30–219、y 130–180，差异行 130–180；状态指纹一致
+  main-day-countdowns-representative：PNG 1866 px，差异框 x 30–219、y 130–180，差异行 130–180；状态指纹一致
+  main-day-countdowns-stress：PNG 1866 px，差异框 x 30–219、y 130–180，差异行 130–180；状态指纹一致
+  main-day-notes-empty：PNG 11215 px，差异框 x 30–813、y 130–568，差异行 130–180、526–568；状态指纹一致
+  main-day-notes-representative：PNG 11202 px，差异框 x 30–813、y 130–568，差异行 130–180、526–568；状态指纹一致
+  main-day-notes-stress：PNG 11198 px，差异框 x 30–813、y 130–568，差异行 130–180、526–568；状态指纹一致
+  main-day-notes-edit：PNG 10629 px，差异框 x 30–813、y 130–599，差异行 130–180、558–599；状态指纹一致
+  main-day-notes-filter-open：PNG 11202 px，差异框 x 30–813、y 130–568，差异行 130–180、526–568；状态指纹一致
+  main-day-notes-selected：PNG 11202 px，差异框 x 30–813、y 130–568，差异行 130–180、526–568；状态指纹一致
+  9 帧：PNG 逐字节一致 0，状态指纹一致 9
+
+[悬浮窗] assets/ui-references/floating-window/520x390
+  源码绑定聚合 0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783 -> 0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783
+  绑定文件变化：无
+  executable.sha256 B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD -> B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD
+  floating-countdowns-day：PNG 逐字节一致；状态指纹一致
+  floating-workday-complete-day：PNG 逐字节一致；状态指纹一致
+  long-notes-day-top：PNG 逐字节一致；状态指纹一致
+  long-notes-day-bottom：PNG 逐字节一致；状态指纹一致
+  notes-search-expanded-day：PNG 逐字节一致；状态指纹一致
+  5 帧：PNG 逐字节一致 5，状态指纹一致 5

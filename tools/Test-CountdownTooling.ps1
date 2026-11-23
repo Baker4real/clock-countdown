@@ -1,4 +1,4 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 [CmdletBinding()]
 param(
     [switch] $Json,
@@ -624,9 +624,9 @@ foreach ($case in @(
     $caseLeaks = @((Get-MotionSurfaceBorderBrushLeaks -XamlByName @{ 'case.xaml' = ($focusXamlRoot -f $case.Body) }).Leaks).Count
     if ($caseLeaks -ne $case.Leaks) { $motionBorderSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
 }
-# #338 落地修复 MainNoteSegmentButton 冷灰边框后从豁免集移除该项；存量只减不增。
+# MainNoteSegmentButton 的 #338 冷灰边框豁免已收零；后续样式不得重新进入豁免集。
 $motionBorderKnownExemptions = [System.Collections.Generic.HashSet[string]]::new(
-    [string[]] @('MainWindow.xaml:MainNoteSegmentButton'),
+    [string[]] @(),
     [System.StringComparer]::Ordinal)
 $motionBorderScan = Get-MotionSurfaceBorderBrushLeaks -XamlByName $focusXaml
 $motionBorderActualSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($motionBorderScan.Leaks), [System.StringComparer]::Ordinal)
@@ -643,7 +643,7 @@ foreach ($exempt in $motionBorderKnownExemptions) {
 }
 $motionBorderProblems = @($motionBorderSelfTestFailures) + @($motionBorderFailures)
 $motionBorderDetail = if ($motionBorderProblems.Count -eq 0) {
-    "检查 $($motionBorderScan.CheckedStyles) 个有边框 MotionBehavior 样式（存量豁免 $($motionBorderKnownExemptions.Count) 项待 #338 收零）；自检 5 例通过"
+    "检查 $($motionBorderScan.CheckedStyles) 个有边框 MotionBehavior 样式（存量豁免 $($motionBorderKnownExemptions.Count) 项）；自检 5 例通过"
 } else { $motionBorderProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:motion-surface-border-brush' -Passed ($motionBorderProblems.Count -eq 0) -Detail $motionBorderDetail
 

@@ -329,12 +329,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         _workspaceTabIndicator = new SegmentIndicator(
             MainWorkspaceTabHost,
             MainWorkspaceTabIndicatorLayer,
-            MainWorkspaceTabIndicator,
-            SegmentIndicator.IndicatorMode.SlidingPill);
+            MainWorkspaceTabIndicator);
         _notesSegmentIndicator = new SegmentIndicator(
             NotesSegmentHost,
             NotesSegmentIndicatorLayer,
             NotesSegmentIndicator);
+        // 两段都监听：激活段自身 Width 会变化，非激活兄弟变宽也会推动激活段 X。
+        ActiveNotesSegment.SizeChanged += (_, _) => _notesSegmentIndicator.SynchronizeWithCurrentTarget();
+        CompletedNotesSegment.SizeChanged += (_, _) => _notesSegmentIndicator.SynchronizeWithCurrentTarget();
         _noteSearchDebounceTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
         {
             Interval = NoteSearchDebounceInterval
@@ -2409,10 +2411,14 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         SetRecordCountText(RecordCountText, $"{active.Length} 个待办");
         AddNotesGroupedByDay(ActiveNoteRows, active, isCompleted: false, effectiveNowUtc, revealNoteId);
         AddNotesGroupedByDay(CompletedNoteRows, completed, isCompleted: true, effectiveNowUtc, revealNoteId);
-        ActiveNotesCount.Text = active.Length.ToString(CultureInfo.InvariantCulture);
-        CompletedNotesCount.Text = completed.Length.ToString(CultureInfo.InvariantCulture);
+        var activeCountText = active.Length.ToString(CultureInfo.InvariantCulture);
+        var completedCountText = completed.Length.ToString(CultureInfo.InvariantCulture);
+        var countsChanged = ActiveNotesCount.Text != activeCountText ||
+            CompletedNotesCount.Text != completedCountText;
+        ActiveNotesCount.Text = activeCountText;
+        CompletedNotesCount.Text = completedCountText;
         var showCompleted = revealNoteId is not null ? revealCompleted : _completedSegmentSelected;
-        ApplyNotesSegmentState(showCompleted, active.Length, completed.Length);
+        ApplyNotesSegmentState(showCompleted, active.Length, completed.Length, countsChanged);
 
         var showEmpty = (showCompleted ? completed.Length : active.Length) == 0;
         var isFirstUse = snapshot.Settings.Notes.Count == 0;
@@ -2453,11 +2459,15 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         RenderNotes();
     }
 
-    private void ApplyNotesSegmentState(bool showCompleted, int activeCount, int completedCount)
+    private void ApplyNotesSegmentState(
+        bool showCompleted,
+        int activeCount,
+        int completedCount,
+        bool countsChanged)
     {
         ActiveNotesSegment.IsChecked = !showCompleted;
         CompletedNotesSegment.IsChecked = showCompleted;
-        UpdateNotesSegmentIndicator(showCompleted);
+        UpdateNotesSegmentIndicator(showCompleted, immediate: countsChanged);
         ActiveNoteRows.Visibility = !showCompleted && activeCount > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -2476,10 +2486,11 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             immediate);
     }
 
-    private void UpdateNotesSegmentIndicator(bool showCompleted)
+    private void UpdateNotesSegmentIndicator(bool showCompleted, bool immediate = false)
     {
         _notesSegmentIndicator.MoveTo(
-            showCompleted ? CompletedNotesSegment : ActiveNotesSegment);
+            showCompleted ? CompletedNotesSegment : ActiveNotesSegment,
+            immediate);
     }
 
     private static void SetNoteStatusSegmentState(

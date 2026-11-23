@@ -167,6 +167,7 @@
             <Style x:Key="MainNoteSegmentButton" TargetType="{x:Type ToggleButton}">
               <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
               <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
               <Setter Property="BorderThickness" Value="0" />
               <Setter Property="FontSize" Value="{DynamicResource TypeBodyFontSize}" />
               <Setter Property="Padding" Value="0" />
@@ -181,7 +182,8 @@
                           focus:DisabledStateBehavior.IsEnabled="True"
                           focus:MotionBehavior.HoverBackgroundResourceKey="CardAltBrush"
                           focus:MotionBehavior.HoverBorderBrushResourceKey="ActiveHoverBrush"
-                          focus:MotionBehavior.CheckedBackgroundResourceKey="PeachTintBrush">
+                          focus:MotionBehavior.CheckedBackgroundResourceKey="MainWorkspaceTabTransparentBrush"
+                          focus:MotionBehavior.CheckedBorderBrushResourceKey="MainWorkspaceTabTransparentBrush">
                       <!-- #154：激活胶囊短边一半全圆角——环包按钮高 36 → 18；Surface 高 36-2×2=32 → 16。 -->
                       <Border x:Name="FocusRing"
                               Background="Transparent"
@@ -1865,21 +1867,37 @@
                           <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid x:Name="NotesStatusHeader" Grid.Column="0">
-                          <!-- 分段下方留 4 DIP 给选中指示条（离焦点环 1 DIP，§9），也是工具条与列表视口之间的下沿。 -->
-                          <Border Padding="2,2,2,4"
-                                  Background="Transparent"
+                          <!-- #338：1+2+36+2+1=42，对称暖边槽与搜索共用中线；底层胶囊不占兄弟布局。 -->
+                          <Border Padding="2"
+                                  Background="{DynamicResource CardAltBrush}"
+                                  BorderBrush="{DynamicResource PeachLineBrush}"
+                                  BorderThickness="1"
                                   CornerRadius="{DynamicResource RadiusControl}">
                             <Grid x:Name="NotesSegmentHost">
-                              <!-- #196：状态分段与页签共用可中断的 160ms 指示条。 -->
                               <Canvas x:Name="NotesSegmentIndicatorLayer"
-                                      Panel.ZIndex="2"
+                                      Panel.ZIndex="0"
                                       IsHitTestVisible="False">
                                 <Border x:Name="NotesSegmentIndicator"
                                         Width="1"
-                                        Height="3"
-                                        Background="{DynamicResource PeachRailBrush}"
-                                        CornerRadius="0"
-                                        Visibility="Collapsed" />
+                                        Height="32"
+                                        Background="{DynamicResource PeachTintBrush}"
+                                        CornerRadius="16"
+                                        IsHitTestVisible="False"
+                                        Focusable="False"
+                                        Visibility="Collapsed">
+                                  <Border.Style>
+                                    <Style TargetType="{x:Type Border}">
+                                      <Setter Property="BorderBrush" Value="Transparent" />
+                                      <Setter Property="BorderThickness" Value="0" />
+                                      <Style.Triggers>
+                                        <Trigger Property="focus:ApplicationTheme.IsSystemContrast" Value="True">
+                                          <Setter Property="BorderBrush" Value="{DynamicResource ActiveBrush}" />
+                                          <Setter Property="BorderThickness" Value="{DynamicResource FocusBorderThickness}" />
+                                        </Trigger>
+                                      </Style.Triggers>
+                                    </Style>
+                                  </Border.Style>
+                                </Border>
                               </Canvas>
                               <StackPanel Panel.ZIndex="1" Orientation="Horizontal">
                               <ToggleButton x:Name="ActiveNotesSegment"
@@ -1895,7 +1913,7 @@
                                           Width="3"
                                           Height="19"
                                           Margin="7,0,0,0"
-                                          CornerRadius="2"
+                                          CornerRadius="1.5"
                                           VerticalAlignment="Center"
                                           Background="{DynamicResource PeachRailBrush}">
                                     <Border.Style>
@@ -1980,7 +1998,7 @@
                                           Width="3"
                                           Height="19"
                                           Margin="7,0,0,0"
-                                          CornerRadius="2"
+                                          CornerRadius="1.5"
                                           VerticalAlignment="Center"
                                           Background="{DynamicResource PeachRailBrush}">
                                     <Border.Style>
@@ -2055,9 +2073,8 @@
                             </Grid>
                           </Border>
                         </Grid>
-                        <!-- 搜索与分段按钮同一水平带（上 2 下 4 与分段容器内边距对齐）；标签在输入框左侧，
-                             LabeledBy 关系不变。 -->
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,2,0,0">
+                        <!-- 搜索与 42 DIP 对称分段槽共用水平中线；标签在输入框左侧，LabeledBy 关系不变。 -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                           <!-- #154：去掉标签旁重复的第二枚搜索镜（输入框左缘已有 §4 合同图标，
                                与悬浮窗「搜索便签」单一图标语言一致）。 -->
                           <TextBlock x:Name="NoteSearchLabel"

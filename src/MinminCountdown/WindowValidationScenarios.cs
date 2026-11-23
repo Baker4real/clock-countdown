@@ -2258,7 +2258,6 @@ public sealed partial class MainWindow
                 keyboardFocusRingShowsOnTab,
                 selectedTabWeightDominates,
                 segmentIndicators.GeometryMatches,
-                segmentIndicators.StaticThicknessIsUniform,
                 segmentIndicators.ReducedMotionIsImmediate,
                 segmentIndicators.RapidSwitchStaysAligned);
         }
@@ -2270,8 +2269,8 @@ public sealed partial class MainWindow
         }
     }
 
-    // 快速往返与关闭动画继续覆盖两个实例的既有终态。顶部新胶囊的几何、边框和对比度
-    // 由独立 WindowVerification 验收；这里只保留便签状态分段的 legacy 底条断言至 #338。
+    // 快速往返与关闭动画继续覆盖两个统一滑动胶囊实例的终态；几何、边框、
+    // 动态计数和对比度由独立 WindowVerification 验收。
     private SegmentIndicatorScenarios ProbeSegmentIndicatorScenarios()
     {
         var originalWorkspace = _workspace;
@@ -2306,10 +2305,9 @@ public sealed partial class MainWindow
             var observations = new[] { countdownTab, notesTab, activeSegment, completedSegment };
 
             return new SegmentIndicatorScenarios(
-                observations.All(observation => observation.Aligned),
+                observations.All(observation => observation),
                 reducedMotionIsImmediate,
-                rapidSwitchStaysAligned,
-                activeSegment.StaticThicknessIsUniform && completedSegment.StaticThicknessIsUniform);
+                rapidSwitchStaysAligned);
         }
         finally
         {
@@ -2319,16 +2317,13 @@ public sealed partial class MainWindow
             UpdateLayout();
         }
 
-        (bool Aligned, bool StaticThicknessIsUniform) ObserveIndicator(
+        bool ObserveIndicator(
             SegmentIndicator indicator,
             Control target,
             FrameworkElement root,
             Border border)
         {
-            var isLegacyUnderline = !ReferenceEquals(indicator, _workspaceTabIndicator);
-            var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target)) &&
-                (!isLegacyUnderline ||
-                    IndicatorSitsUnderPillClearOfFocusRing(indicator.CurrentVisualBounds, target, root));
+            var aligned = WindowValidationInput.WaitUntil(Dispatcher, () => indicator.IsAlignedTo(target));
             if (!aligned)
             {
                 var targetBounds = target.TransformToAncestor(root).TransformBounds(new Rect(target.RenderSize));
@@ -2343,35 +2338,8 @@ public sealed partial class MainWindow
                     }));
             }
 
-            var staticThicknessIsUniform = !isLegacyUnderline ||
-                (aligned &&
-                 border.Width == 1 &&
-                 border.Height == 3 &&
-                 border.CornerRadius == new CornerRadius(0) &&
-                 Math.Abs(indicator.CurrentVisualBounds.Height - 3) <= 0.00001);
-            return (aligned, staticThicknessIsUniform);
+            return aligned;
         }
-    }
-
-    // legacy 静止底条只覆盖胶囊（Surface）的平直底边，顶边在焦点环外缘之下至少 1 DIP，整条留在
-    // 容器可见底色之内。按模板部件与容器独立推导，不复用 SegmentIndicator 的算式。
-    private static bool IndicatorSitsUnderPillClearOfFocusRing(Rect bar, Control target, FrameworkElement root)
-    {
-        if (target.Template?.FindName("Surface", target) is not Border pill ||
-            target.Template.FindName("FocusRing", target) is not Border ring ||
-            VisualTreeHelper.GetParent(root) is not Border container)
-        {
-            return false;
-        }
-
-        var pillBounds = pill.TransformToAncestor(root).TransformBounds(new Rect(pill.RenderSize));
-        var ringBounds = ring.TransformToAncestor(root).TransformBounds(new Rect(ring.RenderSize));
-        var fillBottom = container.ActualHeight - container.BorderThickness.Bottom -
-            root.TranslatePoint(new Point(0, 0), container).Y;
-        return Math.Abs(bar.Left - (pillBounds.Left + pill.CornerRadius.BottomLeft)) <= 0.75 &&
-            Math.Abs(bar.Right - (pillBounds.Right - pill.CornerRadius.BottomRight)) <= 0.75 &&
-            bar.Top >= ringBounds.Bottom + 1 - 0.01 &&
-            bar.Bottom <= fillBottom + 0.01;
     }
 
     // #242：应用自己处理的键盘路径（Ctrl+1/2、倒计时页 Ctrl+F、Ctrl+T、弹层焦点生命周期 Esc）
@@ -5861,19 +5829,17 @@ internal sealed record MainWindowInteractionStates(
     bool KeyboardFocusRingShowsOnTab,
     bool SelectedTabWeightDominates,
     bool SegmentIndicatorGeometryMatches,
-    bool SegmentIndicatorStaticThicknessIsUniform,
     bool SegmentIndicatorReducedMotionIsImmediate,
     bool SegmentIndicatorRapidSwitchStaysAligned)
 {
     public static MainWindowInteractionStates Failed { get; } = new(
-        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
+        false, false, false, false, false, false, false, false, false, false, false, false, false, false, false);
 }
 
 internal sealed record SegmentIndicatorScenarios(
     bool GeometryMatches,
     bool ReducedMotionIsImmediate,
-    bool RapidSwitchStaysAligned,
-    bool StaticThicknessIsUniform);
+    bool RapidSwitchStaysAligned);
 
 // #242：七个子检查各在开启与关闭客户区动画两种模式下运行一次。14 个检查名钉在 RequiredChecks 里：
 // 缺少的、未通过的和未登记的检查名都进 FailedChecks。

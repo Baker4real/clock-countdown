@@ -36,6 +36,8 @@ internal static class Program
     internal const string DisabledStateUnifiedFactName = "DisabledStateUnifiedAndPreserved";
     internal const string MainAlignmentAndNoteRowsFactName = "MainWindowCommandBarHeaderAndNoteRowsAligned";
     internal const string MainWorkspaceSlidingPillFactName = "MainWorkspaceSlidingPillGeometryFocusAndContrast";
+    internal const string MainNotesSlidingPillGeometryFactName = "MainNotesSlidingPillGeometryBordersAndContrast";
+    internal const string MainNotesSlidingPillDynamicFactName = "MainNotesSlidingPillDynamicCountGeometry";
     internal const string MainEmptyAndHighContrastRibbonFactName = "MainWindowEmptyStateAffordanceAndHighContrastRibbonCollapse";
     internal const string FloatingWorkdayCompletionFactName = "FloatingWorkdayCompletionBottomNoDuplicateAndCardMask";
     internal const string RuleEditorFixedIntervalNumericFactName = "ReminderRulesEditorFixedIntervalNumericInput";
@@ -132,6 +134,12 @@ internal static class Program
     private const string MainWorkspaceSlidingPillFactMeaning =
         "管理窗口工作区页签使用 190×50 对称暖边槽与底层 38/19 PinkTint 滑动胶囊；胶囊与 Surface 重合、不可命中且退出自动化树，" +
         "选中/未选中 hover、单层焦点环、Ctrl+1/2 与隐藏揭示首帧及系统对比度 2 DIP Highlight 往返均符合 #337，命令栏和内容区零漂移";
+    private const string MainNotesSlidingPillGeometryFactMeaning =
+        "便签未完成/已完成工具条保持 42 DIP 并与搜索同中线，对称 CardAlt/PeachLine 槽承载底层 32/16 PeachTint 滑动胶囊；" +
+        "两段无 #707070 冷灰边，保留 3×19/1.5 暖橙竖轨、完整数量徽章、hover、Tab 与可访问名，系统对比度 2 DIP Highlight 往返符合 #338";
+    private const string MainNotesSlidingPillDynamicFactMeaning =
+        "新增、完成、撤销与筛选让便签计数经过 0、9、113 等位数变化时，激活段自身 Width 与非激活兄弟变宽造成的 X 移动都即时清钟贴合，" +
+        "不再播放 160ms，数量徽章始终完整位于胶囊内部（#338）";
     private const string MainEmptyAndHighContrastRibbonFactMeaning =
         "管理窗口首次空态填写引导常态可辨认为可点（暖粉底色、≥3:1 边框、≥4.5:1 文字与方向提示、悬停/焦点/系统对比度），点击只聚焦表单输入不新增不清草稿；" +
         "系统对比度开启时装饰带布局空间收起不留空白，关闭后恢复原样（#304）";
@@ -245,6 +253,8 @@ internal static class Program
             [DisabledStateUnifiedFactName] = false,
             [MainAlignmentAndNoteRowsFactName] = false,
             [MainWorkspaceSlidingPillFactName] = false,
+            [MainNotesSlidingPillGeometryFactName] = false,
+            [MainNotesSlidingPillDynamicFactName] = false,
             [MainEmptyAndHighContrastRibbonFactName] = false,
             [FloatingWorkdayCompletionFactName] = false,
             [RuleEditorFixedIntervalNumericFactName] = false,
@@ -452,6 +462,18 @@ internal static class Program
                 () => MainWindowAlignmentAndPolishScenario.RunWorkspaceSlidingPill(
                     theme,
                     MainWorkspaceSlidingPillFactMeaning));
+            RunFact(
+                MainNotesSlidingPillGeometryFactName,
+                MainNotesSlidingPillGeometryFactMeaning,
+                () => MainWindowAlignmentAndPolishScenario.RunNotesSlidingPillGeometry(
+                    theme,
+                    MainNotesSlidingPillGeometryFactMeaning));
+            RunFact(
+                MainNotesSlidingPillDynamicFactName,
+                MainNotesSlidingPillDynamicFactMeaning,
+                () => MainWindowAlignmentAndPolishScenario.RunNotesSlidingPillDynamicCounts(
+                    theme,
+                    MainNotesSlidingPillDynamicFactMeaning));
             RunFact(
                 MainEmptyAndHighContrastRibbonFactName,
                 MainEmptyAndHighContrastRibbonFactMeaning,

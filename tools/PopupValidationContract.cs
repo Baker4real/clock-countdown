@@ -2257,90 +2257,6 @@ public static class MotionValidationContractHarness
         }
     }
 
-    private static void Indicator(MotionScenarioResult result, bool immediateMove = false)
-    {
-        var root = new Grid { Width = 240, Height = 44 };
-        var targets = new Canvas();
-        var left = new Border { Width = 80, Height = 40, Background = Brushes.White };
-        var right = new Border { Width = 100, Height = 40, Background = Brushes.White };
-        Canvas.SetLeft(right, 120);
-        targets.Children.Add(left); targets.Children.Add(right);
-        var layer = new Canvas();
-        var indicator = new Border { Width = 1, Height = 4, Background = Brushes.Pink };
-        layer.Children.Add(indicator);
-        root.Children.Add(targets); root.Children.Add(layer);
-        var type = AppType("SegmentIndicator");
-        var controller = Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic |
-            BindingFlags.Instance, null, new object[] { root, layer, indicator }, null);
-        Window window = null;
-        try
-        {
-            window = ShowFixture(root);
-            Action<FrameworkElement> move = target => Invoke(type, controller, "MoveTo", target);
-            Func<double[]> values = () => {
-                var bounds = (Rect)Property(type, controller, "CurrentVisualBounds");
-                return new[] { bounds.X, bounds.Width };
-            };
-            Func<bool> animated = () => ((TransformGroup)indicator.RenderTransform).Children.Any(value =>
-                value.HasAnimatedProperties);
-            move(left);
-            WaitFor(result, "indicator-left", indicator, values, animated,
-                value => Near(value, new[] { 0.0, 80.0 }, 0.00001));
-            if (immediateMove)
-            {
-                // #242：开启动画时打断进行中的移动，关闭动画时从静止出发。调用后的首个
-                // 真实帧就必须对齐且没有动画时钟，不等 Loaded 回调；之后的排版提交也不得
-                // 偏离目标或重新开始动画。
-                var target = right;
-                var expected = new[] { 120.0, 100.0 };
-                if (result.Enabled)
-                {
-                    move(right);
-                    WaitFor(result, "indicator-immediate-before", indicator, values, animated,
-                        value => Intermediate(new[] { 0.0, 80.0 }, value, expected));
-                    target = left;
-                    expected = new[] { 0.0, 80.0 };
-                }
-                Invoke(type, controller, "MoveTo", target, true);
-                var immediate = ObserveFrame(result, "indicator-immediate-first-frame", indicator, values, animated);
-                Require(Immediate(immediate.Values, expected, immediate.HasAnimation, 0.00001),
-                    "即时指示器调用后的首帧未对齐或仍保留动画时钟。");
-                _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-                var afterCommit = Observe(result, "indicator-immediate-after-commit", values, animated);
-                Require(Immediate(afterCommit.Values, expected, afterCommit.HasAnimation, 0.00001) &&
-                    (bool)Invoke(type, controller, "IsAlignedTo", target, 0.75),
-                    "即时指示器在排版提交后偏离目标或重新开始动画。");
-                return;
-            }
-            move(right);
-            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-            var committed = Observe(result, "indicator-right-committed", values, animated);
-            if (!result.Enabled)
-            {
-                Require(Immediate(committed.Values, new[] { 120.0, 100.0 }, animated(), 0.00001),
-                    "off 指示器未在生产提交后即时对齐。");
-                return;
-            }
-            WaitFor(result, "indicator-middle", indicator, values, animated,
-                value => Intermediate(new[] { 0.0, 80.0 }, value, new[] { 120.0, 100.0 }));
-            var before = Observe(result, "indicator-reverse-before", values, animated);
-            move(left);
-            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-            var reverseCommitted = Observe(result, "indicator-reverse-committed", values, animated);
-            var after = ObserveFrame(result, "indicator-reverse-first-frame", indicator, values, animated);
-            Require(ContinuesFromSnapshot(before, reverseCommitted, after, new[] { 0.0, 80.0 }, 160, 0.02),
-                "指示器反转未沿当前几何继续。", LateFirstFrame(before, after, 160));
-            WaitFor(result, "indicator-reverse-middle", indicator, values, animated,
-                value => Intermediate(before.Values, value, new[] { 0.0, 80.0 }), firstFrame: after);
-            move(right);
-            WaitFor(result, "indicator-last-target", indicator, values, animated,
-                value => Near(value, new[] { 120.0, 100.0 }, 0.00001));
-            Require((bool)Invoke(type, controller, "IsAlignedTo", right, 0.75), "指示器最终目标错误。");
-            Require(indicator.Width == 1 && indicator.Height == 4, "指示器动效改变了布局尺寸。");
-        }
-        finally { window?.Close(); Pump(); }
-    }
-
     private static void PillIndicator(MotionScenarioResult result, bool immediateMove = false)
     {
         var root = new Grid { Width = 240, Height = 44 };
@@ -2367,15 +2283,20 @@ public static class MotionValidationContractHarness
         root.Children.Add(targets);
         root.Children.Add(layer);
         var type = AppType("SegmentIndicator");
-        var mode = Enum.Parse(type.GetNestedType("IndicatorMode", BindingFlags.Public | BindingFlags.NonPublic), "SlidingPill");
         var controller = Activator.CreateInstance(type, BindingFlags.Public | BindingFlags.NonPublic |
-            BindingFlags.Instance, null, new object[] { root, layer, indicator, mode }, null);
+            BindingFlags.Instance, null, new object[] { root, layer, indicator }, null);
         Window window = null;
         try
         {
             window = ShowFixture(root);
             left.ApplyTemplate();
             right.ApplyTemplate();
+            // Surface 的 0.97 按压只影响按钮内容；底板仍须按未缩放的布局矩形取样。
+            foreach (var segment in new[] { left, right })
+            {
+                ((Border)segment.Template.FindName("Surface", segment)).RenderTransform =
+                    new ScaleTransform(0.97, 0.97);
+            }
             root.UpdateLayout();
             Func<ToggleButton, double[]> targetValues = segment => {
                 var bounds = segment.TransformToAncestor(root).TransformBounds(new Rect(segment.RenderSize));
@@ -2540,10 +2461,6 @@ public static class MotionValidationContractHarness
                 result => ExerciseImmediatePopupMotion(result, closeVariant: false), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("popup-immediate-close", enabled,
                 result => ExerciseImmediatePopupMotion(result, closeVariant: true), ref stallRetriesLeft));
-            results.Add(RunCaseWithStallRetry("segment-indicator", enabled,
-                result => Indicator(result), ref stallRetriesLeft));
-            results.Add(RunCaseWithStallRetry("segment-indicator-immediate", enabled,
-                result => Indicator(result, immediateMove: true), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("segment-pill", enabled,
                 result => PillIndicator(result), ref stallRetriesLeft));
             results.Add(RunCaseWithStallRetry("segment-pill-immediate", enabled,

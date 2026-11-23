@@ -7,70 +7,36 @@ using System.Windows.Threading;
 namespace MinminCountdown;
 
 /// <summary>
-/// Moves one visual indicator between sibling segments without changing their layout.
-/// SlidingPill animates Translate X/Y and the Border Width so both ends keep their
-/// semicircular radius. LegacyUnderline is retained only for the notes status segments
-/// until #338 migrates that second instance.
+/// Moves one visual sliding pill between sibling segments without changing their layout.
+/// Translate X/Y and Border Width share the same animation so both ends keep their
+/// semicircular radius.
 /// </summary>
 internal sealed class SegmentIndicator
 {
-    internal enum IndicatorMode
-    {
-        LegacyUnderline,
-        SlidingPill
-    }
-
     private const double GeometryTolerance = 0.75;
-
-    // legacy 指示条顶边与选中控件外缘（常驻焦点环）之间的空隙。
-    private const double FocusRingClearance = 1;
 
     private readonly FrameworkElement _coordinateRoot;
     private readonly Canvas _layer;
     private readonly Border _indicator;
-    private readonly IndicatorMode _mode;
-    private readonly ScaleTransform? _scale;
     private readonly TranslateTransform _translate;
     private long _requestVersion;
     private FrameworkElement? _target;
     private Rect _lastTargetBounds;
     private bool _hasPresentedPill;
+    private bool _animatedMovePending;
+    private FrameworkElement? _animatedTarget;
+    private Rect? _animatedTargetBounds;
 
     internal SegmentIndicator(
         FrameworkElement coordinateRoot,
         Canvas layer,
         Border indicator)
-        : this(coordinateRoot, layer, indicator, IndicatorMode.LegacyUnderline)
-    {
-    }
-
-    internal SegmentIndicator(
-        FrameworkElement coordinateRoot,
-        Canvas layer,
-        Border indicator,
-        IndicatorMode mode)
     {
         _coordinateRoot = coordinateRoot;
         _layer = layer;
         _indicator = indicator;
-        _mode = mode;
         _translate = new TranslateTransform();
-        if (_mode == IndicatorMode.SlidingPill)
-        {
-            _indicator.RenderTransform = _translate;
-        }
-        else
-        {
-            _scale = new ScaleTransform(1, 1);
-            _indicator.RenderTransform = new TransformGroup
-            {
-                Children =
-                {
-                    _scale,
-                    _translate
-                }
-            };
-        }
+        _indicator.RenderTransform = _translate;
         _indicator.RenderTransformOrigin = new Point(0, 0.5);
         _indicator.Visibility = Visibility.Collapsed;
     }
@@ -81,12 +47,8 @@ internal sealed class SegmentIndicator
         new(
             _translate.X,
             _translate.Y,
-            Math.Abs(_mode == IndicatorMode.SlidingPill
-                ? _indicator.Width
-                : _indicator.Width * _scale!.ScaleX),
-            Math.Abs(_mode == IndicatorMode.SlidingPill
-                ? _indicator.Height
-                : _indicator.Height * _scale!.ScaleY));
+            Math.Abs(_indicator.Width),
+            Math.Abs(_indicator.Height));
 
     internal FrameworkElement? CurrentTarget => _target;
 
@@ -111,10 +73,13 @@ internal sealed class SegmentIndicator
     {
         _target = target;
         var version = ++_requestVersion;
-        var immediateGeometry = immediate || (_mode == IndicatorMode.SlidingPill && !_hasPresentedPill);
+        var immediateGeometry = immediate || !_hasPresentedPill;
+        _animatedMovePending = !immediateGeometry;
         if (immediateGeometry)
         {
-            // 键盘路径与第一次可用几何都必须在下一真实帧前直接写入终值。
+            _animatedTarget = null;
+            _animatedTargetBounds = null;
+            // 键盘路径、计数几何变化与第一次可用几何都必须在下一真实帧前直接写入终值。
             // 先把本轮选中变化排版完；下面的延迟复核仍会再对齐一次。
             _coordinateRoot.UpdateLayout();
             if (TryGetTargetBounds(target, out var bounds))
@@ -130,6 +95,40 @@ internal sealed class SegmentIndicator
         _coordinateRoot.Dispatcher.BeginInvoke(
             immediateGeometry ? DispatcherPriority.Send : DispatcherPriority.Loaded,
             new Action(() => ApplyWhenReady(version, immediateGeometry)));
+    }
+
+    internal void SynchronizeWithCurrentTarget()
+    {
+        if (_target is null || _animatedMovePending)
+        {
+            // A selection transition owns this layout pass. SizeChanged must not snap its
+            // newly weighted segments to the final pill geometry before the 160ms commit.
+            return;
+        }
+
+        if (ReferenceEquals(_animatedTarget, _target) &&
+            _animatedTargetBounds is { } animatedBounds &&
+            TryGetTargetBounds(_target, out var currentBounds) &&
+            GeometryMatches(currentBounds, animatedBounds, tolerance: 0.01))
+        {
+            // This SizeChanged belongs to the selection's own font/rail layout. Its
+            // geometry already matches the animated destination; do not cancel the pill.
+            return;
+        }
+
+        var target = _target;
+        var version = _requestVersion;
+        _coordinateRoot.Dispatcher.BeginInvoke(
+            DispatcherPriority.Render,
+            new Action(() =>
+            {
+                if (version == _requestVersion &&
+                    ReferenceEquals(target, _target) &&
+                    !_animatedMovePending)
+                {
+                    MoveTo(target, immediate: true);
+                }
+            }));
     }
 
     private void ApplyWhenReady(long version, bool immediate)
@@ -155,7 +154,10 @@ internal sealed class SegmentIndicator
                             TryGetTargetBounds(_target, out var bounds))
                         {
                             _lastTargetBounds = bounds;
+                            _animatedTarget = immediate ? null : _target;
+                            _animatedTargetBounds = immediate ? null : bounds;
                             ApplyTarget(IndicatorBounds(_target, bounds), immediate);
+                            _animatedMovePending = false;
                         }
                     }));
             }
@@ -164,7 +166,10 @@ internal sealed class SegmentIndicator
         }
 
         _lastTargetBounds = GetTargetBounds(_target);
+        _animatedTarget = immediate ? null : _target;
+        _animatedTargetBounds = immediate ? null : _lastTargetBounds;
         ApplyTarget(IndicatorBounds(_target, _lastTargetBounds), immediate);
+        _animatedMovePending = false;
     }
 
     private void ApplyTarget(Rect targetBounds, bool immediate)
@@ -172,7 +177,7 @@ internal sealed class SegmentIndicator
         _layer.IsHitTestVisible = false;
         _indicator.IsHitTestVisible = false;
         _indicator.Focusable = false;
-        var firstPillPresentation = _mode == IndicatorMode.SlidingPill && !_hasPresentedPill;
+        var firstPillPresentation = !_hasPresentedPill;
         _indicator.Visibility = Visibility.Visible;
 
         var configuredDuration = _coordinateRoot.TryFindResource("MotionIndicatorDuration") is Duration duration &&
@@ -185,20 +190,13 @@ internal sealed class SegmentIndicator
         var easing = _coordinateRoot.TryFindResource("MotionEaseOut") as IEasingFunction ??
             MotionTokens.CreateEaseOut();
 
-        var currentWidth = _mode == IndicatorMode.SlidingPill ? _indicator.Width : _scale!.ScaleX;
+        var currentWidth = _indicator.Width;
         var currentX = _translate.X;
         var currentY = _translate.Y;
-        if (_mode == IndicatorMode.SlidingPill)
-        {
-            BeginBaseValue(_indicator, FrameworkElement.WidthProperty, targetBounds.Width);
-        }
-        else
-        {
-            BeginBaseValue(_scale!, ScaleTransform.ScaleXProperty, targetBounds.Width);
-        }
+        BeginBaseValue(_indicator, FrameworkElement.WidthProperty, targetBounds.Width);
         BeginBaseValue(_translate, TranslateTransform.XProperty, targetBounds.Left);
         BeginBaseValue(_translate, TranslateTransform.YProperty, targetBounds.Top);
-        _hasPresentedPill |= _mode == IndicatorMode.SlidingPill;
+        _hasPresentedPill = true;
 
         if (effectiveDuration <= TimeSpan.Zero)
         {
@@ -206,8 +204,8 @@ internal sealed class SegmentIndicator
         }
 
         Animate(
-            _mode == IndicatorMode.SlidingPill ? _indicator : _scale!,
-            _mode == IndicatorMode.SlidingPill ? FrameworkElement.WidthProperty : ScaleTransform.ScaleXProperty,
+            _indicator,
+            FrameworkElement.WidthProperty,
             currentWidth,
             targetBounds.Width,
             effectiveDuration,
@@ -289,9 +287,9 @@ internal sealed class SegmentIndicator
             target.ActualWidth <= 0 ||
             target.ActualHeight <= 0 ||
             !target.IsVisible ||
-            (_mode == IndicatorMode.SlidingPill && PillSurface(target) is null))
+            PillSurface(target) is null)
         {
-            if (_mode == IndicatorMode.SlidingPill && (!_coordinateRoot.IsVisible || !target.IsVisible))
+            if (!_coordinateRoot.IsVisible || !target.IsVisible)
             {
                 // A hidden window/workspace reveals directly at its current target instead of
                 // resuming an invisible transition or entering from the previous geometry.
@@ -310,31 +308,16 @@ internal sealed class SegmentIndicator
         return transform.TransformBounds(new Rect(new Point(0, 0), target.RenderSize));
     }
 
-    private Rect IndicatorBounds(FrameworkElement target, Rect targetBounds)
+    private static Rect IndicatorBounds(FrameworkElement target, Rect targetBounds)
     {
-        if (_mode == IndicatorMode.SlidingPill)
-        {
-            // Use the Surface layout rectangle, not TransformToAncestor on Surface itself:
-            // its 0.97 press RenderTransform must never move or resize the underlying pill.
-            var margin = PillSurface(target)?.Margin ?? new Thickness(0);
-            return new Rect(
-                targetBounds.Left + margin.Left,
-                targetBounds.Top + margin.Top,
-                Math.Max(0, targetBounds.Width - margin.Left - margin.Right),
-                Math.Max(0, targetBounds.Height - margin.Top - margin.Bottom));
-        }
-
-        // #338 前保留便签状态分段的旧底条：只覆盖 Surface 平直底边，位于焦点环之外。
-        var height = _indicator.Height > 0 ? _indicator.Height : 4;
-        var (leftInset, rightInset) = PillSurface(target) is { } surface
-            ? (surface.Margin.Left + surface.CornerRadius.BottomLeft,
-                surface.Margin.Right + surface.CornerRadius.BottomRight)
-            : (0d, 0d);
+        // Use the Surface layout rectangle, not TransformToAncestor on Surface itself:
+        // its 0.97 press RenderTransform must never move or resize the underlying pill.
+        var margin = PillSurface(target)?.Margin ?? new Thickness(0);
         return new Rect(
-            targetBounds.Left + leftInset,
-            targetBounds.Bottom + FocusRingClearance,
-            Math.Max(0, targetBounds.Width - leftInset - rightInset),
-            height);
+            targetBounds.Left + margin.Left,
+            targetBounds.Top + margin.Top,
+            Math.Max(0, targetBounds.Width - margin.Left - margin.Right),
+            Math.Max(0, targetBounds.Height - margin.Top - margin.Bottom));
     }
 
     private static Border? PillSurface(FrameworkElement target) =>

@@ -1718,8 +1718,7 @@ internal static partial class ValidationReport
                 interactionStates.SelectedTabWeightDominates &&
                 interactionStates.SegmentIndicatorGeometryMatches,
                 "选中页签由底层 PinkTint 滑动胶囊与 SemiBold 权重表达"),
-            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口工作区滑动胶囊对齐选中 Surface；便签状态分段保留 legacy 底条至 #338"),
-            ["MainSegmentIndicatorStaticThicknessIsUniform"] = Must(interactionStates.SegmentIndicatorStaticThicknessIsUniform, "便签状态分段 legacy 底条在不同目标宽度静止时保持零圆角、宽 1、高 3 的等粗细形状（#338 迁移）"),
+            ["MainSegmentIndicatorGeometryMatches"] = Must(interactionStates.SegmentIndicatorGeometryMatches, "主窗口工作区与便签状态分段滑动胶囊均对齐选中 Surface"),
             ["MainSegmentIndicatorReducedMotionIsImmediate"] = Must(interactionStates.SegmentIndicatorReducedMotionIsImmediate, "减少动态效果时分段指示条立即就位"),
             ["MainSegmentIndicatorRapidSwitchStaysAligned"] = Must(interactionStates.SegmentIndicatorRapidSwitchStaysAligned, "快速连续切换后分段指示条仍停在当前页签"),
             ["MotionClientAreaAnimationSwitchReadable"] = Must(

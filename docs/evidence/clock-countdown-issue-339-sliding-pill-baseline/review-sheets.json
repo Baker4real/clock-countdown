@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "hash_scope": "git-blob",
+  "issue": 339,
+  "baseline_version": "2026-11-23-v86",
+  "source_authority": "PRD #336 review finding 3; actual v85/v86 review sheets previously inspected with read_image",
+  "source_directory": "D:/agents/run-evidence/clock-countdown-implement-spec/prd-336-20261123/issue-339",
+  "generator": "Make-Issue339ReviewSheets.py",
+  "pixel_analysis": "baseline-pixel-analysis.json",
+  "copy_verification": "Each destination SHA-256 equals its reviewed source SHA-256; bytes were copied without re-encoding.",
+  "required_count": 4,
+  "copied_and_verified": 4,
+  "entries": [
+    {
+      "id": "review-top-tabs",
+      "path": "review-top-tabs.png",
+      "sha256": "B78ACE88A03889F4A2D1CD0939CAEF89FCA94F026A530B72F999DAF1F0030AF5",
+      "run_artifact_source_sha256": "B78ACE88A03889F4A2D1CD0939CAEF89FCA94F026A530B72F999DAF1F0030AF5",
+      "pixelWidth": 1095,
+      "pixelHeight": 1176,
+      "bytes": 81642,
+      "visual_review": "read_image reviewed; all nine v85/v86 tab-band comparisons are the actual reviewed sheet"
+    },
+    {
+      "id": "review-notes-toolbar",
+      "path": "review-notes-toolbar.png",
+      "sha256": "7520807ED1A77F9ADC8099C4871B37FA1AA6F8D451A7B8D520BF7DFC53880E24",
+      "run_artifact_source_sha256": "7520807ED1A77F9ADC8099C4871B37FA1AA6F8D451A7B8D520BF7DFC53880E24",
+      "pixelWidth": 1885,
+      "pixelHeight": 389,
+      "bytes": 86833,
+      "visual_review": "read_image reviewed; all six v85/v86 notes-toolbar comparisons are the actual reviewed sheet"
+    },
+    {
+      "id": "review-notes-status-detail",
+      "path": "review-notes-status-detail.png",
+      "sha256": "2D1725034B054B56CE549BCD1D3D0D37A903CDFD70B84E13B3F32488997D080A",
+      "run_artifact_source_sha256": "2D1725034B054B56CE549BCD1D3D0D37A903CDFD70B84E13B3F32488997D080A",
+      "pixelWidth": 1945,
+      "pixelHeight": 227,
+      "bytes": 15908,
+      "visual_review": "read_image reviewed; actual 3x status-segment before/after detail"
+    },
+    {
+      "id": "review-notes-search-detail",
+      "path": "review-notes-search-detail.png",
+      "sha256": "500C19AE68002ADCE4BC951A8CD680232F8D89F10ACBB3A545688F4B727453EA",
+      "run_artifact_source_sha256": "500C19AE68002ADCE4BC951A8CD680232F8D89F10ACBB3A545688F4B727453EA",
+      "pixelWidth": 1735,
+      "pixelHeight": 227,
+      "bytes": 10873,
+      "visual_review": "read_image reviewed; actual 3x notes-search before/after detail"
+    }
+  ]
+}

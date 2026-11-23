@@ -1,6 +1,6 @@
 # #339 滑动胶囊设计合同与 v86 双窗视觉基线
 
-本目录保存 GitHub #339 需要长期复核的视觉证据、逐帧比对和来源绑定。现役版本为 `2026-11-23-v86`，上一版为 `2026-11-22-v85`。产品视觉实现来自已合并的 #337/#338；本票不重设计产品、不改 token 色值或悬浮窗产品源码。
+本目录保存 GitHub #339 需要长期复核的 v86 历史视觉证据、逐帧比对和来源绑定；当时版本为 `2026-11-23-v86`，上一版为 `2026-11-22-v85`。产品视觉实现来自已合并的 #337/#338；本票不重设计产品、不改 token 色值或悬浮窗产品源码。后续评审修复与现役 v87 零像素漂移证据见 [PRD #336 双轴评审修复](../clock-countdown-issue-339-review-fixes/README.md)，本目录的历史结论和 v86 哈希保持原样。
 
 ## 生成与来源
 
@@ -29,6 +29,17 @@
 主窗前后核对图逐帧确认：旧 `3 DIP` 直角底条消失，两处容器成为对称暖边槽，激活胶囊为全圆角，便签分段不再泄漏 `#707070` 冷灰边。装饰带、编辑卡、弹层和工具条之外的列表区域没有像素变化，外部布局零漂移。#338 已明确把搜索容器从 `VerticalAlignment=Top, Margin=0,2,0,0` 改为 `VerticalAlignment=Center`，所以同一便签工具条带内搜索标签和输入框发生约 1 px 的中线重对齐；它与新 42 DIP 对称状态槽共用中线，不属于列表或装饰带漂移。
 
 悬浮窗 `floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day` 五帧的 PNG 字节和状态指纹全部与 v85 一致，源码绑定聚合与 EXE 哈希也不变，无意外像素变化。
+
+## 实际复核对照图
+
+下列四张图就是本轮评审使用 `read_image` 逐张复核的 v85/v86 对照图，不是按引用重新生成的替代图。它们从仓库外评审材料逐字节复制，[review-sheets.json](review-sheets.json) 记录源/目标一致的 SHA-256、像素尺寸和生成来源，并登记为 `git-blob` 发布证据根。
+
+| 对照图 | 覆盖 |
+| --- | --- |
+| [review-top-tabs.png](review-top-tabs.png) | 九帧工作区页签带的 v85/v86 并排裁图 |
+| [review-notes-toolbar.png](review-notes-toolbar.png) | 六帧便签工具条带的 v85/v86 并排裁图 |
+| [review-notes-status-detail.png](review-notes-status-detail.png) | 状态分段 3 倍细节：暖边槽、透明表面、蜜桃胶囊与徽章 |
+| [review-notes-search-detail.png](review-notes-search-detail.png) | 搜索容器 3 倍细节与工具条中线复核 |
 
 ## 同版常态与焦点实拍
 

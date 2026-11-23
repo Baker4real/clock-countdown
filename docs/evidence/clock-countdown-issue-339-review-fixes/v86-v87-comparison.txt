@@ -1,0 +1,28 @@
+2026-11-23-v86 -> 2026-11-23-v87
+旧版来源：45f6ddc5bfa48a42c6e1f54e320542fc992ee25e；新版来源：工作树
+
+[主窗] assets/ui-references/main-window/864x1000
+  源码绑定聚合 B50BDC68F369FEE65E1D4604F67EBB3A3844FD4A627A6C4A97284184BCCC4967 -> B7B2D6062221D57CA736831026E466AEC698F74E7CC1D02863621874F8728ADC
+  绑定文件变化：改动 src/MinminCountdown/SegmentIndicator.cs
+  executable.sha256 B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD -> B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD
+  main-day-countdowns-empty：PNG 逐字节一致；状态指纹一致
+  main-day-countdowns-representative：PNG 逐字节一致；状态指纹一致
+  main-day-countdowns-stress：PNG 逐字节一致；状态指纹一致
+  main-day-notes-empty：PNG 逐字节一致；状态指纹一致
+  main-day-notes-representative：PNG 逐字节一致；状态指纹一致
+  main-day-notes-stress：PNG 逐字节一致；状态指纹一致
+  main-day-notes-edit：PNG 逐字节一致；状态指纹一致
+  main-day-notes-filter-open：PNG 逐字节一致；状态指纹一致
+  main-day-notes-selected：PNG 逐字节一致；状态指纹一致
+  9 帧：PNG 逐字节一致 9，状态指纹一致 9
+
+[悬浮窗] assets/ui-references/floating-window/520x390
+  源码绑定聚合 0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783 -> 0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783
+  绑定文件变化：无
+  executable.sha256 B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD -> B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD
+  floating-countdowns-day：PNG 逐字节一致；状态指纹一致
+  floating-workday-complete-day：PNG 逐字节一致；状态指纹一致
+  long-notes-day-top：PNG 逐字节一致；状态指纹一致
+  long-notes-day-bottom：PNG 逐字节一致；状态指纹一致
+  notes-search-expanded-day：PNG 逐字节一致；状态指纹一致
+  5 帧：PNG 逐字节一致 5，状态指纹一致 5

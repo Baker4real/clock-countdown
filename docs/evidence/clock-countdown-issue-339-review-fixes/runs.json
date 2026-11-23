@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "issue": 339,
+  "baseline_version": "2026-11-23-v87",
+  "commands": [
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -Json","exit_code":0,"run_id":null,"result":"Valid=true; managed dotnet 10.0.404; initial build paths absent"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-23-v87 -WhatIf","exit_code":0,"run_id":null,"result":"Highest used version v86; three code pins previewed; no files changed"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild -SkipLoadPreflight","exit_code":0,"run_id":"20261123T172231054-b774bf39","result":"Dynamic-count negative-control candidate built"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight","exit_code":1,"run_id":"20261123T172352356-9a8811f4","result":"Expected scoped RED: all dynamic first-frame action families rejected old geometry or clocks"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild -SkipLoadPreflight","exit_code":0,"run_id":"20261123T172733172-8c944b84","result":"Original countsChanged production line restored and rebuilt"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight","exit_code":1,"run_id":"20261123T173020154-999adb35","result":"Dynamic scenario no longer appeared in failures; unrelated SharedScrollBar intermediate sample was starved (samples=[10.00,4.00]); not called green"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild -SkipLoadPreflight","exit_code":0,"run_id":"20261123T173556822-b7f41197","result":"Reduced-pointer negative-control candidate built"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight","exit_code":1,"run_id":"20261123T173759157-b5d94b7a","result":"Expected scoped RED: both real-window reduced-pointer first frames rejected old geometry"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness -SkipLoadPreflight","exit_code":1,"run_id":"20261123T174107634-8dd2cde8","result":"Expected scoped RED only in segment-pill Enabled=false; all other scenarios passed"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness -SkipLoadPreflight","exit_code":1,"run_id":"20261123T174758320-0f2f1e08","result":"Original reduced-motion production behavior RED with corrected first-frame observer; only segment-pill Enabled=false failed"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild -SkipLoadPreflight","exit_code":0,"run_id":"20261123T174912428-3ed7dcbd","result":"Reduced-pointer immediate-geometry production fix built"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness -SkipLoadPreflight","exit_code":0,"run_id":"20261123T175117439-f9ae3b48","result":"Complete Motion contract green; four pill scenarios passed; zero retries"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight","exit_code":75,"run_id":"20261123T175157033-e904ffda","result":"All non-baseline assertions passed; only SourceHashesMatch deferred because v87 had not yet been generated"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-23-v87","exit_code":0,"run_id":null,"result":"Three code pins changed, one replacement each"},
+    {"command":"git add three version files; pwsh.exe -NoLogo -NoProfile -File ./tools/Update-CountdownIntegrityHashes.ps1","exit_code":0,"run_id":null,"result":"29 pins, zero mismatches, no release-contract diff"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build","exit_code":1,"run_id":"20261123T180041649-e9399376","result":"Preflight refused before Clean: incremental output directories were not registered capability roots; no policy or files deleted"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownBuildPreflight.ps1 -RequireClean -Json","exit_code":0,"run_id":null,"result":"Valid=true after preserving all 11 incremental directories under D:/agents/tmp/prd-336-review-incremental-before-v87-build"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build","exit_code":0,"run_id":"20261123T180304487-c92512a5","result":"First actual CleanR2R Build completed; DLL 7626A4AA461DD9404C7768EBE84666F2C4000061A9926759DAB816E7F0E459C0"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate","exit_code":1,"run_id":null,"result":"Load preflight refused before launch: CPU 83%, GPU 3D 100%; no process stopped"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate -SkipLoadPreflight","exit_code":0,"run_id":"20261123T180529795-8f3d1620","result":"Generated 9 main + 5 floating v87 frames and manifests; previous v86 directories removed by generator"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Compare-CountdownVisualBaseline.ps1 -From 2026-11-23-v86 -To 2026-11-23-v87","exit_code":0,"run_id":null,"result":"14/14 PNG and state fingerprints byte-identical; comparison persisted in this directory"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage CSharp -SkipLoadPreflight","exit_code":0,"run_id":"20261123T180801636-85b83577","result":"Independent full CSharp passed on v87"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage ValidationHarness -SkipLoadPreflight","exit_code":0,"run_id":"20261123T181555625-555989c1","result":"Complete Motion contract passed on v87; four pill scenarios green; zero retries"},
+    {"command":"pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Tooling","exit_code":0,"run_id":"20261123T182415487-7eecd535","result":"Official Tooling passed: staged publication evidence, Markdown links, design anchors and all tool contracts"}
+  ],
+  "final_closeout": {
+    "status": "unverified",
+    "owner": "orchestrator",
+    "reason": "Must run on the final merged commit in a new fresh gate worktree; this worktree must not run a second Clean or Closeout"
+  }
+}

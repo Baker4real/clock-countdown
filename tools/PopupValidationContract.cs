@@ -2354,14 +2354,21 @@ public static class MotionValidationContractHarness
             }
 
             move(right);
-            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
-            var committed = Observe(result, "pill-right-committed", values, animated);
             if (!result.Enabled)
             {
-                Require(Immediate(committed.Values, rightTarget, animated(), 0.00001),
-                    "减弱动画下指针切换未同时即时完成 Width 与 Translate。");
+                var reducedFirstFrame = ObserveFrame(
+                    result, "pill-reduced-pointer-first-frame", indicator, values, animated);
+                Require(Immediate(reducedFirstFrame.Values, rightTarget, reducedFirstFrame.HasAnimation, 0.00001),
+                    "减弱动画下指针切换的首个 Rendering 帧未同时即时完成 Width 与 Translate。");
+                _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+                var reducedAfterCommit = Observe(result, "pill-reduced-after-commit", values, animated);
+                Require(Immediate(reducedAfterCommit.Values, rightTarget, reducedAfterCommit.HasAnimation, 0.00001) &&
+                    (bool)Invoke(type, controller, "IsAlignedTo", right, 0.0),
+                    "减弱动画下指针切换在 Loaded 复核后重新启动或偏离。");
                 return;
             }
+            _application.Dispatcher.Invoke(DispatcherPriority.Loaded, new Action(() => { }));
+            var committed = Observe(result, "pill-right-committed", values, animated);
             WaitFor(result, "pill-middle", indicator, values, animated,
                 value => Intermediate(leftTarget, value, rightTarget));
             var before = Observe(result, "pill-reverse-before", values, animated);

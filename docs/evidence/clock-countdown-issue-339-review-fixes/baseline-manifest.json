@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "hash_scope": "git-blob",
+  "issue": 339,
+  "baseline_version": "2026-11-23-v87",
+  "previous_version": "2026-11-23-v86",
+  "previous_commit": "45f6ddc5bfa48a42c6e1f54e320542fc992ee25e",
+  "build_run": "20261123T180304487-c92512a5",
+  "baseline_run": "20261123T180529795-8f3d1620",
+  "csharp_run": "20261123T180801636-85b83577",
+  "validation_harness_run": "20261123T181555625-555989c1",
+  "tooling_run": "20261123T182415487-7eecd535",
+  "candidate_dll_sha256": "7626A4AA461DD9404C7768EBE84666F2C4000061A9926759DAB816E7F0E459C0",
+  "payload_aggregate_sha256": "BB381416AB9917A180A81B9F2E4604ECA3A9CE068AB61F8B67BAB0CD5AE7DC7A",
+  "run_artifact_validation_report_sha256": "B188328AA5870FD4C7D1605758B845B16CB98B33CEA0D22CD58839D3569713F1",
+  "current_source_bindings": {
+    "main-window": {
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-23-v87/manifest.json",
+      "manifest_sha256": "3047E26AE172C4179A1C9FB521A92987EE17954D8E77132243223F05C8520203",
+      "aggregate_sha256": "B7B2D6062221D57CA736831026E466AEC698F74E7CC1D02863621874F8728ADC"
+    },
+    "floating-window": {
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-23-v87/manifest.json",
+      "manifest_sha256": "74F892614C34EE94A524E3BDD1C033B43980255EEF6F6892CCC280FD9EB32EFF",
+      "aggregate_sha256": "0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783"
+    }
+  },
+  "frames": {
+    "main": 9,
+    "floating": 5,
+    "png_byte_identical": 14,
+    "state_fingerprint_identical": 14
+  },
+  "entries": [
+    {
+      "id": "v86-v87-comparison",
+      "path": "v86-v87-comparison.txt",
+      "sha256": "65327F4B302DDFA1E7DBA42D77466D3586768EADA91F5DB6955E3D79CC37F380"
+    },
+    {
+      "id": "red-green-controls",
+      "path": "red-green.json",
+      "sha256": "72CBE7501FA6F4CD59BB8E0C6CEE6ACC7E78FF06617946ECDE36DBE4AFF96719"
+    },
+    {
+      "id": "commands-and-runs",
+      "path": "runs.json",
+      "sha256": "EB936BF9D4E0D188213A848164D71774B7FD143775EB30E5DDA27CFA3E1843AD"
+    }
+  ],
+  "run_artifact_logs": [
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T172352356-9a8811f4-CSharp.err.log",
+      "sha256": "DEF954223772F7B13DB5F4D9A403DE55FC7BECE6E97EB8E7238922E24EEFFB5F"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T173759157-b5d94b7a-CSharp.err.log",
+      "sha256": "8830A347EF9202FB04F8F8CF093148A7D86998EF97E8F2B29C4CC14040A1DBB3"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T174758320-0f2f1e08-ValidationHarness.out.log",
+      "sha256": "031FE198B65922C7BDE688FD99D23398B306F6F1FAD4DA338FEDC40F13271298"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T175157033-e904ffda-CSharp.err.log",
+      "sha256": "09A6D0F09D0AE0F9A5C1C7851053003AA302D53ECEC6528B41C459DC1606EB3B"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T180304487-c92512a5-summary.json",
+      "sha256": "3EEBFA9516164C64C6BD5369C0E946D5785D9B9859275D93A61C9970449E8E68"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T180529795-8f3d1620-summary.json",
+      "sha256": "2621AF8E6116F778DF1E599AC9B89F2137D8C22FAD1F0B11BAE2A1690FD303F4"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T180801636-85b83577-summary.json",
+      "sha256": "3B27760C331B785B9D9BBE8A875459F9488D73BC2923B08135B8230896B55A00"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T181555625-555989c1-ValidationHarness.out.log",
+      "sha256": "53309E2C049FAF2088664FADE51CF90BA6552F5D0BBB72ABE93BDFFD3301D596"
+    },
+    {
+      "path": "D:\\agents\\projects\\时钟倒计时\\.claude\\worktrees\\prd-336-review\\logs\\suite-runs\\20261123T182415487-7eecd535-summary.json",
+      "sha256": "48781B89ABD25209AD016CC09BD0A88E3E171560FA1B9057FD6BEED432FE3E30"
+    }
+  ],
+  "final_closeout": "unverified; orchestrator must run on the final merged commit in a fresh gate worktree"
+}

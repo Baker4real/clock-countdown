@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "issue": 339,
+  "controls": [
+    {
+      "id": "dynamic-count-first-frame",
+      "negative_control": "Temporarily changed MainWindow ApplyNotesSegmentState to ignore countsChanged; restored the exact original line before the green run.",
+      "red": {
+        "run_id": "20261123T172352356-9a8811f4",
+        "stage": "CSharp",
+        "exit_code": 1,
+        "result": "The pre-action Rendering observer rejected old geometry or live clocks on add, complete, undo, active-count shrink and both filter transitions; counts still covered 0/9/10/113/114.",
+        "log": "logs/suite-runs/20261123T172352356-9a8811f4-CSharp.err.log"
+      },
+      "green": {
+        "run_id": "20261123T180801636-85b83577",
+        "stage": "CSharp",
+        "exit_code": 0,
+        "result": "MainNotesSlidingPillDynamicCountGeometry and the complete CSharp stage passed on v87.",
+        "log": "logs/suite-runs/20261123T180801636-85b83577-CSharp.err.log"
+      }
+    },
+    {
+      "id": "real-window-reduced-pointer",
+      "negative_control": "Temporarily made SegmentIndicator.EffectiveDuration retain the configured pointer duration while animations were disabled; restored it before the production first-frame fix.",
+      "red": {
+        "run_id": "20261123T173759157-b5d94b7a",
+        "stage": "CSharp",
+        "exit_code": 1,
+        "result": "Both real MainWindow click paths failed their first Rendering frame: workspace actual=(3,3,93x38), expected=(104,3,76x38); notes actual=(2,2,111x32), expected=(109,2,111x32).",
+        "log": "logs/suite-runs/20261123T173759157-b5d94b7a-CSharp.err.log"
+      },
+      "green": {
+        "run_id": "20261123T180801636-85b83577",
+        "stage": "CSharp",
+        "exit_code": 0,
+        "result": "Both real-window reduced-pointer first-frame facts and the complete CSharp stage passed on v87.",
+        "log": "logs/suite-runs/20261123T180801636-85b83577-CSharp.err.log"
+      }
+    },
+    {
+      "id": "fixture-reduced-pointer-original-production",
+      "negative_control": "No reduced-motion duration override remained in this run. The corrected observer was applied before changing MoveTo to treat reduced pointer as immediate geometry.",
+      "red": {
+        "run_id": "20261123T174758320-0f2f1e08",
+        "stage": "ValidationHarness",
+        "exit_code": 1,
+        "result": "Only segment-pill with Enabled=false failed: pill-reduced-pointer-first-frame stayed at X=3, Width=92.66666666666667 instead of X=104.33333333333333, Width=76; all non-pill scenarios passed.",
+        "log": "logs/suite-runs/20261123T174758320-0f2f1e08-ValidationHarness.out.log"
+      },
+      "green": {
+        "run_id": "20261123T181555625-555989c1",
+        "stage": "ValidationHarness",
+        "exit_code": 0,
+        "result": "The complete Motion contract passed with zero stall retries; all four segment-pill and segment-pill-immediate scenarios passed.",
+        "log": "logs/suite-runs/20261123T181555625-555989c1-ValidationHarness.out.log"
+      }
+    },
+    {
+      "id": "segment-animation-refactor-zero-pixel",
+      "negative_control": "The same red runs exercise Width and Translate clocks before the IAnimatable entry consolidation.",
+      "green": {
+        "run_id": "20261123T180529795-8f3d1620",
+        "stage": "BaselineGenerate plus Compare-CountdownVisualBaseline",
+        "exit_code": 0,
+        "result": "14/14 PNGs and state fingerprints are byte-identical between v86 and v87; only src/MinminCountdown/SegmentIndicator.cs changed in main sourceBinding.",
+        "log": "docs/evidence/clock-countdown-issue-339-review-fixes/v86-v87-comparison.txt"
+      }
+    }
+  ]
+}

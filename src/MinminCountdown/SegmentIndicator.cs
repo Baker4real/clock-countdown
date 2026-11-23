@@ -73,13 +73,13 @@ internal sealed class SegmentIndicator
     {
         _target = target;
         var version = ++_requestVersion;
-        var immediateGeometry = immediate || !_hasPresentedPill;
+        var immediateGeometry = immediate || !_hasPresentedPill || !ApplicationTheme.ClientAreaAnimationEnabled;
         _animatedMovePending = !immediateGeometry;
         if (immediateGeometry)
         {
             _animatedTarget = null;
             _animatedTargetBounds = null;
-            // 键盘路径、计数几何变化与第一次可用几何都必须在下一真实帧前直接写入终值。
+            // 键盘路径、计数几何变化、reduced pointer 与第一次可用几何都必须在下一真实帧前直接写入终值。
             // 先把本轮选中变化排版完；下面的延迟复核仍会再对齐一次。
             _coordinateRoot.UpdateLayout();
             if (TryGetTargetBounds(target, out var bounds))
@@ -193,31 +193,22 @@ internal sealed class SegmentIndicator
         var currentWidth = _indicator.Width;
         var currentX = _translate.X;
         var currentY = _translate.Y;
-        BeginBaseValue(_indicator, FrameworkElement.WidthProperty, targetBounds.Width);
-        BeginBaseValue(_translate, TranslateTransform.XProperty, targetBounds.Left);
-        BeginBaseValue(_translate, TranslateTransform.YProperty, targetBounds.Top);
         _hasPresentedPill = true;
-
-        if (effectiveDuration <= TimeSpan.Zero)
-        {
-            return;
-        }
-
-        Animate(
+        ApplyAnimation(
             _indicator,
             FrameworkElement.WidthProperty,
             currentWidth,
             targetBounds.Width,
             effectiveDuration,
             easing);
-        Animate(
+        ApplyAnimation(
             _translate,
             TranslateTransform.XProperty,
             currentX,
             targetBounds.Left,
             effectiveDuration,
             easing);
-        Animate(
+        ApplyAnimation(
             _translate,
             TranslateTransform.YProperty,
             currentY,
@@ -226,26 +217,7 @@ internal sealed class SegmentIndicator
             easing);
     }
 
-    private static void BeginBaseValue(
-        DependencyObject target,
-        DependencyProperty property,
-        double value)
-    {
-        switch (target)
-        {
-            case UIElement element:
-                element.BeginAnimation(property, null);
-                break;
-            case Animatable animatable:
-                animatable.BeginAnimation(property, null);
-                break;
-            default:
-                throw new ArgumentException("Indicator animation target must support BeginAnimation.", nameof(target));
-        }
-        target.SetValue(property, value);
-    }
-
-    private static void Animate(
+    private static void ApplyAnimation(
         DependencyObject target,
         DependencyProperty property,
         double from,
@@ -253,7 +225,16 @@ internal sealed class SegmentIndicator
         TimeSpan duration,
         IEasingFunction easing)
     {
-        if (Math.Abs(from - to) <= 0.0001)
+        if (target is not IAnimatable animatable)
+        {
+            throw new ArgumentException("Indicator animation target must support BeginAnimation.", nameof(target));
+        }
+
+        // Every property clears its old clock and commits the new base value first;
+        // a non-zero transition then replaces it from the captured presentation value.
+        animatable.BeginAnimation(property, null);
+        target.SetValue(property, to);
+        if (duration <= TimeSpan.Zero || Math.Abs(from - to) <= 0.0001)
         {
             return;
         }
@@ -265,17 +246,7 @@ internal sealed class SegmentIndicator
             Duration = new Duration(duration),
             EasingFunction = easing
         };
-        switch (target)
-        {
-            case UIElement element:
-                element.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
-                break;
-            case Animatable animatable:
-                animatable.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
-                break;
-            default:
-                throw new ArgumentException("Indicator animation target must support BeginAnimation.", nameof(target));
-        }
+        animatable.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private bool TryGetTargetBounds(FrameworkElement target, out Rect bounds)

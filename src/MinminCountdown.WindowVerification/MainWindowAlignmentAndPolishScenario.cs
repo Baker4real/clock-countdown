@@ -55,6 +55,7 @@ internal static class MainWindowAlignmentAndPolishScenario
                 using (ApplicationTheme.OverrideAnimationPreferenceForValidation(false))
                 {
                     theme.Apply();
+                    VerifyWorkspaceReducedPointerFirstFrame(main, failures);
                     VerifyWorkspacePillGeometryAndStates(main, theme, failures);
                 }
 
@@ -90,6 +91,7 @@ internal static class MainWindowAlignmentAndPolishScenario
                     theme.Apply();
                     new MainWindowEmptyStateProbe(main).ShowWorkspace(WorkspaceKind.Notes);
                     SettleLayout(main);
+                    VerifyNotesReducedPointerFirstFrame(main, failures);
                     VerifyNotesPillGeometryAndStates(main, theme, failures);
                 }
             });
@@ -229,24 +231,8 @@ internal static class MainWindowAlignmentAndPolishScenario
                 failures.Add($"{kind}：胶囊上下净空不对称，或 2 DIP 环 + 1 DIP 间隙发生变化。");
             }
 
-            if (Panel.GetZIndex(layer) >= Panel.GetZIndex(buttons) ||
-                layer.IsHitTestVisible || indicator.IsHitTestVisible || indicator.Focusable ||
-                UIElementAutomationPeer.CreatePeerForElement(indicator) is not null)
-            {
-                failures.Add($"{kind}：滑动胶囊未位于按钮底层、仍可命中/聚焦或进入了自动化树。");
-            }
-
-            var hitPoint = surface.TransformToAncestor(host).Transform(
-                new Point(surface.RenderSize.Width / 2, surface.RenderSize.Height / 2));
-            var hit = host.InputHitTest(hitPoint) as DependencyObject;
-            while (hit is not null && hit != tab)
-            {
-                hit = VisualTreeHelper.GetParent(hit);
-            }
-            if (hit != tab)
-            {
-                failures.Add($"{kind}：胶囊中心的真实命中未到达激活页签。");
-            }
+            VerifyPillLayerAndRealHit(
+                host, layer, indicator, buttons, tab, surface, kind.ToString(), "激活页签", failures);
 
             contentTops[kind] = Bounds(
                 Required<FrameworkElement>(main, contentName), layout).Top;
@@ -262,29 +248,13 @@ internal static class MainWindowAlignmentAndPolishScenario
         probe.ShowWorkspace(WorkspaceKind.Countdowns);
         SettleLayout(main);
         var selectedSurface = RequiredTemplate<Border>(countdownTab, "Surface");
-        var unselectedSurface = RequiredTemplate<Border>(notesTab, "Surface");
         if (!WindowValidationInput.WaitUntil(main.Dispatcher, () =>
                 IsTransparentBrush(selectedSurface.Background) &&
                 IsTransparentBrush(selectedSurface.BorderBrush), 1000))
         {
             failures.Add("选中页签自身 Surface 未保持透明背景与边框。");
         }
-        WithPointerHover(main, notesTab, () =>
-        {
-            if (!BrushMatches(unselectedSurface.Background, RequiredBrush(notesTab, "CardAltBrush")) ||
-                !BrushMatches(unselectedSurface.BorderBrush, RequiredBrush(notesTab, "ActiveHoverBrush")))
-            {
-                failures.Add("未选中页签 hover 未呈现 CardAlt 暖底与 ActiveHover 暖边。");
-            }
-        });
-        WithPointerHover(main, countdownTab, () =>
-        {
-            if (!IsTransparentBrush(selectedSurface.Background) ||
-                !IsTransparentBrush(selectedSurface.BorderBrush))
-            {
-                failures.Add("选中页签 hover 回落到第二层底色或边框。");
-            }
-        });
+        VerifyPillHoverStates(main, countdownTab, notesTab, "页签", failures);
 
         // 真实 WPF Tab 遍历：单层 2 DIP Active 环对槽底达到非文本对比度。
         main.Activate();
@@ -317,20 +287,7 @@ internal static class MainWindowAlignmentAndPolishScenario
         // 系统对比度只给底层胶囊增加 2 DIP Highlight 轮廓；关闭后完整恢复日间。
         probe.ShowWorkspace(WorkspaceKind.Countdowns);
         SettleLayout(main);
-        VerifyDayPill(indicator, "初始日间", failures);
-        using (ApplicationTheme.OverrideHighContrastForValidation(true))
-        {
-            SettleLayout(main);
-            if (indicator.BorderThickness != new Thickness(2) ||
-                !BrushMatchesColor(indicator.Background, SystemColors.WindowColor) ||
-                !BrushMatchesColor(indicator.BorderBrush, SystemColors.HighlightColor))
-            {
-                failures.Add("系统对比度下胶囊不是 Window 底 + 2 DIP Highlight 轮廓。");
-            }
-        }
-        theme.Apply();
-        SettleLayout(main);
-        VerifyDayPill(indicator, "对比度往返后", failures);
+        VerifyPillHighContrastRoundTrip(main, theme, indicator, "PinkTintBrush", "工作区", failures);
 
         foreach (var (kind, contentName) in new[]
                  {
@@ -397,11 +354,17 @@ internal static class MainWindowAlignmentAndPolishScenario
             () => main.VisibleSegmentIndicatorsSettledForCapture,
             1000);
         var beforeAdd = VerifyNotesCountImmediate(
-            main, completed, 9, 113, "初始已完成 113", failures, requireImmediate: false);
+            main, completed, 9, 113, "初始已完成 113", () => { }, failures, requireImmediate: false);
         var beforeActiveWidth = active.ActualWidth;
 
-        _ = SaveNote(workspace, "动态计数-新增第十条", main.Dispatcher);
-        var afterAdd = VerifyNotesCountImmediate(main, completed, 10, 113, "新增使非激活兄弟 9→10", failures);
+        var afterAdd = VerifyNotesCountImmediate(
+            main,
+            completed,
+            10,
+            113,
+            "新增使非激活兄弟 9→10",
+            () => SaveNote(workspace, "动态计数-新增第十条", main.Dispatcher),
+            failures);
         if (active.ActualWidth <= beforeActiveWidth + GeometryTolerance ||
             afterAdd.Left <= beforeAdd.Left + GeometryTolerance)
         {
@@ -409,25 +372,51 @@ internal static class MainWindowAlignmentAndPolishScenario
         }
 
         var noteId = workspace.Snapshot.Settings.Notes.First(note => !note.IsCompleted).Id;
-        var completedResult = workspace.ApplyWithUndo(
-            new SetNoteCompletionChange(noteId, true),
-            WorkspaceUndoSurface.Main);
-        if (!completedResult.Succeeded)
+        var completionSucceeded = false;
+        _ = VerifyNotesCountImmediate(
+            main,
+            completed,
+            9,
+            114,
+            "已完成段选中时完成/兄弟变窄",
+            () =>
+            {
+                var result = workspace.ApplyWithUndo(
+                    new SetNoteCompletionChange(noteId, true),
+                    WorkspaceUndoSurface.Main);
+                completionSucceeded = result.Succeeded;
+                if (!result.Succeeded)
+                {
+                    failures.Add($"完成便签失败：{result.Error}");
+                }
+            },
+            failures);
+        if (!completionSucceeded)
         {
-            failures.Add($"完成便签失败：{completedResult.Error}");
             return;
         }
-        WindowValidationInput.Pump(main.Dispatcher);
-        _ = VerifyNotesCountImmediate(main, completed, 9, 114, "已完成段选中时完成/兄弟变窄", failures);
 
-        var undoResult = workspace.Undo(WorkspaceUndoSurface.Main);
-        if (!undoResult.Succeeded)
+        var undoSucceeded = false;
+        _ = VerifyNotesCountImmediate(
+            main,
+            completed,
+            10,
+            113,
+            "已完成段选中时撤销",
+            () =>
+            {
+                var result = workspace.Undo(WorkspaceUndoSurface.Main);
+                undoSucceeded = result.Succeeded;
+                if (!result.Succeeded)
+                {
+                    failures.Add($"撤销完成失败：{result.Error}");
+                }
+            },
+            failures);
+        if (!undoSucceeded)
         {
-            failures.Add($"撤销完成失败：{undoResult.Error}");
             return;
         }
-        WindowValidationInput.Pump(main.Dispatcher);
-        _ = VerifyNotesCountImmediate(main, completed, 10, 113, "已完成段选中时撤销", failures);
 
         active.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         SettleLayout(main);
@@ -436,39 +425,121 @@ internal static class MainWindowAlignmentAndPolishScenario
             () => main.VisibleSegmentIndicatorsSettledForCapture,
             1000);
         var beforeActiveCompletion = VerifyNotesCountImmediate(
-            main, active, 10, 113, "激活段完成前 10", failures, requireImmediate: false);
-        completedResult = workspace.ApplyWithUndo(
-            new SetNoteCompletionChange(noteId, true),
-            WorkspaceUndoSurface.Main);
-        if (!completedResult.Succeeded)
+            main, active, 10, 113, "激活段完成前 10", () => { }, failures, requireImmediate: false);
+        completionSucceeded = false;
+        var afterActiveCompletion = VerifyNotesCountImmediate(
+            main,
+            active,
+            9,
+            114,
+            "激活段自身 10→9",
+            () =>
+            {
+                var result = workspace.ApplyWithUndo(
+                    new SetNoteCompletionChange(noteId, true),
+                    WorkspaceUndoSurface.Main);
+                completionSucceeded = result.Succeeded;
+                if (!result.Succeeded)
+                {
+                    failures.Add($"第二次完成便签失败：{result.Error}");
+                }
+            },
+            failures);
+        if (!completionSucceeded)
         {
-            failures.Add($"第二次完成便签失败：{completedResult.Error}");
             return;
         }
-        WindowValidationInput.Pump(main.Dispatcher);
-        var afterActiveCompletion = VerifyNotesCountImmediate(main, active, 9, 114, "激活段自身 10→9", failures);
         if (afterActiveCompletion.Width >= beforeActiveCompletion.Width - GeometryTolerance)
         {
             failures.Add($"激活段自身计数位数减少没有缩小胶囊 Width（{beforeActiveCompletion.Width:0.##}→{afterActiveCompletion.Width:0.##}）。");
         }
 
-        undoResult = workspace.Undo(WorkspaceUndoSurface.Main);
-        if (!undoResult.Succeeded)
+        undoSucceeded = false;
+        _ = VerifyNotesCountImmediate(
+            main,
+            active,
+            10,
+            113,
+            "激活段自身撤销 9→10",
+            () =>
+            {
+                var result = workspace.Undo(WorkspaceUndoSurface.Main);
+                undoSucceeded = result.Succeeded;
+                if (!result.Succeeded)
+                {
+                    failures.Add($"第二次撤销完成失败：{result.Error}");
+                }
+            },
+            failures);
+        if (!undoSucceeded)
         {
-            failures.Add($"第二次撤销完成失败：{undoResult.Error}");
             return;
         }
-        WindowValidationInput.Pump(main.Dispatcher);
-        _ = VerifyNotesCountImmediate(main, active, 10, 113, "激活段自身撤销 9→10", failures);
 
         var originalFilter = workspace.Snapshot.Filter;
-        workspace.ApplyFilter(originalFilter with { NoteDate = "2001-02-03" });
-        WindowValidationInput.Pump(main.Dispatcher);
-        _ = VerifyNotesCountImmediate(main, active, 0, 0, "筛选使激活段归零", failures);
+        _ = VerifyNotesCountImmediate(
+            main,
+            active,
+            0,
+            0,
+            "筛选使激活段归零",
+            () => workspace.ApplyFilter(originalFilter with { NoteDate = "2001-02-03" }),
+            failures);
 
-        workspace.ApplyFilter(originalFilter);
-        WindowValidationInput.Pump(main.Dispatcher);
-        _ = VerifyNotesCountImmediate(main, active, 10, 113, "清除筛选恢复计数", failures);
+        _ = VerifyNotesCountImmediate(
+            main,
+            active,
+            10,
+            113,
+            "清除筛选恢复计数",
+            () => workspace.ApplyFilter(originalFilter),
+            failures);
+    }
+
+    private static bool ObserveFirstFrameAfterChange(
+        MainWindow main,
+        Action change,
+        Action observe)
+    {
+        var observed = false;
+        Exception? failure = null;
+        EventHandler rendering = (_, _) =>
+        {
+            if (observed)
+            {
+                return;
+            }
+
+            observed = true;
+            try
+            {
+                observe();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        };
+
+        // 必须先挂观察，再执行变更；SaveNote 内部的 Pump 也不能把首帧藏到订阅之前。
+        CompositionTarget.Rendering += rendering;
+        try
+        {
+            change();
+            var frame = WindowValidationInput.PumpRenderedFrames(
+                main.Dispatcher,
+                1000,
+                () => observed);
+            if (failure is not null)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            }
+            return observed && frame.Completed;
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= rendering;
+        }
     }
 
     private static Rect VerifyNotesCountImmediate(
@@ -477,6 +548,7 @@ internal static class MainWindowAlignmentAndPolishScenario
         int expectedActive,
         int expectedCompleted,
         string label,
+        Action change,
         ICollection<string> failures,
         bool requireImmediate = true)
     {
@@ -494,7 +566,7 @@ internal static class MainWindowAlignmentAndPolishScenario
         var badgeBounds = default(Rect);
         var animated = false;
         var countsMatch = false;
-        var frame = WindowValidationInput.PumpRenderedFrames(main.Dispatcher, 1000, () =>
+        var firstFrameObserved = ObserveFirstFrameAfterChange(main, change, () =>
         {
             pill = Bounds(indicator, host);
             expected = Bounds(surface, host);
@@ -502,13 +574,12 @@ internal static class MainWindowAlignmentAndPolishScenario
             animated = WorkspacePillAnimating(indicator);
             countsMatch = activeCount.Text == expectedActive.ToString(CultureInfo.InvariantCulture) &&
                 completedCount.Text == expectedCompleted.ToString(CultureInfo.InvariantCulture);
-            return true;
         });
         var badgeInside = badgeBounds.Left >= pill.Left - GeometryTolerance &&
             badgeBounds.Top >= pill.Top - GeometryTolerance &&
             badgeBounds.Right <= pill.Right + GeometryTolerance &&
             badgeBounds.Bottom <= pill.Bottom + GeometryTolerance;
-        if (!frame.Completed || (requireImmediate && animated) || !countsMatch ||
+        if (!firstFrameObserved || (requireImmediate && animated) || !countsMatch ||
             !RectClose(pill, expected) || !badgeInside)
         {
             failures.Add($"{label}：计数几何未在首帧即时清钟贴合（pill={FormatRect(pill)}, surface={FormatRect(expected)}, badge={FormatRect(badgeBounds)}, animated={animated}, counts={activeCount.Text}/{completedCount.Text}, expected={expectedActive}/{expectedCompleted}, badgeInside={badgeInside}）。");
@@ -592,24 +663,8 @@ internal static class MainWindowAlignmentAndPolishScenario
                 failures.Add($"{selected.Name}：滑动胶囊未与 Surface 全矩形重合或不是 32/16 全圆角（surface={FormatRect(surfaceBounds)}, pill={FormatRect(pillBounds)}）。");
             }
 
-            if (Panel.GetZIndex(layer) >= Panel.GetZIndex(buttons) ||
-                layer.IsHitTestVisible || indicator.IsHitTestVisible || indicator.Focusable ||
-                UIElementAutomationPeer.CreatePeerForElement(indicator) is not null)
-            {
-                failures.Add($"{selected.Name}：滑动胶囊未位于按钮底层、仍可命中/聚焦或进入了自动化树。");
-            }
-
-            var hitPoint = selectedSurface.TransformToAncestor(host).Transform(
-                new Point(selectedSurface.RenderSize.Width / 2, selectedSurface.RenderSize.Height / 2));
-            var hit = host.InputHitTest(hitPoint) as DependencyObject;
-            while (hit is not null && hit != selected)
-            {
-                hit = VisualTreeHelper.GetParent(hit);
-            }
-            if (hit != selected)
-            {
-                failures.Add($"{selected.Name}：胶囊中心的真实命中未到达激活段。");
-            }
+            VerifyPillLayerAndRealHit(
+                host, layer, indicator, buttons, selected, selectedSurface, selected.Name, "激活段", failures);
 
             if (!IsTransparentBrush(selectedSurface.Background) ||
                 !IsTransparentBrush(selectedSurface.BorderBrush) ||
@@ -654,24 +709,7 @@ internal static class MainWindowAlignmentAndPolishScenario
 
         active.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         SettleLayout(main);
-        var activeSurface = RequiredTemplate<Border>(active, "Surface");
-        var completedSurface = RequiredTemplate<Border>(completed, "Surface");
-        WithPointerHover(main, completed, () =>
-        {
-            if (!BrushMatches(completedSurface.Background, RequiredBrush(completed, "CardAltBrush")) ||
-                !BrushMatches(completedSurface.BorderBrush, RequiredBrush(completed, "ActiveHoverBrush")))
-            {
-                failures.Add("未选中便签状态段 hover 未呈现 CardAlt 暖底与 ActiveHover 暖边。");
-            }
-        });
-        WithPointerHover(main, active, () =>
-        {
-            if (!IsTransparentBrush(activeSurface.Background) ||
-                !IsTransparentBrush(activeSurface.BorderBrush))
-            {
-                failures.Add("选中便签状态段 hover 叠出了第二层底色或边框。");
-            }
-        });
+        VerifyPillHoverStates(main, active, completed, "便签状态段", failures);
 
         main.Activate();
         Keyboard.Focus(active);
@@ -690,20 +728,7 @@ internal static class MainWindowAlignmentAndPolishScenario
             failures.Add("便签状态分段 Tab 顺序或单层 2 DIP Active 焦点环发生变化。");
         }
 
-        VerifyNotesDayPill(indicator, "初始日间", failures);
-        using (ApplicationTheme.OverrideHighContrastForValidation(true))
-        {
-            SettleLayout(main);
-            if (indicator.BorderThickness != new Thickness(2) ||
-                !BrushMatchesColor(indicator.Background, SystemColors.WindowColor) ||
-                !BrushMatchesColor(indicator.BorderBrush, SystemColors.HighlightColor))
-            {
-                failures.Add("系统对比度下便签状态胶囊不是 Window 底 + 2 DIP Highlight 轮廓。");
-            }
-        }
-        theme.Apply();
-        SettleLayout(main);
-        VerifyNotesDayPill(indicator, "对比度往返后", failures);
+        VerifyPillHighContrastRoundTrip(main, theme, indicator, "PeachTintBrush", "便签状态", failures);
         if (Math.Abs(notesList.ActualHeight - initialListHeight) > GeometryTolerance ||
             Math.Abs(toolbar.ActualHeight - 42) > GeometryTolerance)
         {
@@ -711,16 +736,72 @@ internal static class MainWindowAlignmentAndPolishScenario
         }
     }
 
-    private static void VerifyNotesDayPill(
+    private static void VerifyWorkspaceReducedPointerFirstFrame(
+        MainWindow main,
+        ICollection<string> failures)
+    {
+        main.ShowWorkspace(WorkspaceKind.Countdowns, immediateIndicator: true);
+        SettleLayout(main);
+        _ = WindowValidationInput.WaitUntil(
+            main.Dispatcher,
+            () => main.VisibleSegmentIndicatorsSettledForCapture,
+            1000);
+        VerifyReducedPointerFirstFrame(
+            main,
+            Required<Grid>(main, "MainWorkspaceTabHost"),
+            Required<Border>(main, "MainWorkspaceTabIndicator"),
+            Required<ToggleButton>(main, "NotesTab"),
+            "工作区页签倒计时→便签",
+            failures);
+    }
+
+    private static void VerifyNotesReducedPointerFirstFrame(
+        MainWindow main,
+        ICollection<string> failures)
+    {
+        var active = Required<ToggleButton>(main, "ActiveNotesSegment");
+        active.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        SettleLayout(main);
+        _ = WindowValidationInput.WaitUntil(
+            main.Dispatcher,
+            () => main.VisibleSegmentIndicatorsSettledForCapture,
+            1000);
+        VerifyReducedPointerFirstFrame(
+            main,
+            Required<Grid>(main, "NotesSegmentHost"),
+            Required<Border>(main, "NotesSegmentIndicator"),
+            Required<ToggleButton>(main, "CompletedNotesSegment"),
+            "便签状态未完成→已完成",
+            failures);
+    }
+
+    private static void VerifyReducedPointerFirstFrame(
+        MainWindow main,
+        FrameworkElement host,
         Border indicator,
+        ToggleButton target,
         string label,
         ICollection<string> failures)
     {
-        if (indicator.BorderThickness != new Thickness(0) ||
-            !IsTransparentBrush(indicator.BorderBrush) ||
-            !BrushMatches(indicator.Background, RequiredBrush(indicator, "PeachTintBrush")))
+        target.ApplyTemplate();
+        var surface = RequiredTemplate<Border>(target, "Surface");
+        var actual = default(Rect);
+        var expected = default(Rect);
+        var animated = false;
+        var selected = false;
+        var firstFrame = ObserveFirstFrameAfterChange(
+            main,
+            () => target.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)),
+            () =>
+            {
+                actual = Bounds(indicator, host);
+                expected = Bounds(surface, host);
+                animated = WorkspacePillAnimating(indicator);
+                selected = target.IsChecked == true;
+            });
+        if (!firstFrame || !selected || animated || !RectClose(actual, expected))
         {
-            failures.Add($"{label}：便签状态胶囊不是零边框透明边 + PeachTint 填充。");
+            failures.Add($"{label}：reduced pointer 点击后的首个真实 Rendering 帧未贴合目标或残留 Width/Translate 时钟（actual={FormatRect(actual)}, expected={FormatRect(expected)}, selected={selected}, animated={animated}, enabled={ApplicationTheme.ClientAreaAnimationEnabled}）。");
         }
     }
 
@@ -786,13 +867,99 @@ internal static class MainWindowAlignmentAndPolishScenario
         }
     }
 
-    private static void VerifyDayPill(Border indicator, string label, ICollection<string> failures)
+    private static void VerifyPillLayerAndRealHit(
+        Grid host,
+        Canvas layer,
+        Border indicator,
+        StackPanel buttons,
+        ToggleButton target,
+        Border surface,
+        string label,
+        string targetDescription,
+        ICollection<string> failures)
+    {
+        if (Panel.GetZIndex(layer) >= Panel.GetZIndex(buttons) ||
+            layer.IsHitTestVisible || indicator.IsHitTestVisible || indicator.Focusable ||
+            UIElementAutomationPeer.CreatePeerForElement(indicator) is not null)
+        {
+            failures.Add($"{label}：滑动胶囊未位于按钮底层、仍可命中/聚焦或进入了自动化树。");
+        }
+
+        var hitPoint = surface.TransformToAncestor(host).Transform(
+            new Point(surface.RenderSize.Width / 2, surface.RenderSize.Height / 2));
+        var hit = host.InputHitTest(hitPoint) as DependencyObject;
+        while (hit is not null && hit != target)
+        {
+            hit = VisualTreeHelper.GetParent(hit);
+        }
+        if (hit != target)
+        {
+            failures.Add($"{label}：胶囊中心的真实命中未到达{targetDescription}。");
+        }
+    }
+
+    private static void VerifyPillHoverStates(
+        MainWindow main,
+        ToggleButton selected,
+        ToggleButton unselected,
+        string description,
+        ICollection<string> failures)
+    {
+        var selectedSurface = RequiredTemplate<Border>(selected, "Surface");
+        var unselectedSurface = RequiredTemplate<Border>(unselected, "Surface");
+        WithPointerHover(main, unselected, () =>
+        {
+            if (!BrushMatches(unselectedSurface.Background, RequiredBrush(unselected, "CardAltBrush")) ||
+                !BrushMatches(unselectedSurface.BorderBrush, RequiredBrush(unselected, "ActiveHoverBrush")))
+            {
+                failures.Add($"未选中{description} hover 未呈现 CardAlt 暖底与 ActiveHover 暖边。");
+            }
+        });
+        WithPointerHover(main, selected, () =>
+        {
+            if (!IsTransparentBrush(selectedSurface.Background) ||
+                !IsTransparentBrush(selectedSurface.BorderBrush))
+            {
+                failures.Add($"选中{description} hover 叠出了第二层底色或边框。");
+            }
+        });
+    }
+
+    private static void VerifyPillHighContrastRoundTrip(
+        MainWindow main,
+        ApplicationTheme theme,
+        Border indicator,
+        string dayBrushKey,
+        string description,
+        ICollection<string> failures)
+    {
+        VerifyDayPill(indicator, "初始日间", dayBrushKey, failures);
+        using (ApplicationTheme.OverrideHighContrastForValidation(true))
+        {
+            SettleLayout(main);
+            if (indicator.BorderThickness != new Thickness(2) ||
+                !BrushMatchesColor(indicator.Background, SystemColors.WindowColor) ||
+                !BrushMatchesColor(indicator.BorderBrush, SystemColors.HighlightColor))
+            {
+                failures.Add($"系统对比度下{description}胶囊不是 Window 底 + 2 DIP Highlight 轮廓。");
+            }
+        }
+        theme.Apply();
+        SettleLayout(main);
+        VerifyDayPill(indicator, "对比度往返后", dayBrushKey, failures);
+    }
+
+    private static void VerifyDayPill(
+        Border indicator,
+        string label,
+        string dayBrushKey,
+        ICollection<string> failures)
     {
         if (indicator.BorderThickness != new Thickness(0) ||
             !IsTransparentBrush(indicator.BorderBrush) ||
-            !BrushMatches(indicator.Background, RequiredBrush(indicator, "PinkTintBrush")))
+            !BrushMatches(indicator.Background, RequiredBrush(indicator, dayBrushKey)))
         {
-            failures.Add($"{label}：胶囊不是零边框透明边 + PinkTint 填充。");
+            failures.Add($"{label}：胶囊不是零边框透明边 + {dayBrushKey} 填充。");
         }
     }
 

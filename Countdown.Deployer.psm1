@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 # port 的返回值只取已知字段，结果与记录里没有主机名、地址、账号、凭据或连接参数。
 
 Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.SuiteStages.psm1')
+Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1')
 
 $script:ExecutableManifestPath = 'app\MinminCountdown.exe'
 $script:InstallerFiles = @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')
@@ -380,7 +381,7 @@ function Read-CountdownDeployBuildOutput {
 }
 
 # 本机预检（不联网）：main、工作树干净、提交已推送（与 origin/main 一致）；该提交有合格的套件记录；
-# 本机构建输出的聚合哈希等于那次套件运行的构建回执。
+# 本机构建输出的聚合哈希等于那次套件运行的构建回执，实际随包节假日数据通过年度覆盖守卫。
 function Get-CountdownDeployPreflight {
     param([Parameter(Mandatory)] [string] $RepositoryRoot)
 
@@ -410,6 +411,17 @@ function Get-CountdownDeployPreflight {
     if ($buildOutput.AggregateSha256 -ne $suiteRun.PayloadAggregateSha256) {
         throw (New-CountdownDeployFailure -Reason 'aggregate-mismatch' -Message ("本机构建输出的聚合哈希 $($buildOutput.AggregateSha256.Substring(0, 12))… 与套件运行 $($suiteRun.RunId) " +
                 "构建回执里的 $($suiteRun.PayloadAggregateSha256.Substring(0, 12))… 不一致：程序目录不是套件测过的那份构建输出。重新跑一轮套件，部署它测过的构建输出。"))
+    }
+
+    # 旧部署入口删除后仍保留节假日年度覆盖硬保护；年份取自实际要部署的构建输出，不另信一份静态清单。
+    $packagedYears = @(
+        foreach ($file in $buildOutput.Files) {
+            if ($file.Path -match '^app\\holiday-data\\(\d{4})\.json$') { [int] $Matches[1] }
+        })
+    $beijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'China Standard Time')
+    $coverage = Test-CountdownHolidayYearCoverage -BeijingNow $beijingNow -PackagedYears $packagedYears
+    if (-not $coverage.Covered) {
+        throw (New-CountdownDeployFailure -Reason 'holiday-year-coverage-missing' -Message $coverage.Message)
     }
     [pscustomobject]@{ Commit = $commit; SuiteRun = $suiteRun; BuildOutput = $buildOutput }
 }

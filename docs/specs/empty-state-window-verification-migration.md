@@ -38,7 +38,7 @@ intent: 逐条记录 #248 空态区域验证事实、相邻断言与产品载体
 
 ## 后续窗口验证事实落点（#297）
 
-后续票把新的窗口行为场景放在 `src\MinminCountdown.WindowVerification\` 的独立 `<区域>Scenario.cs`；#297 的四类窗口创建、首帧与指定控件冒烟骨架在 `WindowSmokeScenario.cs`。在 `Program.cs` 为每条事实声明同名 bool、中文含义并接入 `RunFact`，同时在 `Countdown.CSharp.Tests.ps1` 的 `$windowVerificationFacts` 登记同一名称和中文含义，由现有精确字段集、逐条为真与退出码 0 断言验收。新增源码文件还须加入 `Countdown.ReleaseContract.psm1` 的 `BuildInputFiles` 及 `Countdown.Core.Tests.ReleaseContract.ps1` 的对应清单；不得加入产品 `SourceBuildFiles`、纯 C# `MinminCountdown.Verification` 或办公室载荷。
+后续票把新的窗口行为场景放在 `src\MinminCountdown.WindowVerification\` 的独立 `<区域>Scenario.cs`；#297 的四类窗口创建、首帧与指定控件冒烟骨架在 `WindowSmokeScenario.cs`。在 `Program.cs` 为每条事实声明同名 bool、中文含义并接入 `RunFact`，同时在 `Countdown.CSharp.Tests.ps1` 的 `$windowVerificationFacts` 登记同一名称和中文含义，由现有精确字段集、逐条为真与退出码 0 断言验收。新增源码文件只登记上述项目与测试事实，不再另维护一套部署重建输入清单；不得加入纯 C# `MinminCountdown.Verification` 或办公室载荷。
 
 控件访问从窗口公共视觉树开始：有显式标识的元素用 `AutomationProperties.GetAutomationId` 精确匹配；XAML `x:Name` 作为 WPF 自动化标识的元素（例如悬浮窗 `OpenManagerButton`）用公共 `UIElementAutomationPeer.CreatePeerForElement(...).GetAutomationId()` 读取并匹配。需要切换管理窗口工作区时继续走既有 `IMainWindowEmptyStateProbe` 窄探针，真实按钮调用与渲染等待复用 `WindowValidationInput`；不要为了取值给产品程序集新增验证 partial、字段或钩子。
 

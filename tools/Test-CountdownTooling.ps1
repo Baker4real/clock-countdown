@@ -127,7 +127,6 @@ foreach ($requiredPath in @(
         'tools/Test-CountdownIdleProcessorMeasurement.ps1',
         'tools/Test-CountdownIdleMeasurementChild.ps1',
         'tools/Test-CountdownIdleMeasurementChildFixture.ps1',
-        'tools/Get-CountdownDeploymentState.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
         'tools/PopupValidationContract.cs'
     )) { Test-RequiredPath -RelativePath $requiredPath }
@@ -154,20 +153,8 @@ Add-ToolingCheck -Name 'idle-processor:self-test' -Passed ($LASTEXITCODE -eq 0 -
 
 $validationDiagnostics = Invoke-ToolingValidationDiagnostics
 Add-ToolingCheck -Name 'deployment:Test-CountdownValidationDiagnostics.ps1' -Passed $validationDiagnostics.Passed -Detail $validationDiagnostics.Detail
-foreach ($test in @('Test-CountdownWindowPreflightContract.ps1', 'Test-CountdownDeploymentState.ps1')) {
-    $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot $test), '-Json')
-    if ($test -eq 'Test-CountdownDeploymentState.ps1' -and $env:GITHUB_ACTIONS -eq 'true') {
-        $arguments += '-SkipDiagnosticsWhenUnavailable'
-    }
-    $report = & pwsh @arguments | ConvertFrom-Json -Depth 12 -ErrorAction Stop
-    Add-ToolingCheck -Name "deployment:$test" -Passed ($LASTEXITCODE -eq 0 -and [bool]$report.Valid) -Detail ($report | ConvertTo-Json -Compress -Depth 12)
-}
-
-# CI 单独成步的测试也随 Tooling 跑，本机全绿才代表推上去 CI 不会因为只在 CI 跑的测试变红。
-$transferLedgerRegression = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $repoRoot 'Countdown.TransferLedger.Tests.ps1') 2>&1 | ForEach-Object { "$_" })
-Add-ToolingCheck -Name 'transfer-ledger:regression' -Passed ($LASTEXITCODE -eq 0) -Detail (($transferLedgerRegression -join ' ') -replace '\s+', ' ')
-$officeDeploymentStatus = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-OfficeDeploymentStatus.ps1') -Json 2>&1 | ForEach-Object { "$_" })
-Add-ToolingCheck -Name 'deployment:Test-OfficeDeploymentStatus.ps1' -Passed ($LASTEXITCODE -eq 0) -Detail (($officeDeploymentStatus -join ' ') -replace '\s+', ' ')
+$windowPreflightContract = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownWindowPreflightContract.ps1') -Json | ConvertFrom-Json -Depth 12 -ErrorAction Stop
+Add-ToolingCheck -Name 'deployment:Test-CountdownWindowPreflightContract.ps1' -Passed ($LASTEXITCODE -eq 0 -and [bool]$windowPreflightContract.Valid) -Detail ($windowPreflightContract | ConvertTo-Json -Compress -Depth 12)
 
 # CI 用 -File 或 & 跑的每个脚本，本机都要有启动器阶段跑到：启动器的阶段脚本，加上本脚本用 Join-Path 跑的脚本。
 function Get-JoinPathScriptLeaves {

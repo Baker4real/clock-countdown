@@ -15,7 +15,6 @@ adapter 指仓库根的 `敏敏子倒计时.ps1`。“经 adapter 启动应用�
 
 - #291 删除 adapter、桌面启动器与旧安装器；
 - #292 删除启动验收协议；
-- #290 删除旧远端部署；
 - #275 结束按 adapter 文件推断应用根：已完成，下表不再有它的行（规则见文末接口说明）。
 
 Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用。行号会随并行票漂移，下文按文件与符号、分段或断言名定位。
@@ -52,7 +51,7 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 | `tools/Invoke-DesktopLauncherLatencyProbe.ps1`（adapter 副本夹具） | 桌面启动器探针 | #291 |
 | `Install-Countdown.ps1`、`Countdown.InstallTransaction.psm1`（安装目录 adapter 路径） | 旧安装器 | #291 |
 | `Countdown.ReleaseContract.psm1` `IntegrityHashes` 钉值与发布清单中的 `敏敏子倒计时.ps1` | 发布包内容 | #291 |
-| `Countdown.Core.Tests.ReleaseContract.ps1` 发布清单条目、“Isolated validation preserves adapter UI evidence” | 发布包合同与报告字段名 | #291 |
+| `Countdown.Core.Tests.ReleaseContract.ps1` 发布清单条目 | 发布包合同 | #291 |
 | `Countdown.Core.Tests.InstallLifecycle.ps1`（暂存 adapter、`InstalledFiles`） | 旧安装器事务 | #291 |
 | `Countdown.Core.Tests.MainDomain.ps1` 事务安装与回滚夹具里作为应用入口的 adapter 文件 | 旧安装器事务 | #291 |
 | `Countdown.Core.Tests.InstallStatus.ps1` 现有布局登录任务夹具（`pwsh … -STA -File <根>\敏敏子倒计时.ps1`） | 登录任务旧启动链的期望定义 | #291 |
@@ -67,9 +66,6 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 | `src/MinminCountdown/ValidationExercises.CalendarAndStartup.cs`（回执 `ApplicationPath` 等于 adapter 路径） | 启动验收演练 | #292 |
 | `Countdown.Core.Tests.MainDomain.ps1` `$runtimeApplicationPath`、`Countdown.Core.Tests.TransactionAcceptance.ps1` `$acceptanceApplicationPath` | 回执身份夹具 | #292 |
 | `src/MinminCountdown/RuntimeProtocol.cs` `ApplicationPaths.AdapterFileName` | 只剩回执 `AdapterPath` 与启动验收演练在用；#275 起根推断不再用它 | #292 |
-| `Countdown.RemoteDeployment.psm1`（adapter 路径、`AdapterUiValidated` 回执字段） | 旧远端部署 | #290 |
-| `Countdown.Core.Tests.RemoteDeployment.ps1`（adapter 夹具、`-ValidateOnly` 令牌表、历史回执字段） | 旧远端部署 | #290 |
-| `tools/Test-CountdownDeploymentState.ps1`、`tools/Test-OfficeDeploymentStatus.ps1`（历史回执 `AdapterUiValidated`） | 旧远端部署状态 | #290 |
 | `README.md` 文件清单、`-STA` 约束与启动链段，`CONTEXT.md` 安装布局，`docs/架构与语言迁移.md` 的 adapter 与计划任务段 | 描述生产启动链与回执身份 | #291（回执身份段随 #292） |
 | `docs/specs/validate-only-dedup-assertion-map.md` | 2026-09-14 调查快照，不随代码更新 | 不删除 |
 

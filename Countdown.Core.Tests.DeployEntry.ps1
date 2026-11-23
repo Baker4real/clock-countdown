@@ -91,7 +91,13 @@ function Write-CountdownDeployTestSuiteRun {
         [string] $Commit = $Repository.Head,
         [string[]] $Stages = @(Get-CountdownRequiredSuiteStage),
         [hashtable] $StageExitCodes = @{},
-        [string] $ReceiptAggregate = $deployAggregate
+        [string] $ReceiptAggregate = $deployAggregate,
+        [string] $EvidenceRepositoryRoot = $Repository.Root,
+        [bool] $IncludeSource = $true,
+        [bool] $CleanAtStart = $true,
+        [string] $CommitAtEnd = $Commit,
+        [bool] $CleanAtEnd = $true,
+        [bool] $RunPassed = $true
     )
 
     $logDirectory = Join-Path $Repository.Root 'logs\suite-runs'
@@ -110,18 +116,20 @@ function Write-CountdownDeployTestSuiteRun {
                 }
             }
         })
-    $passed = @($stageRecords | Where-Object { $_.ExitCode -ne 0 }).Count -eq 0
+    $passed = $RunPassed -and @($stageRecords | Where-Object { $_.ExitCode -ne 0 }).Count -eq 0
     $run = [ordered]@{
         SchemaVersion = 1
         RunId = $RunId
-        RepositoryRoot = $Repository.Root
+        RepositoryRoot = $EvidenceRepositoryRoot
         LogDirectory = $logDirectory
         Status = if ($passed) { 'Completed' } else { 'Failed' }
         ExitCode = if ($passed) { 0 } else { 1 }
         StartedAtUtc = '2026-11-14T09:00:00.0000000Z'
         FinishedAtUtc = '2026-11-14T09:25:00.0000000Z'
         Stages = $stageRecords
-        Source = [ordered]@{ Commit = $Commit; CleanAtStart = $true; CommitAtEnd = $Commit; CleanAtEnd = $true }
+    }
+    if ($IncludeSource) {
+        $run.Source = [ordered]@{ Commit = $Commit; CleanAtStart = $CleanAtStart; CommitAtEnd = $CommitAtEnd; CleanAtEnd = $CleanAtEnd }
     }
     $path = Join-Path $logDirectory "$RunId-run.json"
     [System.IO.File]::WriteAllText($path, ($run | ConvertTo-Json -Depth 6), $deployUtf8)
@@ -370,14 +378,15 @@ function Invoke-CountdownDeployTest {
         [Parameter(Mandatory)] [string] $Label,
         [switch] $StatusOnly,
         [switch] $LayoutSwitch,
-        [switch] $LayoutRollback
+        [switch] $LayoutRollback,
+        [string] $ScriptPath = $deployScript
     )
 
     $errorWriter = [System.IO.StringWriter]::new()
     $standardError = [Console]::Error
     [Console]::SetError($errorWriter)
     try {
-        $output = @(& $deployScript -StatusOnly:$StatusOnly -LayoutSwitch:$LayoutSwitch -LayoutRollback:$LayoutRollback -RepositoryRoot $deployRepo.Root -RecordRoot $deployCase.RecordRoot `
+        $output = @(& $ScriptPath -StatusOnly:$StatusOnly -LayoutSwitch:$LayoutSwitch -LayoutRollback:$LayoutRollback -RepositoryRoot $deployRepo.Root -RecordRoot $deployCase.RecordRoot `
                 -RemoteInstallRoot $deployCase.InstallRoot -TaskName $deployCase.TaskName -RemoteStagingRoot $deployCase.StagingRoot -Port $deployHostPorts *>&1)
     }
     finally { [Console]::SetError($standardError) }
@@ -659,6 +668,62 @@ try {
     $deployNoSuiteRun = Invoke-CountdownDeployTestWithSuiteRuns -Label 'missing suite evidence' -Runs @(
         @{ RunId = '20261114T080000000-00000000'; Commit = '0123456789abcdef0123456789abcdef01234567' })
     Assert-CountdownDeployRejected -Deploy $deployNoSuiteRun -Reason 'suite-evidence-missing' -Names @($deployRepo.Head.Substring(0, 7), 'Invoke-CountdownSuiteLowImpact.ps1') -Label 'Missing suite evidence'
+
+    # 三项替代保护的第一项：套件必须绑定本 checkout 的同一提交，开跑与收尾都干净，HEAD 未变，整轮通过。
+    # 这些反例经部署入口与假主机 port 验证，在连接办公室之前拒绝；不是对 run.json 文本或内部 parser 的断言。
+    $deployOtherCommit = '0123456789abcdef0123456789abcdef01234567'
+    $deploySourceCases = @(
+        @{ Name = 'missing Source binding'; Run = @{ RunId = '20261114T081000000-00000001'; IncludeSource = $false }; Names = @('缺少套件证据') }
+        @{ Name = 'another checkout'; Run = @{ RunId = '20261114T082000000-00000002'; EvidenceRepositoryRoot = (Join-Path $deployTestRoot 'other-checkout') }; Names = @('缺少套件证据') }
+        @{ Name = 'dirty at suite start'; Run = @{ RunId = '20261114T083000000-00000003'; CleanAtStart = $false }; Names = @('开跑时工作树不干净') }
+        @{ Name = 'dirty at suite end'; Run = @{ RunId = '20261114T084000000-00000004'; CleanAtEnd = $false }; Names = @('收尾时工作树不干净') }
+        @{ Name = 'HEAD changed during suite'; Run = @{ RunId = '20261114T085000000-00000005'; CommitAtEnd = $deployOtherCommit }; Names = @('收尾时 HEAD 已经变了') }
+        @{ Name = 'suite run failed after required stages'; Run = @{ RunId = '20261114T086000000-00000006'; RunPassed = $false }; Names = @('没有整轮通过') }
+    )
+    for ($deploySourceIndex = 0; $deploySourceIndex -lt $deploySourceCases.Count; $deploySourceIndex++) {
+        $deploySourceCase = $deploySourceCases[$deploySourceIndex]
+        $deployCase = New-CountdownDeployTestCase -Name "source-$deploySourceIndex"
+        $deploySourceResult = Invoke-CountdownDeployTestWithSuiteRuns -Label $deploySourceCase.Name -Runs @($deploySourceCase.Run)
+        Assert-CountdownDeployRejected -Deploy $deploySourceResult -Reason 'suite-evidence-missing' -Names $deploySourceCase.Names -Label $deploySourceCase.Name
+    }
+
+    # 较新的不合格记录不能遮住较早的合格记录：部署绑定实际选用的那份 run.json。
+    $deployCase = New-CountdownDeployTestCase -Name 'suite-run-selection'
+    $deployQualifiedRunId = '20261114T070000000-0000000a'
+    $deploySelectedRun = Invoke-CountdownDeployTestWithSuiteRuns -Label 'select newest qualified suite run' -Runs @(
+        @{ RunId = $deployQualifiedRunId },
+        @{ RunId = '20261114T121000000-0000000b'; CleanAtEnd = $false })
+    Assert-Equal 'deployed' ([string] $deploySelectedRun.Result.outcome) 'A qualified older suite run still permits deployment'
+    Assert-Equal $deployQualifiedRunId ([string] $deploySelectedRun.Result.suiteRun.runId) 'Deployment selects the newest qualified run behind newer rejected evidence'
+
+    # 既有节假日年度覆盖硬保护迁移到新部署预检：以实际构建输出里的 app\holiday-data 年份判定。
+    # 用独立入口副本注入“12 月缺下一年”，部署必须在任何远端调用前拒绝，并保留缺失年份与补数据指引。
+    $deployCase = New-CountdownDeployTestCase -Name 'holiday-coverage'
+    $deployHolidayEntryRoot = Join-Path $deployTestRoot 'holiday-guard-entry'
+    $deployHolidayEntryTools = Join-Path $deployHolidayEntryRoot 'tools'
+    New-Item -ItemType Directory -Path $deployHolidayEntryRoot, $deployHolidayEntryTools -Force | Out-Null
+    foreach ($name in @('Deploy-CountdownProgram.ps1', 'Countdown.Deployer.psm1', 'Countdown.ReleaseContract.psm1')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $deployHolidayEntryRoot $name)
+    }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'tools\Countdown.SuiteStages.psm1') -Destination (Join-Path $deployHolidayEntryTools 'Countdown.SuiteStages.psm1')
+    $deployHolidayModulePath = Join-Path $deployHolidayEntryRoot 'Countdown.ReleaseContract.psm1'
+    $deployHolidayModuleSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1'), [System.Text.Encoding]::UTF8)
+    $deployHolidayImportIndex = $deployHolidayModuleSource.LastIndexOf('Assert-CountdownReleaseContractDefinition', [System.StringComparison]::Ordinal)
+    if ($deployHolidayImportIndex -lt 0) { throw '节假日部署夹具找不到发布契约导入断言。' }
+    $deployHolidayOverride = @'
+function Test-CountdownHolidayYearCoverage {
+    param($BeijingNow, $PackagedYears)
+    [pscustomobject]@{
+        Covered = $false
+        MissingYear = 2099
+        Message = '随包节假日数据尚未覆盖 2099 年；请按 holiday-data/README.md 补齐。'
+    }
+}
+
+'@
+    [System.IO.File]::WriteAllText($deployHolidayModulePath, $deployHolidayModuleSource.Insert($deployHolidayImportIndex, $deployHolidayOverride), $deployUtf8)
+    $deployHolidayResult = Invoke-CountdownDeployTest -Label 'missing next-year holiday coverage' -ScriptPath (Join-Path $deployHolidayEntryRoot 'Deploy-CountdownProgram.ps1')
+    Assert-CountdownDeployRejected -Deploy $deployHolidayResult -Reason 'holiday-year-coverage-missing' -Names @('2099', 'holiday-data/README.md') -Label 'Missing next-year holiday coverage'
 
     # 必过阶段不全：这一轮没跑 SourceValidation，CSharp 以 75（参考基线待重拍）退出；拒绝时两项都写明，不只报第一项。
     $deployCase = New-CountdownDeployTestCase -Name 'stages'

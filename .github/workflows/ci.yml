@@ -151,26 +151,6 @@ jobs:
           $testExit = $LASTEXITCODE
           if ($testExit -ne 0) { exit $testExit }
 
-      - name: Test remote deployment transaction
-        shell: pwsh
-        run: |
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.Core.Tests.ps1 -RemoteDeploymentOnly
-          $testExit = $LASTEXITCODE
-          if ($testExit -ne 0) { exit $testExit }
-
-      - name: Test transfer ledger
-        shell: pwsh
-        run: |
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File .\Countdown.TransferLedger.Tests.ps1
-          $testExit = $LASTEXITCODE
-          if ($testExit -ne 0) { exit $testExit }
-
-      - name: Test deployment status and checkout bytes
-        shell: pwsh
-        run: |
-          & pwsh.exe -NoLogo -NoProfile -NonInteractive -File ./tools/Test-OfficeDeploymentStatus.ps1 -Json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Collect crash evidence
         if: ${{ failure() }}
         shell: pwsh

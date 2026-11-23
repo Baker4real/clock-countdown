@@ -49,7 +49,7 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 19. As a 维护者, I want 持久化失败演练保留预期失败与预期通过各一遍, so that 失败与成功路径都仍有覆盖。
 20. As a 维护者, I want 去重后各阶段 Pass 计数不低于去重前基线, so that 有效性有可核对的量化门禁。
 21. As a 维护者, I want Ui 阶段的报告数反映实际断言而非硬编码, so that 计数本身可作为有效性证据。
-22. As a 维护者, I want 六阶段套件与 12 步收口 runner 不在同一会话连跑, so that 不做无意识的整套双跑。
+22. As a 维护者, I want 五阶段套件与 10 步收口 runner 不在同一会话连跑, so that 不做无意识的整套双跑。
 23. As a 维护者, I want 本地迭代可选增量构建模式, so that 非收口的验证循环更快；该模式以插桩实测数据为引入前提。
 24. As a 发布者, I want 发布收口仍然走全量 -Clean + R2R, so that 发布产物的性能与完整性合同不变。
 25. As a 发布者, I want 改动 IntegrityHashes 覆盖文件后同步更新静态哈希, so that 发布合同持续有效。
@@ -66,7 +66,7 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 - CSharp / Ui 测试脚本：使用短自退间隔；按断言映射表去重——CSharp 阶段保留 canonical 完整 adapter validate-only（含视觉基线 12 帧抓帧与 shape SHA）；Ui 阶段保留旧 PowerShell WPF 宿主验证、UIA 段与独有断言，逐字重复副本删除前其独有断言必须先迁移归属；ExercisePersistenceFailures 三遍保一对（预期失败 + 预期通过），ExerciseNoteAdd 两遍保一遍；Ui 阶段报告数从硬编码改为实际计数。
 - Core 测试脚本：加分段计时；内联安装器验证调用与 InstallValidate 独立阶段都保留——前者带合同断言、后者是阶段级红即停门禁，重复成本约 10 秒，标注为有意双轨。
 - 发布合同 module：本 spec 触及的测试脚本与构建脚本在 IntegrityHashes 覆盖内，每次改动后按当前提交 blob 更新静态 SHA-256（既有合同义务，不新增机制）。
-- 流程决策：六阶段套件与 12 步收口 runner 不在同一会话连跑（后者第 3/6/8/9/10/11 步与六阶段逐字相同，连跑等于整套两遍）；README 注明。
+- 流程决策：五阶段套件与 10 步收口 runner 不在同一会话连跑（后者第 3/6/8/9/10 步与五阶段逐字相同，连跑等于整套两遍）；README 注明。
 - 并行安全前置条件（调查已核实，实现时逐条守住）：五阶段测试数据根均为 GUID 唯一目录；CSharp / Ui 的 validate-only 均使用临时 settings 文件，不写仓库根 settings.json，SourceValidation 的根快照闭锁不受影响；CSharp 默认路径不含按可执行路径杀进程的逻辑（该逻辑仅存在于非默认 DesktopLauncherOnly 模式，目标为 fixture 与办公室安装路径）；Ui 的仓库内固定诊断目录与 CSharp / SourceValidation 的 GUID 诊断路径不相交；Core 的全局安装事务 mutex 探针为 1 秒有界且其余四阶段不取该锁。
 - 依赖事实（已核实，含对调查中间结论的修正）：全部五个验证阶段都依赖 Build——Ui 经 adapter 间接启动 C# 宿主 exe，不能与 Build 并行；Build 是唯一必须先行的阶段，并行扇出在 Build 绿之后。
 
@@ -87,12 +87,10 @@ Prior art：两个既有启动器探针脚本；summary.json 只读聚合（2026
 ## Out of Scope
 
 - 不改变"用户正在使用这台电脑"的低影响前提：BelowNormal、不可见 Win32 桌面隔离、禁止非隔离直跑全部保留。
-- 不改 12 步收口 runner 的步骤表，以及 desktop-launcher / instance-activation-matrix / deploy-validate 三个独立模式。
+- 不调整 desktop-launcher / instance-activation-matrix 的独立模式；现役 10 步收口 runner 的步骤表以 README 与实际脚本为准。
 - 除 ExitAfterReadyForTest 间隔参数化外，不改任何产品功能代码。
 - 不以砍断言总数为目标；去重只删有映射归属的重复副本。
 - InstallValidate 与 Core 内联安装器验证的双轨保留，不做合并。
-- 不动办公室部署链路（Deploy-OfficeCountdown.ps1、远程安装、回执与账本）。
-- Countdown.TransferLedger.Tests.ps1 不在六阶段内，不纳入。
 - 不做 CI 化：本仓无 CI，套件是本机验证设施。
 
 ## Further Notes

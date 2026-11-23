@@ -4,7 +4,6 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:packageTrustRoots = @(
-    'Deploy-OfficeCountdown.ps1',
     'Install-Countdown.ps1',
     'Countdown.ReleaseContract.psm1'
 )
@@ -115,117 +114,11 @@ $script:offlineHolidayDataFiles = @(
     'holiday-data\LICENSE.txt'
 )
 
-$script:sourceBuildNonAssetFiles = @(
-    'global.json',
-    'src\MinminCountdown.Core\CalendarOccurrenceCalculator.cs',
-    'src\MinminCountdown.Core\DesktopWorkspace.cs',
-    'src\MinminCountdown.Core\DesktopWorkspace.Transactions.cs',
-    'src\MinminCountdown.Core\DomainLogic.cs',
-    'src\MinminCountdown.Core\FloatingCountdownProjection.cs',
-    'src\MinminCountdown.Core\MinminCountdown.Core.csproj',
-    'src\MinminCountdown.Core\ReminderEditing.cs',
-    'src\MinminCountdown.Core\SettingsContract.cs',
-    'src\MinminCountdown.Core\SettingsDeploymentEquivalence.cs',
-    'src\MinminCountdown.Core\SettingsFileOperations.cs',
-    'src\MinminCountdown.Core\SettingsModels.cs',
-    'src\MinminCountdown.Core\DateDisplay.cs',
-    'src\MinminCountdown.Core\NoteOrdering.cs',
-    'src\MinminCountdown.Core\SettingsRecovery.cs',
-    'src\MinminCountdown.Core\SettingsStore.cs',
-    'src\MinminCountdown.Core\SettingsSynchronization.cs',
-    'src\MinminCountdown\App.xaml',
-    'src\MinminCountdown\App.xaml.cs',
-    'src\MinminCountdown\ApplicationTheme.cs',
-    'src\MinminCountdown\ApplicationValidation.cs',
-    'src\MinminCountdown\DeleteUndoOffer.cs',
-    'src\MinminCountdown\DiagnosticLogger.cs',
-    'src\MinminCountdown\DwmWindowChrome.cs',
-    'src\MinminCountdown\FloatingBottomStatus.cs',
-    'src\MinminCountdown\FloatingTrayController.cs',
-    'src\MinminCountdown\FloatingWindow.Countdowns.cs',
-    'src\MinminCountdown\FloatingWindow.Notes.cs',
-    'src\MinminCountdown\FloatingWindow.ScrollContext.cs',
-    'src\MinminCountdown\FloatingWindow.xaml',
-    'src\MinminCountdown\FloatingWindow.xaml.cs',
-    'src\MinminCountdown\GlobalUsings.cs',
-    'src\MinminCountdown\HolidayCalendar.cs',
-    'src\MinminCountdown\HostOptions.cs',
-    'src\MinminCountdown\InstanceActivation.cs',
-    'src\MinminCountdown\KeyboardFocusPolicy.cs',
-    'src\MinminCountdown\KeyboardFocusPolicyFixtures.cs',
-    'src\MinminCountdown\MainWindow.xaml',
-    'src\MinminCountdown\MainWindow.xaml.cs',
-    'src\MinminCountdown\MainWindowEmptyStateProbe.cs',
-    'src\MinminCountdown\MinminCountdown.csproj',
-    'src\MinminCountdown\app.manifest',
-    'src\MinminCountdown\MonitorGeometryValidation.cs',
-    'src\MinminCountdown\MonitorWorkAreaResolver.cs',
-    'src\MinminCountdown\MotionBehavior.cs',
-    'src\MinminCountdown\NativeMethods.txt',
-    'src\MinminCountdown\NoteCompletionExit.cs',
-    'src\MinminCountdown\NumericInputBehavior.cs',
-    'src\MinminCountdown\TimeInputBehavior.cs',
-    'src\MinminCountdown\ReminderCenterViewModel.cs',
-    'src\MinminCountdown\ReminderRulesEditorViewModel.cs',
-    'src\MinminCountdown\ReminderRulesEditorWindow.cs',
-    'src\MinminCountdown\ReminderWindow.cs',
-    'src\MinminCountdown\RuntimeProtocol.cs',
-    'src\MinminCountdown\SegmentIndicator.cs',
-    'src\MinminCountdown\SettingsEquivalenceCommand.cs',
-    'src\MinminCountdown\SettingsMigrationCommand.cs',
-    'src\MinminCountdown\SettingsRecoveryWindow.cs',
-    'src\MinminCountdown\SharedMenuStyles.cs',
-    'src\MinminCountdown\SharedMenuStyles.xaml',
-    'src\MinminCountdown\TrayIconHost.cs',
-    'src\MinminCountdown\UiControls.cs',
-    'src\MinminCountdown\ValidationExercises.CalendarAndStartup.cs',
-    'src\MinminCountdown\DualWindowValidationFixture.cs',
-    'src\MinminCountdown\ValidationExercises.DualWindowFixture.cs',
-    'src\MinminCountdown\ValidationExercises.ConfirmationAndUndo.cs',
-    'src\MinminCountdown\ValidationExercises.Density.cs',
-    'src\MinminCountdown\ValidationExercises.LayoutProbes.cs',
-    'src\MinminCountdown\ValidationExercises.MainWindow.cs',
-    'src\MinminCountdown\ValidationExercises.Narrator.cs',
-    'src\MinminCountdown\ValidationExercises.NotesAndLifecycle.cs',
-    'src\MinminCountdown\ValidationExercises.QualityGates.cs',
-    'src\MinminCountdown\ValidationExercises.ReminderCenter.cs',
-    'src\MinminCountdown\ValidationExercises.ReminderRules.cs',
-    'src\MinminCountdown\ValidationExercises.Reminders.cs',
-    'src\MinminCountdown\ValidationExercises.Types.cs',
-    'src\MinminCountdown\ValidationExercises.VisualGates.cs',
-    'src\MinminCountdown\ValidationExercises.cs',
-    'src\MinminCountdown\ValidationReport.ContrastAndControls.cs',
-    'src\MinminCountdown\ValidationReport.Create.cs',
-    'src\MinminCountdown\ValidationReport.FloatingFitAndTray.cs',
-    'src\MinminCountdown\ValidationReport.FloatingReference.cs',
-    'src\MinminCountdown\ValidationReport.FocusEvidence.cs',
-    'src\MinminCountdown\ValidationReport.Imaging.cs',
-    'src\MinminCountdown\ValidationReport.KeyboardAndDialogs.cs',
-    'src\MinminCountdown\ValidationReport.MainReference.cs',
-    'src\MinminCountdown\ValidationReport.NotesAndTheme.cs',
-    'src\MinminCountdown\ValidationReport.SettingsAndReminders.cs',
-    'src\MinminCountdown\ValidationReport.Types.cs',
-    'src\MinminCountdown\ValidationReport.cs',
-    'src\MinminCountdown\ValidationReportContract.cs',
-    'src\MinminCountdown\VisualReferenceBaseline.cs',
-    'src\MinminCountdown\WindowValidationInput.cs',
-    'src\MinminCountdown\WindowValidationScenarios.Density.cs',
-    'src\MinminCountdown\WindowValidationScenarios.cs',
-    'src\MinminCountdown\WindowWorkAreaGeometry.cs'
-)
-
-# countdown-icon.ico 既是 ApplicationIcon 也是程序目录资产，经 buildAssetDefinitions 只计一次。
-$script:sourceBuildFiles = @($script:sourceBuildNonAssetFiles) + @(
-    $script:buildAssetDefinitions | ForEach-Object { [string] $_.SourcePath }
-)
-
 # 发布包只装办公室安装路径会加载或安装的文件，静态钉值也只覆盖这些文件。C# 源码、测试、构建与验证工具、
-# DESIGN.md 留在仓库：正式部署在构建前按提交 blob 身份核对构建输入（BuildInputFiles），不在这里钉死。
+# DESIGN.md 留在仓库，不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
     'Countdown.InstallTransaction.psm1' = 'E35959D08BA359435BCDEF8BFEACB4518704B924512DE8069F4767F2D649A353'
     'Countdown.InstallLifecycle.psm1' = '87304F33DF58FBD358362DDFC9711756041C606271BC665B0ACA1A80B37212BD'
-    'Countdown.RemoteDeployment.psm1' = '9CAC228D5CF8D23EC262FB3501A839E84416F15707C9469DB3799FCA39A9C09D'
-    'Countdown.TransferLedger.psm1' = 'B3051D0F5AF1F7E0351A9637B076E0402DCC9500A21CC41C02594EC9012D88B8'
     'Countdown.Notes.psm1' = 'CF41E5A29B5FCFB0807E1EA1E6F52AC7FADE4478A18990698F2BA6F725E08CA0'
     'Countdown.Runtime.psm1' = '29733FCD6CF36E797800EC7678AF1685E97A308CC67FEE38975FE6CC54709856'
     'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
@@ -238,49 +131,6 @@ $script:nonAssetHashes = [ordered]@{
     'holiday-data\README.md' = '2775B80BC9DA69F281FED7A89404F18CA592D5299B1E6788CEF9C425CBD61B35'
     'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
 }
-
-# 构建脚本自身读取、但不在产品 MSBuild 项目闭包里的输入：构建前导入的预检模块、复制进载荷的许可证原文，
-# 以及只在本机 CSharp 阶段运行、绝不进入办公室载荷的独立窗口验证项目。
-$script:buildScriptInputFiles = @(
-    'tools\Countdown.BuildPreflight.psm1',
-    'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md',
-    'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj',
-    'src\MinminCountdown.WindowVerification\Program.cs',
-    'src\MinminCountdown.WindowVerification\ReminderRulesEditorScenario.cs',
-    'src\MinminCountdown.WindowVerification\ReminderRulesEditorCopyAndPreviewScenario.cs',
-    'src\MinminCountdown.WindowVerification\ReminderRulesFixedIntervalScenario.cs',
-    'src\MinminCountdown.WindowVerification\ExtendedNumericInputsScenario.cs',
-    'src\MinminCountdown.WindowVerification\TagRenameSyncScenario.cs',
-    'src\MinminCountdown.WindowVerification\TagManagerAutoSaveScenario.cs',
-    'src\MinminCountdown.WindowVerification\WindowSmokeScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingQuickAddErrorLayoutScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingNoteSearchScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingBottomStatusAutomationScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingWorkdayCompletionScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingNoteOverflowMenuScenario.cs',
-    'src\MinminCountdown.WindowVerification\FloatingNoteBodyWidthOptionBScenario.cs',
-    'src\MinminCountdown.WindowVerification\ReminderCenterLongTitleScenario.cs',
-    'src\MinminCountdown.WindowVerification\ReminderCenterSnoozeMenuScenario.cs',
-    'src\MinminCountdown.WindowVerification\SecondaryWindowDwmChromeScenario.cs',
-    'src\MinminCountdown.WindowVerification\InputFocusAndErrorScenario.cs',
-    'src\MinminCountdown.WindowVerification\MainWindowAlignmentAndPolishScenario.cs',
-    'src\MinminCountdown.WindowVerification\MainWindowRefreshScenario.cs',
-    'src\MinminCountdown.WindowVerification\OverlayBorderAndFilterMatchModeScenario.cs',
-    'src\MinminCountdown.WindowVerification\SharedScrollBarScenario.cs',
-    'src\MinminCountdown.WindowVerification\DisabledStateScenario.cs',
-    'src\MinminCountdown.WindowVerification\DatePickerSingleBoxScenario.cs',
-    'src\MinminCountdown.WindowVerification\SpacingTokenWiringScenario.cs',
-    'src\MinminCountdown.WindowVerification\IconGeometryAndVectorIconsScenario.cs',
-    'src\MinminCountdown.WindowVerification\CountdownDeadlineTimeInputScenario.cs',
-    'src\MinminCountdown.WindowVerification\TimeInputSpreadScenario.cs',
-    'src\MinminCountdown.WindowVerification\FormErrorBordersSpreadScenario.cs',
-    'src\MinminCountdown.WindowVerification\ViewModelSourceGeneratorScenario.cs',
-    'src\MinminCountdown.WindowVerification\EmptyStateOverflowScenario.cs',
-    'src\MinminCountdown.WindowVerification\MainListOverflowProbe.cs',
-    'src\MinminCountdown.WindowVerification\EmptyStateScenario.cs',
-    'src\MinminCountdown.WindowVerification\EmptyStateScenarioSupport.cs',
-    'src\MinminCountdown.WindowVerification\EmptyStateProbes.cs'
-)
 
 function Assert-CountdownReleaseRelativePath {
     param([Parameter(Mandatory)] [string] $Path)
@@ -548,8 +398,6 @@ function New-CountdownReleaseContractSnapshot {
         OfficialCharacterAssets = [string[]] $officialCharacterAssets
         FloatingPlushAssets = [string[]] @($script:floatingPlushAssets)
         CurrentFloatingRuntimeAssets = [string[]] $currentFloatingRuntimeAssets
-        SourceBuildFiles = [string[]] @($script:sourceBuildFiles)
-        BuildInputFiles = [string[]] (@($script:sourceBuildFiles) + @($script:buildScriptInputFiles))
         OfflineHolidayDataFiles = [string[]] @($script:offlineHolidayDataFiles)
     }
 }
@@ -560,8 +408,6 @@ function Assert-CountdownReleaseContractDefinition {
     Assert-CountdownUniqueReleasePaths -Name 'PackageFiles' -Paths $contract.PackageFiles
     Assert-CountdownUniqueReleasePaths -Name 'InstalledFiles' -Paths $contract.InstalledFiles
     Assert-CountdownUniqueReleasePaths -Name 'RetiredRuntimeFiles' -Paths $contract.RetiredRuntimeFiles
-    Assert-CountdownUniqueReleasePaths -Name 'SourceBuildFiles' -Paths $contract.SourceBuildFiles
-    Assert-CountdownUniqueReleasePaths -Name 'BuildInputFiles' -Paths $contract.BuildInputFiles
     Assert-CountdownUniqueReleasePaths -Name 'BuildAssets.SourcePath' -Paths @($contract.BuildAssets.SourcePath)
     Assert-CountdownUniqueReleasePaths -Name 'BuildAssets.PublishedPath' -Paths @($contract.BuildAssets.PublishedPath)
 

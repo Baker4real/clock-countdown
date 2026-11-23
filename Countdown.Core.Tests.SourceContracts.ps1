@@ -4,7 +4,6 @@ $installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Insta
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
 $buildPreflightSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Countdown.BuildPreflight.psm1'), [System.Text.Encoding]::UTF8)
 $buildPreflightScript = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Test-CountdownBuildPreflight.ps1'), [System.Text.Encoding]::UTF8)
-$deploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Deploy-OfficeCountdown.ps1'), [System.Text.Encoding]::UTF8)
 Assert-Equal $true ($buildSource.Contains("tools\Countdown.BuildPreflight.psm1") -and $buildSource.Contains('Resolve-CountdownBuildDotnet') -and $buildSource.Contains('Get-CountdownBuildPaths')) 'Build reuses the shared SDK and clean-path preflight module'
 $managedCleanIndex = $buildSource.IndexOf('invoke-safe-tree-delete.ps1')
 $releaseContractImportIndex = $buildSource.IndexOf("Import-Module (Join-Path `$PSScriptRoot 'Countdown.ReleaseContract.psm1')")
@@ -69,11 +68,6 @@ $timeSourceWaitDefinitionIndex = $installLifecycleSource.IndexOf('function Wait-
 $timeSourceWaitCallIndex = $installLifecycleSource.IndexOf('$source = Wait-CountdownNetworkTimeSource')
 Assert-Equal $true ($timeSourceWaitDefinitionIndex -ge 0 -and $timeSourceWaitCallIndex -gt $timeSourceWaitDefinitionIndex) 'Production Windows ports wait with the bounded network-time source probe'
 Assert-Equal $true ($installLifecycleSource -notmatch 'Start-Sleep -Seconds 3') 'Install lifecycle does not rely on a fixed three-second time-service sleep'
-Assert-Equal $true ($deploymentSource.Contains('Get-OfficeRemoteDeploymentFailureReceipt') -and $deploymentSource.Contains('remote-deployment-failure.json') -and $deploymentSource.Contains('ConvertFrom-CountdownInstallFailureReceiptBytes') -and $deploymentSource.Contains('ReparsePoint') -and $deploymentSource.Contains('WriteAllText(') -and -not $deploymentSource.Contains('WriteAllBytes($failureReceiptEvidencePath')) 'Office deployment validates a bounded non-reparse remote failure receipt before persisting normalized evidence'
-$deploymentCleanMainIndex = $deploymentSource.IndexOf('$initialRepositoryState = Assert-CountdownDeploymentRepositoryState')
-$deploymentLocalValidationIndex = $deploymentSource.IndexOf('$localValidation = Find-CountdownLocalValidationRun -Commit $commit -RepositoryRoot $repoRoot')
-$deploymentSnapshotIndex = $deploymentSource.IndexOf('Export-CountdownDeploymentCommitSnapshot `')
-Assert-Equal $true ($deploymentCleanMainIndex -ge 0 -and $deploymentLocalValidationIndex -gt $deploymentCleanMainIndex -and $deploymentSnapshotIndex -gt $deploymentLocalValidationIndex) 'Office deployment requires same-commit local suite evidence after the clean-main check and before building'
 $adapterSource =[System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '敏敏子倒计时.ps1'), [System.Text.Encoding]::UTF8)
 $adapterWaitForExitIndex = $adapterSource.IndexOf('$process.WaitForExit()')
 $adapterStayAttachedIndex = $adapterSource.IndexOf('$stayAttached = $ValidateOnly.IsPresent')
@@ -82,14 +76,7 @@ $adapterHasExitedIndex = $adapterSource.IndexOf('$process.HasExited')
 Assert-Equal $true ($adapterStayAttachedIndex -ge 0 -and $adapterWaitForExitIndex -gt $adapterStayAttachedIndex) 'Production adapter waits for exit only in validate/exercise/test modes'
 Assert-Equal $true ($adapterAliveProbeIndex -gt $adapterWaitForExitIndex -and $adapterHasExitedIndex -gt $adapterAliveProbeIndex) 'Production adapter detaches after confirming the C# host stayed alive'
 Assert-Equal $true ($adapterSource.Contains('Win32_Process') -and $adapterSource.Contains('MethodName Create') -and $adapterSource.Contains('脱离计划任务作业')) 'Production adapter starts the C# host outside the scheduled-task job'
-$remoteDeploymentSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1'), [System.Text.Encoding]::UTF8)
-Assert-Equal $true ($remoteDeploymentSource.Contains('ConvertFrom-Json -DateKind String') -and $remoteDeploymentSource.Contains('ConvertTo-CountdownSettingsFingerprintMtimeUtc')) 'Independent readback keeps settings mtime as a string and normalizes ConvertFrom-Json DateTime coercion'
-$mtimeSample = '2026-08-17T05:20:04.4405459Z'
-$mtimeJson = (@{ ExpectedSettingsMtimeUtc = $mtimeSample } | ConvertTo-Json -Compress)
-$coercedMtime = ($mtimeJson | ConvertFrom-Json).ExpectedSettingsMtimeUtc
-$keptMtime = ($mtimeJson | ConvertFrom-Json -DateKind String).ExpectedSettingsMtimeUtc
-Assert-Equal $true ($coercedMtime -is [datetime] -or [string] $keptMtime -eq $mtimeSample) 'ConvertFrom-Json either keeps the settings mtime string or yields a DateTime the fingerprint helper can normalize'
-Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package; the deployer runs it from the commit-identity-checked snapshot'
+Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package'
 $legacyV3Settings = [pscustomobject]@{
     schemaVersion = 3
     timeZoneId = 'China Standard Time'

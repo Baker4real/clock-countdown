@@ -4,8 +4,7 @@
 param(
     [switch] $AcceptanceOnly,
     [switch] $ReleaseContractOnly,
-    [switch] $ValidationOnly,
-    [switch] $RemoteDeploymentOnly
+    [switch] $ValidationOnly
 )
 
 # CI 环境检测
@@ -40,7 +39,6 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -For
 Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallLifecycle.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Validation.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Countdown.RemoteDeployment.psm1') -Force
 
 $failures = [System.Collections.Generic.List[string]]::new()
 $script:assertions = 0
@@ -205,7 +203,7 @@ function Get-IndependentCountdownDiagnosticMutexName {
 }
 
 Write-TestSegmentTiming -Name 'Setup'
-if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $RemoteDeploymentOnly)) {
+if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly)) {
     . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.Validation.ps1')
 
     if ($ValidationOnly) {
@@ -221,22 +219,6 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -an
 }
 
 Write-TestSegmentTiming -Name 'Validation'
-if ($RemoteDeploymentOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly -and -not $ValidationOnly)) {
-    . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.RemoteDeployment.ps1')
-
-    if ($RemoteDeploymentOnly) {
-        if ($failures.Count -gt 0) {
-            $failures | ForEach-Object { Write-Error $_ }
-            exit 1
-        }
-        Write-TestSegmentTiming -Name 'RemoteDeployment'
-        Write-TestSegmentTotal
-        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'RemoteDeployment' } | ConvertTo-Json
-        exit 0
-    }
-}
-
-Write-TestSegmentTiming -Name 'RemoteDeployment'
 if (-not $AcceptanceOnly) {
     . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.ReleaseContract.ps1')
 

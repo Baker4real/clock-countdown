@@ -56,6 +56,9 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 | `Countdown.Core.Tests.InstallLifecycle.ps1`（暂存 adapter、`InstalledFiles`） | 旧安装器事务 | #291 |
 | `Countdown.Core.Tests.MainDomain.ps1` 事务安装与回滚夹具里作为应用入口的 adapter 文件 | 旧安装器事务 | #291 |
 | `Countdown.Core.Tests.InstallStatus.ps1` 现有布局登录任务夹具（`pwsh … -STA -File <根>\敏敏子倒计时.ps1`） | 登录任务旧启动链的期望定义 | #291 |
+| `Countdown.Core.Tests.Installer.ps1`（`applicationPath`、`legacyArguments` 与旧式 Exec 动作夹具） | 新安装器 CheckOnly 对现有布局登录任务的识别与转换期望；不是经 adapter 启动测试应用 | #291 |
+| `Countdown.Core.Tests.LayoutSwitch.ps1`（现有布局 adapter 文件、旧任务命令行与 XML 夹具） | 布局切换测试的现有布局输入；不是经 adapter 启动测试应用 | #291 |
+| `Countdown.Core.Tests.DeployEntry.ps1`（布局切换入口的现有布局 adapter 文件与旧任务夹具） | 新部署入口布局切换测试的现有布局输入；不是经 adapter 启动测试应用 | #291 |
 | `AdapterUiValidated` 字段：`Countdown.Validation.psm1` 的 C# 报告检查与输出、`Install-Countdown.ps1` 回执、`Countdown.Core.Tests.Validation.ps1` 与 `tools/Test-CountdownValidationDiagnostics.ps1` 的假 C# 报告 | 只剩字段名，不再经 adapter 启动 | #291 |
 | `Countdown.CSharp.Tests.ps1` 分段名 `AdapterValidationRun` / `AdapterAssertions`、`$adapter*` 变量名、输出 `AdapterUiValidated = $true` | 只剩命名；分段名被文档计时表引用，暂不改 | #291 |
 | `src/MinminCountdown/ValidationReport.Create.cs` 中“adapter 验证…”诊断文案 | 只剩措辞 | #291 |

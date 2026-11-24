@@ -1270,9 +1270,9 @@ internal static partial class ValidationReport
             ["ExpandedMonthlySalaryWidth"] = Required<TextBox>(main, "MonthlySalary").ActualWidth,
             ["ExpandedWorkStartWidth"] = Required<TextBox>(main, "WorkStart").ActualWidth,
             ["ExpandedWorkEndWidth"] = Required<TextBox>(main, "WorkEnd").ActualWidth,
-            ["ThemeControlInventoryCovered"] = Must(themeInventory, "adapter 验证主题控件资产清单"),
+            ["ThemeControlInventoryCovered"] = Must(themeInventory, "应用验证主题控件资产清单"),
             ["ToolTipTemplateMaterializes"] = Must(toolTipMaterializes, "主题化 ToolTip 模板可安全实例化（#129 自 U1 迁移）"),
-            ["ThemedControlTemplatesApplied"] = Must(mainThemeTemplate, "adapter 验证真实 WPF 主题模板"),
+            ["ThemedControlTemplatesApplied"] = Must(mainThemeTemplate, "应用验证真实 WPF 主题模板"),
             ["ComboBoxesUseThemedDropDowns"] = Must(comboThemed, "ComboBox 下拉、选项与滚动条无未主题化表面（#129 自 U1 迁移）"),
             ["DatePickerCalendarIsThemed"] = Must(dateFamilyThemed, "DatePicker 文本框、触发器与日历族完全主题化（#129 自 U1 迁移）"),
             ["DatePickerTextFits"] = Must(
@@ -1282,7 +1282,7 @@ internal static partial class ValidationReport
                 "完整选中日期在全部六处日期框内完整可见（#129 / #312）"),
             ["DatePickerTextAvailableWidth"] = dateTextMetrics.Available,
             ["DatePickerTextRequiredWidth"] = dateTextMetrics.Required,
-            ["LiveDatePickerPopupIsThemed"] = Must(livePopupThemed, "adapter 验证真实 DatePicker Popup 主题"),
+            ["LiveDatePickerPopupIsThemed"] = Must(livePopupThemed, "应用验证真实 DatePicker Popup 主题"),
             ["LiveDatePickerPopupVisuallyUnified"] = Must(livePopupUnified, "打开的 DatePicker 弹层使用共享暖色边框、头部与选中样式（#129 自 U1 迁移）"),
             ["LiveCalendarSurfaceUsesThemeTokens"] = livePopupUnified,
             ["LiveCalendarHeaderUsesThemeTokens"] = dateFamilyThemed,
@@ -1911,7 +1911,7 @@ internal static partial class ValidationReport
                 Required<Image>(main, "MyMelodyBackground").Source is not null &&
                 Required<Image>(main, "CinnamorollBackground").Source is not null &&
                 Required<Image>(main, "KuromiBackground").Source is not null,
-                "adapter 验证角色图片资产已加载"),
+                "应用验证角色图片资产已加载"),
             ["OfficialCharacterBackgroundCharactersExclusive"] = Must(
                 officialCharacterBackgroundCharactersExclusive,
                 "官方角色背景只包含美乐蒂、玉桂狗与库洛米（#129 自 U1 迁移）"),

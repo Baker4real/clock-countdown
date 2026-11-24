@@ -134,7 +134,7 @@ $installerPorts = [pscustomobject]@{
             launchToken = [guid]::NewGuid().ToString('N')
             processId = $processId
             sessionId = $launch.SessionId
-            applicationPath = Join-Path $applicationRoot '敏敏子倒计时.ps1'
+            applicationPath = Join-Path $applicationRoot 'app\MinminCountdown.exe'
             readyAtUtc = '2026-11-14T09:20:00.0000000+00:00'
             calendarState = 'Pending'
             timeZoneId = 'China Standard Time'
@@ -320,17 +320,28 @@ function Write-CountdownInstallerTestProgram {
 }
 
 function New-CountdownInstallerTestCase {
-    param([Parameter(Mandatory)] [string] $Name)
+    param(
+        [Parameter(Mandatory)] [string] $Name,
+        [int] $HolidayYear = 2027
+    )
 
     $caseRoot = Join-Path $installerTestRoot $Name
     $packageRoot = Join-Path $caseRoot 'package'
-    Write-CountdownInstallerTestProgram -Root $packageRoot -Files $installerPackageFilesV2 -Commit $installerCommitV2 -AggregateSha256 $installerAggregateV2
+    $packageFiles = @($installerPackageFilesV2 | ForEach-Object {
+            [pscustomobject]@{ Path = $_.Path; Text = $_.Text; Sha256 = $_.Sha256 }
+        })
+    if ($HolidayYear -ne 2027) { $packageFiles[0].Path = "app\holiday-data\$HolidayYear.json" }
+    $aggregateInput = [System.Text.StringBuilder]::new()
+    foreach ($file in $packageFiles) { [void] $aggregateInput.Append($file.Path).Append([char] 0).Append($file.Sha256).Append([char] 10) }
+    $packageAggregate = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
+    Write-CountdownInstallerTestProgram -Root $packageRoot -Files $packageFiles -Commit $installerCommitV2 -AggregateSha256 $packageAggregate
     $root = Join-Path $caseRoot 'install'
     $desktop = Join-Path $caseRoot 'desktop'
     New-Item -ItemType Directory -Path $desktop -Force | Out-Null
     [pscustomobject]@{
         Name = $Name
         PackageRoot = $packageRoot
+        PackageAggregate = $packageAggregate
         Root = $root
         Desktop = $desktop
         ExePath = Join-Path $root 'app\MinminCountdown.exe'
@@ -559,7 +570,7 @@ try {
     Assert-Equal $true ([bool] $reusedPid.succeeded) "Install succeeds when a PID is reused while the application stops: $($reusedPid.failedStage) $($reusedPid.error)"
     Assert-Equal '4102,4103,6001' (Get-CountdownInstallerTestRunning) 'Install does not stop a process whose PID was reused by another program'
 
-    # 登录任务与期望定义（#279「登录任务的最终定义」）逐项不一致（#281）：旧式动作（pwsh 加 adapter 参数与工作目录）、停用、
+    # 登录任务与期望定义（#279「登录任务的最终定义」）逐项不一致（#281）：错误动作（别的 EXE、参数与工作目录）、停用、
     # 触发器与主体都是另一个用户、密码登录、提升、默认优先级 7、运行时限 72 小时、允许并行、电池供电不启动且拔电即停、不能按需
     # 启动也不能强制结束。安装按期望定义重新注册它，结果逐项写明改前改后的值（用户只写类别，不写账号或 SID），
     # 新版本经更新后的任务启动到启动就绪。
@@ -567,8 +578,8 @@ try {
     Initialize-CountdownInstallerTestInstalledVersion
     $installerCase.Processes[0].StartedByTask = $null
     # 旧任务的改前值故意带账户目录：结果只能写脱敏后的 <user>，不能把路径里的账号写进 stdout JSON（#259 评审）。
-    $legacyPwsh = 'C:\Users\installer-account-sentinel\AppData\Local\Microsoft\WindowsApps\pwsh.exe'
-    $legacyArguments = '-NoLogo -NoProfile -STA -File "C:\Users\installer-account-sentinel\Desktop\敏敏子倒计时.ps1"'
+    $legacyPwsh = 'C:\Users\installer-account-sentinel\AppData\Local\MinminCountdown\MinminCountdown.exe'
+    $legacyArguments = '--legacy-start'
     $installerCase.Tasks[$installerCase.TaskName] = [pscustomobject]@{
         State = 'Disabled'
         Enabled = $false
@@ -591,7 +602,7 @@ try {
     Assert-Equal 'updated' ([string] $taskUpdate.loginTask.action) 'Result JSON reports the mismatched login task as updated'
     $expectedTaskChanges = @(
         'enabled=False->True'
-        'action=Exec C:\Users\<user>\AppData\Local\Microsoft\WindowsApps\pwsh.exe -NoLogo -NoProfile -STA -File "C:\Users\<user>\Desktop\敏敏子倒计时.ps1" (in ' + $installerCase.Root + ')->Exec ' + $installerCase.ExePath
+        'action=Exec C:\Users\<user>\AppData\Local\MinminCountdown\MinminCountdown.exe --legacy-start (in ' + $installerCase.Root + ')->Exec ' + $installerCase.ExePath
         'trigger=Logon for other user->Logon for interactive user'
         'principal=other user->interactive user'
         'logonType=Password->Interactive'
@@ -616,8 +627,8 @@ try {
         Assert-Equal $false ($installerCase.Json.Contains($secret, [System.StringComparison]::OrdinalIgnoreCase)) "Result JSON reports the login task change without accounts or SIDs: $secret"
     }
 
-    # 桌面快捷方式的三种情况（#281），都在已装好的 v1 上升级；桌面上另有旧安装器的启动器 敏敏子倒计时.exe（遗留启动器属于
-    # 一次性切换，安装器不碰）。属于安装器的判定：同名的 敏敏子倒计时.lnk 是一个 Shell Link，且目标是本安装根的已安装 EXE。
+    # 桌面快捷方式的三种情况（#281），都在已装好的 v1 上升级；桌面上另有一个用户自己的文件，安装器不碰。
+    # 属于安装器的判定：同名的 敏敏子倒计时.lnk 是一个 Shell Link，且目标是本安装根的已安装 EXE。
     # 是安装器的：与期望一致时不动（字节与时间都不变），参数、工作目录或图标不一致时改回期望，结果写明改了什么。
     # 不是安装器的（目标指向别处的快捷方式、碰巧同名的普通文件或目录）：原样保留，结果写明原因，安装照常成功。
     $installerShortcutCases = @(
@@ -644,7 +655,7 @@ try {
     foreach ($shortcutCase in $installerShortcutCases) {
         $installerCase = New-CountdownInstallerTestCase -Name $shortcutCase.Name
         Initialize-CountdownInstallerTestInstalledVersion
-        [System.IO.File]::WriteAllText((Join-Path $installerCase.Desktop '敏敏子倒计时.exe'), 'legacy desktop launcher', $installerUtf8)
+        [System.IO.File]::WriteAllText((Join-Path $installerCase.Desktop 'user-owned-desktop-file.exe'), 'user-owned desktop file', $installerUtf8)
         & $shortcutCase.Arrange
         $desktopBefore = Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Detailed
         $restOfDesktopBefore = Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Exclude @($installerShortcutName) -Detailed
@@ -652,7 +663,7 @@ try {
         Assert-Equal $true ([bool] $shortcutResult.succeeded) "Install succeeds whatever shares the shortcut name: $($shortcutCase.Name) $($shortcutResult.failedStage) $($shortcutResult.error)"
         $reportedChanges = (@($shortcutResult.desktopShortcut.changes) | ForEach-Object { "$($_.item)=$($_.before)->$($_.after)" }) -join '|'
         Assert-Equal "$installerShortcutName|$($shortcutCase.Action)|$($shortcutCase.Reason)|$(& $shortcutCase.Changes)" "$($shortcutResult.desktopShortcut.name)|$($shortcutResult.desktopShortcut.action)|$($shortcutResult.desktopShortcut.reason)|$reportedChanges" "Result JSON reports what the install did with the desktop shortcut: $($shortcutCase.Name)"
-        Assert-Equal $restOfDesktopBefore (Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Exclude @($installerShortcutName) -Detailed) "Install leaves the rest of the desktop, the legacy launcher included, as it was: $($shortcutCase.Name)"
+        Assert-Equal $restOfDesktopBefore (Get-CountdownInstallerTestTree -Root $installerCase.Desktop -Exclude @($installerShortcutName) -Detailed) "Install leaves every other desktop item as it was: $($shortcutCase.Name)"
         Assert-Equal $false ($installerCase.Json.Contains('other-app.exe', [System.StringComparison]::OrdinalIgnoreCase)) "Result JSON does not echo where a foreign shortcut points: $($shortcutCase.Name)"
         if ($shortcutCase.Action -eq 'updated') {
             Assert-Equal "$($installerCase.ExePath)||$(Join-Path $installerCase.Root 'app')|$($installerCase.ExePath),0" (Read-CountdownInstallerTestShortcut -Path (Join-Path $installerCase.Desktop $installerShortcutName)) "Install points its own stale shortcut back at the expected definition: $($shortcutCase.Name)"
@@ -726,7 +737,6 @@ try {
         [pscustomobject]@{ Name = 'reject-two-sessions'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'multiple-interactive-sessions'; Arrange = { $installerCase.Sessions = @($installerCase.Sessions) + @([pscustomobject]@{ SessionId = 5; User = 'MINMIN-OFFICE\second-account'; Sid = $installerOtherSid }) } }
         [pscustomobject]@{ Name = 'reject-no-desktop'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'desktop-unavailable'; Arrange = { $installerCase.Desktop = $null } }
         [pscustomobject]@{ Name = 'reject-first-install-tampered'; Installed = $false; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.dll'), 'installer dll v2 tampered', $installerUtf8) } }
-        [pscustomobject]@{ Name = 'reject-check-only-tampered'; Installed = $true; CheckOnly = $true; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
     )
     foreach ($rejection in $installerRejections) {
         $installerCase = New-CountdownInstallerTestCase -Name $rejection.Name
@@ -1343,6 +1353,92 @@ try {
     Assert-Equal $programBefore (Get-CountdownInstallerTestTree -Root (Join-Path $installerCase.Root 'app') -Detailed) 'The previous version is back in the program directory for the next login'
     Assert-Equal 'app,runtime-status.json|4103' "$((@($installerOwnEntries | Where-Object { Test-Path -LiteralPath (Join-Path $installerCase.Root $_) })) -join ',')|$(Get-CountdownInstallerTestRunning)" 'No unfinished-install trace is left and nothing is started'
 
+    # 公开 CLI 负控制：失败 JSON 必须同时以非零退出闭锁，不能让 InstallValidate 只看进程退出码而假绿。
+    # 子进程注入一个交互会话与临时桌面，保证失败原因就是被篡改的包；包、安装根、桌面、任务与进程都保持原样。
+    $installerCliProbe = Join-Path $installerTestRoot 'check-only-cli-probe.ps1'
+    $installerCliProbeSource = @'
+param(
+    [Parameter(Mandatory)] [string] $Entry,
+    [Parameter(Mandatory)] [string] $PackageRoot,
+    [Parameter(Mandatory)] [string] $InstallRoot,
+    [Parameter(Mandatory)] [string] $TaskName,
+    [Parameter(Mandatory)] [string] $Desktop,
+    [Parameter(Mandatory)] [string] $LockName,
+    [Parameter(Mandatory)] [string] $CheckOnly,
+    [DateTimeOffset] $BeijingNow,
+    [switch] $ForbidPorts
+)
+$ErrorActionPreference = 'Stop'
+$session = [pscustomobject]@{ SessionId = 3; User = 'CLI-TEST\fixture'; Sid = 'S-1-5-21-2910000000-1001' }
+if ($ForbidPorts) {
+    $refuse = { throw 'INSTALL_CONTINUED_PAST_HOLIDAY_GUARD' }
+    $ports = [pscustomobject]@{
+        GetInteractiveSessions = $refuse; GetDesktopDirectory = $refuse; GetTask = $refuse; GetProcesses = $refuse
+        StopProcess = $refuse; EndTask = $refuse; RegisterTask = $refuse; StartTask = $refuse
+        ExportTask = $refuse; RestoreTask = $refuse; MoveDirectory = $refuse
+        ReadShortcut = $refuse; WriteShortcut = $refuse; RemoveShortcut = $refuse; RunHeadlessCommand = $refuse
+    }
+}
+else {
+    $ports = [pscustomobject]@{
+        GetInteractiveSessions = { @($session) }
+        GetDesktopDirectory = { $Desktop }
+        GetTask = { $null }
+        GetProcesses = { @() }
+    }
+}
+$entryArguments = @{ PackageRoot = $PackageRoot; InstallRoot = $InstallRoot; TaskName = $TaskName; CheckOnly = ($CheckOnly -in @('1', 'true', 'True')); Port = $ports; LockName = $LockName }
+if ($PSBoundParameters.ContainsKey('BeijingNow')) { $entryArguments.BeijingNow = $BeijingNow }
+& $Entry @entryArguments
+exit $LASTEXITCODE
+'@
+    [System.IO.File]::WriteAllText($installerCliProbe, $installerCliProbeSource, $installerUtf8)
+    $installerCase = New-CountdownInstallerTestCase -Name 'reject-check-only-cli-tampered'
+    Initialize-CountdownInstallerTestInstalledVersion
+    [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 cli tampered', $installerUtf8)
+    $installerCliCaseRoot = Split-Path -Parent $installerCase.Root
+    $installerCliTreeBefore = Get-CountdownInstallerTestTree -Root $installerCliCaseRoot -Detailed
+    $installerCliRunningBefore = Get-CountdownInstallerTestRunning
+    $installerCliTasksBefore = Get-CountdownInstallerTestTasks
+    $installerCliFailureOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerCliProbe `
+        -Entry $installerScript -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root `
+        -TaskName $installerCase.TaskName -Desktop $installerCase.Desktop -LockName $installerLockName -CheckOnly $true)
+    $installerCliFailureExit = $LASTEXITCODE
+    Assert-Equal $true ($installerCliFailureExit -ne 0) 'Check-only CLI returns nonzero for a failed validation result'
+    $installerCliFailure = ($installerCliFailureOutput -join "`n") | ConvertFrom-Json -DateKind String
+    Assert-Equal 1 @($installerCliFailure).Count 'Check-only CLI failure writes exactly one JSON document'
+    Assert-Equal 'False|True|preflight|payload-mismatch' "$($installerCliFailure.succeeded)|$($installerCliFailure.checkOnly)|$($installerCliFailure.failedStage)|$($installerCliFailure.reason)" 'Check-only CLI failure preserves the structured rejection'
+    Assert-Equal $installerCliTreeBefore (Get-CountdownInstallerTestTree -Root $installerCliCaseRoot -Detailed) 'Failed check-only CLI leaves the package, install root and desktop byte for byte unchanged'
+    Assert-Equal $installerCliRunningBefore (Get-CountdownInstallerTestRunning) 'Failed check-only CLI stops no application'
+    Assert-Equal $installerCliTasksBefore (Get-CountdownInstallerTestTasks) 'Failed check-only CLI changes no login task'
+
+    # 节假日年度覆盖：真实安装在取得锁或调用任何 Windows port 之前拒绝 December 缺下一年的包；CheckOnly 按契约豁免。
+    $installerCase = New-CountdownInstallerTestCase -Name 'holiday-december-missing-next-year' -HolidayYear 2026
+    $installerHolidayCaseRoot = Split-Path -Parent $installerCase.Root
+    $installerHolidayTreeBefore = Get-CountdownInstallerTestTree -Root $installerHolidayCaseRoot -Detailed
+    $installerHolidayOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerCliProbe `
+        -Entry $installerScript -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root `
+        -TaskName $installerCase.TaskName -Desktop $installerCase.Desktop -LockName $installerLockName `
+        -CheckOnly $false -BeijingNow '2026-12-01T00:00:00+08:00' -ForbidPorts)
+    $installerHolidayExit = $LASTEXITCODE
+    $installerHolidayResult = ($installerHolidayOutput -join "`n") | ConvertFrom-Json -DateKind String
+    Assert-Equal 'False|preflight|holiday-year-coverage-missing' "$($installerHolidayResult.succeeded)|$($installerHolidayResult.failedStage)|$($installerHolidayResult.reason)" 'Real install rejects December package coverage before any Windows action'
+    Assert-Equal $true (([string] $installerHolidayResult.error).Contains('2027') -and ([string] $installerHolidayResult.error).Contains('holiday-data/README.md')) 'Real install holiday rejection names the missing year and refresh runbook'
+    Assert-Equal $false (([string] $installerHolidayResult.error).Contains('INSTALL_CONTINUED_PAST_HOLIDAY_GUARD')) 'Real install holiday guard runs before any injected Windows port'
+    Assert-Equal $installerHolidayTreeBefore (Get-CountdownInstallerTestTree -Root $installerHolidayCaseRoot -Detailed) 'Real install holiday rejection changes no package or install file'
+    Assert-Equal 0 $installerHolidayExit 'Real install keeps the existing result-JSON process contract'
+
+    $installerHolidayCheckOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerCliProbe `
+        -Entry $installerScript -PackageRoot $installerCase.PackageRoot -InstallRoot $installerCase.Root `
+        -TaskName $installerCase.TaskName -Desktop $installerCase.Desktop -LockName $installerLockName `
+        -CheckOnly $true -BeijingNow '2026-12-01T00:00:00+08:00')
+    $installerHolidayCheckExit = $LASTEXITCODE
+    $installerHolidayCheck = ($installerHolidayCheckOutput -join "`n") | ConvertFrom-Json -DateKind String
+    Assert-Equal 'True|True' "$($installerHolidayCheck.succeeded)|$($installerHolidayCheck.checkOnly)" 'Check-only remains exempt from December package coverage'
+    Assert-Equal 0 $installerHolidayCheckExit 'Successful check-only under the December fixture exits zero'
+    Assert-Equal $installerCase.PackageAggregate ([string] $installerHolidayCheck.package.aggregateSha256) 'Check-only still validates the package manifest under the holiday exemption'
+    Assert-Equal $installerHolidayTreeBefore (Get-CountdownInstallerTestTree -Root $installerHolidayCaseRoot -Detailed) 'Holiday-exempt check-only leaves the package and install tree unchanged'
+
     # 用真实的候选 EXE 走通演练与判定（#282）。包是本次构建输出 app\（与下面只读一侧的实测同一份），候选 EXE 的无界面命令经
     # 生产 port 真的运行，在创建窗口之前返回、不开窗口；交互会话、进程、计划任务与目录改名仍是测试 port，新版本不会真的启动。
     # 设置都是夹具：等价的旧版本夹具是 schema v9（循环提醒已经开始，迁移出的 cursor 取决于迁移时刻）带两代备份，安装继续并
@@ -1405,10 +1501,11 @@ try {
     $installerRealTask = 'Minmin Countdown Installer Probe ' + [guid]::NewGuid().ToString('N')
     $installerRealLock = 'Local\MinminCountdownInstallerTest-' + [guid]::NewGuid().ToString('N')
     $installerRealOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerScript -PackageRoot $PSScriptRoot -InstallRoot $installerRealRoot -TaskName $installerRealTask -CheckOnly -LockName $installerRealLock)
-    Assert-Equal 0 $LASTEXITCODE 'Installer entry runs check-only from the command line with real Windows queries'
+    $installerRealExit = $LASTEXITCODE
     $installerRealText = $installerRealOutput -join "`n"
     $installerReal = $installerRealText | ConvertFrom-Json -DateKind String
     Assert-Equal $true ([bool] $installerReal.checkOnly) 'Real check-only reports check-only mode'
+    Assert-Equal ([bool] $installerReal.succeeded) ($installerRealExit -eq 0) 'Real check-only process exit matches the structured success flag'
     if ([bool] $installerReal.succeeded) {
         Assert-Equal 'place-candidate,stop-application,write-transaction-marker,snapshot-settings,replace-program-directory,create-login-task,register-desktop-shortcut,start-and-wait-ready,commit' (@($installerReal.plannedSteps) -join ',') 'Real check-only plans to create the missing login task and to register the desktop shortcut'
         $installerBuiltAggregate = [string] ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json).aggregateSha256

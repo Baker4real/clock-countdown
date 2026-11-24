@@ -3,7 +3,7 @@
 .SYNOPSIS
 运行无窗口 Core 分段的红→绿内环；正式验收仍使用完整 Core 阶段。
 .DESCRIPTION
-只开放使用假端口、临时目录的 Installer、InstallStatus、LayoutSwitch、DeployEntry 段。
+只开放使用假端口、临时目录的 Installer、InstallStatus、DeployEntry 段。
 复用 Countdown.Core.Tests.ps1 的公开测试辅助函数，不开窗口，不读写真实安装、计划任务或办公室设备。
 断言失败或段异常均以非零退出码结束。
 .EXAMPLE
@@ -12,7 +12,7 @@ pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownCoreSegment.ps1 -Segment I
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('Installer', 'InstallStatus', 'LayoutSwitch', 'DeployEntry')]
+    [ValidateSet('Installer', 'InstallStatus', 'DeployEntry')]
     [string] $Segment,
     [string] $RepositoryRoot = (Join-Path $PSScriptRoot '..')
 )
@@ -41,10 +41,6 @@ foreach ($definition in @($coreAst.EndBlock.Statements | Where-Object {
         })) {
     . ([scriptblock]::Create($definition.Extent.Text))
 }
-if ($Segment -eq 'InstallStatus') {
-    Import-Module (Join-Path $RepositoryRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-}
-
 try {
     . $segmentPath
     if ($failures.Count -gt 0) {

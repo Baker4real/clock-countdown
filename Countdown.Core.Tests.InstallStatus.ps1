@@ -155,14 +155,13 @@ try {
     Assert-Equal $true $statusInProgress.installInProgress 'Status reports a run in progress while another process holds the install lock'
     Assert-Equal $false (Invoke-CountdownStatusTestRead -Label 'install lock released').installInProgress 'Status reports no run in progress after the install lock is released'
 
-    # 全机安装锁的名字有三份：新安装器、旧安装器（Countdown.InstallTransaction.psm1）与自成一体的状态命令的默认值。
-    # 三份相同，新旧安装器与切换才互斥，状态命令也才读得到正在进行的运行。
+    # 全机安装锁的名字有两份：新安装器与自成一体的状态命令的默认值。
+    # 两份相同，状态命令才读得到正在进行的安装。
     $statusLockParameter = @([System.Management.Automation.Language.Parser]::ParseFile($statusScript, [ref] $null, [ref] $null).ParamBlock.Parameters |
             Where-Object { $_.Name.VariablePath.UserPath -eq 'LockName' })
     $statusDefaultLockName = if ($statusLockParameter.Count -eq 1 -and $null -ne $statusLockParameter[0].DefaultValue) { [string] $statusLockParameter[0].DefaultValue.SafeGetValue() }
     $installerLockNameValue = & (Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force -PassThru) { $script:InstallLockName }
-    $oldInstallerLockName = & (Get-Module Countdown.InstallTransaction) { $script:CountdownInstallMutexName }
-    Assert-Equal "Global\MinminCountdownInstallTransaction-v1|$oldInstallerLockName|$oldInstallerLockName" "$oldInstallerLockName|$installerLockNameValue|$statusDefaultLockName" 'The new installer, the old installer and the status command name the same machine-wide install lock'
+    Assert-Equal "Global\MinminCountdownInstallTransaction-v1|Global\MinminCountdownInstallTransaction-v1" "$installerLockNameValue|$statusDefaultLockName" 'The installer and the status command name the same machine-wide install lock'
 
     # 应用未运行：只有别处的同名进程。
     $statusCase.Processes = @(New-CountdownStatusTestProcess -ProcessId 4243 -ExecutablePath 'D:\dev-checkout\app\MinminCountdown.exe')
@@ -225,10 +224,10 @@ try {
     Assert-Equal $false ([bool] $empty.loginTask.matchesExpected) 'A missing login task does not match the expected definition'
     Assert-Equal $true ($null -eq $empty.loginTask.state) 'Status reports no state for a missing login task'
 
-    # 现有布局的登录任务：经 pwsh 运行 adapter、默认（低于正常）优先级。
+    # 动作参数与默认（低于正常）优先级同时漂移。
     $statusCase = New-CountdownStatusTestCase -Name 'legacy-task'
     $statusCase.Task.State = 'Ready'
-    $statusCase.Task.Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = 'C:\Program Files\PowerShell\7\pwsh.exe'; Arguments = "-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -STA -File `"$(Join-Path $statusCase.Root '敏敏子倒计时.ps1')`"" })
+    $statusCase.Task.Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $statusCase.ExePath; Arguments = '--unexpected-argument' })
     $statusCase.Task.Priority = 7
     $legacyTask = Invoke-CountdownStatusTestRead -Label 'legacy task'
     Assert-Equal $true ([bool] $legacyTask.loginTask.present) 'Status finds the existing-layout login task'
@@ -240,7 +239,7 @@ try {
     $statusCase.Task = [pscustomobject]@{
         State = 'Disabled'
         Enabled = $false
-        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $statusCase.ExePath; Arguments = '--require-startup-request'; WorkingDirectory = $statusCase.Root })
+        Actions = @([pscustomobject]@{ Type = 'Exec'; Execute = $statusCase.ExePath; Arguments = '--unexpected-argument'; WorkingDirectory = $statusCase.Root })
         Triggers = @([pscustomobject]@{ Type = 'Boot'; Enabled = $true; UserSid = $statusOtherSid })
         UserSid = $statusOtherSid
         LogonType = 'Password'

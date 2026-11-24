@@ -47,7 +47,7 @@ function Invoke-ExternalCloseProgramLaunch {
         $readyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(90)
         $floating = $null
         while ($null -eq $floating -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $readyDeadline) {
-            $receipt = Read-DesktopLauncherRuntimeReceipt -Path $receiptPath
+            $receipt = Read-CountdownRuntimeReceipt -Path $receiptPath
             if ($null -ne $receipt -and [string] $receipt.stage -eq 'window-ready' -and [int] $receipt.processId -eq $process.Id) {
                 $floating = @(
                     Get-ProcessTopLevelWindows -ProcessId $process.Id |

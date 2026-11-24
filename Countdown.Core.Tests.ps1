@@ -2,7 +2,6 @@
 
 [CmdletBinding()]
 param(
-    [switch] $AcceptanceOnly,
     [switch] $ReleaseContractOnly,
     [switch] $ValidationOnly
 )
@@ -35,8 +34,6 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.Notes.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Tags.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-Import-Module (Join-Path $PSScriptRoot 'Countdown.InstallLifecycle.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Validation.psm1') -Force
 
@@ -192,18 +189,8 @@ function Remove-CountdownValidationSettingsArtifactFixture {
     }
 }
 
-function Get-IndependentCountdownDiagnosticMutexName {
-    param([Parameter(Mandatory)] [string] $Path)
-
-    $normalizedPath = [System.IO.Path]::GetFullPath($Path).ToUpperInvariant()
-    $hex = [Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData(
-            [System.Text.UTF8Encoding]::new($false).GetBytes($normalizedPath)))
-    "Local\MinminCountdown.Diagnostic-$($hex.Substring(0, 32))"
-}
-
 Write-TestSegmentTiming -Name 'Setup'
-if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly)) {
+if ($ValidationOnly -or -not $ReleaseContractOnly) {
     . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.Validation.ps1')
 
     if ($ValidationOnly) {
@@ -219,31 +206,16 @@ if ($ValidationOnly -or (-not $AcceptanceOnly -and -not $ReleaseContractOnly)) {
 }
 
 Write-TestSegmentTiming -Name 'Validation'
-if (-not $AcceptanceOnly) {
-    . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.ReleaseContract.ps1')
+. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.ReleaseContract.ps1')
 
-    Write-TestSegmentTiming -Name 'ReleaseContract'
-    if ($ReleaseContractOnly) {
-        if ($failures.Count -gt 0) {
-            $failures | ForEach-Object { Write-Error $_ }
-            exit 1
-        }
-        Write-TestSegmentTotal
-        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'ReleaseContract' } | ConvertTo-Json
-        exit 0
-    }
-}
-
-. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.TransactionAcceptance.ps1')
-
-Write-TestSegmentTiming -Name 'TransactionAcceptance'
-if ($AcceptanceOnly) {
+Write-TestSegmentTiming -Name 'ReleaseContract'
+if ($ReleaseContractOnly) {
     if ($failures.Count -gt 0) {
         $failures | ForEach-Object { Write-Error $_ }
         exit 1
     }
     Write-TestSegmentTotal
-    [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'TransactionAcceptance' } | ConvertTo-Json
+    [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'ReleaseContract' } | ConvertTo-Json
     exit 0
 }
 
@@ -251,9 +223,6 @@ if ($AcceptanceOnly) {
 
 Write-TestSegmentTiming -Name 'MainDomain'
 
-. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.InstallLifecycle.ps1')
-
-Write-TestSegmentTiming -Name 'InstallLifecycle'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.InstallStatus.ps1')
 Write-TestSegmentTiming -Name 'InstallStatus'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.Installer.ps1')
@@ -263,8 +232,6 @@ Write-TestSegmentTiming -Name 'InstallerValidation'
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.SourceContracts.ps1')
 
 Write-TestSegmentTiming -Name 'SourceContracts'
-. (Join-Path $PSScriptRoot 'Countdown.Core.Tests.LayoutSwitch.ps1')
-Write-TestSegmentTiming -Name 'LayoutSwitch'
 # 放在最后：假办公室在本进程里运行包内安装器，它从暂存目录的副本重新导入 Countdown.Installer.psm1。
 . (Join-Path $PSScriptRoot 'Countdown.Core.Tests.DeployEntry.ps1')
 Write-TestSegmentTiming -Name 'DeployEntry'

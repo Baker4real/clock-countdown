@@ -1,30 +1,34 @@
 # Countdown.Core.Tests.ps1 的 InstallerValidation 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
-$installerValidationEngine =(Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-$installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Install-Countdown.ps1') -ValidateOnly | Out-String
-if ($LASTEXITCODE -ne 0) { throw "Installer validation failed: $installerValidationJson" }
-$installerValidation = $installerValidationJson | ConvertFrom-Json
-Assert-Equal $true $installerValidation.Valid 'Installer package validation succeeds'
-Assert-Equal $releaseContract.IntegrityHashes.Count $installerValidation.VerifiedFiles 'Installer reports the canonical integrity count'
-Assert-Equal (@($releaseContract.OfficialCharacterAssets) -join ',') (@($installerValidation.OfficialCharacterAssets) -join ',') 'Installer exposes canonical official character assets'
-Assert-Equal (@($releaseContract.FloatingPlushAssets) -join ',') (@($installerValidation.FloatingPlushAssets) -join ',') 'Installer exposes canonical floating plush assets'
-Assert-Equal (@($releaseContract.CurrentFloatingRuntimeAssets) -join ',') (@($installerValidation.CurrentFloatingRuntimeAssets) -join ',') 'Installer exposes canonical current floating runtime assets'
-Assert-Equal $false ($installerValidation.PSObject.Properties.Name -contains 'LegacyFloatingRegressionAssets') 'Installer no longer exposes retired floating regression fixtures'
-Assert-Equal $false ($installerValidation.PSObject.Properties.Name -contains 'CompatibilityFixtureFiles') 'Installer no longer exposes retired compatibility fixtures'
-Assert-Equal (@($releaseContract.RetiredRuntimeFiles) -join ',') (@($installerValidation.RetiredRuntimeFiles) -join ',') 'Installer exposes canonical retired runtime files'
-Assert-Equal $true $installerValidation.Transactional 'Installer exposes transactional install boundary'
-Assert-Equal $true $installerValidation.DeferredCommitSupported 'Installer exposes deferred commit for office acceptance'
-$installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-Countdown.ps1')
-Assert-Equal $false $installerCommand.Parameters.ContainsKey('TransactionMutexHeld') 'Installer does not expose a lock-bypass switch'
-Assert-Equal $true $installerCommand.Parameters.ContainsKey('ParentTransactionMutexHeld') 'Installer exposes a parent-held transaction lock context only for deferred office acceptance'
-Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedInteractiveUser') 'Office installer validates the expected interactive user'
-Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedInteractiveSessionId') 'Office installer validates the expected interactive session'
-Assert-Equal $true $installerCommand.Parameters.ContainsKey('ExpectedDesktopPath') 'Office installer validates the expected desktop path'
-$recoveryCommand = Get-Command Recover-CountdownInstallTransactions -Module Countdown.InstallTransaction
-Assert-Equal $false $recoveryCommand.Parameters.ContainsKey('TransactionMutexHeld') 'Recovery does not expose a lock-bypass switch'
-$candidateCommand = Get-Command Set-CountdownInstallTransactionCandidateLauncherHash -Module Countdown.InstallTransaction
-Assert-Equal $true $candidateCommand.Parameters.ContainsKey('CandidateLauncherSha256') 'Transaction persists a candidate launcher hash before replacement'
-$failureReceiptCommand = Get-Command Write-CountdownInstallFailureReceipt -Module Countdown.InstallTransaction
-Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('ErrorRecord') -and $failureReceiptCommand.Parameters.ContainsKey('RollbackSucceeded')) 'Transaction module exposes a selected-field deployment failure receipt writer'
-$failureReceiptParserCommand = Get-Command ConvertFrom-CountdownInstallFailureReceiptBytes -Module Countdown.InstallTransaction
-Assert-Equal $true ($failureReceiptCommand.Parameters.ContainsKey('CommitState') -and $failureReceiptParserCommand.Parameters.ContainsKey('Bytes')) 'Transaction module exposes a strict deployment failure receipt contract'
+$installerValidationEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+$installerValidationRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('clock-countdown-install-validation-' + [guid]::NewGuid().ToString('N'))
+$installerValidationInstallRoot = Join-Path $installerValidationRoot 'install'
+$installerValidationTask = 'Minmin Countdown Install Validation ' + [guid]::NewGuid().ToString('N')
+$installerValidationLock = 'Local\MinminCountdownInstallValidation-' + [guid]::NewGuid().ToString('N')
+New-Item -ItemType Directory -Path $installerValidationRoot -Force | Out-Null
+try {
+    $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonInteractive `
+        -File (Join-Path $PSScriptRoot 'Install-CountdownProgram.ps1') `
+        -PackageRoot $PSScriptRoot -InstallRoot $installerValidationInstallRoot `
+        -TaskName $installerValidationTask -CheckOnly -LockName $installerValidationLock | Out-String
+    $installerValidationExit = $LASTEXITCODE
+    $installerValidation = $installerValidationJson | ConvertFrom-Json -DateKind String
+    Assert-Equal 0 $installerValidationExit 'Installer CheckOnly returns zero for a valid package and environment'
+    Assert-Equal $true ([bool] $installerValidation.succeeded) 'Installer CheckOnly succeeds'
+    Assert-Equal $true ([bool] $installerValidation.checkOnly) 'Installer reports CheckOnly mode'
+    Assert-Equal $true ($null -eq $installerValidation.failedStage -and $null -eq $installerValidation.reason -and $null -eq $installerValidation.error) 'Installer CheckOnly has no failure fields'
+
+    $installerValidationManifest = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json -DateKind String
+    Assert-Equal ([string] $installerValidationManifest.commit) ([string] $installerValidation.package.commit) 'Installer CheckOnly reports the package commit'
+    Assert-Equal ([string] $installerValidationManifest.aggregateSha256) ([string] $installerValidation.package.aggregateSha256) 'Installer CheckOnly verifies the package aggregate hash'
+    Assert-Equal 'place-candidate,stop-application,write-transaction-marker,snapshot-settings,replace-program-directory,create-login-task,register-desktop-shortcut,start-and-wait-ready,commit' (@($installerValidation.plannedSteps) -join ',') 'Installer CheckOnly reports the planned install without executing it'
+    Assert-Equal $false (Test-Path -LiteralPath $installerValidationInstallRoot) 'Installer CheckOnly creates no install root'
+
+    $installerCommand = Get-Command (Join-Path $PSScriptRoot 'Install-CountdownProgram.ps1')
+    Assert-Equal $true $installerCommand.Parameters.ContainsKey('CheckOnly') 'New installer exposes the CheckOnly public switch'
+    Assert-Equal $false $installerCommand.Parameters.ContainsKey('ValidateOnly') 'New installer has no legacy ValidateOnly switch'
+    Assert-Equal $false $installerCommand.Parameters.ContainsKey('DeferCommit') 'New installer has no deferred-commit switch'
+}
+finally {
+    Remove-CountdownIsolatedTestTree -Path $installerValidationRoot -AllowedRoot ([System.IO.Path]::GetTempPath())
+}

@@ -902,7 +902,7 @@ $windowFontProblems = @($windowFontSelfTestFailures) + @($windowFontScan.Leaks)
 $windowFontDetail = if ($windowFontProblems.Count -eq 0) { "检查 $($windowFontScan.CheckedWindows) 个 Window 子类均显式绑定 UiFontFamily；自检 5 例通过" } else { $windowFontProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:window-uifont-family' -Passed ($windowFontProblems.Count -eq 0) -Detail $windowFontDetail
 
-# Move-Item -Force 第一次改名撞上读句柄就先删目标再改名：失败时旧文件已经没了（安装 journal 与启动回执都这样坏过）。
+# Move-Item -Force 第一次改名撞上读句柄就先删目标再改名：失败时旧文件已经没了（运行状态文件这样坏过）。
 # 生产脚本里的存量只减不增；替换文件用 [System.IO.File]::Move(源, 目标, $true) 一次改名，撞上占用时有界退避重试。
 function Get-ForcedMoveItemCount {
     param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Ast)
@@ -930,8 +930,6 @@ foreach ($case in @(
     if ($caseCount -ne $case.Count) { $forcedMoveSelfTestFailures.Add("self-test $($case.Name): expected $($case.Count), got $caseCount") }
 }
 $forcedMoveCeilings = @{
-    'Countdown.InstallLifecycle.psm1' = 2
-    'Countdown.Runtime.psm1' = 1
     'Countdown.Settings.psm1' = 1
 }
 $forcedMoveFailures = [System.Collections.Generic.List[string]]::new()

@@ -1,6 +1,8 @@
 # Countdown.Core.Tests.ps1 的 ReleaseContract 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
 $releaseContract = Get-CountdownReleaseContract
+$publishedPayloadManifest = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $expectedBuildAssets = @(
     'sanrio-official-mymelody.png=>app\assets\sanrio-official-mymelody.png',
     'sanrio-official-cinnamoroll.png=>app\assets\sanrio-official-cinnamoroll.png',
@@ -29,8 +31,9 @@ $expectedFloatingPlushAssets = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-Assert-Equal 448 @($releaseContract.PackageFiles).Count 'Release contract declares exactly the office package: trust roots, install-path modules, launcher, holiday data, root character assets and the published payload'
-Assert-Equal 446 $releaseContract.IntegrityHashes.Count 'Release contract pins every non-root office package file'
+$expectedPackageCount = @($publishedPayloadManifest.files).Count + 3
+Assert-Equal $expectedPackageCount @($releaseContract.PackageFiles).Count 'Release contract declares exactly the payload, its manifest and the two new installer files'
+Assert-Equal $expectedPackageCount $releaseContract.IntegrityHashes.Count 'Release contract pins every package file exactly once'
 foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
     Assert-Equal $false ($buildOnlyInput -in @($releaseContract.PackageFiles)) "Build input stays out of the office package: $buildOnlyInput"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($buildOnlyInput) "Build input is not statically pinned: $buildOnlyInput"
@@ -41,55 +44,45 @@ Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContrac
 Assert-Equal $false ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight entry point stays out of the office package'
 Assert-Equal $false ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Design contract stays in the repository, outside the office package'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
-$expectedInstalledSupportFiles = @(
-    'Countdown.InstallTransaction.psm1',
-    'Countdown.Notes.psm1',
-    'Countdown.Runtime.psm1',
-    'Countdown.Settings.psm1',
-    'Countdown.Tags.psm1',
-    '敏敏子倒计时.ps1',
-    'CountdownLauncher.exe',
-    'countdown-icon.ico',
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png',
-    'holiday-data\2026.json',
-    'holiday-data\2027.json',
-    'holiday-data\README.md',
-    'holiday-data\LICENSE.txt'
-)
 $installedSupportFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -notlike 'app\*' })
-Assert-Equal (($expectedInstalledSupportFiles | Sort-Object) -join ',') (($installedSupportFiles | Sort-Object) -join ',') 'Release contract installs exactly the runtime support files and offline holiday data'
+Assert-Equal 0 $installedSupportFiles.Count 'Release contract installs no legacy support files outside the program directory'
 $installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -like 'app\*' })
-$publishedPayloadManifest = Get-Content -LiteralPath (
-    Join-Path $PSScriptRoot 'app\published-payload.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-Assert-Equal ((@($publishedPayloadManifest.files.path) | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract preserves every published application file without extra runtime files'
+Assert-Equal ((@($publishedPayloadManifest.files.path) + @('app\published-payload.json') | Sort-Object) -join ',') (($installedApplicationFiles | Sort-Object) -join ',') 'Release contract installs exactly the published program directory and its manifest'
 Assert-Equal 0 @($publishedPayloadManifest.files.path | Where-Object { $_ -match 'CsWin32|Win32Metadata|Win32Docs' }).Count '#333 build-time CsWin32 packages add zero runtime files to the published payload'
 $expectedOfficePackageSupportFiles = @(
-    'Install-Countdown.ps1',
-    'Countdown.ReleaseContract.psm1',
-    'Countdown.InstallTransaction.psm1',
-    'Countdown.InstallLifecycle.psm1',
-    'Countdown.Notes.psm1',
-    'Countdown.Runtime.psm1',
-    'Countdown.Settings.psm1',
-    'Countdown.Tags.psm1',
-    '敏敏子倒计时.ps1',
-    'CountdownLauncher.exe',
-    'countdown-icon.ico',
-    'sanrio-official-mymelody.png',
-    'sanrio-official-cinnamoroll.png',
-    'sanrio-official-kuromi.png',
-    'holiday-data\2026.json',
-    'holiday-data\2027.json',
-    'holiday-data\README.md',
-    'holiday-data\LICENSE.txt'
+    'Install-CountdownProgram.ps1',
+    'Countdown.Installer.psm1'
 )
 $officePackageSupportFiles = @(
     $releaseContract.PackageFiles |
         Where-Object { $_ -notin @($publishedPayloadManifest.files.path) -and $_ -ne 'app\published-payload.json' }
 )
 Assert-Equal (($expectedOfficePackageSupportFiles | Sort-Object) -join ',') (($officePackageSupportFiles | Sort-Object) -join ',') 'Office package carries only what the office install loads or installs besides the published payload'
+
+# 真实 ZIP 精确闭包：部署打包器的 entries 与 ReleaseContract 必须逐项相同，不多也不少。
+$releaseDeployerModule = Import-Module (Join-Path $PSScriptRoot 'Countdown.Deployer.psm1') -Force -PassThru
+$releaseBuildOutput = & $releaseDeployerModule {
+    param($Root, $Commit)
+    Read-CountdownDeployBuildOutput -RepositoryRoot $Root -Commit $Commit
+} $PSScriptRoot ([string] $publishedPayloadManifest.commit)
+$releaseZipPath = Join-Path ([System.IO.Path]::GetTempPath()) ('clock-countdown-release-' + [guid]::NewGuid().ToString('N') + '.zip')
+try {
+    $null = & $releaseDeployerModule {
+        param($Root, $BuildOutput, $PackagePath)
+        New-CountdownDeployPackage -RepositoryRoot $Root -BuildOutput $BuildOutput -PackagePath $PackagePath -BeijingNow ([DateTimeOffset]'2026-11-30T12:00:00+08:00')
+    } $PSScriptRoot $releaseBuildOutput $releaseZipPath
+    $releaseArchive = [System.IO.Compression.ZipFile]::OpenRead($releaseZipPath)
+    try {
+        $releaseZipFiles = @($releaseArchive.Entries | ForEach-Object { $_.FullName.Replace('/', '\') })
+    }
+    finally { $releaseArchive.Dispose() }
+    Assert-Equal ((@($releaseContract.PackageFiles) | Sort-Object) -join ',') (($releaseZipFiles | Sort-Object) -join ',') 'Deployment ZIP entries exactly equal the release contract package set'
+    Assert-Equal $expectedPackageCount $releaseZipFiles.Count 'Deployment ZIP has the expected package count'
+}
+finally {
+    if (Test-Path -LiteralPath $releaseZipPath -PathType Leaf) { [System.IO.File]::Delete($releaseZipPath) }
+}
+
 $expectedPublishedLicenseFiles = @(
     'app\licenses\CommunityToolkit.Mvvm\8.4.2\License.md',
     'app\licenses\CommunityToolkit.Mvvm\8.4.2\ThirdPartyNotices.txt',
@@ -110,12 +103,12 @@ Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.PackageFile
 Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $PSScriptRoot $notifyIconLicenseSource)).Hash 'Vendored H.NotifyIcon license matches the upstream commit bytes'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.InstalledFiles)) 'Runtime uses the published license copy instead of the repository source path'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\2027.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
-    Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Release contract packages offline holiday data: $offlineHolidayFile"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Offline holiday data is integrity protected: $offlineHolidayFile"
-    Assert-Equal $true ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Offline holiday data is installed: $offlineHolidayFile"
+    Assert-Equal $false ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Repository-root holiday input stays out of the ZIP: $offlineHolidayFile"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Repository-root holiday input is not a package hash entry: $offlineHolidayFile"
+    Assert-Equal $false ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Repository-root holiday input is not installed outside the program directory: $offlineHolidayFile"
 }
 # #275 程序目录自足：随包节假日数据与图标随构建输出进 app\，载荷清单按仓库原字节覆盖它们，
-# 安装与完整性钉值一并包含。安装根的同名副本暂留（只增不删），由上面的断言继续守住。
+# 安装与完整性钉值一并包含，不再复制到安装根。
 $expectedProgramDirectoryResources = [ordered]@{
     'app\holiday-data\2026.json' = 'holiday-data\2026.json'
     'app\holiday-data\2027.json' = 'holiday-data\2027.json'
@@ -199,15 +192,17 @@ foreach ($verificationOnlyReference in @(
     Assert-Equal $false ($verificationOnlyReference -in @($releaseContract.PackageFiles)) "Plush reference stays in the repository, outside the office package: $verificationOnlyReference"
     Assert-Equal $false ($installedReference -in @($releaseContract.PackageFiles)) "Plush reference no longer ships inside the application: $installedReference"
     Assert-Equal $false ($installedReference -in @($releaseContract.InstalledFiles)) "Plush reference is not installed as a runtime file: $installedReference"
-    Assert-Equal $true ($installedReference -in @($releaseContract.RetiredRuntimeFiles)) "Plush reference is cleaned from existing installations: $installedReference"
+    Assert-Equal $true ($installedReference -in @($releaseContract.RetiredRuntimeFiles)) "Plush reference remains in the historical retired-file metadata: $installedReference"
 }
 Assert-Equal ($expectedBuildAssets -join ',') ($actualBuildAssets -join ',') 'Release contract exposes the exact build asset mappings'
 Assert-Equal ($expectedFloatingPlushAssets -join ',') (@($releaseContract.FloatingPlushAssets) -join ',') 'Release contract retains only current and reference floating assets in the repository asset list'
 Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'CompatibilityFixtureFiles') 'Release contract no longer exposes a legacy-host compatibility fixture list'
 Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'LegacyFloatingRegressionAssets') 'Release contract no longer exposes a legacy floating regression asset list'
-Assert-Equal $true ('Countdown.InstallLifecycle.psm1' -in @($releaseContract.PackageFiles)) 'Install lifecycle is packaged'
-Assert-Equal $true $releaseContract.IntegrityHashes.Contains('Countdown.InstallLifecycle.psm1') 'Install lifecycle is integrity protected'
-Assert-Equal $false ('Countdown.InstallLifecycle.psm1' -in @($releaseContract.InstalledFiles)) 'Install lifecycle is not installed as runtime'
+foreach ($installerFile in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')) {
+    Assert-Equal $true ($installerFile -in @($releaseContract.PackageFiles)) "New installer is packaged: $installerFile"
+    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($installerFile) "New installer is integrity protected: $installerFile"
+    Assert-Equal $false ($installerFile -in @($releaseContract.InstalledFiles)) "Package installer is not copied into the installed program directory: $installerFile"
+}
 foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1')) {
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.PackageFiles)) "Module the office install never loads stays out of the office package: $repositoryOnlyModule"
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($repositoryOnlyModule) "Module the office install never loads is not statically pinned: $repositoryOnlyModule"
@@ -323,10 +318,9 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
 }
 } # End of if ($visualBaselinesAvailable)
 
-foreach ($trustRoot in @('Install-Countdown.ps1', 'Countdown.ReleaseContract.psm1')) {
-    Assert-Equal $true ($trustRoot -in @($releaseContract.PackageTrustRoots)) "Release contract declares trust root $trustRoot"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($trustRoot) "Release contract does not self-hash trust root $trustRoot"
-}
+Assert-Equal 0 @($releaseContract.PackageTrustRoots).Count 'Release contract has no legacy trust roots outside the hashed package'
+Assert-Equal $false ('Countdown.ReleaseContract.psm1' -in @($releaseContract.PackageFiles)) 'Release contract module itself stays out of the office ZIP'
+Assert-Equal $false $releaseContract.IntegrityHashes.Contains('Countdown.ReleaseContract.psm1') 'Release contract does not hash itself'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
 Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath -like '*ui-references*' }).Count 'UI references stay outside build targets'
@@ -334,11 +328,11 @@ Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath 
 $mutableReleaseContract = Get-CountdownReleaseContract
 $mutableReleaseContract.PackageFiles[0] = 'mutated-package-file'
 $mutableReleaseContract.BuildAssets[0].SourcePath = 'mutated-build-source'
-$mutableReleaseContract.IntegrityHashes['Countdown.Notes.psm1'] = ('0' * 64)
+$mutableReleaseContract.IntegrityHashes['Install-CountdownProgram.ps1'] = ('0' * 64)
 $freshReleaseContract = Get-CountdownReleaseContract
 Assert-Equal $false ('mutated-package-file' -in @($freshReleaseContract.PackageFiles)) 'Release contract returns a fresh package list'
 Assert-Equal $false ('mutated-build-source' -in @($freshReleaseContract.BuildAssets.SourcePath)) 'Release contract returns fresh build asset records'
-Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Countdown.Notes.psm1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
+Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Install-CountdownProgram.ps1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
 
 $releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
 try {
@@ -415,68 +409,7 @@ function Test-CountdownHolidayYearCoverage {
         Remove-Module -ModuleInfo $holidayGuardModule -Force
         Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
     }
-
-    $holidayGuardEntryRoot = Join-Path $releaseContractTestRoot 'holiday-guard-entries'
-    $holidayGuardEntryTools = Join-Path $holidayGuardEntryRoot 'tools'
-    New-Item -ItemType Directory -Path $holidayGuardEntryTools -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Install-Countdown.ps1') -Destination $holidayGuardEntryRoot
-    [System.IO.File]::WriteAllText(
-        (Join-Path $holidayGuardEntryTools 'Countdown.SuiteStages.psm1'),
-        '',
-        [System.Text.UTF8Encoding]::new($false))
-    $holidayGuardEntryModulePath = Join-Path $holidayGuardEntryRoot 'Countdown.ReleaseContract.psm1'
-    $holidayGuardEntryEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    $PSNativeCommandUseErrorActionPreference = $false
-
-    # 安装验证不是发布动作：即使注入缺数据结果，也只运行原有包校验夹具并成功返回。
-    $holidayGuardValidationStubs = @'
-function Get-CountdownReleaseContract {
-    [pscustomobject]@{
-        OfficialCharacterAssets = @()
-        FloatingPlushAssets = @()
-        CurrentFloatingRuntimeAssets = @()
-        RetiredRuntimeFiles = @()
-    }
-}
-function Assert-CountdownReleasePackage {
-    param($Root)
-    [pscustomobject]@{ Valid = $true; VerifiedFiles = 0 }
-}
-'@
-    [System.IO.File]::WriteAllText(
-        $holidayGuardEntryModulePath,
-        $holidayGuardModuleSource + $holidayGuardOverride + $holidayGuardValidationStubs,
-        [System.Text.UTF8Encoding]::new($false))
-    $holidayGuardInstallValidationJson = & $holidayGuardEntryEngine `
-        -NoLogo -NoProfile -NonInteractive `
-        -File (Join-Path $holidayGuardEntryRoot 'Install-Countdown.ps1') `
-        -ValidateOnly | Out-String
-    $holidayGuardInstallValidationExit = $LASTEXITCODE
-    Assert-Equal 0 $holidayGuardInstallValidationExit 'Installer ValidateOnly remains available when December holiday coverage is missing'
-    if ($holidayGuardInstallValidationExit -eq 0) {
-        $holidayGuardInstallValidation = $holidayGuardInstallValidationJson | ConvertFrom-Json
-        Assert-Equal $true ([bool] $holidayGuardInstallValidation.Valid) 'Installer ValidateOnly returns its normal success contract under the coverage fixture'
-    }
-
-    # 真实安装夹具在任何后续发布契约读取处放置安全哨兵；只有入口先调用守卫才会得到年份错误。
-    $holidayGuardInstallSentinel = @'
-function Get-CountdownReleaseContract { throw 'REAL_INSTALL_CONTINUED_WITHOUT_COVERAGE_GUARD' }
-'@
-    [System.IO.File]::WriteAllText(
-        $holidayGuardEntryModulePath,
-        $holidayGuardModuleSource + $holidayGuardOverride + $holidayGuardInstallSentinel,
-        [System.Text.UTF8Encoding]::new($false))
-    $holidayGuardRealInstallOutput = & $holidayGuardEntryEngine `
-        -NoLogo -NoProfile -NonInteractive `
-        -File (Join-Path $holidayGuardEntryRoot 'Install-Countdown.ps1') 2>&1 | Out-String
-    $holidayGuardRealInstallExit = $LASTEXITCODE
-    Assert-Equal $true ($holidayGuardRealInstallExit -ne 0) 'Real install entry fails closed when December holiday coverage is missing'
-    Assert-Equal $true ($holidayGuardRealInstallOutput.Contains('2027') -and $holidayGuardRealInstallOutput.Contains('holiday-data/README.md')) 'Real install guard names the missing year and refresh runbook'
-    Assert-Equal $false $holidayGuardRealInstallOutput.Contains('REAL_INSTALL_CONTINUED_WITHOUT_COVERAGE_GUARD') 'Real install guard runs before any installation continuation'
-
-    $global:LASTEXITCODE = 0
     Remove-Item -LiteralPath $holidayGuardModulePath -Force
-    Remove-Item -LiteralPath $holidayGuardEntryRoot -Recurse -Force
 
     $missingPackageRejected = $false
     try {

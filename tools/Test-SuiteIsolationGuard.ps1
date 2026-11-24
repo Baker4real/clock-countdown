@@ -139,9 +139,6 @@ foreach ($retiredLegacyHostFile in @(
 $sourceValidationSource = Get-Content -LiteralPath $sourceValidationPath -Raw -Encoding UTF8
 Assert-Guard ($sourceValidationSource -match 'Assert-SuiteIsolatedDesktop') 'SourceValidation fail-closed'
 
-$productionKillPattern = 'Stop-DesktopLauncherHostProcesses[^\r\n]*敏敏子倒计时\\app\\MinminCountdown\.exe'
-Assert-Guard ($csharpSource -notmatch $productionKillPattern) '桌面启动器测试 finally 不按生产安装路径杀进程'
-
 $runnerSource = Get-Content -LiteralPath $runnerPath -Raw -Encoding UTF8
 Assert-Guard ($runnerSource -match 'AllowForegroundWindowedSteps') '收口 runner 前台窗步骤需显式授权'
 Assert-Guard ($runnerSource -match 'Start-IsolatedSuiteProcess') '收口 runner 窗口步骤走隔离启动器'

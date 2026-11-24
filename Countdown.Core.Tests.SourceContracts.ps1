@@ -1,6 +1,5 @@
 # Countdown.Core.Tests.ps1 的 SourceContracts 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
-$installerSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Install-Countdown.ps1'), [System.Text.Encoding]::UTF8)
 $buildSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-CountdownApplication.ps1'), [System.Text.Encoding]::UTF8)
 $buildPreflightSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Countdown.BuildPreflight.psm1'), [System.Text.Encoding]::UTF8)
 $buildPreflightScript = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'tools\Test-CountdownBuildPreflight.ps1'), [System.Text.Encoding]::UTF8)
@@ -11,20 +10,6 @@ Assert-Equal $true ($managedCleanIndex -ge 0 -and $releaseContractImportIndex -g
 Assert-Equal $true ($buildPreflightSource.Contains("`$env:COUNTDOWN_DOTNET_EXE") -and $buildPreflightSource.Contains("D:\Codex\tools\dotnet\10.0\dotnet.exe") -and $buildPreflightSource.Contains('Get-Command dotnet')) 'Shared preflight preserves parameter, environment, managed and PATH SDK resolution order'
 Assert-Equal $true ($buildPreflightSource.Contains("Join-Path `$RepositoryRoot 'global.json'") -and $buildPreflightSource.Contains('Test-CountdownSdkVersionMatch')) 'Shared preflight resolves and checks the repository global.json SDK contract'
 Assert-Equal $true ($buildPreflightScript.Contains('[switch]$RequireClean') -and $buildPreflightScript.Contains('[switch]$Json') -and $buildPreflightScript.Contains('Failures')) 'Build preflight entry point exposes clean gating and structured failure output'
-$installerDotnetPathIndex = $installerSource.IndexOf("`$dotnetPath = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'")
-$installerDotnetCheckIndex = $installerSource.IndexOf('if (-not $DeferCommit -and -not (Test-Path -LiteralPath $dotnetPath -PathType Leaf))', $installerDotnetPathIndex)
-$installerDotnetErrorIndex = $installerSource.IndexOf('未找到验收套件所需的受管 dotnet', $installerDotnetCheckIndex)
-$installerValidationSuiteIndex = $installerSource.IndexOf('$validationSuite = Invoke-CountdownValidationSuite')
-$installerDotnetPassIndex = $installerSource.IndexOf('-DotnetPath $dotnetPath', $installerValidationSuiteIndex)
-Assert-Equal $true `
-    ($installerDotnetPathIndex -ge 0 -and
-        $installerDotnetCheckIndex -gt $installerDotnetPathIndex -and
-        $installerDotnetErrorIndex -gt $installerDotnetCheckIndex -and
-        $installerValidationSuiteIndex -gt $installerDotnetErrorIndex -and
-        $installerDotnetPassIndex -gt $installerValidationSuiteIndex) `
-    'Installer validates and passes the canonical managed dotnet 10.0 executable before invoking the validation suite'
-Assert-Equal $true ($installerSource -match 'if \(-not \$DeferCommit\) \{\r?\n(?:\s*#[^\r\n]*\r?\n)?\s*Import-Module \(Join-Path \$staging ''Countdown\.Validation\.psm1''\) -Force\r?\n\s*\$validationSuite = Invoke-CountdownValidationSuite') 'Installer loads the validation module and runs the validation suite only outside the office deferred commit'
-Assert-Equal 1 ([regex]::Matches($installerSource, 'Countdown\.Validation\.psm1').Count) 'Installer references the validation module only inside the local-install branch'
 Assert-Equal 3 ([regex]::Matches($buildSource, '-p:IncludeSourceRevisionInInformationalVersion=false').Count) 'All three self-contained publish commands exclude the Git revision so committed manifest hashes remain reproducible'
 $windowVerificationPublishStart = $buildSource.IndexOf('& $dotnet publish $windowVerificationProject -c Release -r win-x64 --self-contained true')
 $windowVerificationPublishEnd = if ($windowVerificationPublishStart -ge 0) {
@@ -60,22 +45,6 @@ $buildPayloadHashSegmentIndex = $buildSource.IndexOf("Write-BuildSegmentTiming -
 $buildPayloadEnumerationIndex = $buildSource.IndexOf('$payloadFiles = @(')
 $buildPayloadLegacyStartupRequestExclusionIndex = $buildSource.IndexOf('$_.FullName -ne $legacyStartupRequestPath')
 Assert-Equal $true ($buildPayloadEnumerationIndex -ge 0 -and $buildPayloadLegacyStartupRequestExclusionIndex -gt $buildPayloadEnumerationIndex -and $buildPayloadLegacyStartupRequestExclusionIndex -lt $buildPayloadHashSegmentIndex) 'Payload enumeration skips a stale app\startup-request.json left by older builds so incremental and -Clean manifests match'
-$installLifecycleSource = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Countdown.InstallLifecycle.psm1'), [System.Text.Encoding]::UTF8)
-$lifecycleCommittedRecoveryMessageIndex = $installLifecycleSource.IndexOf('检测到已提交但未完成应用解锁确认的事务')
-$lifecycleOwnershipRecoveryMessageIndex = $installLifecycleSource.IndexOf('检测到用户替换的桌面启动器：应用、任务和时间服务已恢复')
-Assert-Equal $true ($lifecycleCommittedRecoveryMessageIndex -ge 0 -and $lifecycleCommittedRecoveryMessageIndex -lt $lifecycleOwnershipRecoveryMessageIndex) 'Install lifecycle prioritizes committed recovery evidence over a simultaneous launcher conflict'
-$timeSourceWaitDefinitionIndex = $installLifecycleSource.IndexOf('function Wait-CountdownNetworkTimeSource')
-$timeSourceWaitCallIndex = $installLifecycleSource.IndexOf('$source = Wait-CountdownNetworkTimeSource')
-Assert-Equal $true ($timeSourceWaitDefinitionIndex -ge 0 -and $timeSourceWaitCallIndex -gt $timeSourceWaitDefinitionIndex) 'Production Windows ports wait with the bounded network-time source probe'
-Assert-Equal $true ($installLifecycleSource -notmatch 'Start-Sleep -Seconds 3') 'Install lifecycle does not rely on a fixed three-second time-service sleep'
-$adapterSource =[System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '敏敏子倒计时.ps1'), [System.Text.Encoding]::UTF8)
-$adapterWaitForExitIndex = $adapterSource.IndexOf('$process.WaitForExit()')
-$adapterStayAttachedIndex = $adapterSource.IndexOf('$stayAttached = $ValidateOnly.IsPresent')
-$adapterAliveProbeIndex = $adapterSource.IndexOf('Start-Sleep -Milliseconds 200')
-$adapterHasExitedIndex = $adapterSource.IndexOf('$process.HasExited')
-Assert-Equal $true ($adapterStayAttachedIndex -ge 0 -and $adapterWaitForExitIndex -gt $adapterStayAttachedIndex) 'Production adapter waits for exit only in validate/exercise/test modes'
-Assert-Equal $true ($adapterAliveProbeIndex -gt $adapterWaitForExitIndex -and $adapterHasExitedIndex -gt $adapterAliveProbeIndex) 'Production adapter detaches after confirming the C# host stayed alive'
-Assert-Equal $true ($adapterSource.Contains('Win32_Process') -and $adapterSource.Contains('MethodName Create') -and $adapterSource.Contains('脱离计划任务作业')) 'Production adapter starts the C# host outside the scheduled-task job'
 Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package'
 $legacyV3Settings = [pscustomobject]@{
     schemaVersion = 3

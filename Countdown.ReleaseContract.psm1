@@ -1,12 +1,9 @@
-﻿#requires -Version 7.0
+#requires -Version 7.0
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$script:packageTrustRoots = @(
-    'Install-Countdown.ps1',
-    'Countdown.ReleaseContract.psm1'
-)
+$script:packageTrustRoots = @()
 
 $script:buildAssetDefinitions = @(
     [pscustomobject]@{
@@ -64,7 +61,6 @@ $script:buildAssetDefinitions = @(
         Category = 'MainDecoration'
     },
     # #275 程序目录自足：随包节假日数据与图标随载荷进 app\，应用从程序目录读取。
-    # 安装根的同名副本在分段迁移期间保留（见 offlineHolidayDataFiles 与安装文件清单）。
     [pscustomobject]@{
         SourcePath = 'holiday-data\2026.json'
         PublishedPath = 'app\holiday-data\2026.json'
@@ -117,19 +113,8 @@ $script:offlineHolidayDataFiles = @(
 # 发布包只装办公室安装路径会加载或安装的文件，静态钉值也只覆盖这些文件。C# 源码、测试、构建与验证工具、
 # DESIGN.md 留在仓库，不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
-    'Countdown.InstallTransaction.psm1' = 'E35959D08BA359435BCDEF8BFEACB4518704B924512DE8069F4767F2D649A353'
-    'Countdown.InstallLifecycle.psm1' = '87304F33DF58FBD358362DDFC9711756041C606271BC665B0ACA1A80B37212BD'
-    'Countdown.Notes.psm1' = 'CF41E5A29B5FCFB0807E1EA1E6F52AC7FADE4478A18990698F2BA6F725E08CA0'
-    'Countdown.Runtime.psm1' = '29733FCD6CF36E797800EC7678AF1685E97A308CC67FEE38975FE6CC54709856'
-    'Countdown.Settings.psm1' = '507BB437A209CC6F340B00D7089171C6D78EFF6C6EF597A87F49E45BF40E95DC'
-    'Countdown.Tags.psm1' = '57AE8BBE689F3838E3B9EE8B56F96D661C8A46EAD825103307482B00C472FAAC'
-    '敏敏子倒计时.ps1' = 'D809BC8B668430D0753EC0DD20A38CEDB2E409C431697442B4B221AA3CDE9B95'
-    'CountdownLauncher.exe' = '4B4C66274278049FF185C7824685D1B5A85F5DA10557F70A1D7E458778066440'
-    'countdown-icon.ico' = 'C5B7CB0A09524AEFE4488291078F61B0AF54958582DA98B99B25D0F4DC6976C5'
-    'holiday-data\2026.json' = '5B9887FB139FA190150BF0FC3E8EDB32A06647E884F1447633B305783ADACEBB'
-    'holiday-data\2027.json' = '618646318BA54CACE19C20BB9DEB8BF8FF6179ABF963628A608D47AEFDCCF082'
-    'holiday-data\README.md' = '2775B80BC9DA69F281FED7A89404F18CA592D5299B1E6788CEF9C425CBD61B35'
-    'holiday-data\LICENSE.txt' = 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142'
+    'Install-CountdownProgram.ps1' = 'AD6384EAE3B754D75EC45C674C8A0921585E2851307B38D00E4D669A275ABE7A'
+    'Countdown.Installer.psm1' = 'B599C4C49445D76C83DCE4B8F82A6697EF7A17D4304E4FDA0B96CD7B1AE1D11B'
 }
 
 function Assert-CountdownReleaseRelativePath {
@@ -160,7 +145,7 @@ function Assert-CountdownReleaseRelativePath {
 function Assert-CountdownUniqueReleasePaths {
     param(
         [Parameter(Mandatory)] [string] $Name,
-        [Parameter(Mandatory)] [string[]] $Paths
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $Paths
     )
 
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -273,11 +258,6 @@ function Get-CountdownReleaseHashByPath {
 
 function New-CountdownReleaseIntegrityMap {
     $integrityPaths = @($script:nonAssetHashes.Keys)
-    $integrityPaths += @(
-        $script:buildAssetDefinitions |
-            Where-Object { $_.Category -eq 'OfficialCharacter' } |
-            ForEach-Object { $_.SourcePath }
-    )
     $integrityPaths += @($script:buildAssetDefinitions | ForEach-Object { $_.PublishedPath })
     $publishedPayloadFiles = @(Get-CountdownPublishedPayload | ForEach-Object { $_.Files })
     $integrityPaths += @($publishedPayloadFiles | ForEach-Object { $_.Path })
@@ -319,21 +299,11 @@ function New-CountdownReleaseContractSnapshot {
             ForEach-Object { [string] $_.PublishedPath }
     )
     $applicationAssets = @($script:buildAssetDefinitions | ForEach-Object { [string] $_.PublishedPath })
-    $installedFiles = @(
-        $script:offlineHolidayDataFiles
-    ) + @(
-        'Countdown.InstallTransaction.psm1',
-        'Countdown.Notes.psm1',
-        'Countdown.Runtime.psm1',
-        'Countdown.Settings.psm1',
-        'Countdown.Tags.psm1',
-        '敏敏子倒计时.ps1'
-    ) + @(
-        'CountdownLauncher.exe',
-        'countdown-icon.ico'
-    ) + $officialCharacterAssets + $applicationAssets + @(
-        Get-CountdownPublishedPayload | ForEach-Object { $_.Files } | ForEach-Object { $_.Path }
-    )
+    $publishedPayloadFiles = @(Get-CountdownPublishedPayload | ForEach-Object { $_.Files })
+    $installedFiles = $applicationAssets + @($publishedPayloadFiles | ForEach-Object { $_.Path })
+    if ($publishedPayloadFiles.Count -gt 0) {
+        $installedFiles += 'app\published-payload.json'
+    }
     $uniqueInstalled = [System.Collections.Generic.List[string]]::new()
     $seenInstalled = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($path in $installedFiles) {
@@ -342,7 +312,7 @@ function New-CountdownReleaseContractSnapshot {
         }
     }
     $installedFiles = @($uniqueInstalled)
-    # 源文件可以退役，清理清单必须继续识别既有安装与发布包里的历史残留。
+    # 历史清理元数据只供回查；新安装器只替换程序目录，不执行一次性旧布局清理。
     $retiredRuntimeFiles = @(
         'Countdown.App.psm1',
         'Countdown.Core.psm1',

@@ -62,12 +62,12 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 - 低影响套件启动器：增加 Build 完成后五阶段并行调度；隔离桌面名按阶段唯一化；红即停改为任一阶段红即取消在跑阶段、保留已完成阶段日志与 summary；BelowNormal、逐字转发、官方命令行形状不变；summary.json schema 只增不破。
 - 隔离桌面进程启动器：桌面名从固定值改为参数；维持同进程包装，不新增 spawn 层，不引入轮询或固定等待。
 - 构建脚本：各重操作段输出 stopwatch 分段计时；-Clean 全量 + R2R 仍是默认与收口唯一路径；增量模式（不清理、保留增量编译）仅在插桩数据证明收益后作为显式非默认开关引入，并在 README 明确其产物不用于发布收口。
-- C# 宿主选项与应用入口：ExitAfterReadyForTest 自退间隔成为宿主选项（新命令行参数，adapter 透传），未指定时保持 30 秒；套件两处集成段传 2-3 秒。有效性论证：被测对象是 window-ready 回执与自退路径，不是时长本身；实现前由维护者确认 30 秒不承载稳定性观察窗语义。
-- CSharp / Ui 测试脚本：使用短自退间隔；按断言映射表去重——CSharp 阶段保留 canonical 完整 adapter validate-only（含视觉基线 12 帧抓帧与 shape SHA）；Ui 阶段保留旧 PowerShell WPF 宿主验证、UIA 段与独有断言，逐字重复副本删除前其独有断言必须先迁移归属；ExercisePersistenceFailures 三遍保一对（预期失败 + 预期通过），ExerciseNoteAdd 两遍保一遍；Ui 阶段报告数从硬编码改为实际计数。
+- C# 宿主选项与应用入口：ExitAfterReadyForTest 自退间隔成为宿主选项（新命令行参数，测试与工具直接传入），未指定时保持 30 秒；套件两处集成段传 2-3 秒。有效性论证：被测对象是 window-ready 回执与自退路径，不是时长本身；实现前由维护者确认 30 秒不承载稳定性观察窗语义。
+- CSharp / Ui 测试脚本：使用短自退间隔；按断言映射表去重——CSharp 阶段保留 canonical 完整应用 validate-only（含视觉基线 12 帧抓帧与 shape SHA）；Ui 阶段保留旧 PowerShell WPF 宿主验证、UIA 段与独有断言，逐字重复副本删除前其独有断言必须先迁移归属；ExercisePersistenceFailures 三遍保一对（预期失败 + 预期通过），ExerciseNoteAdd 两遍保一遍；Ui 阶段报告数从硬编码改为实际计数。
 - Core 测试脚本：加分段计时；内联安装器验证调用与 InstallValidate 独立阶段都保留——前者带合同断言、后者是阶段级红即停门禁，重复成本约 10 秒，标注为有意双轨。
 - 发布合同 module：本 spec 触及的测试脚本与构建脚本在 IntegrityHashes 覆盖内，每次改动后按当前提交 blob 更新静态 SHA-256（既有合同义务，不新增机制）。
-- 流程决策：五阶段套件与 10 步收口 runner 不在同一会话连跑（后者第 3/6/8/9/10 步与五阶段逐字相同，连跑等于整套两遍）；README 注明。
-- 并行安全前置条件（调查已核实，实现时逐条守住）：五阶段测试数据根均为 GUID 唯一目录；CSharp / Ui 的 validate-only 均使用临时 settings 文件，不写仓库根 settings.json，SourceValidation 的根快照闭锁不受影响；CSharp 默认路径不含按可执行路径杀进程的逻辑（该逻辑仅存在于非默认 DesktopLauncherOnly 模式，目标为 fixture 与办公室安装路径）；Ui 的仓库内固定诊断目录与 CSharp / SourceValidation 的 GUID 诊断路径不相交；Core 的全局安装事务 mutex 探针为 1 秒有界且其余四阶段不取该锁。
+- 流程决策：五阶段套件与 9 步收口 runner 不在同一会话连跑（后者第 3/5/7/8/9 步与五阶段逐字相同，连跑等于整套两遍）；README 注明。
+- 并行安全前置条件（调查已核实，实现时逐条守住）：五阶段测试数据根均为 GUID 唯一目录；CSharp / Ui 的 validate-only 均使用临时 settings 文件，不写仓库根 settings.json，SourceValidation 的根快照闭锁不受影响；CSharp 默认路径不按生产安装路径结束进程；Ui 的仓库内固定诊断目录与 CSharp / SourceValidation 的 GUID 诊断路径不相交；Core 的全局安装事务 mutex 探针为 1 秒有界且其余四阶段不取该锁。
 - 依赖事实（已核实，含对调查中间结论的修正）：全部五个验证阶段都依赖 Build——Ui 经 adapter 间接启动 C# 宿主 exe，不能与 Build 并行；Build 是唯一必须先行的阶段，并行扇出在 Build 绿之后。
 
 ## Testing Decisions
@@ -87,7 +87,7 @@ Prior art：两个既有启动器探针脚本；summary.json 只读聚合（2026
 ## Out of Scope
 
 - 不改变"用户正在使用这台电脑"的低影响前提：BelowNormal、不可见 Win32 桌面隔离、禁止非隔离直跑全部保留。
-- 不调整 desktop-launcher / instance-activation-matrix 的独立模式；现役 10 步收口 runner 的步骤表以 README 与实际脚本为准。
+- 不调整 instance-activation-matrix 的独立模式；现役 9 步收口 runner 的步骤表以 README 与实际脚本为准。
 - 除 ExitAfterReadyForTest 间隔参数化外，不改任何产品功能代码。
 - 不以砍断言总数为目标；去重只删有映射归属的重复副本。
 - InstallValidate 与 Core 内联安装器验证的双轨保留，不做合并。
@@ -96,7 +96,7 @@ Prior art：两个既有启动器探针脚本；summary.json 只读聚合（2026
 ## Further Notes
 
 - 实测基线（logs\suite-runs，182 次运行，2026-09-06 至 09-13）：完整六阶段仅 3 次且全绿，合计 1143s / 1147s / 1316s；阶段中位数 Build 384s / CSharp 303s / Ui 295s / Core 220s / SourceValidation 37s / InstallValidate 11s；SourceValidation + InstallValidate 合计不足 4%。Ui 在 09-08 后从约 430s 降至约 221s，套件耗时是活基线，每个增量前后都要用全绿跑对比。
-- 推断项（插桩落地后由实测替换）：单次 C# validate-only 约 15-25 秒；Core 的隔离树真实构建 + 真实 adapter 验证段估计 60-90 秒；Build 内受管清理与两次 R2R publish 的精确拆分未知（dotnet 自报编译仅 3-15 秒）。
-- 根复核修正（相对调查中间结论，已回读源码核实）：（1）Ui 阶段经 adapter 启动 C# 宿主，硬依赖 Build 产物，不能与 Build 并行；（2）CSharp 默认路径不含按可执行路径杀进程的逻辑——全部调用点位于非默认 DesktopLauncherOnly 模式且目标是 fixture 与办公室安装路径，因此默认套件下 CSharp ∥ Ui 无进程杀伤冲突。
+- 推断项（插桩落地后由实测替换）：单次 C# validate-only 约 15-25 秒；Core 的隔离树真实构建 + 真实应用验证段估计 60-90 秒；Build 内受管清理与两次 R2R publish 的精确拆分未知（dotnet 自报编译仅 3-15 秒）。
+- 根复核修正（相对调查中间结论，已回读源码核实）：（1）Ui 阶段硬依赖 Build 产物，不能与 Build 并行；（2）CSharp 默认路径不按生产安装路径结束进程，因此默认套件下 CSharp ∥ Ui 无进程杀伤冲突。
 - 关键 failure modes 与对策：并行资源竞争（BelowNormal 下 CPU/内存互拖）→ 并行度可配、默认保守、按全绿墙钟实测调整；隔离桌面同名冲突 → 桌面名按阶段唯一化；去重误删独有断言 → 断言映射表先行、宁留勿删、Pass 计数门禁；增量构建产物过期误导 → 增量仅显式开关且 README 禁止用于收口；定时器缩短若实际承载稳定性观察窗语义 → 实现前维护者确认。
 - 本 spec 基于 2026-09-13 只读调查（182 次运行日志聚合 + 全部套件脚本与测试源码定向阅读），调查证据的行号锚点以该日期工作树为准；调查全程零写入。

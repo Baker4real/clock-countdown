@@ -33,7 +33,7 @@ intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
 
 运行时按“应用目录 `holiday-cache\\{year}.json` 本地缓存 → 有效联网结果 → 程序目录 `app\\holiday-data\\{year}.json` 随包年度数据”的顺序选择来源（#275：随包数据随程序目录发布并从那里读取，本地缓存属于用户数据，留在应用目录）；同一年份的联网结果与随包数据冲突时以联网结果为准，并在联网成功后更新本地缓存。当前随包覆盖 2026、2027 年，数据来源、MIT 许可证、转换规则和更新方式见 [holiday-data/README.md](holiday-data/README.md) 与同目录 `LICENSE.txt`。本地缓存、联网结果和随包数据都没有覆盖请求年份时，日历保持未就绪，不按周一至周五估算工资或距离下班；此时悬浮窗两个工作区的底部状态统一显示「节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复」（#218），日历加载中显示「节假日日历正在加载」。
 
-年度覆盖守卫（#218、#261）：当前北京时间进入 12 月后，如果随包数据还没有覆盖下一年，旧真实安装入口显式调用 `Assert-CountdownHolidayYearCoverage`；现役 `Deploy-CountdownProgram.ps1` 预检从实际构建输出的 `app\holiday-data\` 取年份，以同一纯函数判定并在连接办公室前拒绝。两处失败信息都指明缺失年份与 `holiday-data/README.md` 的补数据流程。#291 在删除旧安装器前必须把等价守卫接入新安装器真实安装入口，不得留下无保护窗口。发布契约 module 导入、构建、测试和安装验证不执行该守卫；11 月 30 日之前或数据齐全时守卫通过。补齐下一年数据见 #234。
+年度覆盖守卫（#218、#261、#291）：当前北京时间进入 12 月后，如果随包数据还没有覆盖下一年，新安装器真实安装入口在取得安装锁和调用任何 Windows port 之前拒绝；`Deploy-CountdownProgram.ps1` 预检与实际 ZIP 打包入口从构建输出的 `app\holiday-data\` 取年份，以同一纯函数判定并在连接办公室前拒绝。三处失败信息都指明缺失年份与 `holiday-data/README.md` 的补数据流程。发布契约 module 导入、构建、测试和安装验证 `-CheckOnly` 不执行该守卫；11 月 30 日之前或数据齐全时守卫通过。补齐下一年数据见 #234。
 
 ## 日夜主题
 
@@ -59,15 +59,15 @@ intent: 定义时钟倒计时项目的统一领域词汇和时间语义。
 
 ## 启动就绪
 
-**启动就绪**: 悬浮窗已完成首次渲染，且运行状态回执确认了写它的那次启动的状态。它只表示窗口可见；节假日日历可以仍在加载或不可用。新安装链（#259）只用新安装器的 `Wait-CountdownStartupReady` 判定，布局切换与回退启动旧版本时也用它：启动前删掉旧回执，回执阶段是 `window-ready`，写回执的进程仍存活、映像路径是已安装 EXE、在交互会话里，已安装 EXE 的哈希与载荷清单一致；不用启动令牌，也不比较回执的 `applicationPath`（#279：它仍指向 adapter）。旧安装器在 #291 删除它之前仍按旧定义：该次启动令牌、进程、交互会话和应用路径由运行状态回执共同确认。
+**启动就绪**: 悬浮窗已完成首次渲染，且运行状态回执确认了写它的那次启动的状态。它只表示窗口可见；节假日日历可以仍在加载或不可用。安装器只用 `Wait-CountdownStartupReady` 判定：启动前删掉旧回执，回执阶段是 `window-ready`，写回执的进程仍存活、映像路径是已安装 EXE、在交互会话里，已安装 EXE 的哈希与载荷清单一致；不用启动令牌，也不比较回执的 `applicationPath`（#279 过渡协议仍保留旧身份，#292 后续处理）。
 
 ## 安装布局
 
-**安装布局**: 一次安装的全部落点。新安装链只由 `Resolve-CountdownInstallerLayout`（`Countdown.Installer.psm1`）定义：安装根下的现役程序目录 `app\`（`MinminCountdown.exe` 与载荷清单 `published-payload.json`）、候选 `app.candidate\`、旧版本 `app.previous\`、事务标记 `install-transaction.json`（先写临时文件 `install-transaction.json.tmp`）、事务目录 `install-transaction\`、运行状态回执 `runtime-status.json` 和设置 `settings.json`；安装根之外是登录任务（默认名 `Minmin Countdown`）与交互用户桌面上的快捷方式 `敏敏子倒计时.lnk`。新安装器与布局切换脚本从它取路径；状态命令 `Get-CountdownInstallStatus.ps1`（要能不带项目脚本在远端运行）与 #288 真实安装验收探针各自写着同样的名字。旧链在第三段删除它（#290、#291）之前仍按旧定义：安装目录、应用 adapter 与 C# EXE、计划任务名与遗留任务名、任务参数、桌面启动器（含 `.new` 暂存与遗留 `.cmd`）、启动器状态，以及设置、启动请求、运行状态回执和验收回执的位置，只由 `Get-CountdownInstallLayout` 定义；旧安装器与旧安装事务都从它取路径。
+**安装布局**: 一次安装的全部落点，只由 `Resolve-CountdownInstallerLayout`（`Countdown.Installer.psm1`）定义：安装根下的现役程序目录 `app\`（`MinminCountdown.exe` 与载荷清单 `published-payload.json`）、候选 `app.candidate\`、旧版本 `app.previous\`、事务标记 `install-transaction.json`（先写临时文件 `install-transaction.json.tmp`）、事务目录 `install-transaction\`、运行状态回执 `runtime-status.json` 和设置 `settings.json`；安装根之外是登录任务（默认名 `Minmin Countdown`，动作直接是该 EXE）与交互用户桌面上的快捷方式 `敏敏子倒计时.lnk`。状态命令 `Get-CountdownInstallStatus.ps1`（要能不带项目脚本在远端运行）与 #288 真实安装验收探针各自写着同样的名字。
 
 ## 安装事务生命周期
 
-**安装事务生命周期**: 一次安装从放入候选到提交或回滚的全过程。新安装链（`Install-CountdownProgram`，#280–#284，本机与办公室同一个安装器）：前置检查通过后停止应用，写下事务标记 `install-transaction.json`（记着候选的提交与载荷清单聚合哈希），把设置及其两代备份快照到事务目录，用候选 EXE 演练迁移并做等价判定，换程序目录（`app` 改名为 `app.previous`、`app.candidate` 改名为 `app`），登记登录任务与桌面快捷方式，经登录任务启动到启动就绪；提交时先清除事务标记，再删除旧版本目录与事务目录。写下标记之后、启动就绪之前任何一步失败都回滚：换回程序目录，用本次快照恢复设置，恢复改过的任务定义，启动旧版本。运行被打断时标记留下，下一次安装先按目录状态恢复（#284）。所以事务标记在就是有没走完的安装（状态命令的 `transactionMarkerPresent`），全机安装锁在就是此刻有安装、切换或回退正在运行（`installInProgress`）。旧链在第三段删除它（#290、#291）之前仍按旧定义：装入候选是停止旧应用后捕获快照，复制载荷，替换桌面启动器，注册并启动计划任务，直到启动就绪；事务验收是设置等价与交互会话、进程、计划任务复验通过后才放行迁移，应用确认 `finalized-ready` 后提交并清理证据；回滚按 journal 恢复安装目录、桌面启动器、两个计划任务与 Windows 时间服务。本机直接安装就地走完三段。
+**安装事务生命周期**: 一次安装从放入候选到提交或回滚的全过程（`Install-CountdownProgram`，#280–#284，本机与办公室同一个安装器）：前置检查通过后停止应用，写下事务标记 `install-transaction.json`（记着候选的提交与载荷清单聚合哈希），把设置及其两代备份快照到事务目录，用候选 EXE 演练迁移并做等价判定，换程序目录（`app` 改名为 `app.previous`、`app.candidate` 改名为 `app`），登记登录任务与桌面快捷方式，经登录任务启动到启动就绪；提交时先清除事务标记，再删除旧版本目录与事务目录。写下标记之后、启动就绪之前任何一步失败都回滚：换回程序目录，用本次快照恢复设置，恢复改过的任务定义，启动旧版本。运行被打断时标记留下，下一次安装先按目录状态恢复（#284）。所以事务标记在就是有没走完的安装（状态命令的 `transactionMarkerPresent`），全机安装锁在就是此刻有安装正在运行（`installInProgress`）。安装不配置或快照 Windows 时间服务，不处理遗留任务或启动器，也没有多阶段 journal 或三文件验收握手。
 
 ## 单实例激活
 
@@ -141,7 +141,7 @@ _Avoid_: 桌面悬浮框
 
 **诊断日志**: 应用目录 `logs\application.jsonl` 中的本机滚动 JSONL 事件流，用于确认启动、正常退出、窗口就绪、单实例激活结果、节假日日历状态和致命异常。激活事件只保存散列 scope identity、随机 request identity、结果和窗口状态；日志不保存筛选值、编辑草稿、便签正文、倒计时名称、标签名称、工资、设置 JSON、设置备份、恢复证据或设备凭据。
 
-C# 与 PowerShell 诊断写入器使用同一跨进程命名互斥体：日志路径经 `GetFullPath`、`ToUpperInvariant` 后取 UTF-8 SHA-256 十六进制前 32 位，名称形如 `Local\MinminCountdown.Diagnostic-{前32}`。C# 诊断 logger 持锁时使用无超时 `WaitOne`，遇 `AbandonedMutexException` 视为已获取，失败吞掉。PowerShell 诊断写入器等待有界（秒级）；等待超时或异常时静默丢行、不阻塞调用方。
+诊断日志只有 C# 一个写入方。C# `DiagnosticLogger` 用日志路径经 `GetFullPath`、`ToUpperInvariant` 后取 UTF-8 SHA-256 十六进制前 32 位形成跨进程命名互斥体，名称形如 `Local\MinminCountdown.Diagnostic-{前32}`；持锁时使用无超时 `WaitOne`，遇 `AbandonedMutexException` 视为已获取，写日志失败吞掉且不覆盖应用原异常。滚动 JSONL 与多进程互斥由同一 C# 写入方维护。
 
 ## 设置备份与确认恢复
 

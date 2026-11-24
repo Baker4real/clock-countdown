@@ -4,8 +4,7 @@
 param(
     [switch] $InstanceActivationOnly,
     [switch] $InstanceActivationMatrix,
-    [switch] $DesktopLauncherOnly,
-    [switch] $AllowForegroundDesktopLauncher,
+    [switch] $AllowForegroundWindowedSteps,
     [switch] $MigrationParityOnly,
     [switch] $ExternalCloseOnly,
     [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
@@ -195,8 +194,8 @@ function Assert-ExactReportFields {
 
 Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
 $script:allowForegroundDesktopSuite =
-    ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix) -and
-    $AllowForegroundDesktopLauncher
+    ($InstanceActivationOnly -or $InstanceActivationMatrix) -and
+    $AllowForegroundWindowedSteps
 Assert-SuiteIsolatedDesktop -AllowForegroundAuthorized:$script:allowForegroundDesktopSuite
 
 $sourceFiles = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src') -Filter '*.cs' -File -Recurse
@@ -457,9 +456,7 @@ function Assert-HiddenTopLevelWindowEnumeration {
     }
 }
 
-if (-not $DesktopLauncherOnly) {
-    Assert-HiddenTopLevelWindowEnumeration
-}
+Assert-HiddenTopLevelWindowEnumeration
 
 function Get-InstanceActivationPipeName {
     param(
@@ -834,13 +831,10 @@ function Complete-DiagnosticConcurrencyFailure {
     throw "$Message，证据：$evidenceDirectory"
 }
 
-$script:DesktopLauncherColdBudgetMilliseconds = 4700
-$script:DesktopLauncherWarmBudgetMilliseconds = 4500
-$script:DesktopLauncherLatencyProbeEvidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests\probe'
 # #62 probe 共享截止：真实矩阵 Wait（barrier 后 8×100 强制 1MB 滚动写），不是隔离 5 次。2026-08-24 五次完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 矩阵超时证据 20260823T1510260920479Z 完成计数 [27, 24, 25, 34, 27, 32, 23, 21]，最慢写手 21/100 @ 6800ms 线性外推 32381ms。取最差 32381 +20% 取整 38900ms（未过 40s 上限）。
 $script:DiagnosticConcurrencyProbeDeadlineMilliseconds = 38900
 
-function Get-DesktopLauncherJsonProperty {
+function Get-CountdownTestJsonProperty {
     param(
         $Object,
         [Parameter(Mandatory)] [string] $Name
@@ -856,356 +850,6 @@ function Get-DesktopLauncherJsonProperty {
     }
 
     return $property.Value
-}
-
-function ConvertTo-DesktopLauncherUtcOffset {
-    param($Value)
-
-    if ($null -eq $Value) {
-        return $null
-    }
-
-    if ($Value -is [DateTimeOffset]) {
-        return ([DateTimeOffset] $Value).ToUniversalTime()
-    }
-
-    if ($Value -is [DateTime]) {
-        $dt = [DateTime] $Value
-        switch ($dt.Kind) {
-            'Utc' { return [DateTimeOffset]::new($dt, [TimeSpan]::Zero) }
-            'Local' { return [DateTimeOffset]::new($dt).ToUniversalTime() }
-            default {
-                return [DateTimeOffset]::new(
-                    [DateTime]::SpecifyKind($dt, [DateTimeKind]::Local)
-                ).ToUniversalTime()
-            }
-        }
-    }
-
-    $parsed = [datetimeoffset]::MinValue
-    if ([DateTimeOffset]::TryParse(
-            [string] $Value,
-            [System.Globalization.CultureInfo]::InvariantCulture,
-            [System.Globalization.DateTimeStyles]::RoundtripKind,
-            [ref] $parsed)) {
-        return $parsed.ToUniversalTime()
-    }
-
-    return $null
-}
-
-function Get-DesktopLauncherUtcMilliseconds {
-    param(
-        $From,
-        $To
-    )
-
-    $fromUtc = ConvertTo-DesktopLauncherUtcOffset -Value $From
-    $toUtc = ConvertTo-DesktopLauncherUtcOffset -Value $To
-    if ($null -eq $fromUtc -or $null -eq $toUtc) {
-        return $null
-    }
-
-    return [Math]::Round(($toUtc - $fromUtc).TotalMilliseconds, 3)
-}
-
-function Format-DesktopLauncherMilliseconds {
-    param($Value)
-
-    if ($null -eq $Value) {
-        return 'n/a'
-    }
-
-    return [string] $Value
-}
-
-function New-DesktopLauncherLatencySegmentSample {
-    param(
-        [Parameter(Mandatory)] [double] $T0ToT1,
-        [Parameter(Mandatory)] [double] $T1ToT2,
-        [Parameter(Mandatory)] [double] $T2ToT3,
-        [Parameter(Mandatory)] [double] $T3ToT4
-    )
-
-    return [pscustomobject]@{
-        T0ToT1 = $T0ToT1
-        T1ToT2 = $T1ToT2
-        T2ToT3 = $T2ToT3
-        T3ToT4 = $T3ToT4
-        T0ToT4 = $T0ToT1 + $T1ToT2 + $T2ToT3 + $T3ToT4
-        StopwatchMilliseconds = $null
-    }
-}
-
-function Test-DesktopLauncherLatencyBudget {
-    param(
-        [Parameter(Mandatory)] [double] $ElapsedMilliseconds,
-        [Parameter(Mandatory)] [int] $BudgetMilliseconds
-    )
-
-    return ([int] [Math]::Ceiling($ElapsedMilliseconds) -le $BudgetMilliseconds)
-}
-
-function Assert-DesktopLauncherLatencyGateIsolationBehavior {
-    # #60 冷/暖分段 Σp95：3850.485 / 3682.618。膨胀 T2→T3 使总值越出门禁。
-    $passingCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 2839.375 -T3ToT4 28.739
-    $passingWarm = New-DesktopLauncherLatencySegmentSample -T0ToT1 186.539 -T1ToT2 662.431 -T2ToT3 2820.218 -T3ToT4 13.43
-    $inflatedCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 4839.375 -T3ToT4 28.739
-    $inflatedWarm = New-DesktopLauncherLatencySegmentSample -T0ToT1 186.539 -T1ToT2 662.431 -T2ToT3 4820.218 -T3ToT4 13.43
-    $tinyCold = New-DesktopLauncherLatencySegmentSample -T0ToT1 329.163 -T1ToT2 653.208 -T2ToT3 2839.375 -T3ToT4 29.739
-
-    Assert-Equal $true (
-        Test-DesktopLauncherLatencyBudget `
-            -ElapsedMilliseconds $passingCold.T0ToT4 `
-            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
-    ) '未膨胀冷启动分段不超过 4700ms'
-    Assert-Equal $true (
-        Test-DesktopLauncherLatencyBudget `
-            -ElapsedMilliseconds $passingWarm.T0ToT4 `
-            -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
-    ) '未膨胀暖启动分段不超过 4500ms'
-    Assert-Equal $false (
-        Test-DesktopLauncherLatencyBudget `
-            -ElapsedMilliseconds $inflatedCold.T0ToT4 `
-            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
-    ) '膨胀冷启动 T2→T3 后门禁变红'
-    Assert-Equal $false (
-        Test-DesktopLauncherLatencyBudget `
-            -ElapsedMilliseconds $inflatedWarm.T0ToT4 `
-            -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
-    ) '膨胀暖启动 T2→T3 后门禁变红'
-    Assert-Equal $true (
-        Test-DesktopLauncherLatencyBudget `
-            -ElapsedMilliseconds $tinyCold.T0ToT4 `
-            -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
-    ) '未把总值推出预算的分段微调仍通过'
-}
-
-function Read-DesktopLauncherDiagnosticEvent {
-    param(
-        [Parameter(Mandatory)] [string] $Path,
-        [Parameter(Mandatory)] [int] $ProcessId,
-        [Parameter(Mandatory)] [string] $EventName
-    )
-
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return $null
-    }
-
-    foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
-        if ([string]::IsNullOrWhiteSpace($line)) {
-            continue
-        }
-
-        try {
-            $entry = $line | ConvertFrom-Json
-        }
-        catch {
-            continue
-        }
-
-        $eventValue = [string] (Get-DesktopLauncherJsonProperty -Object $entry -Name 'event')
-        $processValue = Get-DesktopLauncherJsonProperty -Object $entry -Name 'processId'
-        if ($eventValue -eq $EventName -and $null -ne $processValue -and [int] $processValue -eq $ProcessId) {
-            return $entry
-        }
-    }
-
-    return $null
-}
-
-function Find-DesktopLauncherDiagnosticEvent {
-    param(
-        [Parameter(Mandatory)] [string] $DiagnosticPath,
-        [Parameter(Mandatory)] [int] $ProcessId,
-        [Parameter(Mandatory)] [string] $EventName
-    )
-
-    foreach ($path in @($DiagnosticPath, "$DiagnosticPath.1", "$DiagnosticPath.2", "$DiagnosticPath.3")) {
-        $entry = Read-DesktopLauncherDiagnosticEvent `
-            -Path $path `
-            -ProcessId $ProcessId `
-            -EventName $EventName
-        if ($null -ne $entry) {
-            return $entry
-        }
-    }
-
-    return $null
-}
-
-function Resolve-DesktopLauncherLatencySegments {
-    param(
-        [Parameter(Mandatory)] [DateTimeOffset] $T0,
-        $T4,
-        [Parameter(Mandatory)] [int] $StopwatchMilliseconds,
-        $HostCreationDate,
-        [Parameter(Mandatory)] [string] $DiagnosticPath,
-        [Parameter(Mandatory)] [int] $ProcessId
-    )
-
-    $t1 = ConvertTo-DesktopLauncherUtcOffset -Value $HostCreationDate
-    $started = Find-DesktopLauncherDiagnosticEvent `
-        -DiagnosticPath $DiagnosticPath `
-        -ProcessId $ProcessId `
-        -EventName 'ProcessStarted'
-    $windowReady = Find-DesktopLauncherDiagnosticEvent `
-        -DiagnosticPath $DiagnosticPath `
-        -ProcessId $ProcessId `
-        -EventName 'WindowReady'
-    $t2 = ConvertTo-DesktopLauncherUtcOffset (
-        Get-DesktopLauncherJsonProperty -Object $started -Name 'timestampUtc')
-    $t3 = ConvertTo-DesktopLauncherUtcOffset (
-        Get-DesktopLauncherJsonProperty -Object $windowReady -Name 'timestampUtc')
-    $t4 = ConvertTo-DesktopLauncherUtcOffset -Value $T4
-
-    return [pscustomobject]@{
-        T0ToT1 = Get-DesktopLauncherUtcMilliseconds -From $T0 -To $t1
-        T1ToT2 = Get-DesktopLauncherUtcMilliseconds -From $t1 -To $t2
-        T2ToT3 = Get-DesktopLauncherUtcMilliseconds -From $t2 -To $t3
-        T3ToT4 = Get-DesktopLauncherUtcMilliseconds -From $t3 -To $t4
-        T0ToT4 = Get-DesktopLauncherUtcMilliseconds -From $T0 -To $t4
-        StopwatchMilliseconds = $StopwatchMilliseconds
-    }
-}
-
-function Format-DesktopLauncherLatencyBudgetMessage {
-    param(
-        [Parameter(Mandatory)] [string] $Kind,
-        [Parameter(Mandatory)] [int] $BudgetMilliseconds,
-        $ColdElapsedMilliseconds,
-        $WarmElapsedMilliseconds,
-        $ColdSegments,
-        $WarmSegments
-    )
-
-    $segments = if ($Kind -eq 'Cold') { $ColdSegments } else { $WarmSegments }
-    return (
-        '{0}启动<={1}ms：cold={2} warm={3} T0→T1={4} T1→T2={5} T2→T3={6} T3→T4={7} stopwatch={8} 口径=ContentRendered 探针样本={9}' -f `
-            $(if ($Kind -eq 'Cold') { '冷' } else { '暖' }),
-            $BudgetMilliseconds,
-            (Format-DesktopLauncherMilliseconds -Value $ColdElapsedMilliseconds),
-            (Format-DesktopLauncherMilliseconds -Value $WarmElapsedMilliseconds),
-            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T0ToT1')),
-            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T1ToT2')),
-            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T2ToT3')),
-            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'T3ToT4')),
-            (Format-DesktopLauncherMilliseconds -Value (Get-DesktopLauncherJsonProperty -Object $segments -Name 'StopwatchMilliseconds')),
-            $script:DesktopLauncherLatencyProbeEvidenceRoot
-    )
-}
-
-function Save-DesktopLauncherFailureEvidence {
-    param(
-        [Parameter(Mandatory)] [string] $Reason,
-        [Parameter(Mandatory)] [string] $Message,
-        [Parameter(Mandatory)] [string] $TestRoot,
-        [Parameter(Mandatory)] [string] $RuntimeStatusPath,
-        [Parameter(Mandatory)] [string] $DiagnosticPath,
-        $ColdReady,
-        $WarmReady,
-        $ColdSegments,
-        $WarmSegments
-    )
-
-    $evidenceRoot = 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests'
-    $runId = '{0}-{1}' -f `
-        [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ'),
-        [guid]::NewGuid().ToString('N')
-    $evidenceDirectory = Join-Path $evidenceRoot ("attempt-" + $runId)
-    New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
-
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    $blockedLeafNames = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]] @('settings.json'),
-        [System.StringComparer]::OrdinalIgnoreCase)
-    $copiedFiles = [System.Collections.Generic.List[object]]::new()
-    $copyFailures = [System.Collections.Generic.List[object]]::new()
-
-    $copyEvidenceFile = {
-        param([string] $SourcePath, [string] $DestinationName)
-        $leaf = [System.IO.Path]::GetFileName($SourcePath)
-        if (-not [string]::IsNullOrWhiteSpace($leaf) -and $blockedLeafNames.Contains($leaf)) {
-            $copyFailures.Add([ordered]@{
-                sourceName = $DestinationName
-                skipped = 'privacy-blocklist'
-            })
-            return
-        }
-        if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
-            $copiedFiles.Add([ordered]@{
-                name = $DestinationName
-                copied = $false
-                missing = $true
-            })
-            return
-        }
-
-        $destinationPath = Join-Path $evidenceDirectory $DestinationName
-        try {
-            Copy-DiagnosticConcurrencyEvidenceFile `
-                -SourcePath $SourcePath `
-                -DestinationPath $destinationPath
-            $copiedFiles.Add([ordered]@{
-                name = $DestinationName
-                copied = $true
-            })
-        }
-        catch {
-            $copyFailures.Add([ordered]@{
-                sourceName = $DestinationName
-                message = [string] $_.Exception.Message
-            })
-        }
-    }
-
-    & $copyEvidenceFile $RuntimeStatusPath 'runtime-status.json'
-    foreach ($suffix in @('', '.1', '.2', '.3')) {
-        $sourcePath = "$DiagnosticPath$suffix"
-        $leaf = [System.IO.Path]::GetFileName($sourcePath)
-        if ([string]::IsNullOrWhiteSpace($leaf)) {
-            $leaf = "application.jsonl$suffix"
-        }
-        & $copyEvidenceFile $sourcePath $leaf
-    }
-
-    $summary = [ordered]@{
-        schemaVersion = 1
-        capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        reason = $Reason
-        message = $Message
-        probeSampleDirectory = $script:DesktopLauncherLatencyProbeEvidenceRoot
-        windowReadyContract = 'WPF ContentRendered / Local\CountdownDesktopLauncherWindowReady'
-        budgetsMilliseconds = [ordered]@{
-            cold = $script:DesktopLauncherColdBudgetMilliseconds
-            warm = $script:DesktopLauncherWarmBudgetMilliseconds
-        }
-        coldElapsedMilliseconds = if ($null -eq $ColdReady) {
-            $null
-        }
-        else {
-            [int] $ColdReady.ElapsedMilliseconds
-        }
-        warmElapsedMilliseconds = if ($null -eq $WarmReady) {
-            $null
-        }
-        else {
-            [int] $WarmReady.ElapsedMilliseconds
-        }
-        coldSegments = $ColdSegments
-        warmSegments = $WarmSegments
-        copiedFiles = @($copiedFiles)
-        copyFailures = @($copyFailures)
-    }
-    [System.IO.File]::WriteAllText(
-        (Join-Path $evidenceDirectory 'capture-summary.json'),
-        ($summary | ConvertTo-Json -Depth 8),
-        $utf8NoBom)
-
-    return [pscustomobject]@{
-        Directory = $evidenceDirectory
-        Summary = $summary
-    }
 }
 
 function Get-IndependentTestDiagnosticMutexName {
@@ -1242,7 +886,7 @@ function Get-DiagnosticConcurrencyProbeCompletionCounts {
                 continue
             }
 
-            $eventName = [string] (Get-DesktopLauncherJsonProperty -Object $entry -Name 'event')
+            $eventName = [string] (Get-CountdownTestJsonProperty -Object $entry -Name 'event')
             if ($eventName -match '^InstanceActivationListenerFailedWorker(\d+)-(\d+)$') {
                 $worker = [int] $Matches[1]
                 if ($worker -ge 0 -and $worker -lt $WorkerCount) {
@@ -2462,167 +2106,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
     }
 }
 
-function Test-DesktopLauncherByteSequenceContains {
-    param(
-        [Parameter(Mandatory)] [byte[]] $Haystack,
-        [Parameter(Mandatory)] [byte[]] $Needle
-    )
-
-    if ($Needle.Length -eq 0 -or $Haystack.Length -lt $Needle.Length) {
-        return $false
-    }
-
-    $limit = $Haystack.Length - $Needle.Length
-    for ($index = 0; $index -le $limit; $index++) {
-        $matched = $true
-        for ($offset = 0; $offset -lt $Needle.Length; $offset++) {
-            if ($Haystack[$index + $offset] -ne $Needle[$offset]) {
-                $matched = $false
-                break
-            }
-        }
-        if ($matched) {
-            return $true
-        }
-    }
-
-    return $false
-}
-
-function Assert-DesktopLauncherSourceLocks {
-    # 桌面启动器落点与任务参数由安装布局定义；载荷复制、启动器替换与任务注册在安装事务生命周期内。
-    $launcherSourcePath = Join-Path $PSScriptRoot 'CountdownLauncher.cs'
-    $layoutSourcePath = Join-Path $PSScriptRoot 'Countdown.InstallTransaction.psm1'
-    $lifecycleSourcePath = Join-Path $PSScriptRoot 'Countdown.InstallLifecycle.psm1'
-    foreach ($sourcePath in @($launcherSourcePath, $layoutSourcePath, $lifecycleSourcePath)) {
-        if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-            throw "未找到启动器或安装源码：$sourcePath"
-        }
-    }
-
-    $launcherSource = [System.IO.File]::ReadAllText($launcherSourcePath)
-    $layoutSource = [System.IO.File]::ReadAllText($layoutSourcePath)
-    $lifecycleSource = [System.IO.File]::ReadAllText($lifecycleSourcePath)
-
-    Assert-Equal $false $launcherSource.Contains('schtasks', [System.StringComparison]::OrdinalIgnoreCase) `
-        'CountdownLauncher.cs 不再包含 schtasks'
-    Assert-Equal $true $launcherSource.Contains('D:\敏敏子倒计时\app\MinminCountdown.exe') `
-        'CountdownLauncher.cs 仍包含正式安装宿主回退路径'
-
-    $desktopLauncherPathIndex = $layoutSource.IndexOf("`$launcherPath = Join-Path `$desktopPath '敏敏子倒计时.exe'")
-    $payloadDestinationIndex = $lifecycleSource.IndexOf('(Join-Path $install $file)')
-    $payloadCopyIndex = $lifecycleSource.IndexOf('Copy-Item -LiteralPath $source -Destination $destination -Force')
-    $launcherMoveIndex = $lifecycleSource.IndexOf('Move-Item -LiteralPath $candidateLauncherPath -Destination $launcherPath -Force')
-
-    Assert-Equal $true ($desktopLauncherPathIndex -ge 0) '安装布局仍把启动器目标定为桌面 敏敏子倒计时.exe'
-    Assert-Equal $true ($payloadDestinationIndex -ge 0) '安装生命周期仍把 payload 写到安装根'
-    Assert-Equal $true ($payloadCopyIndex -ge 0) '安装生命周期仍复制 payload 到安装根目标'
-    Assert-Equal $true (
-        $launcherMoveIndex -gt $payloadCopyIndex -and
-        $payloadCopyIndex -gt $payloadDestinationIndex
-    ) '安装生命周期先写安装根 payload，再把启动器搬到桌面'
-    Assert-Equal $true (
-        $layoutSource.Contains('-STA -File `"$applicationPath`"') -and
-        $lifecycleSource.Contains('New-ScheduledTaskAction -Execute $PowerShell7Path -Argument $Layout.TaskArguments')
-    ) '登录任务仍用 pwsh 执行 adapter，而不是桌面启动器'
-}
-
-function Get-DesktopLauncherWin32Process {
-    param([Parameter(Mandatory)] [int] $ProcessId)
-
-    Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$ProcessId" -OperationTimeoutSec 5 -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-}
-
-function Get-DesktopLauncherProcessRecords {
-    param([Parameter(Mandatory)] [string] $ExecutablePath)
-
-    $normalized = [System.IO.Path]::GetFullPath($ExecutablePath)
-    return @(
-        Get-CimInstance -ClassName Win32_Process -Filter "Name='MinminCountdown.exe'" -OperationTimeoutSec 5 -ErrorAction Stop |
-            Where-Object {
-                -not [string]::IsNullOrWhiteSpace([string] $_.ExecutablePath) -and
-                [string]::Equals(
-                    [System.IO.Path]::GetFullPath([string] $_.ExecutablePath),
-                    $normalized,
-                    [System.StringComparison]::OrdinalIgnoreCase)
-            }
-    )
-}
-
-function Get-DesktopLauncherChildProcessRecords {
-    param([Parameter(Mandatory)] [int] $ParentProcessId)
-
-    return @(
-        Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId=$ParentProcessId" -OperationTimeoutSec 5 -ErrorAction Stop
-    )
-}
-
-function Assert-DesktopLauncherCommandLineAvoidsAdapter {
-    param(
-        [AllowNull()] [string] $CommandLine,
-        [Parameter(Mandatory)] [string] $Name
-    )
-
-    $text = [string] $CommandLine
-    foreach ($token in @('schtasks', 'pwsh', '敏敏子倒计时.ps1', '--require-startup-request')) {
-        Assert-Equal $false $text.Contains($token, [System.StringComparison]::OrdinalIgnoreCase) `
-            "$Name 命令行不含 $token"
-    }
-}
-
-function Stop-DesktopLauncherOwnedProcess {
-    param([AllowNull()] $Process)
-
-    if ($null -eq $Process) {
-        return
-    }
-
-    try {
-        if (-not $Process.HasExited) {
-            $Process.Kill($true)
-            [void] $Process.WaitForExit(5000)
-        }
-    }
-    catch {
-        if ($_.Exception -isnot [System.InvalidOperationException]) {
-            throw
-        }
-    }
-    finally {
-        $Process.Dispose()
-    }
-}
-
-function Stop-DesktopLauncherHostProcesses {
-    param([Parameter(Mandatory)] [string] $ExecutablePath)
-
-    foreach ($record in @(Get-DesktopLauncherProcessRecords -ExecutablePath $ExecutablePath)) {
-        try {
-            $process = [System.Diagnostics.Process]::GetProcessById([int] $record.ProcessId)
-        }
-        catch {
-            continue
-        }
-
-        try {
-            if (-not $process.HasExited) {
-                $process.Kill($true)
-                [void] $process.WaitForExit(5000)
-            }
-        }
-        catch {
-            if ($_.Exception -isnot [System.InvalidOperationException]) {
-                throw
-            }
-        }
-        finally {
-            $process.Dispose()
-        }
-    }
-}
-
-function Read-DesktopLauncherRuntimeReceipt {
+function Read-CountdownRuntimeReceipt {
     param([Parameter(Mandatory)] [string] $Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -2637,270 +2121,7 @@ function Read-DesktopLauncherRuntimeReceipt {
     }
 }
 
-function Wait-DesktopLauncherWindowReadyReceipt {
-    param(
-        [Parameter(Mandatory)] [string] $Path,
-        [Parameter(Mandatory)] [System.Diagnostics.Stopwatch] $Clock,
-        [Parameter(Mandatory)] [int] $TimeoutMilliseconds
-    )
-
-    # 日历刷新会覆盖同一回执，必须抓住第一次 window-ready，并在当时取窗口快照。
-    $lastStage = 'missing'
-    do {
-        $receipt = Read-DesktopLauncherRuntimeReceipt -Path $Path
-        if ($null -ne $receipt) {
-            $lastStage = [string] $receipt.stage
-            if ($lastStage -eq 'window-ready') {
-                return [pscustomobject]@{
-                    Receipt = $receipt
-                    T4 = [DateTimeOffset]::UtcNow
-                    ElapsedMilliseconds = [int] $Clock.ElapsedMilliseconds
-                    VisibleWindows = @(Get-VisibleProcessWindows -ProcessId ([int] $receipt.processId))
-                }
-            }
-        }
-
-        if ($Clock.ElapsedMilliseconds -ge $TimeoutMilliseconds) {
-            throw "window-ready 回执超时：elapsed=$($Clock.ElapsedMilliseconds)ms stage=$lastStage"
-        }
-
-        Start-Sleep -Milliseconds 10
-    } while ($true)
-}
-
-function Assert-DesktopLauncherWindowReadyReceipt {
-    param(
-        [Parameter(Mandatory)] $Receipt,
-        [Parameter(Mandatory)] [int] $ExpectedProcessId,
-        [Parameter(Mandatory)] [int] $ExpectedSessionId,
-        [Parameter(Mandatory)] [string] $ExpectedHostPath,
-        [Parameter(Mandatory)] [string] $ExpectedAdapterPath,
-        [Parameter(Mandatory)] [string] $Name
-    )
-
-    Assert-Equal 4 ([int] $Receipt.schemaVersion) "$Name schemaVersion"
-    Assert-Equal 'window-ready' ([string] $Receipt.stage) "$Name stage"
-    Assert-Equal 'Pending' ([string] $Receipt.calendarState) "$Name calendarState 保持 Pending"
-    Assert-Equal 'China Standard Time' ([string] $Receipt.timeZoneId) "$Name timeZoneId"
-    Assert-Equal $false ([string]::IsNullOrWhiteSpace([string] $Receipt.launchToken)) "$Name launchToken"
-    Assert-Equal $ExpectedProcessId ([int] $Receipt.processId) "$Name processId"
-    Assert-Equal $ExpectedSessionId ([int] $Receipt.sessionId) "$Name sessionId"
-    Assert-Equal (
-        [System.IO.Path]::GetFullPath($ExpectedAdapterPath)
-    ) (
-        [System.IO.Path]::GetFullPath([string] $Receipt.applicationPath)
-    ) "$Name applicationPath"
-
-    $process = Get-DesktopLauncherWin32Process -ProcessId $ExpectedProcessId
-    Assert-Equal $true ($null -ne $process) "$Name 回执进程仍存在"
-    Assert-Equal $ExpectedSessionId ([int] $process.SessionId) "$Name 宿主属于当前交互会话"
-    Assert-Equal (
-        [System.IO.Path]::GetFullPath($ExpectedHostPath)
-    ) (
-        [System.IO.Path]::GetFullPath([string] $process.ExecutablePath)
-    ) "$Name 宿主是隔离 fixture 内受管 C# EXE"
-    Assert-DesktopLauncherCommandLineAvoidsAdapter `
-        -CommandLine ([string] $process.CommandLine) `
-        -Name $Name
-
-    $evaluation = Test-CountdownWindowReadyReceipt `
-        -Receipt $Receipt `
-        -ExpectedLaunchToken ([string] $Receipt.launchToken) `
-        -ExpectedSessionId $ExpectedSessionId `
-        -ExpectedApplicationPath $ExpectedAdapterPath
-    Assert-Equal $true ([bool] $evaluation.Ready) "$Name 官方回执认定受管 C# 宿主"
-}
-
-function Test-DesktopLauncherWpfFloatingWindowClass {
-    param([AllowNull()] [string] $ClassName)
-
-    $name = [string] $ClassName
-    return $name.StartsWith('HwndWrapper[', [System.StringComparison]::Ordinal)
-}
-
-function Assert-DesktopLauncherFirstFrameWindows {
-    param(
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [object[]] $VisibleWindows,
-        [Parameter(Mandatory)] [string] $Name
-    )
-
-    $nativeWindows = @($VisibleWindows | Where-Object {
-            [string] $_.ClassName -eq 'MinminCountdownNativeStartupFrame'
-        })
-    $wpfFloatingWindows = @($VisibleWindows | Where-Object {
-            [string] $_.Title -eq '敏敏子悬浮窗' -and
-            (Test-DesktopLauncherWpfFloatingWindowClass -ClassName ([string] $_.ClassName))
-        })
-    $titleFloatingWindows = @($VisibleWindows | Where-Object Title -eq '敏敏子悬浮窗')
-    $managerWindows = @($VisibleWindows | Where-Object Title -eq '敏敏子倒计时')
-    $interactiveWindows = @($VisibleWindows | Where-Object {
-            $_.Title -eq '敏敏子悬浮窗' -or $_.Title -eq '敏敏子倒计时'
-        })
-
-    Assert-Equal 0 $nativeWindows.Count "$Name 没有空 Win32 启动壳"
-    Assert-Equal 1 $wpfFloatingWindows.Count "$Name 可见窗口是 WPF FloatingWindow"
-    Assert-Equal 1 $titleFloatingWindows.Count "$Name 标题为悬浮窗的窗口恰好 1 个"
-    Assert-Equal 0 $managerWindows.Count "$Name 管理窗口不可见"
-    Assert-Equal 1 $interactiveWindows.Count "$Name 没有重复交互窗口"
-    return [pscustomobject]@{
-        FloatingCount = $wpfFloatingWindows.Count
-        NativeCount = $nativeWindows.Count
-        ManagerCount = $managerWindows.Count
-        InteractiveCount = $interactiveWindows.Count
-        Titles = @($VisibleWindows | ForEach-Object { [string] $_.Title })
-        ClassNames = @($VisibleWindows | ForEach-Object { [string] $_.ClassName })
-    }
-}
-
-function Invoke-DesktopLauncherNoSidecarFallbackProcessTest {
-    param(
-        [Parameter(Mandatory)] [string] $FixtureRoot,
-        [Parameter(Mandatory)] [string] $RepoHost,
-        [Parameter(Mandatory)] [string] $RepoAdapter,
-        [Parameter(Mandatory)] [string] $RepoLauncherSource,
-        [Parameter(Mandatory)] [string] $RepoIcon,
-        [Parameter(Mandatory)] [string] $RepoLauncher,
-        [Parameter(Mandatory)] [int] $CurrentSessionId
-    )
-
-    $productionHost = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\app\MinminCountdown.exe')
-    $productionSettingsPath = [System.IO.Path]::GetFullPath('D:\敏敏子倒计时\settings.json')
-    $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-    $launcherDir = Join-Path $FixtureRoot 'desktop'
-    $installRoot = Join-Path $FixtureRoot 'install'
-    $installHostDirectory = Join-Path $installRoot 'app'
-    $installHost = [System.IO.Path]::GetFullPath((Join-Path $installHostDirectory 'MinminCountdown.exe'))
-    $installAdapter = Join-Path $installRoot '敏敏子倒计时.ps1'
-    $installSettings = Join-Path $installRoot 'settings.json'
-    $sourceDir = Join-Path $FixtureRoot 'src'
-    $patchedSource = Join-Path $sourceDir 'CountdownLauncher.cs'
-    $isolatedLauncher = Join-Path $launcherDir 'CountdownLauncher.exe'
-    $fallbackLauncher = $null
-
-    if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
-        throw "未找到启动器编译器：$compiler"
-    }
-    if (-not (Test-Path -LiteralPath $RepoLauncherSource -PathType Leaf)) {
-        throw "未找到启动器源码：$RepoLauncherSource"
-    }
-    if (-not (Test-Path -LiteralPath $RepoIcon -PathType Leaf)) {
-        throw "未找到启动器图标：$RepoIcon"
-    }
-
-    New-Item -ItemType Directory -Path $launcherDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $installHostDirectory -Force | Out-Null
-    New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
-    Copy-DesktopLauncherHostPayload -SourceHost $RepoHost -DestinationHost $installHost
-    Copy-Item -LiteralPath $RepoAdapter -Destination $installAdapter
-
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    [System.IO.File]::WriteAllText(
-        $installSettings,
-        '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}',
-        $utf8NoBom)
-
-    $originalSource = [System.IO.File]::ReadAllText($RepoLauncherSource)
-    $productionConst = 'private const string InstalledHostPath = @"D:\敏敏子倒计时\app\MinminCountdown.exe";'
-    $isolatedConst = "private const string InstalledHostPath = @`"$installHost`";"
-    Assert-Equal $true $originalSource.Contains($productionConst) '仓库启动器源码仍声明正式安装宿主常量'
-    $patchedText = $originalSource.Replace($productionConst, $isolatedConst)
-    Assert-Equal $false $patchedText.Contains('D:\敏敏子倒计时\app\MinminCountdown.exe') '隔离启动器源码已去掉生产宿主路径'
-    Assert-Equal $true $patchedText.Contains($isolatedConst) '隔离启动器源码回退到隔离安装宿主'
-    [System.IO.File]::WriteAllText($patchedSource, $patchedText, $utf8NoBom)
-
-    Assert-Equal $false (
-        [string]::Equals(
-            [System.IO.Path]::GetFullPath($isolatedLauncher),
-            [System.IO.Path]::GetFullPath($RepoLauncher),
-            [System.StringComparison]::OrdinalIgnoreCase)
-    ) '无 sidecar 回退不使用仓库现役 CountdownLauncher.exe'
-    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $launcherDir 'app')) '隔离启动器目录没有 sidecar app'
-
-    $null = Invoke-CheckedNativeCommand `
-        -FilePath $compiler `
-        -ArgumentList @(
-            '/nologo',
-            '/target:winexe',
-            "/win32icon:$RepoIcon",
-            "/out:$isolatedLauncher",
-            $patchedSource
-        ) `
-        -Operation '编译隔离无 sidecar 启动器'
-    Assert-Equal $true (Test-Path -LiteralPath $isolatedLauncher -PathType Leaf) '隔离启动器已编译'
-
-    $isolatedBytes = [System.IO.File]::ReadAllBytes($isolatedLauncher)
-    $productionHostUtf16 = [System.Text.Encoding]::Unicode.GetBytes('D:\敏敏子倒计时\app\MinminCountdown.exe')
-    $isolatedHostUtf16 = [System.Text.Encoding]::Unicode.GetBytes($installHost)
-    Assert-Equal $false (
-        Test-DesktopLauncherByteSequenceContains -Haystack $isolatedBytes -Needle $productionHostUtf16
-    ) '隔离启动器二进制不含生产宿主路径'
-    Assert-Equal $true (
-        Test-DesktopLauncherByteSequenceContains -Haystack $isolatedBytes -Needle $isolatedHostUtf16
-    ) '隔离启动器二进制包含隔离安装宿主路径'
-
-    $productionSettingsHashBefore = $null
-    if (Test-Path -LiteralPath $productionSettingsPath -PathType Leaf) {
-        $productionSettingsHashBefore = (Get-FileHash -LiteralPath $productionSettingsPath -Algorithm SHA256).Hash
-    }
-
-    Assert-Equal 0 @(Get-DesktopLauncherProcessRecords -ExecutablePath $productionHost).Count `
-        '回退启动前生产宿主进程数为 0'
-
-    try {
-        $fallbackLauncher = Start-Process -FilePath $isolatedLauncher -WorkingDirectory $launcherDir -PassThru -WindowStyle Hidden
-        $hostDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-        $isolatedHostRecords = @()
-        do {
-            $isolatedHostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $installHost)
-            if ($isolatedHostRecords.Count -gt 0) {
-                break
-            }
-            Start-Sleep -Milliseconds 20
-        } while ([DateTimeOffset]::UtcNow -lt $hostDeadline)
-
-        if (-not $fallbackLauncher.HasExited -and -not $fallbackLauncher.WaitForExit(10000)) {
-            throw "无 sidecar 回退启动器未在有界期限内返回：PID=$($fallbackLauncher.Id)"
-        }
-        $fallbackLauncher.WaitForExit()
-        Assert-Equal 0 $fallbackLauncher.ExitCode '无 sidecar 回退启动器在宿主启动后立即成功返回'
-        Assert-Equal 1 $isolatedHostRecords.Count '无 sidecar 回退只启动隔离安装宿主'
-        $isolatedHostRecord = $isolatedHostRecords[0]
-        Assert-Equal $fallbackLauncher.Id ([int] $isolatedHostRecord.ParentProcessId) '无 sidecar 回退宿主由隔离启动器直接创建'
-        Assert-Equal $CurrentSessionId ([int] $isolatedHostRecord.SessionId) '无 sidecar 回退宿主属于当前交互会话'
-        Assert-Equal $installHost (
-            [System.IO.Path]::GetFullPath([string] $isolatedHostRecord.ExecutablePath)
-        ) '无 sidecar 回退子进程是隔离安装 exe'
-        Assert-DesktopLauncherCommandLineAvoidsAdapter `
-            -CommandLine ([string] $isolatedHostRecord.CommandLine) `
-            -Name '无 sidecar 回退宿主'
-
-        $childNames = [System.Collections.Generic.HashSet[string]]::new(
-            [System.StringComparer]::OrdinalIgnoreCase)
-        foreach ($child in @(Get-DesktopLauncherChildProcessRecords -ParentProcessId $fallbackLauncher.Id)) {
-            if (-not [string]::IsNullOrWhiteSpace([string] $child.Name)) {
-                [void] $childNames.Add([string] $child.Name)
-            }
-        }
-        Assert-Equal $false $childNames.Contains('schtasks.exe') '无 sidecar 回退未创建 schtasks 子进程'
-        Assert-Equal $false $childNames.Contains('pwsh.exe') '无 sidecar 回退未创建 pwsh 子进程'
-
-        Assert-Equal 0 @(Get-DesktopLauncherProcessRecords -ExecutablePath $productionHost).Count `
-            '无 sidecar 回退未启动生产宿主'
-        if ($null -ne $productionSettingsHashBefore) {
-            Assert-Equal $productionSettingsHashBefore (
-                Get-FileHash -LiteralPath $productionSettingsPath -Algorithm SHA256
-            ).Hash '无 sidecar 回退不改生产 settings'
-        }
-    }
-    finally {
-        Stop-DesktopLauncherOwnedProcess -Process $fallbackLauncher
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $installHost
-    }
-
-    return $installHost
-}
-
-function Copy-DesktopLauncherHostPayload {
+function Copy-CountdownApplicationPayload {
     param(
         [Parameter(Mandatory)] [string] $SourceHost,
         [Parameter(Mandatory)] [string] $DestinationHost
@@ -2912,7 +2133,7 @@ function Copy-DesktopLauncherHostPayload {
         throw "未找到发布宿主目录：$sourceApp"
     }
 
-    Remove-DesktopLauncherHostPayload -DestinationHost $DestinationHost
+    Remove-CountdownApplicationPayload -DestinationHost $DestinationHost
     $parent = Split-Path -Parent $destinationApp
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
@@ -2924,362 +2145,12 @@ function Copy-DesktopLauncherHostPayload {
     }
 }
 
-function Remove-DesktopLauncherHostPayload {
+function Remove-CountdownApplicationPayload {
     param([Parameter(Mandatory)] [string] $DestinationHost)
 
     $destinationApp = [System.IO.Path]::GetFullPath((Split-Path -Parent $DestinationHost))
     if (Test-Path -LiteralPath $destinationApp) {
         [System.IO.Directory]::Delete($destinationApp)
-    }
-}
-
-function Invoke-DesktopLauncherProcessTests {
-    Assert-DesktopLauncherSourceLocks
-    $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
-    $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
-    $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-desktop-launcher-tests'
-    $testRoot = [System.IO.Path]::GetFullPath(
-        (Join-Path $testGroupRoot ("run-" + [guid]::NewGuid().ToString('N')))
-    )
-    $repoLauncher = Join-Path $PSScriptRoot 'CountdownLauncher.exe'
-    $repoLauncherSource = Join-Path $PSScriptRoot 'CountdownLauncher.cs'
-    $repoIcon = Join-Path $PSScriptRoot 'countdown-icon.ico'
-    $repoHost = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
-    $repoAdapter = Join-Path $PSScriptRoot '敏敏子倒计时.ps1'
-    $fixtureLauncher = Join-Path $testRoot 'CountdownLauncher.exe'
-    $fixtureHostDirectory = Join-Path $testRoot 'app'
-    $fixtureHost = Join-Path $fixtureHostDirectory 'MinminCountdown.exe'
-    $fixtureAdapter = Join-Path $testRoot '敏敏子倒计时.ps1'
-    $fallbackRoot = Join-Path $testRoot 'fallback-no-sidecar'
-    $fallbackHost = Join-Path $fallbackRoot 'install\app\MinminCountdown.exe'
-    $runtimeStatusPath = Join-Path $testRoot 'runtime-status.json'
-    $diagnosticLogPath = Join-Path $testRoot 'logs\application.jsonl'
-    $firstLauncher = $null
-    $secondLauncher = $null
-    $warmLauncher = $null
-    $coldReady = $null
-    $warmReady = $null
-    $coldSegments = $null
-    $warmSegments = $null
-    $originalError = $null
-    $currentSessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
-    Import-Module -Name (Join-Path $PSScriptRoot 'Countdown.Runtime.psm1') -Force
-
-    if (-not (Test-Path -LiteralPath $repoLauncher -PathType Leaf)) {
-        throw "未找到仓库启动器：$repoLauncher"
-    }
-    if (-not (Test-Path -LiteralPath $repoHost -PathType Leaf)) {
-        throw "未找到发布宿主：$repoHost"
-    }
-    if (-not (Test-Path -LiteralPath $repoAdapter -PathType Leaf)) {
-        throw "未找到 adapter 脚本：$repoAdapter"
-    }
-    if (-not (Test-Path -LiteralPath $safeTreeDelete -PathType Leaf)) {
-        throw "未找到受管测试目录清理入口：$safeTreeDelete"
-    }
-
-    try {
-        Assert-DesktopLauncherLatencyGateIsolationBehavior
-        New-Item -ItemType Directory -Path $fixtureHostDirectory -Force | Out-Null
-        Copy-Item -LiteralPath $repoLauncher -Destination $fixtureLauncher
-        Copy-DesktopLauncherHostPayload -SourceHost $repoHost -DestinationHost $fixtureHost
-        Copy-Item -LiteralPath $repoAdapter -Destination $fixtureAdapter
-
-        $isolatedSettingsPath = Join-Path $testRoot 'settings.json'
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-        [System.IO.File]::WriteAllText(
-            $isolatedSettingsPath,
-            '{"schemaVersion":10,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":0,"workStart":"09:00","workEnd":"18:00","themePreference":"Day","tags":[],"countdowns":[],"notes":[],"reminderStates":{}}',
-            $utf8NoBom)
-        $repoSettingsPath = Join-Path $PSScriptRoot 'settings.json'
-        $repoSettingsHashBefore = $null
-        if (Test-Path -LiteralPath $repoSettingsPath -PathType Leaf) {
-            $repoSettingsHashBefore = (Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256).Hash
-        }
-
-        $coldT0 = [DateTimeOffset]::UtcNow
-        $coldClock = [System.Diagnostics.Stopwatch]::StartNew()
-        $firstLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
-        $firstLauncherSessionId = [int] $firstLauncher.SessionId
-        $observedChildNames = [System.Collections.Generic.HashSet[string]]::new(
-            [System.StringComparer]::OrdinalIgnoreCase)
-        $coldReady = Wait-DesktopLauncherWindowReadyReceipt `
-            -Path $runtimeStatusPath `
-            -Clock $coldClock `
-            -TimeoutMilliseconds 10000
-        $firstLauncherRecord = Get-DesktopLauncherWin32Process -ProcessId $firstLauncher.Id
-        if (-not $firstLauncher.HasExited -and -not $firstLauncher.WaitForExit(10000)) {
-            throw "桌面启动器未在有界期限内返回：PID=$($firstLauncher.Id)"
-        }
-        $firstLauncher.WaitForExit()
-        foreach ($child in @(Get-DesktopLauncherChildProcessRecords -ParentProcessId $firstLauncher.Id)) {
-            if (-not [string]::IsNullOrWhiteSpace([string] $child.Name)) {
-                [void] $observedChildNames.Add([string] $child.Name)
-            }
-        }
-        Assert-Equal 0 $firstLauncher.ExitCode '桌面启动器在宿主启动后立即成功返回'
-        Assert-Equal (
-            [System.IO.Path]::GetFullPath($fixtureLauncher)
-        ) (
-            [System.IO.Path]::GetFullPath([string] $firstLauncher.StartInfo.FileName)
-        ) '测试直接启动隔离 fixture 启动器'
-        Assert-Equal 0 @($firstLauncher.StartInfo.ArgumentList).Count '启动器进程没有 schtasks 或 adapter 参数'
-        Assert-Equal $currentSessionId $firstLauncherSessionId '桌面启动器属于当前交互会话'
-        if ($null -ne $firstLauncherRecord) {
-            $firstParent = Get-DesktopLauncherWin32Process -ProcessId ([int] $firstLauncherRecord.ParentProcessId)
-            Assert-Equal $PID ([int] $firstLauncherRecord.ParentProcessId) '桌面启动器由当前测试进程直接创建'
-            Assert-Equal $false (
-                $null -ne $firstParent -and
-                [string]::Equals([string] $firstParent.Name, 'schtasks.exe', [System.StringComparison]::OrdinalIgnoreCase)
-            ) '桌面启动器不是通过 schtasks 拉起'
-            Assert-DesktopLauncherCommandLineAvoidsAdapter `
-                -CommandLine ([string] $firstLauncherRecord.CommandLine) `
-                -Name '桌面启动器'
-            Assert-Equal $currentSessionId ([int] $firstLauncherRecord.SessionId) 'Win32 启动器会话与当前交互会话一致'
-        }
-        else {
-            Assert-Equal $true ($firstLauncher.Id -gt 0) '启动器进程由当前测试会话直接创建，而不是 schtasks'
-        }
-        Assert-Equal $false $observedChildNames.Contains('schtasks.exe') '启动器未创建 schtasks 子进程'
-        Assert-Equal $false $observedChildNames.Contains('pwsh.exe') '启动器未创建 pwsh 子进程'
-
-        $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
-        Assert-Equal 1 $hostRecords.Count '首次启动只创建隔离 fixture 内的一个宿主'
-        $firstHost = $hostRecords[0]
-        Assert-Equal $firstLauncher.Id ([int] $firstHost.ParentProcessId) '宿主由启动器直接创建'
-        Assert-Equal $currentSessionId ([int] $firstHost.SessionId) '宿主属于当前交互会话'
-        Assert-Equal (
-            [System.IO.Path]::GetFullPath($fixtureHost)
-        ) (
-            [System.IO.Path]::GetFullPath([string] $firstHost.ExecutablePath)
-        ) '宿主可执行路径是隔离 fixture 的 MinminCountdown.exe'
-        Assert-DesktopLauncherCommandLineAvoidsAdapter `
-            -CommandLine ([string] $firstHost.CommandLine) `
-            -Name '首次宿主'
-        Assert-Equal $true (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
-            '首次启动后宿主写出隔离 runtime-status'
-        Assert-Equal $true (Test-Path -LiteralPath $isolatedSettingsPath -PathType Leaf) `
-            '桌面启动使用隔离应用根内的设置文件'
-        if ($null -ne $repoSettingsHashBefore) {
-            Assert-Equal $repoSettingsHashBefore (
-                Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256
-            ).Hash '桌面启动不写仓库设置'
-        }
-        Assert-DesktopLauncherWindowReadyReceipt `
-            -Receipt $coldReady.Receipt `
-            -ExpectedProcessId ([int] $firstHost.ProcessId) `
-            -ExpectedSessionId $currentSessionId `
-            -ExpectedHostPath $fixtureHost `
-            -ExpectedAdapterPath $fixtureAdapter `
-            -Name '冷启动首帧回执'
-        $coldWindows = Assert-DesktopLauncherFirstFrameWindows `
-            -VisibleWindows @($coldReady.VisibleWindows) `
-            -Name '冷启动首帧窗口'
-        $coldSegments = Resolve-DesktopLauncherLatencySegments `
-            -T0 $coldT0 `
-            -T4 $coldReady.T4 `
-            -StopwatchMilliseconds ([int] $coldReady.ElapsedMilliseconds) `
-            -HostCreationDate $firstHost.CreationDate `
-            -DiagnosticPath $diagnosticLogPath `
-            -ProcessId ([int] $firstHost.ProcessId)
-
-        $firstHostPid = [int] $firstHost.ProcessId
-        $secondLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
-        if (-not $secondLauncher.WaitForExit(10000)) {
-            throw "第二次启动器未在有界期限内返回：PID=$($secondLauncher.Id)"
-        }
-        $secondLauncher.WaitForExit()
-        Assert-Equal 0 $secondLauncher.ExitCode '已有实例时启动器仍直接拉起宿主并成功返回'
-
-        $singleHostDeadline = [DateTimeOffset]::UtcNow.AddSeconds(10)
-        do {
-            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
-            $duplicateHosts = @(
-                $hostRecords |
-                    Where-Object { [int] $_.ProcessId -ne $firstHostPid }
-            )
-            if ($duplicateHosts.Count -eq 0 -and $hostRecords.Count -eq 1) {
-                break
-            }
-            Start-Sleep -Milliseconds 50
-        } while ([DateTimeOffset]::UtcNow -lt $singleHostDeadline)
-
-        Assert-Equal 1 $hostRecords.Count '再次启动启动器不会留下第二个长期宿主'
-        Assert-Equal $firstHostPid ([int] $hostRecords[0].ProcessId) '第二次启动后仍是同一个长期宿主'
-        $survivingHost = Get-Process -Id $firstHostPid -ErrorAction SilentlyContinue
-        Assert-Equal $true ($null -ne $survivingHost -and -not $survivingHost.HasExited) '首次宿主在第二次启动后仍存活'
-        if ($null -ne $survivingHost) {
-            $survivingHost.Dispose()
-        }
-
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
-        $hostGoneDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
-        do {
-            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
-            if ($hostRecords.Count -eq 0) {
-                break
-            }
-            Start-Sleep -Milliseconds 20
-        } while ([DateTimeOffset]::UtcNow -lt $hostGoneDeadline)
-        Assert-Equal 0 $hostRecords.Count '暖启动前隔离宿主已退出'
-        if (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) {
-            Remove-Item -LiteralPath $runtimeStatusPath -Force
-        }
-        Assert-Equal $false (Test-Path -LiteralPath $runtimeStatusPath -PathType Leaf) `
-            '暖启动前已清除旧 window-ready 回执'
-
-        $warmT0 = [DateTimeOffset]::UtcNow
-        $warmClock = [System.Diagnostics.Stopwatch]::StartNew()
-        $warmLauncher = Start-Process -FilePath $fixtureLauncher -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden
-        $warmReady = Wait-DesktopLauncherWindowReadyReceipt `
-            -Path $runtimeStatusPath `
-            -Clock $warmClock `
-            -TimeoutMilliseconds 10000
-        if (-not $warmLauncher.HasExited -and -not $warmLauncher.WaitForExit(10000)) {
-            throw "暖启动启动器未在有界期限内返回：PID=$($warmLauncher.Id)"
-        }
-        $warmLauncher.WaitForExit()
-        Assert-Equal 0 $warmLauncher.ExitCode '暖启动启动器在宿主启动后立即成功返回'
-
-        $warmHostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
-        Assert-Equal 1 $warmHostRecords.Count '暖启动只创建隔离 fixture 内的一个宿主'
-        $warmHost = $warmHostRecords[0]
-        Assert-Equal $false ([int] $warmHost.ProcessId -eq $firstHostPid) '暖启动是新的宿主进程'
-        Assert-Equal $warmLauncher.Id ([int] $warmHost.ParentProcessId) '暖启动宿主由启动器直接创建'
-        Assert-DesktopLauncherCommandLineAvoidsAdapter `
-            -CommandLine ([string] $warmHost.CommandLine) `
-            -Name '暖启动宿主'
-        Assert-DesktopLauncherWindowReadyReceipt `
-            -Receipt $warmReady.Receipt `
-            -ExpectedProcessId ([int] $warmHost.ProcessId) `
-            -ExpectedSessionId $currentSessionId `
-            -ExpectedHostPath $fixtureHost `
-            -ExpectedAdapterPath $fixtureAdapter `
-            -Name '暖启动首帧回执'
-        $warmWindows = Assert-DesktopLauncherFirstFrameWindows `
-            -VisibleWindows @($warmReady.VisibleWindows) `
-            -Name '暖启动首帧窗口'
-        $warmSegments = Resolve-DesktopLauncherLatencySegments `
-            -T0 $warmT0 `
-            -T4 $warmReady.T4 `
-            -StopwatchMilliseconds ([int] $warmReady.ElapsedMilliseconds) `
-            -HostCreationDate $warmHost.CreationDate `
-            -DiagnosticPath $diagnosticLogPath `
-            -ProcessId ([int] $warmHost.ProcessId)
-        if ($null -ne $repoSettingsHashBefore) {
-            Assert-Equal $repoSettingsHashBefore (
-                Get-FileHash -LiteralPath $repoSettingsPath -Algorithm SHA256
-            ).Hash '暖启动不写仓库设置'
-        }
-
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
-        $sidecarHostGoneDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
-        do {
-            $hostRecords = @(Get-DesktopLauncherProcessRecords -ExecutablePath $fixtureHost)
-            if ($hostRecords.Count -eq 0) {
-                break
-            }
-            Start-Sleep -Milliseconds 20
-        } while ([DateTimeOffset]::UtcNow -lt $sidecarHostGoneDeadline)
-        Assert-Equal 0 $hostRecords.Count '无 sidecar 回退前 sidecar 宿主已退出'
-
-        $null = Invoke-DesktopLauncherNoSidecarFallbackProcessTest `
-            -FixtureRoot $fallbackRoot `
-            -RepoHost $repoHost `
-            -RepoAdapter $repoAdapter `
-            -RepoLauncherSource $repoLauncherSource `
-            -RepoIcon $repoIcon `
-            -RepoLauncher $repoLauncher `
-            -CurrentSessionId $currentSessionId
-
-        Assert-Equal $true (
-            Test-DesktopLauncherLatencyBudget `
-                -ElapsedMilliseconds $coldReady.ElapsedMilliseconds `
-                -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds
-        ) (
-            Format-DesktopLauncherLatencyBudgetMessage `
-                -Kind Cold `
-                -BudgetMilliseconds $script:DesktopLauncherColdBudgetMilliseconds `
-                -ColdElapsedMilliseconds $coldReady.ElapsedMilliseconds `
-                -WarmElapsedMilliseconds $warmReady.ElapsedMilliseconds `
-                -ColdSegments $coldSegments `
-                -WarmSegments $warmSegments
-        )
-        Assert-Equal $true (
-            Test-DesktopLauncherLatencyBudget `
-                -ElapsedMilliseconds $warmReady.ElapsedMilliseconds `
-                -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds
-        ) (
-            Format-DesktopLauncherLatencyBudgetMessage `
-                -Kind Warm `
-                -BudgetMilliseconds $script:DesktopLauncherWarmBudgetMilliseconds `
-                -ColdElapsedMilliseconds $coldReady.ElapsedMilliseconds `
-                -WarmElapsedMilliseconds $warmReady.ElapsedMilliseconds `
-                -ColdSegments $coldSegments `
-                -WarmSegments $warmSegments
-        )
-
-        [pscustomobject]@{
-            Passed = $script:assertions
-            Failed = 0
-            DesktopLauncherOnly = $true
-            ProcessScenarios = 3
-            FallbackNoSidecar = $true
-            ColdStartMilliseconds = [int] $coldReady.ElapsedMilliseconds
-            WarmStartMilliseconds = [int] $warmReady.ElapsedMilliseconds
-        } | ConvertTo-Json
-    }
-    catch {
-        $originalError = $_
-        $originalMessage = [string] $_.Exception.Message
-        $evidenceDirectory = $null
-        try {
-            $evidence = Save-DesktopLauncherFailureEvidence `
-                -Reason 'DesktopLauncherOnlyFailed' `
-                -Message $originalMessage `
-                -TestRoot $testRoot `
-                -RuntimeStatusPath $runtimeStatusPath `
-                -DiagnosticPath $diagnosticLogPath `
-                -ColdReady $coldReady `
-                -WarmReady $warmReady `
-                -ColdSegments $coldSegments `
-                -WarmSegments $warmSegments
-            $evidenceDirectory = [string] $evidence.Directory
-        }
-        catch {
-            [Console]::Error.WriteLine("WARNING: 桌面启动器失败证据保全未完成：$($_.Exception.Message)")
-        }
-
-        if ([string]::IsNullOrWhiteSpace($evidenceDirectory)) {
-            throw $originalError
-        }
-        throw "${originalMessage}，证据：$evidenceDirectory"
-    }
-    finally {
-        Stop-DesktopLauncherOwnedProcess -Process $warmLauncher
-        Stop-DesktopLauncherOwnedProcess -Process $secondLauncher
-        Stop-DesktopLauncherOwnedProcess -Process $firstLauncher
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $fixtureHost
-        Stop-DesktopLauncherHostProcesses -ExecutablePath $fallbackHost
-        Remove-DesktopLauncherHostPayload -DestinationHost $fixtureHost
-        Remove-DesktopLauncherHostPayload -DestinationHost $fallbackHost
-
-        if (Test-Path -LiteralPath $testRoot -PathType Container) {
-            try {
-                Invoke-ManagedTestRootPurge `
-                    -SafeTreeDelete $safeTreeDelete `
-                    -TestRoot $testRoot `
-                    -CapabilityRoot $testCapabilityRoot `
-                    -FailedMessage '受管桌面启动器测试目录清理失败' `
-                    -IncompleteMessage '受管桌面启动器测试目录未完成清理'
-            }
-            catch {
-                if ($null -eq $originalError) {
-                    throw
-                }
-                [Console]::Error.WriteLine("WARNING: 测试已失败，清理失败不覆盖原始错误：$($_.Exception.Message)")
-            }
-        }
     }
 }
 
@@ -3350,7 +2221,7 @@ function Invoke-InstanceActivationMatrixTests {
 . (Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ExternalClose.ps1')
 Write-TestSegmentTiming -Name 'Setup'
 if ($ExternalCloseOnly) {
-    if ($DesktopLauncherOnly -or $InstanceActivationOnly -or $InstanceActivationMatrix -or $MigrationParityOnly -or $AllowForegroundDesktopLauncher) {
+    if ($InstanceActivationOnly -or $InstanceActivationMatrix -or $MigrationParityOnly -or $AllowForegroundWindowedSteps) {
         throw '-ExternalCloseOnly 不能与其他测试范围或前台桌面开关组合。'
     }
     $externalCloseOnlyResult = Invoke-ExternalCloseOnlyTests -RepositoryRoot $PSScriptRoot
@@ -3359,16 +2230,6 @@ if ($ExternalCloseOnly) {
     $externalCloseOnlyResult | ConvertTo-Json
     exit 0
 }
-if ($DesktopLauncherOnly) {
-    if ($InstanceActivationOnly -or $InstanceActivationMatrix) {
-        throw '-DesktopLauncherOnly 不能与实例激活开关组合。'
-    }
-    Invoke-DesktopLauncherProcessTests
-    Write-TestSegmentTiming -Name 'DesktopLauncherOnly'
-    Write-TestSegmentTotal
-    exit 0
-}
-
 if ($InstanceActivationMatrix) {
     if ($InstanceActivationOnly -or
         $InstanceActivationTestState -ne 'FloatingVisible' -or
@@ -3538,8 +2399,6 @@ if ($MigrationParityOnly) {
     }
 }
 
-Assert-DesktopLauncherSourceLocks
-
 if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -3574,7 +2433,6 @@ public static class BundleAssetProbe
 $verificationRunner = Join-Path $PSScriptRoot 'verification\MinminCountdown.Verification.exe'
 $windowVerificationRunner = Join-Path $PSScriptRoot 'window-verification\MinminCountdown.WindowVerification.exe'
 $application = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
-$adapter = Join-Path $PSScriptRoot '敏敏子倒计时.ps1'
 $settingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
 $runtimeModule = Join-Path $PSScriptRoot 'Countdown.Runtime.psm1'
 $pwsh = (Get-Process -Id $PID).Path
@@ -3666,9 +2524,6 @@ $embeddedRetiredAssets = [MinminCountdown.Tests.BundleAssetProbe]::FindPayloadNa
     [string[]] $retiredFloatingRuntimeAssetFiles
 )
 Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不包含已淘汰的旧悬浮窗 PNG 资产名'
-if (-not (Test-Path -LiteralPath $adapter -PathType Leaf)) {
-    throw "未找到 PowerShell 薄 adapter：$adapter"
-}
 if (-not (Test-Path -LiteralPath $settingsModule -PathType Leaf)) {
     throw "未找到 PowerShell 设置契约 module：$settingsModule"
 }
@@ -3711,7 +2566,7 @@ $mutexReadyPath = Join-Path $testRoot 'mutex-ready.json'
 $mutexHolderOutputPath = Join-Path $testRoot 'mutex-holder.stdout.txt'
 $mutexHolderErrorPath = Join-Path $testRoot 'mutex-holder.stderr.txt'
     $captureHelperProbePath = Join-Path $testRoot 'capture-helper-probe.ps1'
-    $adapterDiagnosticPath = Join-Path $testRoot 'adapter-application.jsonl'
+    $applicationValidationDiagnosticPath = Join-Path $testRoot 'application-validation.jsonl'
 $nightMigrationDiagnosticPath = Join-Path $testRoot 'night-migration-application.jsonl'
 $failedValidationDiagnosticPath = Join-Path $testRoot 'failed-validation-application.jsonl'
 $noteExercisePath = Join-Path $testRoot 'note-exercise.settings.json'
@@ -3719,14 +2574,14 @@ $noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jso
 $interactiveRoot = Join-Path $testRoot 'interactive-application-root'
 $interactiveApplicationDirectory = Join-Path $interactiveRoot 'app'
 $interactiveApplicationPath = Join-Path $interactiveApplicationDirectory 'MinminCountdown.exe'
-$interactiveAdapterPath = Join-Path $interactiveRoot '敏敏子倒计时.ps1'
+$interactiveProtocolApplicationPath = Join-Path $interactiveRoot '敏敏子倒计时.ps1'
 $interactiveSettingsPath = Join-Path $interactiveRoot 'settings.json'
 $interactiveStartupRequestPath = Join-Path $interactiveRoot 'startup-request.json'
 $interactiveRuntimeStatusPath = Join-Path $interactiveRoot 'runtime-status.json'
 $interactiveAcceptanceStatusPath = Join-Path $interactiveRoot 'acceptance-status.json'
 $interactiveDiagnosticPath = Join-Path $interactiveRoot 'logs\application.jsonl'
-$interactiveAdapterOutputPath = Join-Path $testRoot 'interactive-adapter.stdout.txt'
-$interactiveAdapterErrorPath = Join-Path $testRoot 'interactive-adapter.stderr.txt'
+$interactiveLaunchOutputPath = Join-Path $testRoot 'interactive-application.stdout.txt'
+$interactiveLaunchErrorPath = Join-Path $testRoot 'interactive-application.stderr.txt'
 $duplicateApplicationOutputPath = Join-Path $testRoot 'duplicate-application.stdout.txt'
 $duplicateApplicationErrorPath = Join-Path $testRoot 'duplicate-application.stderr.txt'
 $requiredRequestOutputPath = Join-Path $testRoot 'required-request.stdout.txt'
@@ -3735,7 +2590,7 @@ $unknownSchemaOutputPath = Join-Path $testRoot 'unknown-schema.stdout.txt'
 $unknownSchemaErrorPath = Join-Path $testRoot 'unknown-schema.stderr.txt'
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $mutexHolderProcess = $null
-$interactiveAdapterProcess = $null
+$interactiveLaunchProcess = $null
 $interactiveApplicationProcess = $null
 $duplicateApplicationProcess = $null
 $originalError = $null
@@ -4051,7 +2906,7 @@ exit 23
     $directDecoyRoot = Join-Path $directLaunchRoot 'decoy-working-directory'
     New-Item -ItemType Directory -Path $directInstallRoot, $directDecoyRoot | Out-Null
     Copy-Item -LiteralPath (Split-Path -Parent $application) -Destination $directProgramDirectory -Recurse
-    Copy-Item -LiteralPath $adapter -Destination $directDecoyRoot
+    [System.IO.File]::WriteAllText((Join-Path $directDecoyRoot '敏敏子倒计时.ps1'), '# decoy only: never read or executed', $utf8NoBom)
     $directSettingsPath = Join-Path $directInstallRoot 'settings.json'
     [System.IO.File]::WriteAllText($directSettingsPath, $fixture, $utf8NoBom)
     $directProgramApplication = Join-Path $directProgramDirectory 'MinminCountdown.exe'
@@ -4465,7 +3320,7 @@ exit 23
         [pscustomobject]@{ ExitCode = $run.ExitCode; Report = $report }
     }
 
-    Copy-DesktopLauncherHostPayload -SourceHost $application -DestinationHost $migrationApplicationPath
+    Copy-CountdownApplicationPayload -SourceHost $application -DestinationHost $migrationApplicationPath
     try {
         & $writeSettingsFamily -SettingsPath $migrationLiveSettingsPath -MainJson $migrationLiveFixture
         $migrationLiveOriginal = & $readSettingsFamily -SettingsPath $migrationLiveSettingsPath
@@ -4675,7 +3530,7 @@ exit 23
             }
         }
         finally {
-            Remove-DesktopLauncherHostPayload -DestinationHost $migrationApplicationPath
+            Remove-CountdownApplicationPayload -DestinationHost $migrationApplicationPath
         }
     }
     Write-TestSegmentTiming -Name 'SettingsMigrationCli'
@@ -4872,28 +3727,28 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
-    $adapterResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+    $applicationValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--settings-file',
         $themeExercisePath,
         '--diagnostic-log-path',
-        $adapterDiagnosticPath
+        $applicationValidationDiagnosticPath
     )
-    if ($adapterResult.ExitCode -ne 0) {
-        $adapterFailureDetail = @(
-            "直接运行 C# 应用 --validate-only 失败，退出码：$($adapterResult.ExitCode)。",
-            "标准输出：$([Environment]::NewLine)$($adapterResult.Stdout)",
-            "标准错误：$([Environment]::NewLine)$($adapterResult.Stderr)"
+    if ($applicationValidationResult.ExitCode -ne 0) {
+        $applicationValidationFailureDetail = @(
+            "直接运行 C# 应用 --validate-only 失败，退出码：$($applicationValidationResult.ExitCode)。",
+            "标准输出：$([Environment]::NewLine)$($applicationValidationResult.Stdout)",
+            "标准错误：$([Environment]::NewLine)$($applicationValidationResult.Stderr)"
         ) -join [Environment]::NewLine
-        throw $adapterFailureDetail
+        throw $applicationValidationFailureDetail
     }
-    $adapterValidationOutput = [string] $adapterResult.Stdout
-    $adapterValidationDocument = [System.Text.Json.JsonDocument]::Parse($adapterValidationOutput)
+    $applicationValidationOutput = [string] $applicationValidationResult.Stdout
+    $applicationValidationDocument = [System.Text.Json.JsonDocument]::Parse($applicationValidationOutput)
     try {
-        $adapterValidationJsonKinds = [System.Collections.Generic.Dictionary[string, string]]::new(
+        $applicationValidationJsonKinds = [System.Collections.Generic.Dictionary[string, string]]::new(
             [System.StringComparer]::Ordinal)
-        $adapterValidationPropertyNames = @(
-            foreach ($property in $adapterValidationDocument.RootElement.EnumerateObject()) {
+        $applicationValidationPropertyNames = @(
+            foreach ($property in $applicationValidationDocument.RootElement.EnumerateObject()) {
                 $jsonKind = switch ($property.Value.ValueKind.ToString()) {
                     'Null' { 'Null' }
                     'True' { 'Boolean' }
@@ -4904,39 +3759,39 @@ function Get-RejectionMessage([string[]] $Arguments) {
                     'Number' { 'Number' }
                     default { throw "未知的 validate-only JSON 值类型：$($property.Value.ValueKind)" }
                 }
-                $adapterValidationJsonKinds.Add($property.Name, $jsonKind)
+                $applicationValidationJsonKinds.Add($property.Name, $jsonKind)
                 $property.Name
             }
         )
     }
     finally {
-        $adapterValidationDocument.Dispose()
+        $applicationValidationDocument.Dispose()
     }
-    $adapterValidation = $adapterValidationOutput | ConvertFrom-Json
+    $applicationValidation = $applicationValidationOutput | ConvertFrom-Json
     # 参考基线过期已延后时，复述基线比对结果的断言（Validated、门禁、实拍与基线 SHA、像素阈值、残留诊断）
     # 留到重拍后的重跑；其余断言照常执行，套件收尾以 75 退出。
     $deferredReferenceBaselines = @(
-        if ($null -ne $adapterValidation.PSObject.Properties['DeferredReferenceBaselineFailures']) {
-            $adapterValidation.DeferredReferenceBaselineFailures
+        if ($null -ne $applicationValidation.PSObject.Properties['DeferredReferenceBaselineFailures']) {
+            $applicationValidation.DeferredReferenceBaselineFailures
         })
     $mainReferenceBaselineDeferred = @($deferredReferenceBaselines |
         Where-Object { ([string] $_).StartsWith('MainReferenceBaseline ', [StringComparison]::Ordinal) }).Count -gt 0
     $floatingReferenceBaselineDeferred = @($deferredReferenceBaselines |
         Where-Object { ([string] $_).StartsWith('FloatingReferenceBaseline ', [StringComparison]::Ordinal) }).Count -gt 0
-    $adapterDiagnosticEvents = @(
-        Get-Content -LiteralPath $adapterDiagnosticPath |
+    $applicationValidationDiagnosticEvents = @(
+        Get-Content -LiteralPath $applicationValidationDiagnosticPath |
             ForEach-Object { ($_ | ConvertFrom-Json).event }
     )
     $syntheticTrayLogCount = @(
-        $adapterDiagnosticEvents |
+        $applicationValidationDiagnosticEvents |
             Where-Object { $_ -in @('FloatingWindowMinimizedToTray', 'FloatingWindowRestoredFromTray') }
     ).Count
     $validationResourcesReleasedIndex = [Array]::IndexOf(
-        [object[]] $adapterDiagnosticEvents,
+        [object[]] $applicationValidationDiagnosticEvents,
         'ValidationResourcesReleased'
     )
     $validationCompletedIndex = [Array]::IndexOf(
-        [object[]] $adapterDiagnosticEvents,
+        [object[]] $applicationValidationDiagnosticEvents,
         'ValidationCompleted'
     )
     Assert-Equal 0 $syntheticTrayLogCount 'validate-only 托盘演练不伪造用户操作日志'
@@ -4946,11 +3801,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     ) 'validate-only 在报告完成前释放真实 WPF 场景资源'
     Assert-Equal $themeExerciseHash (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash '主题迁移启动用例（Auto→日间）不报错且不被强制回写'
     Assert-Equal 'Auto' ([string] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).themePreference) '主题迁移启动用例隔离设置保留旧 Auto 偏好'
-    Assert-Equal 'Day' ([string]::Join(',', @($adapterValidation.FloatingThemeBoundaryModes))) '旧 Auto 主题设置启动一律按日间解释：悬浮窗'
-    Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '旧 Auto 主题设置启动一律按日间解释：主窗口背景'
+    Assert-Equal 'Day' ([string]::Join(',', @($applicationValidation.FloatingThemeBoundaryModes))) '旧 Auto 主题设置启动一律按日间解释：悬浮窗'
+    Assert-Equal '#FFFDF0E4' ([string] $applicationValidation.MainThemeBackgroundColors) '旧 Auto 主题设置启动一律按日间解释：主窗口背景'
 
     # 主题迁移启动用例（Night→日间）：旧设置 themePreference=Night 必须按日间解释、不报错、不被强制回写。
-    Write-TestSegmentTiming -Name 'AdapterValidationRun'
+    Write-TestSegmentTiming -Name 'ApplicationValidationRun'
     $nightMigrationPath = Join-Path $testRoot 'theme-migration-night.settings.json'
     $nightMigrationState = ConvertFrom-CountdownSettingsObject -Settings (
         Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -5079,40 +3934,40 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ($unblockedPersistenceResult.ExitCode -ne 0) '持久化失败演练拒绝未阻塞的临时路径'
     Assert-Equal $persistenceExerciseHash (Get-FileHash -LiteralPath $persistenceExercisePath -Algorithm SHA256).Hash '被拒绝的未阻塞临时路径演练不改设置'
     Write-TestSegmentTiming -Name 'PersistenceFailureFixture'
-    Assert-Equal $true ([bool] $adapterValidation.Valid) 'validate-only 返回有效 C# 验证报告'
-    Assert-Equal $true ([bool] $adapterValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
-    Assert-Equal $adapterValidationPropertyNames.Count @($adapterValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
-    Assert-Equal 'Number' $adapterValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
-    Assert-Equal $true ([bool] $adapterValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
+    Assert-Equal $true ([bool] $applicationValidation.Valid) 'validate-only 返回有效 C# 验证报告'
+    Assert-Equal $true ([bool] $applicationValidation.ValidationReportContractBehavior) 'validate-only 报告可序列化且行为字段完整'
+    Assert-Equal $applicationValidationPropertyNames.Count @($applicationValidationPropertyNames | Sort-Object -Unique).Count 'validate-only JSON 顶层键唯一'
+    Assert-Equal 'Number' $applicationValidationJsonKinds['FloatingTitleTextRequiredWidth'] 'validate-only JSON 数值形状不受整数或小数布局度量影响'
+    Assert-Equal $true ([bool] $applicationValidation.NoteStatusSegmentSwitch) 'validate-only 验证便签状态分段切换控件：并排两段、固定标签、徽章计数与激活态互斥'
     # #264：迁入 Ui ListValidation 依赖 populated fixture 的输入与真实列表行为；复用本次 adapter 报告。
-    Assert-Equal 2 ([int] $adapterValidation.LoadedCountdowns) 'populated fixture 载入两个倒计时'
-    Assert-Equal '未来项目,已到期项目' ([string]::Join(',', @($adapterValidation.SortedNames))) '倒计时按现役顺序呈现'
-    Assert-Equal $true ([bool] $adapterValidation.PersistenceRoundTrip) '倒计时 canonical 持久化往返稳定'
-    Assert-Equal 1 ([int] $adapterValidation.LoadedTags) 'populated fixture 载入一个共享标签'
-    Assert-Equal $true ([bool] $adapterValidation.TagPersistenceRoundTrip) '共享标签 canonical 持久化往返稳定'
-    Assert-Equal 5 ([int] $adapterValidation.LoadedNotes) 'populated fixture 载入五张便签'
-    Assert-Equal $true (3 -eq [int] $adapterValidation.ActiveNoteCount -and 2 -eq [int] $adapterValidation.CompletedNoteCount) '便签按完成状态正确分组计数'
-    Assert-Equal $true ([bool] $adapterValidation.NotePersistenceRoundTrip) '便签 canonical 持久化往返稳定'
-    Assert-Equal $true ([bool] $adapterValidation.NoteActionsBoundByTag) '便签行动作绑定记录 ID'
-    Assert-Equal $true ([bool] $adapterValidation.NoteStatusLabelsPresent) '便签真实行包含状态标签'
-    Assert-Equal $true ([bool] $adapterValidation.HasNoteDateControls) '管理窗与悬浮窗均有便签日期控件'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDatesRendered) '便签真实行渲染日历日期'
-    Assert-Equal $true ([bool] $adapterValidation.NotesGroupedByDay) '便签真实行按日历日分组'
-    Assert-Equal '未完成新日期乙,未完成新日期甲,未完成旧日期,已完成新日期,已完成旧日期' ([string]::Join(',', @($adapterValidation.SortedNoteTexts))) '便签按新日期及同日期新条目优先排序'
-    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old,note-completed-new,note-completed-old' ([string]::Join(',', @($adapterValidation.RenderedManagerNoteIds))) '管理窗真实便签行遵循共享排序'
-    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old' ([string]::Join(',', @($adapterValidation.RenderedFloatingNoteIds))) '悬浮窗真实便签行遵循共享排序'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateDefaultsTrackBeijingDay) '便签默认日期随北京日历日推进'
-    Assert-Equal $true ([bool] $adapterValidation.NoteDateChoicesSurviveBeijingDayChange) '北京跨日不覆盖已选日期与草稿'
-    Assert-Equal $true ([bool] $adapterValidation.CompletedNotesCollapsed) '已完成便签默认收起'
-    Assert-Equal $false ([bool] $adapterValidation.SettingsWereMigrated) 'canonical populated fixture 不被误报为旧设置'
-    Assert-Equal $true ([bool] $adapterValidation.CardActionsBoundByTag) '倒计时行动作绑定记录 ID'
-    Assert-Equal 1 ([int] $adapterValidation.FloatingCountdownCount) '悬浮窗只呈现一个未到期用户倒计时'
-    Assert-Equal $true (1 -eq @($adapterValidation.FloatingCountdownTexts).Count -and [string] $adapterValidation.FloatingCountdownTexts[0] -match '天 .*小时 .*分钟 .*秒') '悬浮倒计时使用统一单位格式'
-    Assert-Equal $true ([string] $adapterValidation.FloatingIncomeText -match '今日已赚 ￥|节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复|节假日日历正在加载|加油！美好的事情正在靠近') '悬浮底部显示收入、节假日状态或鼓励文案'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingEmptyStateTextIsolationBehavior) '悬浮空态文案映射隔离行为通过'
+    Assert-Equal 2 ([int] $applicationValidation.LoadedCountdowns) 'populated fixture 载入两个倒计时'
+    Assert-Equal '未来项目,已到期项目' ([string]::Join(',', @($applicationValidation.SortedNames))) '倒计时按现役顺序呈现'
+    Assert-Equal $true ([bool] $applicationValidation.PersistenceRoundTrip) '倒计时 canonical 持久化往返稳定'
+    Assert-Equal 1 ([int] $applicationValidation.LoadedTags) 'populated fixture 载入一个共享标签'
+    Assert-Equal $true ([bool] $applicationValidation.TagPersistenceRoundTrip) '共享标签 canonical 持久化往返稳定'
+    Assert-Equal 5 ([int] $applicationValidation.LoadedNotes) 'populated fixture 载入五张便签'
+    Assert-Equal $true (3 -eq [int] $applicationValidation.ActiveNoteCount -and 2 -eq [int] $applicationValidation.CompletedNoteCount) '便签按完成状态正确分组计数'
+    Assert-Equal $true ([bool] $applicationValidation.NotePersistenceRoundTrip) '便签 canonical 持久化往返稳定'
+    Assert-Equal $true ([bool] $applicationValidation.NoteActionsBoundByTag) '便签行动作绑定记录 ID'
+    Assert-Equal $true ([bool] $applicationValidation.NoteStatusLabelsPresent) '便签真实行包含状态标签'
+    Assert-Equal $true ([bool] $applicationValidation.HasNoteDateControls) '管理窗与悬浮窗均有便签日期控件'
+    Assert-Equal $true ([bool] $applicationValidation.NoteDatesRendered) '便签真实行渲染日历日期'
+    Assert-Equal $true ([bool] $applicationValidation.NotesGroupedByDay) '便签真实行按日历日分组'
+    Assert-Equal '未完成新日期乙,未完成新日期甲,未完成旧日期,已完成新日期,已完成旧日期' ([string]::Join(',', @($applicationValidation.SortedNoteTexts))) '便签按新日期及同日期新条目优先排序'
+    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old,note-completed-new,note-completed-old' ([string]::Join(',', @($applicationValidation.RenderedManagerNoteIds))) '管理窗真实便签行遵循共享排序'
+    Assert-Equal 'note-active-new-second,note-active-new-first,note-active-old' ([string]::Join(',', @($applicationValidation.RenderedFloatingNoteIds))) '悬浮窗真实便签行遵循共享排序'
+    Assert-Equal $true ([bool] $applicationValidation.NoteDateDefaultsTrackBeijingDay) '便签默认日期随北京日历日推进'
+    Assert-Equal $true ([bool] $applicationValidation.NoteDateChoicesSurviveBeijingDayChange) '北京跨日不覆盖已选日期与草稿'
+    Assert-Equal $true ([bool] $applicationValidation.CompletedNotesCollapsed) '已完成便签默认收起'
+    Assert-Equal $false ([bool] $applicationValidation.SettingsWereMigrated) 'canonical populated fixture 不被误报为旧设置'
+    Assert-Equal $true ([bool] $applicationValidation.CardActionsBoundByTag) '倒计时行动作绑定记录 ID'
+    Assert-Equal 1 ([int] $applicationValidation.FloatingCountdownCount) '悬浮窗只呈现一个未到期用户倒计时'
+    Assert-Equal $true (1 -eq @($applicationValidation.FloatingCountdownTexts).Count -and [string] $applicationValidation.FloatingCountdownTexts[0] -match '天 .*小时 .*分钟 .*秒') '悬浮倒计时使用统一单位格式'
+    Assert-Equal $true ([string] $applicationValidation.FloatingIncomeText -match '今日已赚 ￥|节假日安排未就绪：距离下班和今日已赚暂不可用，联网后自动恢复|节假日日历正在加载|加油！美好的事情正在靠近') '悬浮底部显示收入、节假日状态或鼓励文案'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingEmptyStateTextIsolationBehavior) '悬浮空态文案映射隔离行为通过'
     # #156 辅助技术与快捷键：朗读、Ctrl+F、清除名称与位置复位（新增 2 个顶层键 + 源码契约）。
-    Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
-    Assert-Equal 'True' ([string] $adapterValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
+    Assert-Equal 'True' ([string] $applicationValidation.MainKeyboardBehavior.CommandResults.NoteSearch) '主窗便签页 Ctrl+F 聚焦便签搜索（#156）'
+    Assert-Equal 'True' ([string] $applicationValidation.MainKeyboardBehavior.CommandResults.Filter) '倒计时页没有正文搜索时 Ctrl+F 仍打开筛选（#156）'
     # #155 源码契约：删除/完成/退出流的行为钉在实现面，运行态由上述探针共同钉住。
     $appHostSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'src\MinminCountdown\App.xaml.cs') -Raw -Encoding UTF8
@@ -5496,16 +4351,16 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $dwmWindowChromeSource -match 'DwmSetWindowAttribute' -and
         $dwmWindowChromeSource -match 'MainWindowDwmRoundedCornersFallback' -and
         $dwmWindowChromeSource -match 'catch \(Exception') '主窗口 SourceInitialized 请求 Windows 11 DWM 原生圆角，失败只记录降级且不启用整窗透明（#200 源码契约）'
-    Assert-Equal 0 @($adapterValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
+    Assert-Equal 0 @($applicationValidationPropertyNames | Where-Object { $_ -in @('DeepModuleCount', 'DeepModuleInterfaces') }).Count 'validate-only 不输出类型清单或固定 deep module 计数'
     foreach ($factName in $windowVerificationFacts.Keys) {
-        Assert-Equal $false ($factName -in @($adapterValidationPropertyNames)) `
+        Assert-Equal $false ($factName -in @($applicationValidationPropertyNames)) `
             "#273/#274/#297 产品 validate-only 不再产出已迁入独立窗口项目的同名字段：$factName"
     }
-    Assert-Equal $true ([bool] $adapterValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
+    Assert-Equal $true ([bool] $applicationValidation.ValidationReportModuleDeep) '兼容字段由验证报告真实 JSON 契约计算'
     # #129 去重迁移（U1 独有断言）：DatePicker 文本点击与主题弹层系列。
-    Assert-Equal $true ([double] $adapterValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
-    $productionDatePickerMeasurements = @($adapterValidation.DatePickerProductionMeasurements)
+    Assert-Equal $true ([double] $applicationValidation.DatePickerTextAvailableWidth -gt 0) '日期框实测可用宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.DatePickerTextRequiredWidth -gt 0) '日期框实测需求宽度为正（#129 自 U1 迁移）'
+    $productionDatePickerMeasurements = @($applicationValidation.DatePickerProductionMeasurements)
     # 管理窗等比收缩后正文降一档而日期模板下拉列不缩，#312 将全部六处生产日期框纳入裁切几何断言。
     $clippingGuardedDatePickers = @('Main.CountdownDate', 'Main.NoteDate', 'Main.NoteDateFilter', 'Floating.NoteDate', 'ReminderRules.FirstDueDate')
     foreach ($measurement in @(
@@ -5523,32 +4378,32 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $productionDatePickerMeasurements |
             Where-Object { $_.Name -in $clippingGuardedDatePickers }
     ).Count '主窗口三处、悬浮窗与规则编辑器日期框均纳入裁切几何断言（#190 / #237 / #312）'
-    $reminderCenterDateMeasurement = $adapterValidation.DatePickerReminderCenterMeasurement
+    $reminderCenterDateMeasurement = $applicationValidation.DatePickerReminderCenterMeasurement
     Assert-Equal $true ([bool] $reminderCenterDateMeasurement.TextFit.Fits) '提醒中心自定义稍后日期框完整中文日期不裁切（#312）'
     Assert-Equal $true (
         [double] $reminderCenterDateMeasurement.TextFit.Available -gt 0 -and
         [double] $reminderCenterDateMeasurement.TextFit.Required -gt 0 -and
         [double] $reminderCenterDateMeasurement.TextFit.Available -ge [double] $reminderCenterDateMeasurement.TextFit.Required
     ) '提醒中心自定义稍后日期框文本宽度不超过可用宽度（#312）'
-    Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.CountdownElementsVisible) '倒计时首次空态显示角色、标题、说明和填写引导'
-    Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.NotesElementsVisible) '便签首次空态显示角色、标题、说明和填写引导'
-    Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.AddActionsFocusEditors) '两个空态填写引导聚焦对应编辑器'
-    Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.DecorationsAreNonInteractive) '空态角色插画不参与读屏和命中测试'
-    Assert-Equal $true ([bool] $adapterValidation.MainEmptyStateGuidance.PopulatedListsRestoreEmptyState) '列表空态与非空列表切换后可恢复'
-    Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineRequested) '主窗口参考基线只在源码树存在双 manifest 时请求'
-    Assert-Equal $mainReferenceBaselineRequired ([bool] $adapterValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
-    Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($adapterValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
+    Assert-Equal $true ([double] $applicationValidation.CalendarHeaderTextAvailableWidth -gt 0) '日历头部实测可用宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.CalendarHeaderTextRequiredWidth -gt 0) '日历头部实测需求宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] $applicationValidation.MainEmptyStateGuidance.CountdownElementsVisible) '倒计时首次空态显示角色、标题、说明和填写引导'
+    Assert-Equal $true ([bool] $applicationValidation.MainEmptyStateGuidance.NotesElementsVisible) '便签首次空态显示角色、标题、说明和填写引导'
+    Assert-Equal $true ([bool] $applicationValidation.MainEmptyStateGuidance.AddActionsFocusEditors) '两个空态填写引导聚焦对应编辑器'
+    Assert-Equal $true ([bool] $applicationValidation.MainEmptyStateGuidance.DecorationsAreNonInteractive) '空态角色插画不参与读屏和命中测试'
+    Assert-Equal $true ([bool] $applicationValidation.MainEmptyStateGuidance.PopulatedListsRestoreEmptyState) '列表空态与非空列表切换后可恢复'
+    Assert-Equal $mainReferenceBaselineRequired ([bool] $applicationValidation.MainReferenceBaselineRequested) '主窗口参考基线只在源码树存在双 manifest 时请求'
+    Assert-Equal $mainReferenceBaselineRequired ([bool] $applicationValidation.MainReferenceBaselineManifestAvailable) '主窗口参考 manifest 可用状态匹配源码树或发布包模式'
+    Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-capture-id,duplicate-path,duplicate-scenario,duplicate-state-fingerprint,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,reused-frame,source-hash-mismatch,state-fingerprint-mismatch,wrong-dimensions' ((@($applicationValidation.MainReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '主窗口正式视觉负向夹具集合完整'
     if ($mainReferenceBaselineRequired) {
-    Assert-Equal (-not $mainReferenceBaselineDeferred) ([bool] $adapterValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest（基线过期已延后时如实记为未通过）'
-    Assert-Equal "$($visualBaseline.Main.RelativeDirectory)/manifest.json" ([string] $adapterValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
-    Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
-    Assert-Equal 64 ([string] $adapterValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
+    Assert-Equal (-not $mainReferenceBaselineDeferred) ([bool] $applicationValidation.MainReferenceBaselineValidated) '主窗口八场景真实 WPF 帧通过正式 manifest（基线过期已延后时如实记为未通过）'
+    Assert-Equal "$($visualBaseline.Main.RelativeDirectory)/manifest.json" ([string] $applicationValidation.MainReferenceBaselineManifestPath) '主窗口 manifest 报告路径保持仓库相对格式'
+    Assert-Equal 64 ([string] $applicationValidation.MainReferenceBaselineSourceAggregateSha256).Length '主窗口视觉源码聚合使用 SHA-256'
+    Assert-Equal 64 ([string] $applicationValidation.MainReferenceBaselineExecutableSha256).Length '主窗口正式参考帧绑定最终 EXE SHA-256'
     if (-not $mainReferenceBaselineDeferred) {
-        Assert-Equal 16 @($adapterValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
+        Assert-Equal 16 @($applicationValidation.MainReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '主窗口正式 manifest 十六项门禁全部通过'
     }
-    $mainReferenceCaptures = @($adapterValidation.MainReferenceBaselineCaptures)
+    $mainReferenceCaptures = @($applicationValidation.MainReferenceBaselineCaptures)
     $expectedMainReferenceCaptureIds = @(
         'main-day-countdowns-empty',
         'main-day-countdowns-representative',
@@ -5576,8 +4431,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 1 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Edit' -and $_.StateFingerprint.CountdownCount -eq 3 -and $_.StateFingerprint.NoteCount -eq 3 }).Count '主窗口 Edit 便签帧绑定 Representative 数据并打开编辑器'
     Assert-Equal 1 @($mainReferenceCaptures | Where-Object { $_.State -eq 'FilterOpen' -and $_.StateFingerprint.CountdownCount -eq 3 -and $_.StateFingerprint.NoteCount -eq 3 }).Count '主窗口 FilterOpen 便签帧绑定 Representative 数据并打开筛选弹层'
     Assert-Equal 2 @($mainReferenceCaptures | Where-Object { $_.State -eq 'Stress' -and $_.StateFingerprint.CountdownCount -eq 9 -and $_.StateFingerprint.NoteCount -eq 8 -and $_.StateFingerprint.ActiveNoteCount -eq 4 -and $_.StateFingerprint.CompletedNoteCount -eq 4 }).Count '主窗口 Stress 两态绑定极长标题、长便签、提醒、完成状态与多日期组'
-    Assert-Equal $true ([bool] $adapterValidation.MainStressCountdownTitleVisuals) '主窗口 Stress 30 字符标题通过真实 WPF 可见性与操作区隔离门禁'
-    $stressCountdownTitleMeasurements = @($adapterValidation.MainStressCountdownTitleMeasurements)
+    Assert-Equal $true ([bool] $applicationValidation.MainStressCountdownTitleVisuals) '主窗口 Stress 30 字符标题通过真实 WPF 可见性与操作区隔离门禁'
+    $stressCountdownTitleMeasurements = @($applicationValidation.MainStressCountdownTitleMeasurements)
     Assert-Equal 1 $stressCountdownTitleMeasurements.Count '主窗口 Stress 标题精确测量单一日间态'
     Assert-Equal 'main-day-countdowns-stress' ((@($stressCountdownTitleMeasurements.CaptureId) | Sort-Object) -join ',') '主窗口 Stress 标题测量 capture ID 固定'
     Assert-Equal 0 @($stressCountdownTitleMeasurements | Where-Object {
@@ -5590,64 +4445,64 @@ function Get-RejectionMessage([string[]] $Arguments) {
         -not $_.SeparatedFromRemaining -or
         -not $_.SeparatedFromActions
     }).Count '主窗口 Stress 标题日间态完整单行显示且不与剩余时间或操作按钮相交'
-    $noteCardReminderMeasurements = @($adapterValidation.MainNoteCardReminderFontMeasurements)
+    $noteCardReminderMeasurements = @($applicationValidation.MainNoteCardReminderFontMeasurements)
     Assert-Equal 2 $noteCardReminderMeasurements.Count '主窗口 Representative/Stress 日间便签帧均有提醒摘要取样'
     Assert-Equal 'main-day-notes-representative,main-day-notes-stress' ((@($noteCardReminderMeasurements.CaptureId) | Sort-Object) -join ',') '主窗口便签卡提醒摘要测量 capture ID 固定'
     Assert-Equal 0 @($noteCardReminderMeasurements | Where-Object { [int] $_.SampleCount -le 0 }).Count '每帧提醒摘要取样至少命中一张可见便签卡'
-    $noteCardReminderFontSizeDip = [double] $adapterValidation.MainNoteCardReminderFontSizeDip
+    $noteCardReminderFontSizeDip = [double] $applicationValidation.MainNoteCardReminderFontSizeDip
     if ($noteCardReminderFontSizeDip -lt 12) {
         throw "便签卡提醒摘要真实渲染字号未达合同 12 DIP：actual=[$noteCardReminderFontSizeDip]"
     }
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '主窗口便签卡提醒摘要真实渲染达到 12 DIP'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCardReminderFontSizeMeetsContract) '主窗口便签卡提醒摘要真实渲染达到 12 DIP'
     Assert-Equal 0 @($noteCardReminderMeasurements | Where-Object { [double] $_.FontSizeDip -lt 12 -or -not $_.MeetsContract }).Count '每份便签卡提醒摘要取样真实渲染均 ≥ 12 DIP'
     if (-not $mainReferenceBaselineDeferred) {
-        Assert-Equal 0 @($adapterValidation.MainReferenceBaselineDiagnostics).Count '主窗口正式 manifest 验证没有残留诊断'
+        Assert-Equal 0 @($applicationValidation.MainReferenceBaselineDiagnostics).Count '主窗口正式 manifest 验证没有残留诊断'
     }
-    Assert-Equal $true ([bool] $adapterValidation.MainDaySingleBorderGate) '主窗口日间态在声明装饰带之外只保留一层控件边框'
-    Assert-Equal $true ([bool] $adapterValidation.MainDaySingleBorderGateIsolationBehavior) '主窗口意外控件边、标签相交和下半装饰缺失负夹具逐项失败'
-    Assert-Equal 'unexpected-control-edge,label-intersection,missing-lower-ornament' ((@($adapterValidation.MainDaySingleBorderNegativeFixtures) -join ',')) '主窗口单边框负向夹具集合固定'
-    $singleBorderMeasurements = @($adapterValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
+    Assert-Equal $true ([bool] $applicationValidation.MainDaySingleBorderGate) '主窗口日间态在声明装饰带之外只保留一层控件边框'
+    Assert-Equal $true ([bool] $applicationValidation.MainDaySingleBorderGateIsolationBehavior) '主窗口意外控件边、标签相交和下半装饰缺失负夹具逐项失败'
+    Assert-Equal 'unexpected-control-edge,label-intersection,missing-lower-ornament' ((@($applicationValidation.MainDaySingleBorderNegativeFixtures) -join ',')) '主窗口单边框负向夹具集合固定'
+    $singleBorderMeasurements = @($applicationValidation.MainDaySingleBorder.Measurements | Sort-Object StateId)
     Assert-Equal 'Countdown-Day,Notes-Day' ((@($singleBorderMeasurements.StateId) -join ',')) '主窗口单边框精确覆盖日间两个工作区'
     Assert-Equal 0 @($singleBorderMeasurements | Where-Object { -not $_.ExactControlEdges -or -not $_.LabelsClear -or -not $_.LowerDecorationPresent -or [int] $_.LowerDecorationPixelCount -le 0 }).Count '主窗口两态控件边、标签隔离和声明下半装饰均由像素测量通过'
     Assert-Equal 'Countdown-Day:332/333/334/349/350/353/354/356/357/358/359/360/372/373/374:328:799;Notes-Day:314/315/348/349/367/379/380:309:625' ((@($singleBorderMeasurements | ForEach-Object { "$($_.StateId):$(@($_.EdgeRows) -join '/'):$($_.ControlScanTop):$($_.DeclaredBottomBandStart)" }) -join ';')) '主窗口控件边线和共享装饰带边界精确固定（#251 将折叠标题的 10 DIP 空白收回后，倒计时输入及扫描相对 v57 整体上移 10 DIP，按 v74 实拍逐像素核对；便签、装饰带换算、#189 阈值与负控不变）'
     }
     else {
-        Assert-Equal $false ([bool] $adapterValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'
-        Assert-Equal 0 @($adapterValidation.MainReferenceBaselineCaptures).Count '发布包不伪造主窗口参考帧度量'
-        Assert-Equal $false ([bool] $adapterValidation.MainStressCountdownTitleVisuals) '发布包不伪造未执行的 Stress 标题真实 WPF 验收'
-        Assert-Equal 0 @($adapterValidation.MainStressCountdownTitleMeasurements).Count '发布包不伪造 Stress 标题测量'
-        Assert-Equal $false ([bool] $adapterValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
-        Assert-Equal 0 @($adapterValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
+        Assert-Equal $false ([bool] $applicationValidation.MainReferenceBaselineValidated) '发布包不伪造未携带主窗口参考资产时的视觉验收'
+        Assert-Equal 0 @($applicationValidation.MainReferenceBaselineCaptures).Count '发布包不伪造主窗口参考帧度量'
+        Assert-Equal $false ([bool] $applicationValidation.MainStressCountdownTitleVisuals) '发布包不伪造未执行的 Stress 标题真实 WPF 验收'
+        Assert-Equal 0 @($applicationValidation.MainStressCountdownTitleMeasurements).Count '发布包不伪造 Stress 标题测量'
+        Assert-Equal $false ([bool] $applicationValidation.MainNoteCardReminderFontSizeMeetsContract) '发布包不伪造便签卡提醒摘要 12 DIP 门'
+        Assert-Equal 0 @($applicationValidation.MainNoteCardReminderFontMeasurements).Count '发布包不伪造便签卡提醒摘要测量'
     }
-    $countdownEmptyContrastMeasurements = @($adapterValidation.CountdownEmptyStateContrastMeasurements)
+    $countdownEmptyContrastMeasurements = @($applicationValidation.CountdownEmptyStateContrastMeasurements)
     Assert-Equal 1 $countdownEmptyContrastMeasurements.Count '倒计时空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($countdownEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '倒计时空态对比度主题集合固定'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '倒计时空态使用真实可见背景与动态主题资源'
     Assert-Equal 0 @($countdownEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '倒计时空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
     # #129 去重迁移（U1 独有断言）：紧凑布局实测宽度、时间下拉与主窗口控件存在性系列。
-    Assert-Equal $true ([double] $adapterValidation.CountdownInputHeight -gt 0) '倒计时输入实测高度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.CountdownNameWidth -gt 0) '名称输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.TargetDateWidth -gt 0) '日期输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.TargetTimeWidth -gt 0) '截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
-    Assert-Equal $true ([double] $adapterValidation.DisplayPrecisionWidth -gt 0) '精度输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetDateWidth -gt 0) '展开态日期输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedTargetTimeWidth -gt 0) '展开态截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedDisplayPrecisionWidth -gt 0) '展开态精度输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.CountdownPreferenceInputHeight -gt 0) '偏好输入实测高度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.MonthlySalaryWidth -gt 0) '月薪输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.WorkStartWidth -gt 0) '上班时间输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.WorkEndWidth -gt 0) '下班时间输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedMonthlySalaryWidth -gt 0) '展开态月薪输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedWorkStartWidth -gt 0) '展开态上班输入实测宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.ExpandedWorkEndWidth -gt 0) '展开态下班输入实测宽度为正（#129 自 U1 迁移）'
-    $noteEmptyContrastMeasurements = @($adapterValidation.NoteEmptyStateContrastMeasurements)
+    Assert-Equal $true ([double] $applicationValidation.CountdownInputHeight -gt 0) '倒计时输入实测高度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.CountdownNameWidth -gt 0) '名称输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.TargetDateWidth -gt 0) '日期输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.TargetTimeWidth -gt 0) '截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
+    Assert-Equal $true ([double] $applicationValidation.DisplayPrecisionWidth -gt 0) '精度输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedTargetDateWidth -gt 0) '展开态日期输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedTargetTimeWidth -gt 0) '展开态截止时刻输入实测宽度为正（#328 替代原三联时/分/秒下拉）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedDisplayPrecisionWidth -gt 0) '展开态精度输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.CountdownPreferenceInputHeight -gt 0) '偏好输入实测高度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.MonthlySalaryWidth -gt 0) '月薪输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.WorkStartWidth -gt 0) '上班时间输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.WorkEndWidth -gt 0) '下班时间输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedMonthlySalaryWidth -gt 0) '展开态月薪输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedWorkStartWidth -gt 0) '展开态上班输入实测宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.ExpandedWorkEndWidth -gt 0) '展开态下班输入实测宽度为正（#129 自 U1 迁移）'
+    $noteEmptyContrastMeasurements = @($applicationValidation.NoteEmptyStateContrastMeasurements)
     Assert-Equal 1 $noteEmptyContrastMeasurements.Count '便签空态对比度精确覆盖日间态'
     Assert-Equal 'Day' ((@($noteEmptyContrastMeasurements.Theme) | Sort-Object) -join ',') '便签空态对比度主题集合固定'
     Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.ContrastRatio -lt 4.5 -or -not $_.ForegroundUsesMutedBrush -or -not $_.ActualBackgroundMatchesBackdrop -or -not $_.TransparentAncestors -or -not $_.TextWithinBackdrop }).Count '便签空态使用真实可见背景与 MutedBrush 动态主题资源'
     Assert-Equal 0 @($noteEmptyContrastMeasurements | Where-Object { [double] $_.HeadingContrastRatio -lt 4.5 -or -not $_.HeadingUsesInkBrush -or -not $_.HeadingTextWithinBackdrop }).Count '便签空态标题另行使用 InkBrush 且对可见背景达到 4.5:1'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownIncrementalRefreshIdentityMatches) '主窗口倒计时 tick 保留行控件与文字目标实例'
-    Assert-Equal $true ([bool] $adapterValidation.CountdownExpiryVisualsFlipTogether) '主窗口倒计时到期同时翻转卡片背景和危险文字色'
-    $countdownIncrementalRefresh = $adapterValidation.CountdownIncrementalRefresh
+    Assert-Equal $true ([bool] $applicationValidation.CountdownIncrementalRefreshIdentityMatches) '主窗口倒计时 tick 保留行控件与文字目标实例'
+    Assert-Equal $true ([bool] $applicationValidation.CountdownExpiryVisualsFlipTogether) '主窗口倒计时到期同时翻转卡片背景和危险文字色'
+    $countdownIncrementalRefresh = $applicationValidation.CountdownIncrementalRefresh
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.FocusPreserved) '普通 tick 保留倒计时行内真实键盘焦点'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.NonZeroScrollPreserved) '普通 tick 保留倒计时列表非零滚动位置'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.PointerStatePreserved) '普通 tick 保留倒计时行真实 mouse capture pointer 状态'
@@ -5658,34 +4513,34 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.ExpiryBackgroundFlipped) '倒计时到期背景独立翻转为 ExpiredBrush'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.ExpiryRemainingTextFlipped) '倒计时到期文字独立翻转为主项数字色（到期不用删除红）'
     Assert-Equal $true ([bool] $countdownIncrementalRefresh.TriggerMatrixRebuilt) '集合、筛选、精度、到期四触发全部重建'
-    Assert-Equal 6 @($adapterValidation.CountdownRemainingSamples).Count '主窗口倒计时剩余时间覆盖四种精度、超长天数及 999 天'
-    Assert-Equal 0 @($adapterValidation.CountdownRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 228) -gt 0.01 -or [Math]::Abs([double] $_.ActualColumnWidth - 228) -gt 0.5 -or -not $_.IsFullyVisible }).Count '主窗口六项剩余时间样本均完整位于实际 228px 固定列'
-    Assert-Equal '20;20;20;20' ((@($adapterValidation.CountdownRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '主窗口四种普通精度保持 20 DIP'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -ge 13 -and [double] @($adapterValidation.CountdownRemainingSamples)[4].FontSize -lt 20)) '主窗口超长天数仅对长文本执行有界字号适配'
-    Assert-Equal 0 @($adapterValidation.CountdownRemainingSamples | Where-Object { -not $_.BlocksFullyVisible -or $_.RenderedBlockText -ne $_.ExpectedText.Replace('小时', '时').Replace('分钟', '分') }).Count '主窗口真实数字色块全部完整单行显示'
-    Assert-Equal 0 @(@($adapterValidation.CountdownRemainingSamples)[0..3] | Where-Object { -not $_.IsPrimary -or $_.ValueFontSize -lt 20 -or $_.ValueFontSize -gt 22 -or $_.ValueFontSize -le $_.TitleFontSize }).Count '主窗口普通主项实际数值为 20–22 DIP 且大于标题'
-    $main999 = @($adapterValidation.CountdownRemainingSamples | Where-Object Precision -eq 'Second999Days')
+    Assert-Equal 6 @($applicationValidation.CountdownRemainingSamples).Count '主窗口倒计时剩余时间覆盖四种精度、超长天数及 999 天'
+    Assert-Equal 0 @($applicationValidation.CountdownRemainingSamples | Where-Object { [Math]::Abs([double] $_.ColumnWidth - 228) -gt 0.01 -or [Math]::Abs([double] $_.ActualColumnWidth - 228) -gt 0.5 -or -not $_.IsFullyVisible }).Count '主窗口六项剩余时间样本均完整位于实际 228px 固定列'
+    Assert-Equal '20;20;20;20' ((@($applicationValidation.CountdownRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '主窗口四种普通精度保持 20 DIP'
+    Assert-Equal $true ([bool] ([double] @($applicationValidation.CountdownRemainingSamples)[4].FontSize -ge 13 -and [double] @($applicationValidation.CountdownRemainingSamples)[4].FontSize -lt 20)) '主窗口超长天数仅对长文本执行有界字号适配'
+    Assert-Equal 0 @($applicationValidation.CountdownRemainingSamples | Where-Object { -not $_.BlocksFullyVisible -or $_.RenderedBlockText -ne $_.ExpectedText.Replace('小时', '时').Replace('分钟', '分') }).Count '主窗口真实数字色块全部完整单行显示'
+    Assert-Equal 0 @(@($applicationValidation.CountdownRemainingSamples)[0..3] | Where-Object { -not $_.IsPrimary -or $_.ValueFontSize -lt 20 -or $_.ValueFontSize -gt 22 -or $_.ValueFontSize -le $_.TitleFontSize }).Count '主窗口普通主项实际数值为 20–22 DIP 且大于标题'
+    $main999 = @($applicationValidation.CountdownRemainingSamples | Where-Object Precision -eq 'Second999Days')
     Assert-Equal 1 $main999.Count '主窗口显式覆盖 999 天主项'
     Assert-Equal '999 天 13 时 18 分 59 秒' $main999[0].RenderedBlockText '主窗口 999 天各数值和单位无裁切'
     Assert-Equal $true ([bool] ($main999[0].IsPrimary -and $main999[0].BlocksFullyVisible -and $main999[0].ValueFontSize -gt $main999[0].TitleFontSize)) '主窗口 999 天主项完整可读并保持数值层级'
-    $mainNoteCompletionMeasurements = @($adapterValidation.MainNoteCompletionMeasurements)
+    $mainNoteCompletionMeasurements = @($applicationValidation.MainNoteCompletionMeasurements)
     Assert-Equal 3 $mainNoteCompletionMeasurements.Count '主窗口、标签选择器与悬浮窗均有真实 WPF 尺寸测量'
     Assert-Equal 'FloatingWindow,MainWindow,TagSelector' ((@($mainNoteCompletionMeasurements.User) | Sort-Object) -join ',') '便签完成复选框测量用户集合固定'
     $mainNoteCompletionMeasurement = @($mainNoteCompletionMeasurements | Where-Object User -eq 'MainWindow')[0]
     Assert-Equal $true ([double] $mainNoteCompletionMeasurement.BoxWidth -ge 17.5 -and [double] $mainNoteCompletionMeasurement.BoxHeight -ge 17.5 -and [double] $mainNoteCompletionMeasurement.TickWidth -ge 9.5 -and [double] $mainNoteCompletionMeasurement.TickHeight -ge 6.5 -and [bool] $mainNoteCompletionMeasurement.UsesDedicatedStyle -and [bool] $mainNoteCompletionMeasurement.UsesWarmTokens -and [double] $mainNoteCompletionMeasurement.CornerRadius -ge 4) '主窗口专用模板方框、勾号、圆角与暖色 token 达标'
     Assert-Equal 0 @($mainNoteCompletionMeasurements | Where-Object { $_.User -ne 'MainWindow' -and ([math]::Abs([double] $_.BoxWidth - 18) -gt 0.5 -or [math]::Abs([double] $_.BoxHeight - 18) -gt 0.5 -or [math]::Abs([double] $_.TickWidth - 10) -gt 0.5 -or [math]::Abs([double] $_.TickHeight - 7) -gt 0.5 -or [bool] $_.UsesDedicatedStyle) }).Count '标签选择器与悬浮窗仍使用 18px 全局模板'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.Checked) '主窗口真实复选框可勾选'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.Unchecked) '主窗口真实复选框可取消'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.PersistenceFailureRolledBack) '主窗口便签完成写盘失败时 UI 与状态回滚'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
-    Assert-Equal $true ([bool] $adapterValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
-    Assert-Equal 3 ([int] $adapterValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
-    Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineRequested) '悬浮窗参考基线只在源码树存在 manifest 时请求'
-    Assert-Equal $floatingReferenceBaselineRequired ([bool] $adapterValidation.FloatingReferenceBaselineManifestAvailable) '悬浮窗参考 manifest 可用状态匹配源码树'
-    Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-path,duplicate-scenario-theme,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,source-hash-mismatch,wrong-dimensions' ((@($adapterValidation.FloatingReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '悬浮窗参考 manifest 负向夹具集合完整'
-    Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,long-note-typography-mismatch,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($adapterValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度与排版负向夹具集合完整'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCompletionInteractionBehavior.Checked) '主窗口真实复选框可勾选'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCompletionInteractionBehavior.Unchecked) '主窗口真实复选框可取消'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCompletionInteractionBehavior.PersistenceFailureRolledBack) '主窗口便签完成写盘失败时 UI 与状态回滚'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesUpdated) '主窗口便签完成复选框可访问名称随状态更新'
+    Assert-Equal $true ([bool] $applicationValidation.MainNoteCompletionInteractionBehavior.AccessibleNamesHaveNoLineBreaks) 'settings JSON 注入含换行便签后可访问名称不含换行'
+    Assert-Equal 3 ([int] $applicationValidation.MainCharacterPanelDockCount) '主窗口角色场景栏保留三个玩偶底座'
+    Assert-Equal $floatingReferenceBaselineRequired ([bool] $applicationValidation.FloatingReferenceBaselineRequested) '悬浮窗参考基线只在源码树存在 manifest 时请求'
+    Assert-Equal $floatingReferenceBaselineRequired ([bool] $applicationValidation.FloatingReferenceBaselineManifestAvailable) '悬浮窗参考 manifest 可用状态匹配源码树'
+    Assert-Equal 'alpha-metrics-mismatch,content-roi-mismatch,duplicate-path,duplicate-scenario-theme,executable-hash-mismatch,malformed-manifest,missing-png,orphan-png,pixel-metrics-mismatch,png-hash-mismatch,source-hash-mismatch,wrong-dimensions' ((@($applicationValidation.FloatingReferenceBaselineNegativeFixtures) | Sort-Object) -join ',') '悬浮窗参考 manifest 负向夹具集合完整'
+    Assert-Equal 'duplicate-capture-id,duplicate-state-fingerprint,long-note-layout-unreachable,long-note-typography-mismatch,reused-frame,state-fingerprint-mismatch,swapped-top-bottom,top-bottom-pixel-difference-too-small' ((@($applicationValidation.FloatingReferenceFreshnessNegativeFixtures) | Sort-Object) -join ',') '长便签帧新鲜度与排版负向夹具集合完整'
     $expectedLongNoteCaptureIds = 'long-notes-day-bottom,long-notes-day-top'
-    $longNoteMeasurements = @($adapterValidation.FloatingLongNotesMeasurements)
+    $longNoteMeasurements = @($applicationValidation.FloatingLongNotesMeasurements)
     Assert-Equal 2 $longNoteMeasurements.Count '长便签真实 WPF 精确测量日间 top/bottom 两态'
     Assert-Equal $expectedLongNoteCaptureIds ((@($longNoteMeasurements.CaptureId) | Sort-Object) -join ',') '长便签测量 capture ID 固定'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { -not $_.BodyHasNoManualLineBreaks -or -not $_.NaturalWraps -or -not $_.UsesOnlyOuterScroller -or -not $_.OuterScrollable -or -not $_.PrimaryAnchorReachable -or -not $_.SafeAreaMatches }).Count '长便签每态均证明无手工换行、自然折行、仅外层滚动、锚点可达和安全区'
@@ -5693,7 +4548,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Top' -and [math]::Abs([double] $_.VerticalOffset) -gt 1 }).Count '长便签 top 四舍五入 offset 约等于零'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { $_.State -eq 'Bottom' -and [math]::Abs([double] $_.VerticalOffset - [double] $_.ScrollableHeight) -gt 1 }).Count '长便签 bottom offset 约等于 ScrollableHeight'
     Assert-Equal 0 @($longNoteMeasurements | Where-Object { ([string] $_.NoteTextSha256).Length -ne 64 -or [string]::IsNullOrWhiteSpace([string] $_.FirstVisibleAnchor) -or [string]::IsNullOrWhiteSpace([string] $_.LastVisibleAnchor) }).Count '长便签每态绑定正文 SHA-256 与可见首尾锚点'
-    $longNoteCaptures = @($adapterValidation.FloatingLongNotesCaptures)
+    $longNoteCaptures = @($applicationValidation.FloatingLongNotesCaptures)
     Assert-Equal 2 $longNoteCaptures.Count '长便签真实 WPF 写出两态帧'
     Assert-Equal $expectedLongNoteCaptureIds ((@($longNoteCaptures.CaptureId) | Sort-Object) -join ',') '长便签两态 capture ID 固定'
     Assert-Equal 2 @($longNoteCaptures.PngSha256 | Sort-Object -Unique).Count '长便签两态 PNG hash 全部唯一'
@@ -5701,23 +4556,23 @@ function Get-RejectionMessage([string[]] $Arguments) {
     if ($floatingReferenceBaselineRequired) {
         $floatingReferenceBaselineDefinition = Get-Content -LiteralPath $floatingReferenceBaselineManifest -Raw |
             ConvertFrom-Json -Depth 100
-        Assert-Equal (-not $floatingReferenceBaselineDeferred) ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest（基线过期已延后时如实记为未通过）'
-        Assert-Equal "$($visualBaseline.Floating.RelativeDirectory)/manifest.json" ([string] $adapterValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
+        Assert-Equal (-not $floatingReferenceBaselineDeferred) ([bool] $applicationValidation.FloatingReferenceBaselineValidated) '当前真实 WPF 日间截图通过版本化 manifest（基线过期已延后时如实记为未通过）'
+        Assert-Equal "$($visualBaseline.Floating.RelativeDirectory)/manifest.json" ([string] $applicationValidation.FloatingReferenceBaselineManifestPath) 'manifest 报告路径保持仓库相对可移植格式'
         Assert-Equal $visualBaseline.Version ([string] $floatingReferenceBaselineDefinition.baselineVersion) '悬浮窗正式 manifest 版本与测试路径一致'
-        Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
-        Assert-Equal 64 ([string] $adapterValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
+        Assert-Equal 64 ([string] $applicationValidation.FloatingReferenceBaselineSourceAggregateSha256).Length '悬浮窗视觉源码聚合使用 SHA-256'
+        Assert-Equal 64 ([string] $applicationValidation.FloatingReferenceBaselineExecutableSha256).Length '悬浮窗参考帧绑定生成 EXE SHA-256'
         if (-not $floatingReferenceBaselineDeferred) {
-            Assert-Equal 12 @($adapterValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
+            Assert-Equal 12 @($applicationValidation.FloatingReferenceBaselineGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '悬浮窗参考 manifest 十二个真实门禁全部通过'
         }
-        Assert-Equal 5 @($adapterValidation.FloatingReferenceBaselineCaptures).Count '悬浮窗参考 manifest 严格绑定五帧（#236 收尾场景）'
-        Assert-Equal 'floating-countdowns-day,floating-workday-complete-day,long-notes-day-bottom,long-notes-day-top,notes-search-expanded-day' ((@($adapterValidation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') '悬浮窗参考 manifest capture ID 固定'
+        Assert-Equal 5 @($applicationValidation.FloatingReferenceBaselineCaptures).Count '悬浮窗参考 manifest 严格绑定五帧（#236 收尾场景）'
+        Assert-Equal 'floating-countdowns-day,floating-workday-complete-day,long-notes-day-bottom,long-notes-day-top,notes-search-expanded-day' ((@($applicationValidation.FloatingReferenceBaselineCaptures.CaptureId) | Sort-Object) -join ',') '悬浮窗参考 manifest capture ID 固定'
         if (-not $floatingReferenceBaselineDeferred) {
-            Assert-Equal 8 @($adapterValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签八个真实新鲜度与排版门禁全部通过'
+            Assert-Equal 8 @($applicationValidation.FloatingReferenceFreshnessGates.PSObject.Properties | Where-Object { [bool] $_.Value }).Count '长便签八个真实新鲜度与排版门禁全部通过'
         }
-        Assert-Equal 5 @($adapterValidation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count '五帧 PNG hash 全部唯一'
+        Assert-Equal 5 @($applicationValidation.FloatingReferenceBaselineCaptures.BaselineSha256 | Sort-Object -Unique).Count '五帧 PNG hash 全部唯一'
         Assert-Equal 5 @($floatingReferenceBaselineDefinition.captures).Count '悬浮窗正式 manifest 严格声明五帧'
         foreach ($expectedCapture in @($floatingReferenceBaselineDefinition.captures)) {
-            $reportedCapture = @($adapterValidation.FloatingReferenceBaselineCaptures |
+            $reportedCapture = @($applicationValidation.FloatingReferenceBaselineCaptures |
                 Where-Object CaptureId -eq ([string] $expectedCapture.captureId))
             Assert-Equal 1 $reportedCapture.Count "悬浮窗 capture ID 唯一绑定正式 manifest：$($expectedCapture.captureId)"
             Assert-Equal ([string] $expectedCapture.path) ([string] $reportedCapture[0].Path) "悬浮窗 capture 路径绑定正式 manifest：$($expectedCapture.captureId)"
@@ -5727,34 +4582,34 @@ function Get-RejectionMessage([string[]] $Arguments) {
             }
         }
         if (-not $floatingReferenceBaselineDeferred) {
-            Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '当前真实帧像素指标未超过 manifest 固定阈值'
-            Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineDiagnostics).Count '悬浮窗参考 manifest 验证没有残留诊断'
+            Assert-Equal 0 @($applicationValidation.FloatingReferenceBaselineCaptures | Where-Object { [int] $_.Comparison.MaxAbsoluteChannelDelta -gt 8 -or [double] $_.Comparison.MeanAbsoluteError -gt 0.02 -or [double] $_.Comparison.RootMeanSquareError -gt 0.25 -or [int] $_.Comparison.ChangedPixelCount -gt 500 }).Count '当前真实帧像素指标未超过 manifest 固定阈值'
+            Assert-Equal 0 @($applicationValidation.FloatingReferenceBaselineDiagnostics).Count '悬浮窗参考 manifest 验证没有残留诊断'
         }
     }
     else {
-        Assert-Equal $false ([bool] $adapterValidation.FloatingReferenceBaselineValidated) '发布包不伪造未携带参考资产时的视觉验收'
-        Assert-Equal 0 @($adapterValidation.FloatingReferenceBaselineCaptures).Count '发布包不伪造参考帧度量'
+        Assert-Equal $false ([bool] $applicationValidation.FloatingReferenceBaselineValidated) '发布包不伪造未携带参考资产时的视觉验收'
+        Assert-Equal 0 @($applicationValidation.FloatingReferenceBaselineCaptures).Count '发布包不伪造参考帧度量'
     }
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.SearchButtonShowsClosedMagnifier) '悬浮窗搜索按钮渲染闭合放大镜而不是残缺 C'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.HintNamesDescribeAction) '悬浮窗提示条词按钮可访问名称含展开动作语义且可见文本与清除钮名称不变'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) '悬浮窗 140 字搜索词在提示条省略显示且不溢出槽位或清除钮'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) '悬浮窗便签筛选无匹配空态与无数据空态文案区分'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) '悬浮窗倒计时筛选无匹配空态与无数据空态文案区分'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) '悬浮窗搜索词刷新在 ActualSize 不变时不改 Left/Top'
-    Assert-Equal $true ([bool] $adapterValidation.FloatingNoteSearch.ConstrainedEmptyProvidesAction) '悬浮窗搜索/筛选两种无匹配空态互斥且约束空态有下一步（#149）'
-    Assert-Equal 0 ([int] $adapterValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
-    Assert-Equal 0 @($adapterValidation.FloatingReferenceContentOverlapTargets).Count '悬浮窗受保护内容遮挡明细清单为空（#129 自 U1 迁移）'
-    $primaryDeadlineMeasurements = @($adapterValidation.FloatingPrimaryDeadlineMeasurements)
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.SearchButtonShowsClosedMagnifier) '悬浮窗搜索按钮渲染闭合放大镜而不是残缺 C'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.HintNamesDescribeAction) '悬浮窗提示条词按钮可访问名称含展开动作语义且可见文本与清除钮名称不变'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.LongHintTermTrimsWithinSlot) '悬浮窗 140 字搜索词在提示条省略显示且不溢出槽位或清除钮'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.NoteFilterEmptyStateDistinguished) '悬浮窗便签筛选无匹配空态与无数据空态文案区分'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.CountdownFilterEmptyStateDistinguished) '悬浮窗倒计时筛选无匹配空态与无数据空态文案区分'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.SearchRefreshLeavesPlacementUnchanged) '悬浮窗搜索词刷新在 ActualSize 不变时不改 Left/Top'
+    Assert-Equal $true ([bool] $applicationValidation.FloatingNoteSearch.ConstrainedEmptyProvidesAction) '悬浮窗搜索/筛选两种无匹配空态互斥且约束空态有下一步（#149）'
+    Assert-Equal 0 ([int] $applicationValidation.FloatingReferenceContentOverlapCount) '悬浮窗参考场景没有角色与内容墨迹重叠'
+    Assert-Equal 0 @($applicationValidation.FloatingReferenceContentOverlapTargets).Count '悬浮窗受保护内容遮挡明细清单为空（#129 自 U1 迁移）'
+    $primaryDeadlineMeasurements = @($applicationValidation.FloatingPrimaryDeadlineMeasurements)
     Assert-Equal 2 $primaryDeadlineMeasurements.Count '主项截止行覆盖有无滚动条两份实测宽度'
     Assert-Equal $true ([bool] (@($primaryDeadlineMeasurements | Where-Object { -not $_.FullyVisible -or [double] $_.ActualWidth + 0.01 -lt [double] $_.RequiredWidth }).Count -eq 0)) '主项截止行实测宽度足以容纳完整 M 月 d 日 HH:mm'
-    Assert-Equal 5 @($adapterValidation.FloatingSecondaryRemainingSamples).Count '次级倒计时门禁覆盖四种精度及长天数'
-    Assert-Equal 'Day;Hour;Minute;Second;SecondLongDays' ((@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.Precision }) -join ';') '次级倒计时门禁覆盖精度顺序稳定'
-    Assert-Equal '4 天;4 天 13 小时;4 天 13 小时 18 分钟;4 天 13 小时 18 分钟 59 秒;2000000 天 00 小时 00 分钟 00 秒' ((@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.RenderedText }) -join ';') '次级倒计时 WPF 文本逐项保留单位分隔空格'
-    Assert-Equal $true ([bool] (@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ColumnWidth - 194) -le 0.01 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本声明 194px 固定列'
-    Assert-Equal $true ([bool] (@($adapterValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ActualWidth - 194) -le 0.5 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本实际布局宽度保持在 194px 舍入容差内'
-    Assert-Equal '20;20;20;20' ((@($adapterValidation.FloatingSecondaryRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '次级倒计时四种常规精度保持 20px'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -ge 10 -and [double] @($adapterValidation.FloatingSecondaryRemainingSamples)[4].FontSize -lt 20)) '超长次级倒计时在 194px 列内保持可读字号并完整分格显示'
-    $floatingScrollBarSamples = @($adapterValidation.FloatingScrollBarStateMeasurements)
+    Assert-Equal 5 @($applicationValidation.FloatingSecondaryRemainingSamples).Count '次级倒计时门禁覆盖四种精度及长天数'
+    Assert-Equal 'Day;Hour;Minute;Second;SecondLongDays' ((@($applicationValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.Precision }) -join ';') '次级倒计时门禁覆盖精度顺序稳定'
+    Assert-Equal '4 天;4 天 13 小时;4 天 13 小时 18 分钟;4 天 13 小时 18 分钟 59 秒;2000000 天 00 小时 00 分钟 00 秒' ((@($applicationValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { $_.RenderedText }) -join ';') '次级倒计时 WPF 文本逐项保留单位分隔空格'
+    Assert-Equal $true ([bool] (@($applicationValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ColumnWidth - 194) -le 0.01 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本声明 194px 固定列'
+    Assert-Equal $true ([bool] (@($applicationValidation.FloatingSecondaryRemainingSamples) | ForEach-Object { [Math]::Abs([double] $_.ActualWidth - 194) -le 0.5 } | Where-Object { -not $_ } | Measure-Object).Count -eq 0) '次级倒计时所有样本实际布局宽度保持在 194px 舍入容差内'
+    Assert-Equal '20;20;20;20' ((@($applicationValidation.FloatingSecondaryRemainingSamples)[0..3] | ForEach-Object { $_.FontSize }) -join ';') '次级倒计时四种常规精度保持 20px'
+    Assert-Equal $true ([bool] ([double] @($applicationValidation.FloatingSecondaryRemainingSamples)[4].FontSize -ge 10 -and [double] @($applicationValidation.FloatingSecondaryRemainingSamples)[4].FontSize -lt 20)) '超长次级倒计时在 194px 列内保持可读字号并完整分格显示'
+    $floatingScrollBarSamples = @($applicationValidation.FloatingScrollBarStateMeasurements)
     Assert-Equal 3 $floatingScrollBarSamples.Count '悬浮窗滚动条覆盖日间 normal/hover/drag 三态'
     Assert-Equal 'Day;Day;Day' (($floatingScrollBarSamples | ForEach-Object { $_.Theme }) -join ';') '悬浮窗滚动条日间状态顺序稳定'
     Assert-Equal 'normal;hover;drag' (($floatingScrollBarSamples | ForEach-Object { $_.State }) -join ';') '悬浮窗滚动条交互状态顺序稳定'
@@ -5762,30 +4617,30 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true ([bool] (@($floatingScrollBarSamples | Where-Object { [Math]::Abs([double] $_.ThumbVisualWidth - 4) -gt 0.01 }).Count -eq 0)) '悬浮窗滚动条三态只显示 4px thumb'
     Assert-Equal '0.52;0.78;0.96' (($floatingScrollBarSamples[0..2] | ForEach-Object { $_.ThumbOpacity }) -join ';') '悬浮窗滚动条 hover/drag 只增强可见度'
     Assert-Equal $true ([bool] (@($floatingScrollBarSamples | Where-Object { [double] $_.ThumbVisualRight -gt 396.01 -or [double] $_.MaximumVisibleCardRight -ge [double] $_.ThumbVisualLeft -or -not [bool] $_.DoesNotObscureContent }).Count -eq 0)) '悬浮窗滚动条三态不遮挡卡片且不越过 x=396'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingScrollBarWheelOffsets)[1] -gt [double] @($adapterValidation.FloatingScrollBarWheelOffsets)[0])) '真实滚轮输入改变悬浮窗 ScrollViewer 偏移'
-    Assert-Equal $true ([bool] ([double] @($adapterValidation.FloatingScrollBarDragOffsets)[1] -gt [double] @($adapterValidation.FloatingScrollBarDragOffsets)[0])) '真实 Thumb 拖动输入改变悬浮窗 ScrollViewer 偏移'
-    Assert-Equal 'day-normal;day-hover;day-drag' ((@($adapterValidation.FloatingScrollBarCaptureNames)) -join ';') '悬浮窗滚动条日间三态截图清单完整'
+    Assert-Equal $true ([bool] ([double] @($applicationValidation.FloatingScrollBarWheelOffsets)[1] -gt [double] @($applicationValidation.FloatingScrollBarWheelOffsets)[0])) '真实滚轮输入改变悬浮窗 ScrollViewer 偏移'
+    Assert-Equal $true ([bool] ([double] @($applicationValidation.FloatingScrollBarDragOffsets)[1] -gt [double] @($applicationValidation.FloatingScrollBarDragOffsets)[0])) '真实 Thumb 拖动输入改变悬浮窗 ScrollViewer 偏移'
+    Assert-Equal 'day-normal;day-hover;day-drag' ((@($applicationValidation.FloatingScrollBarCaptureNames)) -join ';') '悬浮窗滚动条日间三态截图清单完整'
     Assert-Equal (
         $dayRasterComponentFiles -join ','
     ) (
-        [string]::Join(',', @($adapterValidation.FloatingDayRasterComponentAssetNames))
+        [string]::Join(',', @($applicationValidation.FloatingDayRasterComponentAssetNames))
     ) '悬浮窗加载四个日间无文字 raster 组件'
     # #129 去重迁移（U1 独有断言）：悬浮窗存在性、工作区底部锚定、标题与页签文字测量系列。
-    Assert-Equal $true ([double] $adapterValidation.FloatingCountdownBottomMargin -gt 0) '悬浮倒计时底部留白为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingNotesBottomMargin -gt 0) '悬浮便签底部留白为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextAvailableWidth -gt 0) '悬浮标题实测可用宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextRequiredWidth -gt 0) '悬浮标题实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextAvailableHeight -gt 0) '悬浮标题实测可用高度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingTitleTextRequiredHeight -gt 0) '悬浮标题实测需求高度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingCountdownButtonTextAvailableWidth -gt 0) '悬浮倒计时页签实测可用宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingCountdownButtonTextRequiredWidth -gt 0) '悬浮倒计时页签实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingNotesButtonTextAvailableWidth -gt 0) '悬浮便签页签实测可用宽度为正（#129 自 U1 迁移）'
-    Assert-Equal $true ([double] $adapterValidation.FloatingNotesButtonTextRequiredWidth -gt 0) '悬浮便签页签实测需求宽度为正（#129 自 U1 迁移）'
-    Assert-Equal 'Day' ([string]::Join(',', @($adapterValidation.FloatingThemeBoundaryModes))) '悬浮窗固定单一日间主题'
-    Assert-Equal '#FFFEFCFB' ([string]::Join(',', @($adapterValidation.FloatingThemePanelColors))) '悬浮窗面板使用预期的暖白配色'
-    Assert-Equal '#FFB9794E' ([string]::Join(',', @($adapterValidation.FloatingThemePlushGlowColors))) '悬浮窗角色场景保持日间暖色阴影'
-    Assert-Equal 'DayRaster' ([string]::Join(',', @($adapterValidation.FloatingMascotPresentationModes))) '悬浮窗固定使用日间单一角色层'
-    $primaryContrastMeasurements = @($adapterValidation.FloatingPrimaryCountdownContrastMeasurements)
+    Assert-Equal $true ([double] $applicationValidation.FloatingCountdownBottomMargin -gt 0) '悬浮倒计时底部留白为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingNotesBottomMargin -gt 0) '悬浮便签底部留白为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingTitleTextAvailableWidth -gt 0) '悬浮标题实测可用宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingTitleTextRequiredWidth -gt 0) '悬浮标题实测需求宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingTitleTextAvailableHeight -gt 0) '悬浮标题实测可用高度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingTitleTextRequiredHeight -gt 0) '悬浮标题实测需求高度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingCountdownButtonTextAvailableWidth -gt 0) '悬浮倒计时页签实测可用宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingCountdownButtonTextRequiredWidth -gt 0) '悬浮倒计时页签实测需求宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingNotesButtonTextAvailableWidth -gt 0) '悬浮便签页签实测可用宽度为正（#129 自 U1 迁移）'
+    Assert-Equal $true ([double] $applicationValidation.FloatingNotesButtonTextRequiredWidth -gt 0) '悬浮便签页签实测需求宽度为正（#129 自 U1 迁移）'
+    Assert-Equal 'Day' ([string]::Join(',', @($applicationValidation.FloatingThemeBoundaryModes))) '悬浮窗固定单一日间主题'
+    Assert-Equal '#FFFEFCFB' ([string]::Join(',', @($applicationValidation.FloatingThemePanelColors))) '悬浮窗面板使用预期的暖白配色'
+    Assert-Equal '#FFB9794E' ([string]::Join(',', @($applicationValidation.FloatingThemePlushGlowColors))) '悬浮窗角色场景保持日间暖色阴影'
+    Assert-Equal 'DayRaster' ([string]::Join(',', @($applicationValidation.FloatingMascotPresentationModes))) '悬浮窗固定使用日间单一角色层'
+    $primaryContrastMeasurements = @($applicationValidation.FloatingPrimaryCountdownContrastMeasurements)
     Assert-Equal 3 $primaryContrastMeasurements.Count '悬浮窗主倒计时覆盖工作日、普通主项和 999 天真实 WPF 测量'
     Assert-Equal 'Day' ((@($primaryContrastMeasurements.Theme) | Sort-Object -Unique) -join ',') '悬浮窗主倒计时测量覆盖日间主题'
     $dayPrimaryContrast = @($primaryContrastMeasurements | Where-Object Theme -eq 'Day')[0]
@@ -5795,7 +4650,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { $_.Scenario -ne '999Days' -and ($_.FontSize -lt 26 -or $_.FontSize -gt 28) }).Count '悬浮窗普通主项真实数字字号保持 26–28 DIP'
     Assert-Equal 0 @($primaryContrastMeasurements | Where-Object { -not $_.IsSingleLineAndFullyVisible -or $_.FontSize -le $_.TitleFontSize }).Count '悬浮窗主项数字完整单行且明确大于标题'
     Assert-Equal '999 天 13 时 18 分 59 秒' (@($primaryContrastMeasurements | Where-Object Scenario -eq '999Days')[0].RemainingText) '悬浮窗显式覆盖 999 天完整主项'
-    $quickAddPaletteBindings = @($adapterValidation.FloatingQuickAddPaletteBindings)
+    $quickAddPaletteBindings = @($applicationValidation.FloatingQuickAddPaletteBindings)
     Assert-Equal 1 $quickAddPaletteBindings.Count '悬浮窗快速新增报告精确包含单一日间真实控件绑定'
     Assert-Equal 'Day' ((@($quickAddPaletteBindings.Theme) | Sort-Object) -join ',') '悬浮窗快速新增绑定报告覆盖日间主题'
     $expectedQuickAddPaletteKeys = @{
@@ -5824,60 +4679,60 @@ function Get-RejectionMessage([string[]] $Arguments) {
         Assert-Equal 0 @($binding.Gates.FailedChecks).Count "悬浮窗快速新增 $($binding.Theme) 三项具体绑定门没有失败项"
         Assert-Equal $true ([bool] $binding.Gates.Passed) "悬浮窗快速新增 $($binding.Theme) 三项具体绑定门汇总通过"
     }
-    Assert-Equal 'TextBox,DatePicker,DatePickerPopup,ComboBox,ComboBoxPopup,TagSelector,TagSelectorPopup,CheckBox,ScrollViewer,ScrollBar' ([string]::Join(',', @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties.Name))) '悬浮窗快速新增日间资源枚举覆盖全部真实控件族'
-    Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
-    Assert-Equal '#FFFEFCFB' ([string] $adapterValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
-    Assert-Equal '#FFE05A4A' ([string] $adapterValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
-    Assert-Equal '#FFFDF0E4' ([string] $adapterValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
-    Assert-Equal '8' ([string] $adapterValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'
-    Assert-Equal '#FFFFF7E8' ([string] $adapterValidation.MainThemeCharacterPanelColors) '主窗口角色场景栏使用暖白配色'
-    Assert-Equal $true ([int] $adapterValidation.MainDynamicCountdownCardSampleCount -gt 0) '主窗口动态倒计时卡片至少命中一个样本'
-    Assert-Equal $true ([int] $adapterValidation.MainDynamicNoteCardSampleCount -gt 0) '主窗口动态便签卡片至少命中一个样本'
-    Assert-Equal '#FFC23E68' ([string] $adapterValidation.MainActionPalette.Default) '主行动默认色与悬浮窗同为深玫粉（#199）'
-    Assert-Equal '#FFB0355D' ([string] $adapterValidation.MainActionPalette.Hover) '主行动悬停色使用同族深玫粉（#199）'
-    Assert-Equal '#FF9B2D50' ([string] $adapterValidation.MainActionPalette.Pressed) '主行动按下色使用同族深玫粉（#199）'
-    Assert-Equal ([string] $adapterValidation.MainActionPalette.Default) ([string] $adapterValidation.MainActionPalette.Floating) '主窗口与悬浮窗主行动使用相同玫粉色（#199）'
-    Assert-Equal '#FFFFFDFC' ([string] $adapterValidation.MainActionPalette.Text) '主行动文字保持暖白（#199）'
-    Assert-Equal '#FFB74C39' ([string] $adapterValidation.MainActionPalette.Danger) 'Danger 删除操作仍保留砖红且不复用主行动玫粉（#199/#217）'
-    Assert-Equal $true ([bool] $adapterValidation.ReminderCenterSourceLabelContrast.TextContrast) '提醒中心来源标签对便签卡对比度达到 4.5:1'
-    Assert-Equal $true ([bool] $adapterValidation.SystemDialogPrimaryButtonContrast.TextContrast) '设置恢复与激活失败主按钮文字对比度达到 4.5:1'
-    Assert-Equal $true ([bool] $adapterValidation.SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette) '设置恢复与激活失败窗是无边框暖粉壳且静态色为现役 token 副本'
-    Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.PairsMeetContrast) '键盘焦点环对画布/状态带/便签卡/容器浅色达到 3:1'
+    Assert-Equal 'TextBox,DatePicker,DatePickerPopup,ComboBox,ComboBoxPopup,TagSelector,TagSelectorPopup,CheckBox,ScrollViewer,ScrollBar' ([string]::Join(',', @($applicationValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties.Name))) '悬浮窗快速新增日间资源枚举覆盖全部真实控件族'
+    Assert-Equal 0 @($applicationValidation.FloatingQuickAddDayResourceChecks.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '悬浮窗快速新增日间资源枚举没有失败项'
+    Assert-Equal '#FFFEFCFB' ([string] $applicationValidation.FloatingQuickAddLocalCanvasColor) '悬浮窗快速新增局部表面使用暖白'
+    Assert-Equal '#FFE05A4A' ([string] $applicationValidation.FloatingQuickAddLocalActiveColor) '悬浮窗快速新增焦点和按压使用 Active，不复用 Danger（#232）'
+    Assert-Equal '#FFFDF0E4' ([string] $applicationValidation.MainThemeBackgroundColors) '主窗口背景使用预期的暖白配色'
+    Assert-Equal '8' ([string] $applicationValidation.MainThemeCharacterOpacities) '主窗口角色装饰在日间主题下保持低对比度'
+    Assert-Equal '#FFFFF7E8' ([string] $applicationValidation.MainThemeCharacterPanelColors) '主窗口角色场景栏使用暖白配色'
+    Assert-Equal $true ([int] $applicationValidation.MainDynamicCountdownCardSampleCount -gt 0) '主窗口动态倒计时卡片至少命中一个样本'
+    Assert-Equal $true ([int] $applicationValidation.MainDynamicNoteCardSampleCount -gt 0) '主窗口动态便签卡片至少命中一个样本'
+    Assert-Equal '#FFC23E68' ([string] $applicationValidation.MainActionPalette.Default) '主行动默认色与悬浮窗同为深玫粉（#199）'
+    Assert-Equal '#FFB0355D' ([string] $applicationValidation.MainActionPalette.Hover) '主行动悬停色使用同族深玫粉（#199）'
+    Assert-Equal '#FF9B2D50' ([string] $applicationValidation.MainActionPalette.Pressed) '主行动按下色使用同族深玫粉（#199）'
+    Assert-Equal ([string] $applicationValidation.MainActionPalette.Default) ([string] $applicationValidation.MainActionPalette.Floating) '主窗口与悬浮窗主行动使用相同玫粉色（#199）'
+    Assert-Equal '#FFFFFDFC' ([string] $applicationValidation.MainActionPalette.Text) '主行动文字保持暖白（#199）'
+    Assert-Equal '#FFB74C39' ([string] $applicationValidation.MainActionPalette.Danger) 'Danger 删除操作仍保留砖红且不复用主行动玫粉（#199/#217）'
+    Assert-Equal $true ([bool] $applicationValidation.ReminderCenterSourceLabelContrast.TextContrast) '提醒中心来源标签对便签卡对比度达到 4.5:1'
+    Assert-Equal $true ([bool] $applicationValidation.SystemDialogPrimaryButtonContrast.TextContrast) '设置恢复与激活失败主按钮文字对比度达到 4.5:1'
+    Assert-Equal $true ([bool] $applicationValidation.SystemDialogPrimaryButtonContrast.UsesActiveStaticPalette) '设置恢复与激活失败窗是无边框暖粉壳且静态色为现役 token 副本'
+    Assert-Equal $true ([bool] $applicationValidation.KeyboardFocusRingContrast.PairsMeetContrast) '键盘焦点环对画布/状态带/便签卡/容器浅色达到 3:1'
     # #152 主窗可操作：常驻焦点环、唯一焦点描边、悬停区分、按压禁用、帮助聚焦、紧凑命中。
-    Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.TabRingGapAvoidsSelectedFill) '选中粉底页签的焦点环以 1px 间隙避开粉底，邻色为容器浅色'
-    Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast) '悬浮选中实心粉胶囊焦点环（暖金）对深粉邻色达到 3:1'
-    Assert-Equal $true ([bool] $adapterValidation.KeyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken) '悬浮实心粉胶囊焦点环使用主按钮焦点色暖金且无旧强调色放过分支'
+    Assert-Equal $true ([bool] $applicationValidation.KeyboardFocusRingContrast.TabRingGapAvoidsSelectedFill) '选中粉底页签的焦点环以 1px 间隙避开粉底，邻色为容器浅色'
+    Assert-Equal $true ([bool] $applicationValidation.KeyboardFocusRingContrast.FloatingCapsuleFocusRingMeetsContrast) '悬浮选中实心粉胶囊焦点环（暖金）对深粉邻色达到 3:1'
+    Assert-Equal $true ([bool] $applicationValidation.KeyboardFocusRingContrast.FloatingCapsuleUsesWarmGoldToken) '悬浮实心粉胶囊焦点环使用主按钮焦点色暖金且无旧强调色放过分支'
     $countdownDesignSource = Get-Content -LiteralPath (
         Join-Path $PSScriptRoot 'DESIGN.md') -Raw -Encoding UTF8
     Assert-Equal $true (
         $countdownDesignSource -match '主项 `38 x 57`、次项 `34 x 51`' -and
         $countdownDesignSource -match '#239：秒位发生变化时直接切换，不再淡入') '主/次倒计时分格几何与秒位直接切换合同同步写入 DESIGN（#239）'
-    Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
-    Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
-    Assert-Equal $true ([bool] $adapterValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowHeaderDrag.HeaderRequestsDrag) '提醒中心与规则编辑器头部拖动请求原生 DragMove'
-    Assert-Equal '打开日历' ([string] $adapterValidation.DatePickerOpenCalendarAccessibleName) '日期框打开日历按钮具有可访问名称'
+    Assert-Equal $true ([bool] $applicationValidation.ComboBoxTextClick.TextClickOpens) '主窗口、提醒中心与规则编辑器下拉点击文字区域可打开'
+    Assert-Equal $true ([bool] $applicationValidation.ComboBoxTextClick.KeyboardPathsWork) '生产下拉支持 F4、Alt+Down、方向键，并在正常动画下以 Esc 完成关闭'
+    Assert-Equal $true ([bool] $applicationValidation.ComboBoxTextClick.ArrowIsNotTabStop) '生产 ComboBox 箭头测量均非 Tab 停靠点'
+    Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowHeaderDrag.HeaderRequestsDrag) '提醒中心与规则编辑器头部拖动请求原生 DragMove'
+    Assert-Equal '打开日历' ([string] $applicationValidation.DatePickerOpenCalendarAccessibleName) '日期框打开日历按钮具有可访问名称'
     # #129 去重迁移（U1 独有断言）：日历翻月按钮可访问名称非空。
-    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $adapterValidation.CalendarPreviousMonthAccessibleName)) '日历上一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
-    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $adapterValidation.CalendarNextMonthAccessibleName)) '日历下一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
-    Assert-Equal $true ([bool] $adapterValidation.ActiveNotesSegmentSelectedByDefault) '分段切换默认选中未完成并显示未完成分组'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $applicationValidation.CalendarPreviousMonthAccessibleName)) '日历上一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
+    Assert-Equal $true (-not [string]::IsNullOrWhiteSpace([string] $applicationValidation.CalendarNextMonthAccessibleName)) '日历下一个月按钮具有非空可访问名称（#129 自 U1 迁移）'
+    Assert-Equal $true ([bool] $applicationValidation.ActiveNotesSegmentSelectedByDefault) '分段切换默认选中未完成并显示未完成分组'
     # #129 去重迁移（U1 独有断言）：便签提醒派发、工作区切换与表单无障碍系列。
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.InitialFocusSafe) '主窗口 Loaded 后实际焦点满足安全初始焦点门'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardNavigationGates.CompleteTabSequence) (
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardNavigationGates.InitialFocusSafe) '主窗口 Loaded 后实际焦点满足安全初始焦点门'
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardNavigationGates.CompleteTabSequence) (
         '主窗口倒计时与便签完整 Tab 路径双向对称且焦点可见；' +
-        'countdown(forward=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.ForwardMatches +
-        ',back=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSymmetric +
-        ',visual=' + [bool] $adapterValidation.MainKeyboardBehavior.CountdownTabPath.FocusVisualsVisible +
-        ',backward=[' + [string]::Join(',', @($adapterValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSequence)) +
-        ']) notes(forward=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.ForwardMatches +
-        ',back=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.BackwardSymmetric +
-        ',visual=' + [bool] $adapterValidation.MainKeyboardBehavior.NotesTabPath.FocusVisualsVisible +
+        'countdown(forward=' + [bool] $applicationValidation.MainKeyboardBehavior.CountdownTabPath.ForwardMatches +
+        ',back=' + [bool] $applicationValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSymmetric +
+        ',visual=' + [bool] $applicationValidation.MainKeyboardBehavior.CountdownTabPath.FocusVisualsVisible +
+        ',backward=[' + [string]::Join(',', @($applicationValidation.MainKeyboardBehavior.CountdownTabPath.BackwardSequence)) +
+        ']) notes(forward=' + [bool] $applicationValidation.MainKeyboardBehavior.NotesTabPath.ForwardMatches +
+        ',back=' + [bool] $applicationValidation.MainKeyboardBehavior.NotesTabPath.BackwardSymmetric +
+        ',visual=' + [bool] $applicationValidation.MainKeyboardBehavior.NotesTabPath.FocusVisualsVisible +
         ')')
     # #129 去重迁移（U1 独有断言）：键盘焦点基线帧不受影响；证据里的版本直接取自视觉基线常量。
-    Assert-Equal $false ([bool] $adapterValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
-    Assert-Equal 'CountdownTab' ([string] $adapterValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
-    Assert-Equal 'CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton' ([string]::Join(',', @($adapterValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
-    $countdownTabPath = $adapterValidation.MainKeyboardBehavior.CountdownTabPath
+    Assert-Equal $false ([bool] $applicationValidation.KeyboardFocusBaselineFramesAffected) '键盘焦点像素基线帧未被标记受影响（#129 自 U1 迁移）'
+    Assert-Equal 'CountdownTab' ([string] $applicationValidation.MainKeyboardBehavior.InitialFocusedAutomationId) '主窗口 Loaded 后真实焦点落到倒计时工作区'
+    Assert-Equal 'CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton' ([string]::Join(',', @($applicationValidation.MainKeyboardBehavior.TabSequence))) '主窗口真实 Tab 前缀遵循视觉顺序'
+    $countdownTabPath = $applicationValidation.MainKeyboardBehavior.CountdownTabPath
     $expectedCountdownTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,CountdownName,CountdownDate,SaveCountdownButton,CountdownEditorExpandButton,CountdownListRegion,StatusText'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ExpectedSequence))) '倒计时工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedCountdownTabPath ([string]::Join(',', @($countdownTabPath.ForwardSequence))) '倒计时工作区真实正向 Tab 路径完整'
@@ -5891,7 +4746,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $expectedCountdownFocusedTargetsBackward = @($countdownTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedCountdownFocusedTargetsBackward)
     Assert-Equal ($expectedCountdownFocusedTargetsBackward -join ',') ([string]::Join(',', @($countdownTabPath.BackwardFocusedTargets))) '倒计时每个实际焦点目标反向严格对称'
-    $notesTabPath = $adapterValidation.MainKeyboardBehavior.NotesTabPath
+    $notesTabPath = $applicationValidation.MainKeyboardBehavior.NotesTabPath
     $expectedNotesTabPath = 'TopmostCheck,MinimizeButton,CloseButton,CountdownTab,NotesTab,PreferencesButton,FilterButton,TagManagerButton,NoteText,NoteDate,SaveNoteButton,ManageNoteReminderRulesButton,NoteTags,ActiveNotesSegment,CompletedNotesSegment,NoteSearch,NotesListRegion,StatusText'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ExpectedSequence))) '便签工作区完整 Tab 契约包含标签触发器和列表区'
     Assert-Equal $expectedNotesTabPath ([string]::Join(',', @($notesTabPath.ForwardSequence))) '便签工作区真实正向 Tab 路径完整'
@@ -5905,35 +4760,35 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $expectedNotesFocusedTargetsBackward = @($notesTabPath.ForwardFocusedTargets)
     [array]::Reverse($expectedNotesFocusedTargetsBackward)
     Assert-Equal ($expectedNotesFocusedTargetsBackward -join ',') ([string]::Join(',', @($notesTabPath.BackwardFocusedTargets))) '便签每个实际焦点目标反向严格对称'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.CommandResults.Minimize) '最小化按钮和 Ctrl+M 只收起管理窗口，悬浮窗保持可见（#213）'
-    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖九个命令（#224 新增便签保存）'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口九个快捷键均产生真实预期结果'
-    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口九个快捷键均报告真实 handled 与效果诊断'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties | Where-Object { -not [bool] $_.Value.Handled -or -not [bool] $_.Value.EffectObserved }).Count '主窗口九个快捷键均由真实 KeyEvent handled 且观察到效果'
-    Assert-Equal '倒计时已保存。' ([string] $adapterValidation.MainKeyboardBehavior.CommandDiagnostics.SaveCountdown.StatusText) 'Ctrl+S 报告真实倒计时持久化成功状态'
-    Assert-Equal '设置已保存' ([string] $adapterValidation.MainKeyboardBehavior.CommandDiagnostics.SavePreferences.StatusText) 'Ctrl+Shift+S 报告真实偏好持久化成功状态'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.TextInputPreserved) '主窗口输入焦点不会被快捷键入口劫持'
-    Assert-Equal 0 @($adapterValidation.MainKeyboardBehavior.InputGuards.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count 'TextBox、DatePicker 与 ComboBox 允许已支持Ctrl组合，保留原生输入（#224）'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.PopupGuarded) '主窗口弹层打开时不响应窗口快捷键'
-    Assert-Equal $true ([bool] $adapterValidation.MainKeyboardBehavior.ModalOwnerGuarded) '主窗口作为禁用模态 owner 时不响应窗口快捷键'
-    Assert-Equal 0 @($adapterValidation.MainShortcutGates.FailedChecks).Count '主窗口快捷键 mapping/event evaluator 全部通过'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownWorkspaceSelectionIsAccessible) '倒计时页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesWorkspaceSelectionIsAccessible) '便签页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.FilterResultAnnounced) '筛选生效后通过可见 polite 文本播报结果数量'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownFirstUseEmptyAnnounced) '倒计时首次空态通过可见 polite 文本播报原因'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesFirstUseEmptyAnnounced) '便签首次空态通过可见 polite 文本播报原因'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.CountdownFilterEmptyAnnounced) '倒计时筛选无结果通过不同可见 polite 文本播报原因'
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncements.NotesFilterEmptyAnnounced) '便签筛选无结果通过不同可见 polite 文本播报原因'
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardBehavior.CommandResults.Minimize) '最小化按钮和 Ctrl+M 只收起管理窗口，悬浮窗保持可见（#213）'
+    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($applicationValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口真实 KeyEvent 精确覆盖九个命令（#224 新增便签保存）'
+    Assert-Equal 0 @($applicationValidation.MainKeyboardBehavior.CommandResults.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count '主窗口九个快捷键均产生真实预期结果'
+    Assert-Equal 'CountdownsWorkspace,Filter,Minimize,NoteSearch,NotesWorkspace,SaveCountdown,SaveNote,SavePreferences,TagManager' ((@($applicationValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties.Name) | Sort-Object) -join ',') '主窗口九个快捷键均报告真实 handled 与效果诊断'
+    Assert-Equal 0 @($applicationValidation.MainKeyboardBehavior.CommandDiagnostics.PSObject.Properties | Where-Object { -not [bool] $_.Value.Handled -or -not [bool] $_.Value.EffectObserved }).Count '主窗口九个快捷键均由真实 KeyEvent handled 且观察到效果'
+    Assert-Equal '倒计时已保存。' ([string] $applicationValidation.MainKeyboardBehavior.CommandDiagnostics.SaveCountdown.StatusText) 'Ctrl+S 报告真实倒计时持久化成功状态'
+    Assert-Equal '设置已保存' ([string] $applicationValidation.MainKeyboardBehavior.CommandDiagnostics.SavePreferences.StatusText) 'Ctrl+Shift+S 报告真实偏好持久化成功状态'
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardBehavior.TextInputPreserved) '主窗口输入焦点不会被快捷键入口劫持'
+    Assert-Equal 0 @($applicationValidation.MainKeyboardBehavior.InputGuards.PSObject.Properties | Where-Object { -not [bool] $_.Value }).Count 'TextBox、DatePicker 与 ComboBox 允许已支持Ctrl组合，保留原生输入（#224）'
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardBehavior.PopupGuarded) '主窗口弹层打开时不响应窗口快捷键'
+    Assert-Equal $true ([bool] $applicationValidation.MainKeyboardBehavior.ModalOwnerGuarded) '主窗口作为禁用模态 owner 时不响应窗口快捷键'
+    Assert-Equal 0 @($applicationValidation.MainShortcutGates.FailedChecks).Count '主窗口快捷键 mapping/event evaluator 全部通过'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.CountdownWorkspaceSelectionIsAccessible) '倒计时页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.NotesWorkspaceSelectionIsAccessible) '便签页签选中及可访问名称表达工作区，状态栏不重复显示当前工作区（#222）'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.FilterResultAnnounced) '筛选生效后通过可见 polite 文本播报结果数量'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.CountdownFirstUseEmptyAnnounced) '倒计时首次空态通过可见 polite 文本播报原因'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.NotesFirstUseEmptyAnnounced) '便签首次空态通过可见 polite 文本播报原因'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.CountdownFilterEmptyAnnounced) '倒计时筛选无结果通过不同可见 polite 文本播报原因'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncements.NotesFilterEmptyAnnounced) '便签筛选无结果通过不同可见 polite 文本播报原因'
     $structuralAnnouncementGateNames = @(
         'WorkspaceSelectionWithoutRedundantStatus',
         'FilterResultAnnouncement',
         'EmptyStateAnnouncements'
     )
     foreach ($gateName in $structuralAnnouncementGateNames) {
-        Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncementGates.$gateName) "结构变化通知具体 evaluator 门通过：$gateName"
+        Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncementGates.$gateName) "结构变化通知具体 evaluator 门通过：$gateName"
     }
-    Assert-Equal $true ([bool] $adapterValidation.MainStructuralAnnouncementGates.AllPassed) '结构变化通知三门 evaluator 汇总通过'
-    Assert-Equal 0 @($adapterValidation.MainStructuralAnnouncementGates.FailedChecks).Count '结构变化通知三门 evaluator 没有失败项'
+    Assert-Equal $true ([bool] $applicationValidation.MainStructuralAnnouncementGates.AllPassed) '结构变化通知三门 evaluator 汇总通过'
+    Assert-Equal 0 @($applicationValidation.MainStructuralAnnouncementGates.FailedChecks).Count '结构变化通知三门 evaluator 没有失败项'
     $structuralAnnouncementFailedChecksFixture = [pscustomobject]@{
         WorkspaceSelectionWithoutRedundantStatus = $true
         FilterResultAnnouncement = $true
@@ -5948,7 +4803,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [bool] $structuralAnnouncementFailedChecksFixture.AllPassed -and
         @($structuralAnnouncementFailedChecksFixture.FailedChecks).Count -eq 0
     Assert-Equal $false $structuralAnnouncementFailedChecksFixturePassed '结构变化通知 evaluator 拒绝合成的非空 FailedChecks'
-    $secondaryTypographyWindows = @($adapterValidation.SecondaryWindowTypography.Windows)
+    $secondaryTypographyWindows = @($applicationValidation.SecondaryWindowTypography.Windows)
     Assert-Equal 5 $secondaryTypographyWindows.Count '五个次级窗口都有真实字号测量'
     Assert-Equal 'ConfirmationDialog,InstanceActivationFailure,ReminderCenter,ReminderRulesEditor,SettingsRecovery' ((@($secondaryTypographyWindows.Window) | Sort-Object) -join ',') '次级窗口字号报告精确覆盖五种窗口'
     foreach ($measurement in $secondaryTypographyWindows) {
@@ -5969,21 +4824,21 @@ function Get-RejectionMessage([string[]] $Arguments) {
             Assert-Equal $null $measurement.MinorFontSize "$($measurement.Window) 不虚构次要文字字号角色"
         }
     }
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.RenderedScaleMatches) '五个次级窗口真实渲染字号符合共享刻度'
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.ContentRootsDeclareFontSize) '五个次级窗口内容根显式声明字号资源'
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.FloatingTypographyUnchanged) '悬浮便签正文和提醒摘要保持 13 DIP 阶梯'
-    Assert-Equal 13 ([double] $adapterValidation.SecondaryWindowTypography.FloatingBodyFontSize) '悬浮便签正文真实渲染仍为 13 DIP'
-    Assert-Equal 13 ([double] $adapterValidation.SecondaryWindowTypography.FloatingReminderFontSize) '悬浮提醒摘要真实渲染收敛为 13 DIP'
+    Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowTypography.RenderedScaleMatches) '五个次级窗口真实渲染字号符合共享刻度'
+    Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowTypography.ContentRootsDeclareFontSize) '五个次级窗口内容根显式声明字号资源'
+    Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowTypography.FloatingTypographyUnchanged) '悬浮便签正文和提醒摘要保持 13 DIP 阶梯'
+    Assert-Equal 13 ([double] $applicationValidation.SecondaryWindowTypography.FloatingBodyFontSize) '悬浮便签正文真实渲染仍为 13 DIP'
+    Assert-Equal 13 ([double] $applicationValidation.SecondaryWindowTypography.FloatingReminderFontSize) '悬浮提醒摘要真实渲染收敛为 13 DIP'
     $secondaryTypographyGateNames = @(
         'RenderedScaleMatches',
         'ContentRootsDeclareFontSize',
         'FloatingTypographyUnchanged'
     )
     foreach ($gateName in $secondaryTypographyGateNames) {
-        Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.Gates.$gateName) "次级窗口字号具体 evaluator 门通过：$gateName"
+        Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowTypography.Gates.$gateName) "次级窗口字号具体 evaluator 门通过：$gateName"
     }
-    Assert-Equal $true ([bool] $adapterValidation.SecondaryWindowTypography.Gates.AllPassed) '次级窗口字号 evaluator 三门汇总通过'
-    Assert-Equal 0 @($adapterValidation.SecondaryWindowTypography.Gates.FailedChecks).Count '次级窗口字号 evaluator 没有失败项'
+    Assert-Equal $true ([bool] $applicationValidation.SecondaryWindowTypography.Gates.AllPassed) '次级窗口字号 evaluator 三门汇总通过'
+    Assert-Equal 0 @($applicationValidation.SecondaryWindowTypography.Gates.FailedChecks).Count '次级窗口字号 evaluator 没有失败项'
     $secondaryTypographyFailedChecksFixture = [pscustomobject]@{
         RenderedScaleMatches = $true
         ContentRootsDeclareFontSize = $true
@@ -5998,7 +4853,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [bool] $secondaryTypographyFailedChecksFixture.AllPassed -and
         @($secondaryTypographyFailedChecksFixture.FailedChecks).Count -eq 0
     Assert-Equal $false $secondaryTypographyFailedChecksFixturePassed '次级窗口字号 evaluator 拒绝合成的非空 FailedChecks'
-    $confirmationMeasurements = @($adapterValidation.ConfirmationDialog.Measurements)
+    $confirmationMeasurements = @($applicationValidation.ConfirmationDialog.Measurements)
     Assert-Equal 2 $confirmationMeasurements.Count '删除确认精确覆盖便签/倒计时日间两状态'
     Assert-Equal 'Countdown-Day,Note-Day' ((@($confirmationMeasurements.StateId) | Sort-Object) -join ',') '删除确认矩阵状态 ID 精确'
     foreach ($measurement in $confirmationMeasurements) {
@@ -6027,10 +4882,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'CancelAndEscapeAreSafe'
     )
     foreach ($gateName in $confirmationDialogGateNames) {
-        Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialog.Gates.$gateName) "删除确认具体 evaluator 门通过：$gateName"
+        Assert-Equal $true ([bool] $applicationValidation.ConfirmationDialog.Gates.$gateName) "删除确认具体 evaluator 门通过：$gateName"
     }
-    Assert-Equal $true ([bool] $adapterValidation.ConfirmationDialog.Gates.AllPassed) '删除确认 evaluator 八门汇总通过'
-    Assert-Equal 0 @($adapterValidation.ConfirmationDialog.Gates.FailedChecks).Count '删除确认 evaluator 没有失败项'
+    Assert-Equal $true ([bool] $applicationValidation.ConfirmationDialog.Gates.AllPassed) '删除确认 evaluator 八门汇总通过'
+    Assert-Equal 0 @($applicationValidation.ConfirmationDialog.Gates.FailedChecks).Count '删除确认 evaluator 没有失败项'
     $confirmationDialogFailedChecksFixture = [pscustomobject]@{
         ButtonsVisible = $true
         BodyReachable = $true
@@ -6186,9 +5041,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $floatingNotesSource -match 'CalendarIndexOverflowMenuWidth = 36' -and
         $floatingNotesSource -match 'Width = CalendarIndexOverflowMenuWidth' -and
         $floatingNotesSource -match 'Height = CalendarIndexOverflowMenuWidth') '悬浮便签…菜单触发器 36×36 命中（#143 命中区源码契约）'
-    Assert-Equal 0 @($adapterValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
+    Assert-Equal 0 @($applicationValidation.FloatingQuickAddDayResourceDiagnostics).Count '悬浮窗快速新增日间资源诊断清单为空（#143 已计算未断言补齐）'
     Assert-Equal $canonicalHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'validate-only 保持设置不变'
-    Write-TestSegmentTiming -Name 'AdapterAssertions'
+    Write-TestSegmentTiming -Name 'ApplicationValidationAssertions'
 
     # #264：迁入 Ui FatalDiagnosticExercise；这是预期失败的诊断演练，不产出整份验证报告。
     $fatalDiagnosticPath = Join-Path $testRoot 'fatal-diagnostic-application.jsonl'
@@ -6330,8 +5185,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Write-TestSegmentTiming -Name 'NoteExercise'
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null
-    Copy-DesktopLauncherHostPayload -SourceHost $application -DestinationHost $interactiveApplicationPath
-    Copy-Item -LiteralPath $adapter -Destination $interactiveAdapterPath
+    Copy-CountdownApplicationPayload -SourceHost $application -DestinationHost $interactiveApplicationPath
     $requiredRequestProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @('--require-startup-request') `
         -PassThru -Wait -WindowStyle Hidden `
         -RedirectStandardOutput $requiredRequestOutputPath `
@@ -6391,43 +5245,39 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom
     )
 
-    $interactiveAdapterArguments = @(
-        '-NoLogo',
-        '-NoProfile',
-        '-STA',
-        '-File',
-        ('"{0}"' -f $interactiveAdapterPath),
-        '-ExitAfterReadyForTest',
+    $interactiveApplicationArguments = @(
+        '--require-startup-request',
+        '--exit-after-ready-for-test',
         # 自退间隔 15 秒：该段的重复实例门（产品内固定 3 秒激活超时+提示窗收口）与验收迁移
         # 都发生在窗口就绪之后，间隔必须大于该流程的最差耗时；15 秒仍是全段最短的防退化值。
-        '-ExitAfterReadyForTestSeconds',
+        '--exit-after-ready-seconds',
         '15',
-        '-SettingsFile',
+        '--settings-file',
         ('"{0}"' -f $interactiveSettingsPath),
-        '-DiagnosticLogPath',
+        '--diagnostic-log-path',
         ('"{0}"' -f $interactiveDiagnosticPath)
     )
     Write-TestSegmentTiming -Name 'StartupRequestModes'
-    $interactiveAdapterProcess = Start-Process -FilePath $pwsh -ArgumentList $interactiveAdapterArguments `
+    $interactiveLaunchProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList $interactiveApplicationArguments `
         -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput $interactiveAdapterOutputPath `
-        -RedirectStandardError $interactiveAdapterErrorPath
+        -RedirectStandardOutput $interactiveLaunchOutputPath `
+        -RedirectStandardError $interactiveLaunchErrorPath
     $runtimeReceiptDeadline = [DateTimeOffset]::UtcNow.AddSeconds(15)
     while (
         -not (Test-Path -LiteralPath $interactiveRuntimeStatusPath -PathType Leaf) -and
-        -not $interactiveAdapterProcess.HasExited -and
+        -not $interactiveLaunchProcess.HasExited -and
         [DateTimeOffset]::UtcNow -lt $runtimeReceiptDeadline
     ) {
         Start-Sleep -Milliseconds 50
     }
     if (-not (Test-Path -LiteralPath $interactiveRuntimeStatusPath -PathType Leaf)) {
-        $interactiveAdapterError = if (Test-Path -LiteralPath $interactiveAdapterErrorPath -PathType Leaf) {
-            Get-Content -LiteralPath $interactiveAdapterErrorPath -Raw
+        $interactiveLaunchError = if (Test-Path -LiteralPath $interactiveLaunchErrorPath -PathType Leaf) {
+            Get-Content -LiteralPath $interactiveLaunchErrorPath -Raw
         }
         else {
             ''
         }
-        throw "交互启动未生成 runtime-status.json：$interactiveAdapterError"
+        throw "交互启动未生成 runtime-status.json：$interactiveLaunchError"
     }
 
     $runtimeReceipt = Get-Content -LiteralPath $interactiveRuntimeStatusPath -Raw -Encoding UTF8 |
@@ -6438,10 +5288,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $interactiveLaunchToken ([string] $runtimeReceipt.launchToken) '交互启动回执令牌'
     Assert-Equal 'China Standard Time' ([string] $runtimeReceipt.timeZoneId) '交互启动回执时区'
     Assert-Equal (
-        [System.IO.Path]::GetFullPath($interactiveAdapterPath)
+        [System.IO.Path]::GetFullPath($interactiveProtocolApplicationPath)
     ) (
         [System.IO.Path]::GetFullPath([string] $runtimeReceipt.applicationPath)
-    ) '交互启动回执保持 adapter 路径身份'
+    ) '交互启动回执保持启动协议的应用路径身份（#292 后续退役）'
     Assert-Equal (
         [System.Diagnostics.Process]::GetCurrentProcess().SessionId
     ) (
@@ -6456,7 +5306,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     ) (
         [System.IO.Path]::GetFullPath($interactiveApplicationProcess.Path)
     ) '交互启动 PID 对应临时应用根内 C# EXE'
-    Assert-Equal $false $interactiveAdapterProcess.HasExited 'window-ready 时 adapter 仍在等待 C# EXE'
+    Assert-Equal $interactiveLaunchProcess.Id ([int] $runtimeReceipt.processId) 'window-ready 回执属于直接启动的 C# EXE 进程'
     $acceptanceDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
     Assert-Equal $true $acceptanceDiagnostic.Contains('AcceptanceReadOnlyEnabled', [System.StringComparison]::Ordinal) '延期验收启动时 C# 窗口进入只读状态'
 
@@ -6549,7 +5399,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
 
     # Nested HWND/IsActive ACK must not share the desktop foreground with this host.
     $interactiveSelfExitWait = [System.Diagnostics.Stopwatch]::StartNew()
-    if (-not $interactiveAdapterProcess.WaitForExit(45000)) {
+    if (-not $interactiveLaunchProcess.WaitForExit(45000)) {
         throw '交互启动未在测试退出期限内结束。'
     }
     $interactiveSelfExitWait.Stop()
@@ -6565,8 +5415,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     [Console]::Error.WriteLine(("CSHARP_INTERACTIVE_PURE_WAIT_SECONDS={0:F1}" -f $interactiveSelfExitWait.Elapsed.TotalSeconds))
     [Console]::Error.WriteLine(("CSHARP_INTERACTIVE_READY_TO_EXIT_SECONDS={0:F1}" -f $interactiveReadyToExitSeconds))
-    $interactiveAdapterProcess.WaitForExit()
-    Assert-Equal 0 $interactiveAdapterProcess.ExitCode '交互启动 adapter 透传 C# 正常退出码'
+    $interactiveLaunchProcess.WaitForExit()
+    Assert-Equal 0 $interactiveLaunchProcess.ExitCode '直接启动的 C# EXE 按测试参数正常退出'
     $interactiveApplicationProcess.Refresh()
     Assert-Equal $true $interactiveApplicationProcess.HasExited '测试参数触发 C# EXE 退出'
     Write-TestSegmentTiming -Name 'InteractiveLaunch'
@@ -6629,7 +5479,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         TimeZone = $canonicalSettings.timeZoneId
         TempIsolation = $true
         RuntimeSchemaVersion = $runtimeReceipt.schemaVersion
-        AdapterUiValidated = $true
     } | ConvertTo-Json
     Complete-CountdownReferenceBaselineDeferral -Path $referenceBaselineDeferralPath -Suite 'CSharp'
 }
@@ -6661,15 +5510,15 @@ finally {
             $interactiveApplicationProcess.Dispose()
         }
     }
-    if ($null -ne $interactiveAdapterProcess) {
+    if ($null -ne $interactiveLaunchProcess) {
         try {
-            if (-not $interactiveAdapterProcess.HasExited) {
-                $interactiveAdapterProcess.Kill($true)
-                [void] $interactiveAdapterProcess.WaitForExit(5000)
+            if (-not $interactiveLaunchProcess.HasExited) {
+                $interactiveLaunchProcess.Kill($true)
+                [void] $interactiveLaunchProcess.WaitForExit(5000)
             }
         }
         finally {
-            $interactiveAdapterProcess.Dispose()
+            $interactiveLaunchProcess.Dispose()
         }
     }
     if ($null -ne $mutexHolderProcess -and -not $mutexHolderProcess.HasExited) {
@@ -6681,7 +5530,7 @@ finally {
             throw "拒绝清理受管测试证据根外的 C# 测试数据：$testRoot"
         }
         if (Test-Path -LiteralPath $interactiveApplicationPath -PathType Leaf) {
-            Remove-DesktopLauncherHostPayload -DestinationHost $interactiveApplicationPath
+            Remove-CountdownApplicationPayload -DestinationHost $interactiveApplicationPath
         }
         try {
             Invoke-ManagedTestRootPurge `

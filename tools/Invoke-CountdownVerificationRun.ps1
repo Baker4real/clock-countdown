@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    标准化 10 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 9 步收口验证 runner。单目录、单次不间断全绿。
 
 .DESCRIPTION
     在 D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -11,21 +11,20 @@
     约束：
     - namespace 仅为 soak 或 full；默认 full。soak 不抵扣收口。
     - runId 必须唯一；已存在的 attempt 目录永不覆盖，需换新 runId。
-    - 10 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
+    - 9 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
     - 默认不重试。-Retry 必须保持关闭；打开则拒绝执行。
     - 不把 settings.json、便签或凭据拷进 evidence，不写 C:\。
 
-    10 步（顺序不可增减）：
+    9 步（顺序不可增减）：
     1. env-pre：Countdown.ReleaseContract.psm1 IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check：git diff --check
     3. build：pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
     4. pin-after-build：verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）与 app\MinminCountdown.exe 现役条目（fail-fast；本 runner 不改 ReleaseContract）
-    5. desktop-launcher：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly
-    6. csharp-default：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
-    7. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
-    8. core：pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
-    9. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    10. install-validate：pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
+    5. csharp-default：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
+    6. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
+    7. core：pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
+    8. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    9. install-validate：pwsh -NoLogo -NoProfile -File Install-CountdownProgram.ps1 -CheckOnly
 
     非矩阵步优先使用 D:\Codex\tools\PowerShell\7.6.5\pwsh.exe；矩阵步固定 7.6.4。不修改 ExecutionPolicy。
 
@@ -37,7 +36,7 @@
     已存在的 runId 会被拒绝，不会覆盖。
 
 .PARAMETER DryRun
-    创建 attempt 目录、先写 meta、拷贝 runner 并列出 10 步，不执行验证。
+    创建 attempt 目录、先写 meta、拷贝 runner 并列出 9 步，不执行验证。
 
 .PARAMETER Retry
     必须关闭。默认关闭。打开则拒绝执行；失败后请换新 runId 重跑。
@@ -90,15 +89,15 @@ $script:ExpectedPins = $null
 function Show-CountdownVerificationRunHelp {
     @'
 SYNOPSIS
-    标准化 10 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 9 步收口验证 runner。单目录、单次不间断全绿。
 
 参数
     -Namespace  soak | full（默认 full）。soak 不抵扣收口。
     -RunId      必须唯一。省略则用 UTC yyyyMMddTHHmmssZ + 短随机。禁止覆盖已有 attempt。
-    -DryRun     只写 meta、拷贝 runner、列出 10 步，不跑验证。
+    -DryRun     只写 meta、拷贝 runner、列出 9 步，不跑验证。
     -Retry      必须保持关闭。打开则拒绝。默认不重试。
     -AllowForegroundWindowedSteps
-                前台跑 desktop-launcher / instance-activation-matrix。
+                前台跑 instance-activation-matrix。
                 用户正在用电脑时禁止。默认拒绝这两步。
     -Help       显示本帮助。
 
@@ -107,18 +106,17 @@ SYNOPSIS
     meta 先写（status=running）后补。runner 自拷贝并记录 SHA-256。失败保留现场。
     不写 C:\。不把 settings.json / 便签 / 凭据拷进 evidence。不改 ExecutionPolicy。
 
-10 步（顺序不可增减）
+9 步（顺序不可增减）
     1. env-pre                      IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
     2. git-diff-check               git diff --check
     3. build                        pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
     4. pin-after-build              verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）
                                     与 app\MinminCountdown.exe 现役哈希（fail-fast；不改 ReleaseContract）
-    5. desktop-launcher             pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly
-    6. csharp-default               pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
-    7. instance-activation-matrix   钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
-    8. core                         pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
-    9. source-validation            pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    10. install-validate            pwsh -NoLogo -NoProfile -File Install-Countdown.ps1 -ValidateOnly
+    5. csharp-default               pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
+    6. instance-activation-matrix   钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
+    7. core                         pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
+    8. source-validation            pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    9. install-validate             pwsh -NoLogo -NoProfile -File Install-CountdownProgram.ps1 -CheckOnly
 
 证据根
     D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -333,12 +331,11 @@ function Get-CountdownVerificationSteps {
         [pscustomobject]@{ Index = 2; Id = 'git-diff-check'; Kind = 'git'; Sta = $false; Engine = 'git'; ScriptName = ''; Arguments = @('diff', '--check'); Isolation = 'none' }
         [pscustomobject]@{ Index = 3; Id = 'build'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Build-CountdownApplication.ps1'; Arguments = @('-Clean'); Isolation = 'none' }
         [pscustomobject]@{ Index = 4; Id = 'pin-after-build'; Kind = 'pin-after-build'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 5; Id = 'desktop-launcher'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-DesktopLauncherOnly'); Isolation = 'foreground-authorized' }
-        [pscustomobject]@{ Index = 6; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyCSharp' }
-        [pscustomobject]@{ Index = 7; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
-        [pscustomobject]@{ Index = 8; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 9; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
-        [pscustomobject]@{ Index = 10; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-Countdown.ps1'; Arguments = @('-ValidateOnly'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 5; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyCSharp' }
+        [pscustomobject]@{ Index = 6; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
+        [pscustomobject]@{ Index = 7; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
+        [pscustomobject]@{ Index = 8; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
+        [pscustomobject]@{ Index = 9; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-CountdownProgram.ps1'; Arguments = @('-CheckOnly'); Isolation = 'none' }
     )
 }
 
@@ -747,7 +744,7 @@ try {
                             [void] $argumentList.Add([string] $argument)
                         }
                         if ($isolation -eq 'foreground-authorized') {
-                            [void] $argumentList.Add('-AllowForegroundDesktopLauncher')
+                            [void] $argumentList.Add('-AllowForegroundWindowedSteps')
                         }
                         if ($isolation -eq 'isolated-desktop') {
                             $captured = Invoke-CountdownIsolatedPwshStep `

@@ -30,14 +30,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $evidence 'stderr.log'))) { throw '�
 if (-not [IO.Path]::GetFullPath($evidence).StartsWith([IO.Path]::GetFullPath($root) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw "自检的阶段证据必须留在测试根内，不得写入共享证据目录。实际：$evidence"
 }
-Import-Module (Join-Path $repo 'Countdown.InstallTransaction.psm1') -Force -DisableNameChecking
-$receiptPath = Join-Path $root 'failure-receipt.json'
-$null = Write-CountdownInstallFailureReceipt -Path $receiptPath -Stage 'Core 回归' -ErrorRecord $failure `
-    -TransactionStarted $false -CommitState 'not-committed' -RollbackAttempted $false -RollbackSucceeded $false -PreservedUnmanagedLaunchers $false
-$receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-if ($receipt.fullyQualifiedErrorId -notlike '*Countdown.OriginalQuery*' -or
-    $receipt.scriptStackTrace -notlike '*Countdown.Core.Tests.ps1: line 2*') { throw '正式失败回执必须使用子进程原始错误，而非父执行器调用点。' }
-$assertions = 3
+$assertions = 2
 foreach ($case in @(
     @{ Source="'native stdout diagnostic'; exit 73"; Message='native stdout diagnostic' },
     @{ Source=''; Message='未返回 JSON' },
@@ -160,7 +153,7 @@ $crashRoot = Join-Path $root 'application-crash'
 [void][IO.Directory]::CreateDirectory($crashRoot)
 $crashRecord = Join-Path $crashRoot 'diagnostic-path.txt'
 [IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.Core.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
-[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.CSharp.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0,`"AdapterUiValidated`":true}'", $utf8)
+[IO.File]::WriteAllText((Join-Path $crashRoot 'Countdown.CSharp.Tests.ps1'), "'{`"Passed`":1,`"Failed`":0}'", $utf8)
 $crashApplicationSource = Join-Path $crashRoot 'fake-app'
 [void][IO.Directory]::CreateDirectory($crashApplicationSource)
 [IO.File]::WriteAllText((Join-Path $crashApplicationSource 'FakeApp.csproj'), @'

@@ -621,20 +621,12 @@ function Invoke-CountdownValidationSuite {
         -Report $application.Report `
         -MainManifestRequired $mainBaselineRequired `
         -FloatingManifestRequired $floatingBaselineRequired
-    $adapterUiProperty = $cSharp.Report.PSObject.Properties['AdapterUiValidated']
-    if ($null -eq $adapterUiProperty -or
-        $adapterUiProperty.Value -isnot [bool] -or
-        -not [bool] $adapterUiProperty.Value) {
-        throw 'C# 回归未确认 adapter UI 验证。'
-    }
-
     [pscustomobject]@{
         SchemaVersion = 1
         Valid = $true
         CoreTestsPassed = $corePassed
         CSharpTestsPassed = $cSharpPassed
         UiValid = $true
-        AdapterUiValidated = $true
         TestOutput = $core.Json
         CSharpTestOutput = $cSharp.Json
         UiValidationOutput = $application.Json

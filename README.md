@@ -48,7 +48,6 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 
 ## 文件说明
 
-- `敏敏子倒计时.ps1`：C# 应用的薄启动 adapter；映射既有参数。生产启动用 `Win32_Process.Create` 脱离计划任务作业，确认 C# 仍存活后退出 0；validate/exercise 仍等待并传播退出码。不回退旧 PowerShell WPF
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex、部署设置等价规则，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约、PowerShell 部署等价夹具快照与互操作验证程序；只引用 Core，保持无窗口
@@ -59,29 +58,24 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
-- `Countdown.Runtime.psm1`：每次启动的令牌、窗口首帧就绪回执、有界等待与滚动诊断日志
+- `Countdown.Runtime.psm1`：#292 待退役启动验收协议的 PowerShell 一侧，包括启动令牌、窗口首帧回执与有界等待；诊断日志只由 C# 写入
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
-- `Countdown.InstallTransaction.psm1`：带全机互斥锁的可回滚安装事务；覆盖安装目录、启动器、两份计划任务与 Windows 时间服务状态；`Get-CountdownInstallLayout` 是安装布局的唯一定义
-- `Countdown.InstallLifecycle.psm1`：旧安装事务生命周期；装入候选、事务验收与回滚，计划任务、时间服务、进程与桌面图标经 port 注入（生产用 Windows port）
-- `Countdown.Validation.psm1`：本机正式安装运行的 Core、C# 与应用 validate-only 验证 module；安装器只在本机直接安装时从仓库加载，不进办公室发布包
+- `Countdown.Validation.psm1`：本机 Core、C# 与应用 validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
-- `CountdownLauncher.cs`：无控制台桌面启动器源码；仓库编译产物为 `CountdownLauncher.exe`
-- `CountdownLauncher.exe`：仓库中的启动器文件；安装后桌面名为 `敏敏子倒计时.exe`，双击直接启动宿主
 - `countdown-icon.ico`：窗口、托盘和桌面启动器图标；构建另复制一份进程序目录 `app\`，应用托盘从那里读取（#275）
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
 - `assets/floating-plush/*.png`：悬浮窗现役视觉资产；#231 起 `floating-plush-*-reference.png` 三张派生姿态参考图仅作视觉基线 sourceBinding 输入留在仓库，不再安装到 `app`；来源、处理边界、哈希和用途见 [悬浮窗玩偶素材来源](assets/floating-plush/SOURCES.md)
 - `assets/main-decorations/*.png`：主窗口暖色日间装饰资产；现役用法见 [DESIGN.md](DESIGN.md)
 - `assets/ui-references/`：用户生成的页面与悬浮窗参考图及机器可读 `manifest.json` 的固定位置，作为视觉复刻比对依据随仓库版本化；不会进入 `app` 的运行时资产清单
 - [DESIGN.md](DESIGN.md)：主窗口两页、悬浮窗两工作区与提醒中心的「暖粉日间」现役视觉、交互和单一日间主题合同
-- `Install-Countdown.ps1`：安装与更新入口；只做发布包校验、预检、本机直接安装时的验证套件与结果输出，安装本身交给安装事务生命周期
-- `Get-CountdownInstallStatus.ps1`：只读状态命令，默认读 `D:\敏敏子倒计时` 与登录任务 `Minmin Countdown`，输出一份 ASCII JSON：载荷清单状态（`present`/`missing`/`invalid`）、清单记录的提交与聚合哈希（清单缺失或没记提交时为 `null`，即未知；构建时工作树有改动则提交带 `-dirty`）、已安装 EXE 是否与清单一致、映像路径是已安装 EXE 的进程（路径、会话、启动时间）、登录任务与期望定义不符的项、设置文件的长度/修改时间/SHA-256，以及安装根下是否留有未完成安装的事务标记 `install-transaction.json`、此刻是否有安装、切换或回退正在运行（`installInProgress`：只打开已有的全机安装锁看它在不在，不取锁、不等待）。不写文件、不启停进程，输出不含设置内容、凭据、主机名或账号；脚本自包含，可交给远端执行入口直接运行，`-Port`、`-LockName` 只供测试
-- `Install-CountdownProgram.ps1`、`Countdown.Installer.psm1`：新安装器（#259）的入口与安装事务 module，本机与远端同一个安装器，首次安装与升级同一流程：取得全机安装锁（与旧安装器同名，互斥）；中断恢复（#284，见下）；前置检查（安装路径、唯一的交互会话及其桌面目录（按交互用户 SID 的注册表环境解析，不用当前进程的环境）、候选程序目录 `app.candidate` 按载荷清单逐项核对）；停止应用（登录任务有实例运行时先结束任务实例，在有界等待内让已安装 EXE 的进程正常退出；任务结束或宽限期到达后仍运行的进程按 PID 重读映像路径与启动时间再结束；结果 `stoppedProcessCount`、`exitedProcessCount`、`killedProcessCount` 分别记开始时的进程数、正常退出数与强杀数，见 [#279 实测](docs/evidence/clock-countdown-issue-279/README.md)）；写事务标记 `install-transaction.json`（记下候选的提交与聚合哈希，先写临时文件 `install-transaction.json.tmp` 再改名）；把 `settings.json` 及两代备份逐字节快照到事务目录 `install-transaction\settings-snapshot\`（快照里没有的文件安装前就不存在），有设置文件时用候选 EXE 的 `--settings-migration` 在 `install-transaction\settings-rehearsal\` 的副本上演练迁移，再用候选 EXE 的 `--settings-equivalence`（传入迁移命令报告的 `migrationUtc`）核对快照与迁移结果（#282）：不等价或演练没能完成时不换程序，按下面的回滚重新启动旧版本并报告失败，程序目录与现役设置都没被动过；首次安装没有设置文件时跳过演练；现役 `app` 改名为 `app.previous`、候选改名为 `app`（被短暂占用时各自有界重试，模块参数 `-FileLockRetrySeconds` 默认 15 秒，仍被占用时原因为 `program-directory-in-use`）；登录任务不存在时按 #279 的最终定义创建（优先级 4，电池供电也启动、拔电不停），已存在时逐项比较（启用、动作、触发器、主体用户、登录类型、运行级别、优先级、运行时限、多实例、两项电池设置、按需启动、强制结束；用户按 SID 比较，结果只写“交互用户/别的用户/不限用户”），一致时不动，不一致时整份重新注册，结果 `loginTask.changes` 逐项写明改前改后；登记交互用户桌面上的快捷方式 `敏敏子倒计时.lnk`（目标是已安装 EXE，无参数，工作目录是 `app`，图标取 EXE）：缺失时创建；“属于安装器”指同名项是 Shell Link（按文件头认）且目标是本安装根的已安装 EXE，属于时参数、工作目录或图标不一致才改回并写明改动；不属于（目标指向别处的快捷方式、碰巧同名的普通文件或目录）时原样保留，结果写 `kept-foreign` 与原因 `other-target` 或 `not-a-shell-link`，不写它指向哪里；旧安装器的桌面启动器 `敏敏子倒计时.exe` 不碰；删除旧的运行状态回执，经登录任务启动，30 秒内等到启动就绪（回执由存活进程写出，其映像路径是已安装 EXE、会话是交互会话、EXE 哈希与载荷清单一致，不用启动令牌），启动的进程在启动就绪之前就退出时（登录任务的那次运行已经结束，已安装 EXE 也没有进程在运行）不等满时限，失败原因为 `startup-exited`（#288）；先清除事务标记，再删除旧版本目录与事务目录。写下事务标记之后、新版本达到启动就绪之前任何一步失败都回滚（#283）：停止已安装 EXE 的进程；按目录现状换回程序目录（`app` 是新版本时先改回 `app.candidate`，再把 `app.previous` 改回 `app`；首次安装把新版本改回 `app.candidate`）；程序换过时用本次安装的快照恢复 `settings.json` 及两代备份（与快照逐字节相同的不动；与快照不同、即将被覆盖或删除的现役文件先保留为同目录的 `<文件名>.before-rollback-<UTC>` 副本，结果 `rollback.settingsLiveCopies` 只记这些文件名；待恢复快照先复制到 `install-transaction\settings-restore\` 再整份替换，快照里没有的删除）；本次更新过的登录任务按改之前导出的整份定义恢复，本次创建的登录任务升级时保留（它指向同一个 EXE 路径，旧版本要经它重新启动）、首次安装时删除；首次安装删除本次创建的桌面快捷方式，升级不动快捷方式（新旧版本是同一个 EXE 路径，快捷方式与版本无关）；有旧版本时经登录任务重新启动它并等到启动就绪；这些都做到了才清除事务标记，再删除候选与事务目录。首次安装回滚后安装根里没有程序目录，也不留本次创建的登录任务与快捷方式。回滚任何一步没做到时结论为 `rollback-failed`，事务标记、事务目录（含快照）与候选原样留下，交给中断恢复（#284）。新版本达到启动就绪之后不再回滚，也不再用快照覆盖设置（用户可能已经在编辑），提交没走完时事务标记留给下一次安装的中断恢复。中断恢复（#284）是取得安装锁之后的第一步，不设多阶段的事务日志，按事务标记与目录状态（`app` 是不是事务标记记下的那一版，按载荷清单的聚合哈希认）把上一次没走完的安装收拾好，同一次调用再继续本次安装：没有事务标记却有残留（`app.candidate`、`app.previous`、事务目录或 `install-transaction.json.tmp`）时视为已提交，删掉残留，现役 `app` 与在运行的应用不动；候选还在（换程序之前）时删除候选与事务目录、清除标记；`app` 不在而 `app.previous` 在（两次改名之间）时把旧版本改名换回；`app` 已是新版本时补做启动验收：它已在运行就按回执核对（不再经登录任务启动），没在运行就经登录任务启动并等到启动就绪，达到就提交；达不到时设置及两代备份与快照逐字节相同就停下新版本、换回旧版本（首次安装回到没有程序目录），旧版本不重新启动，随后的安装启动新包；设置已经变化时什么都不改（`needs-maintainer`，原因 `settings-changed`，交给维护者决定），没有或有多个交互会话时什么都不改（`left-as-is`，原因同前置检查）；程序目录的组合不是任何一步安装能留下的（如三个程序目录都在）时什么都不改（`needs-maintainer`，原因 `unrecognized-state`）。只有补做启动验收要交互会话，其余收拾不启动任何东西，没人登录也照做。每个状态都先把 `app` 放成要留下的那一版，再清除事务标记，最后删除其余残留：做到一半失败（`failed`，原因 `recovery-failed`）或被打断时留下的仍是上面的某个状态，下一次安装接着恢复。恢复从不用快照写设置，也不动登录任务与桌面快捷方式（新旧版本是同一个 EXE 路径；被打断的安装改登录任务前导出的定义只在那次安装的进程里，没有落盘），随后的安装照常登记两者。收拾不了时安装停在 `recovery` 阶段、不继续。目录改名、设置写回与安装器自己的删除被短暂占用时都有界重试。只替换程序目录，恢复证据、诊断日志与节假日缓存不被移动或改写，设置及两代备份只复制进事务目录、只在上述回滚里写回快照；前置检查失败时只删除候选。`-CheckOnly` 执行到前置检查为止，报告将要执行的步骤（不读桌面上的快捷方式，计划里总有 `register-desktop-shortcut`；不做中断恢复，只在 `recovery` 里报告看到的状态，`outcome` 为 `planned`，计划最前面是 `recover-unfinished-install`）。输出一份 ASCII 结果 JSON：成败 `succeeded`、失败阶段 `failedStage` 与原因 `reason`、截短到 400 字的错误摘要 `error`、中断恢复 `recovery`（`state` 为 `clean`、`leftovers`、`before-replace`、`mid-replace`、`after-replace` 或 `unrecognized`；`action` 为 `removed-leftovers`、`discarded-candidate`、`renamed-back`、`committed` 或 `swapped-back`，没做时为空；`outcome` 为 `not-needed`、`recovered`、`planned`、`left-as-is`、`needs-maintainer` 或 `failed`；`reason` 是停下的原因；安装在安装锁之前就停下时整个为空）、设置迁移演练的结论 `settingsRehearsal`（`outcome` 为 `equivalent`、`not-equivalent`、`failed` 或 `skipped-no-settings`，另带两条命令的原因类别）、回滚结果 `rollback`（`outcome` 为 `not-needed`（没有要撤回的改动，或新版本已达到启动就绪）、`rolled-back` 或 `rollback-failed`；`settings` 为 `restored` 或 `unchanged`，`loginTask` 为 `restored`、`removed` 或 `kept`，`desktopShortcut` 为 `removed`，没做这一步时为空；`problems` 逐条列出没做到的步骤，每条截短）、回滚后重新启动的旧版本进程 `restartedProcess`、新版本在启动就绪之前退出（`startup-exited`）时它的退出码 `startupExitCode`（登录任务的上次结果，直接运行 EXE 的任务就是进程的退出码，#279；其余情况为空）、安装结束时事务标记是否还在 `transactionMarkerPresent`、应用诊断日志的位置 `diagnosticLogPath`（`<安装根>\logs\application.jsonl`，新版本起不来的原因记在这里）、登录任务 `loginTask` 与桌面快捷方式 `desktopShortcut` 各做了什么、设置在安装前后的指纹，不含设置内容、凭据或账号。不运行测试套件、不检查构建工具链、不碰 Windows 时间服务。计划任务、进程、交互会话、桌面目录、快捷方式、目录改名与候选 EXE 的无界面命令经 port 注入，`-Port`、`-LockName` 只供测试。尚未接入发布包与办公室部署
-- `Deploy-CountdownProgram.ps1`、`Countdown.Deployer.psm1`：新部署入口（#259 / #285 / #286）与编排 module，日常两种模式：部署，和 `-StatusOnly`（一次只读状态读取，不做任何改动、不写记录）；另有一次性的 `-LayoutSwitch`（走部署流程，包里另带切换脚本，安装一步运行它，探测读到当前提交已在运行也照常切换）与 `-LayoutRollback`（把仓库里的切换脚本与新安装器 module 打包传到暂存目录，远端核对包哈希后以 `-Rollback` 运行包里的切换脚本，不运行办公室备份里的副本；不需要构建输出、不做部署的本机预检，结论 `rolled-back`），见下一条与 [办公室布局切换](docs/办公室布局切换.md)；三种模式一次只能选一种，同时给出时 `rejected`、原因 `conflicting-modes`。部署：本机预检（main、工作树干净、与 `origin/main` 一致；`logs\suite-runs` 里有同一提交、本 checkout、开跑与收尾都干净的套件记录，必过阶段取自 `tools/Countdown.SuiteStages.psm1`，Build 回执是 `CleanR2R` 并带 `PayloadAggregateSha256`；`app\published-payload.json` 记的提交是 HEAD，聚合哈希等于该回执，实际构建输出还须通过 #218/#261 的节假日年度覆盖守卫）；把载荷清单列出的程序目录文件、载荷清单和新安装器打成一个 ZIP（边写边核对逐文件 SHA-256，不重新导出、不重新构建）；经远端执行入口做只读连通性探测，探测就是一次状态读取（结果的 `statusBefore`）：读到 HEAD 已在运行（状态的提交是 HEAD、`aggregateSha256` 等于包里构建输出的聚合哈希、已安装 EXE 与办公室的载荷清单一致、应用在运行、没有事务标记；同一提交的另一份构建输出照常安装）就报告 `already-running` 并退出，不传输、不重复安装；经传输入口送到 `<暂存根>\clock-countdown-<运行编号>\package.zip` 并核对远端哈希（暂存目录先以写操作建成不继承上级、只有 SYSTEM 与 Administrators 能写，远端步骤没提权时另给运行者自己）；经远端执行入口以写操作核对包哈希、解包、运行包内 `Install-CountdownProgram.ps1` 并取回结果 JSON，随后删除暂存目录；再用 `Get-CountdownInstallStatus.ps1` 只读读状态，提交、EXE 哈希与达到启动就绪的进程都与预期一致才报告成功；最后写 `<记录根>\<运行编号>\deployment-record.json`（提交、包哈希、安装结果、状态快照、传输账本引用；预检通过后无论结论如何都写，写不成时本该成功的结论改报 `failed`、原因 `record-write-failed`，其余结论原样保留并在 `error` 里补一句），本机的包不保留。进度写标准错误，最后一行是带 `outcome` 的结论；结果 ASCII JSON 写标准输出，退出码总是 0。`outcome` 有五种：`deployed` 与 `already-running`（`succeeded` 为 `true`）；`rejected`（连接办公室之前停下，`succeeded` 为 `false`，`reason` 为 `not-main`、`dirty-work-tree`、`not-pushed`、`suite-evidence-missing`、`required-stages-incomplete`、`build-receipt-not-clean`、`build-output-missing`、`build-output-invalid`、`aggregate-mismatch`、`holiday-year-coverage-missing` 或打包时的 `build-output-modified`，`error` 写明缺什么；另有办公室上另一个安装、切换或回退正在运行、包内入口什么都没改就停下的拒绝，`reason` 为安装器的 `install-in-progress` 或切换、回退的 `transaction-in-progress`，`nextStep` 是等它结束、先用 `-StatusOnly` 读状态）；`failed`（`succeeded` 为 `false`：`probe-failed` 时不传输，`transfer-failed` 时不安装，`install-failed` 时 `rollback` 是回滚结果：包没能交给安装器为 `not-needed`，安装器报告失败时取它结果里的 `rollback.outcome`（#283：`not-needed`、`rolled-back`、`rollback-failed`），没报为 `null`；`status-mismatch` 是安装器报告成功、安装后的状态在提交、EXE 哈希或进程上与预期不一致）；`unknown`（`succeeded` 为 `null`，不知道办公室上的结果：连接在安装途中断开或安装器开始运行却没给结果为 `install-result-unknown`，安装后读不到状态为 `status-unreadable`）；意外错误的原因类别是 `unexpected-error`。结果未知、回滚失败或安装器没报回滚结果时，`nextStep` 提示先用 `-StatusOnly` 读状态：有事务标记 `transactionMarkerPresent` 就重新部署，安装器先恢复再安装（#284；恢复不了时安装停在 `recovery` 阶段，部署结果的 `install.recovery` 写明看到的状态与原因）。远端执行与传输经 port：生产接主机的 `Invoke-RemoteStep.ps1` 与 ssh-transfer-ledger 的 `Invoke-OfficeScpTransfer.ps1`，传输账本放在主机传输记账根下而不在部署记录目录里；输出与记录不含主机名、地址、账号或凭据，`-Port` 只供测试。办公室切换与实时状态验收已完成；它是唯一的部署与实时状态查询入口
-- `Switch-CountdownInstallLayout.ps1`：一次性布局切换（#287），把办公室安装从现有布局（登录任务经 pwsh 运行 adapter，桌面上是启动器 EXE）切到新布局（登录任务直接启动 `app\MinminCountdown.exe`，桌面上是快捷方式），经新部署入口的 `-LayoutSwitch` 随部署包运行。切换与回退整个运行期间持有全机安装锁（与新旧安装器同一把，新安装器在同一线程里重入），另一个安装、切换或回退正在运行时停在前置检查（`transaction-in-progress`），什么都不改。前置检查只读地看当前进程是否提权，并按两个现有任务的 DACL 判断能否替换、删除它们，不能就停下（`task-access-denied`，要提权运行）；按映像路径停下旧版本（结束前按 PID 重读映像路径与启动时间）；把安装根、现役与遗留任务导出的定义、桌面启动器文件、本脚本与新安装器 module 备份到 `<安装根>.layout-switch-backup`（目录先建成只给 SYSTEM 与 Administrators 写、交互用户只能读），最后写 `backup.json`（备份不完整时切换不开始；备份途中失败时删掉写了一半的备份，重新启动旧版本）；经新安装器换布局；移除遗留任务、属于旧安装器的桌面启动器与安装根里的旧文件。用户数据不被移动或改写，认不出的条目原样保留并列出。备份之后任何一步失败都停下报告，备份保留，再次运行沿用这份备份接着做。`-Rollback`（新部署入口的 `-LayoutRollback` 从核对过哈希的包运行它；不经部署入口时可从备份的 `tools\` 运行）让安装根、两个任务与桌面启动器回到切换前：前置检查另核对备份里要恢复的任务定义（主体是交互会话的登录用户、以最低权限运行、动作落在安装根里，不符合时 `backup-task-invalid`，什么都不改）；先移除登录任务与桌面快捷方式、停下新版本，再在安装根旁边按备份复制出副本、以两次目录改名换下安装根（切换后的安装根整个留在备份目录的 `after-switch-<时刻>\root\`），中途停下时没有启动路径指向半恢复的安装根，再次运行接着做。输出一份 ASCII 结果 JSON；`-Port`、`-LockName` 只供测试。步骤与判读见 [办公室布局切换](docs/办公室布局切换.md)
+- `Get-CountdownInstallStatus.ps1`：只读状态命令，默认读 `D:\敏敏子倒计时` 与登录任务 `Minmin Countdown`，输出一份 ASCII JSON：载荷清单状态（`present`/`missing`/`invalid`）、清单记录的提交与聚合哈希（清单缺失或没记提交时为 `null`，即未知；构建时工作树有改动则提交带 `-dirty`）、已安装 EXE 是否与清单一致、映像路径是已安装 EXE 的进程（路径、会话、启动时间）、登录任务与期望定义不符的项、设置文件的长度/修改时间/SHA-256，以及安装根下是否留有未完成安装的事务标记 `install-transaction.json`、此刻是否有安装正在运行（`installInProgress`：只打开已有的全机安装锁看它在不在，不取锁、不等待）。不写文件、不启停进程，输出不含设置内容、凭据、主机名或账号；脚本自包含，可交给远端执行入口直接运行，`-Port`、`-LockName` 只供测试
+- `Install-CountdownProgram.ps1`：唯一安装入口。`-CheckOnly` 只检查包与环境、不做改动，失败时输出结构化 JSON 并非零退出；真实安装先做节假日年度覆盖检查，再走候选校验、设置迁移演练、程序目录替换、直接 EXE 登录任务、桌面快捷方式和启动就绪提交。
+- `Countdown.Installer.psm1`：安装事务实现与可替换 Windows port；只动程序目录、事务状态、登录任务和桌面快捷方式，不运行测试、不配置 Windows 时间服务，也不清理旧布局。
+- `Deploy-CountdownProgram.ps1`、`Countdown.Deployer.psm1`：唯一办公室部署入口与编排 module，支持部署和 `-StatusOnly` 只读状态读取。预检、年度覆盖检查、真实 ZIP 打包、受管传输/远端执行与安装后一次状态读取由该链完成，不再提供布局切换或回退模式。
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑。入口只留参数、公共断言、分段开关、计时与收尾，各分段正文在同目录 `Countdown.Core.Tests.<分段>.ps1`，由入口点源执行，不单独运行
 - `Countdown.CSharp.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
-- `tools/Invoke-CountdownVerificationRun.ps1`、`tools/Invoke-DesktopLauncherLatencyProbe.ps1`：标准化 10 步收口验证 runner 与桌面启动 T0–T4 分段时延探针；探针样本只用于归因，不汇入门槛样本池
+- `tools/Invoke-CountdownVerificationRun.ps1`：标准化 9 步收口验证 runner；桌面启动器退役后不再有时延探针，实例激活矩阵保留独立门禁
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），五阶段套件默认入口；Build 绿后 Core/CSharp/SourceValidation/InstallValidate 四阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary（参考基线待重拍的退出码 75 除外，见「本机验证」）。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。`tools/Countdown.SuiteStages.psm1` 是当前必过五阶段（Build / Core / CSharp / SourceValidation / InstallValidate）的唯一来源，启动器、运行记录与办公室部署门都读取它；`Countdown.SuiteRun.psm1` 负责原子 run/summary（替换目标被杀毒扫描等瞬时占用时重试约 2 秒）、阶段超时、取消和失效 owner 的 `Interrupted` 回读；run.json 的 `Source` 记录开跑与收尾时的 HEAD 和工作树是否干净，办公室部署据此核对同一提交的本机验收证据；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 - `tools/Test-CountdownTooling.ps1`：不在用户桌面开窗的自检：issue 验收 schema、回写 dry-run、PowerShell 解析、弹层验证夹具 C# 只编译、日间纯装饰图生成契约（`tools/Test-MainDayOrnamentScene.ps1`）、隔离启动器崩溃对话框看门狗（`tools/Test-IsolatedCrashDialogWatchdog.ps1`，对话框只弹在自建的隔离桌面上）、套件状态原子写的瞬时占用重试（`tools/Test-SuiteRunStateWrite.ps1`）、CI 工作流脚本都有本机阶段跑到的对等检查、生产脚本 `Move-Item -Force` 只减不增、通过的子测试不在 `logs\` 与仓库根留下 `*-test-*` 测试根和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例，夹具 C# 在 `tools/PopupValidationContract.cs`
 - `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
@@ -96,7 +90,7 @@ WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方�
 
 界面源码导航：管理窗口布局集中在 `src/MinminCountdown/MainWindow.xaml.cs`，弹层动效集中在 `src/MinminCountdown/MotionBehavior.cs` 的 `PopupMotionBehavior`。
 
-硬约束：本项目的 PowerShell adapter、测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。WPF adapter 入口仍必须使用 `-STA`。
+硬约束：本项目的 PowerShell 测试、安装和办公室部署只支持 PowerShell 7+（`pwsh.exe`），不支持 Windows PowerShell 5.1（`powershell.exe`）。需要 WPF 的测试入口仍必须使用 `-STA`；登录任务和桌面快捷方式直接启动 EXE，不经过 PowerShell。
 
 硬约束：套件的默认运行前提是用户正在使用这台电脑。Build / Core / CSharp / ExternalClose / SourceValidation / InstallValidate 六个阶段**仅启动器可跑**，禁止把内层命令当复制模板直跑。启动器默认把整棵进程树放到 BelowNormal，并把控制台与 WPF 窗口放进不可见 Win32 桌面（窗口不上用户屏幕、不抢焦点）；用户 Default 桌面若出现敏敏子 / MinminCountdown 可见顶层窗即红。任一阶段红即停（参考基线待重拍除外，见下文），日志落在 `logs\suite-runs\`，内容是原始字节，编码由写入的进程决定：多数为 UTF-8，未自设编码的进程（如 InstallValidate 的安装器）按控制台代码页写出；中文 Windows 上按 UTF-8 读出乱码时改用 `Get-Content -Encoding 936`。CSharp / SourceValidation 若检测到自己不在 `MinminSuiteIso-*` 桌面会 fail-closed。关闭隔离必须显式 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。隔离桌面上没人能点掉崩溃对话框：套件进程树里有进程弹出“has stopped working / 已停止工作”对话框时，隔离启动器以退出码 126 结束该进程，并把对话框标题与正文写进该阶段的 err 日志。本机微信输入法会把 CrashRpt 注入 GUI 进程，它缺 CrashSender.exe，任何 GUI 进程崩溃都会弹 “Error launching CrashSender.exe”。
 
@@ -108,7 +102,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 只验证外部关闭悬浮窗、取消退出与第二实例激活时，使用 `-Stage ExternalClose`；它复用完整 CSharp 的同一组真实 EXE 断言，也作为 CI 的独立门禁，不替代正式完整 CSharp。
 
-无窗口 Core 红→绿内环使用 `pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownCoreSegment.ps1 -Segment <Installer|InstallStatus|LayoutSwitch|DeployEntry>`；只运行使用假端口和临时目录的对应段，断言失败或异常均非零退出，正式验收仍必须跑完整 Core。`Test-CountdownValidationDiagnostics.ps1` 需要单项复验时，用 `pwsh -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Check ValidationDiagnostics -Json`，不必重跑整套 Tooling。
+无窗口 Core 红→绿内环使用 `pwsh -NoLogo -NoProfile -File ./tools/Invoke-CountdownCoreSegment.ps1 -Segment <Installer|InstallStatus|DeployEntry>`；只运行使用假端口和临时目录的对应段，断言失败或异常均非零退出，正式验收仍必须跑完整 Core。`Test-CountdownValidationDiagnostics.ps1` 需要单项复验时，用 `pwsh -NoLogo -NoProfile -File ./tools/Test-CountdownTooling.ps1 -Check ValidationDiagnostics -Json`，不必重跑整套 Tooling。
 
 启动器的单实例锁按登录会话共享，别的 worktree 里的启动器也算在内。默认被占即拒绝，并列出疑似持有者 PID；加 `-WaitForLockSeconds <秒>` 则最多排队这么久。阶段失败时，启动器在结尾打印该阶段 err 日志的摘要：取最后一个 PowerShell 错误块，UTF-8 与 936 逐行解码。完整日志仍在 `logs\suite-runs\`。Build 的受管清理遇到删除门锁被别的会话占用（`deployment-mutex-acquire-timeout`，门每次等 2 分钟）时最多尝试 5 次；其余清理失败立即报错。含 Build、Tooling 以外阶段的运行，开跑前先采样三次后台负载：CPU 总占用不低于 80%，或 GPU 最忙的引擎类型不低于 50% 时，列出最忙的进程并拒绝开跑，因为挖矿或游戏吃满资源时参考帧 300ms 超时会被误报成回归。启动器只报告、不结束任何进程，CI 不做这项检查；确认要照跑时加 `-SkipLoadPreflight`。进程起落时（例如上一轮启动器的子进程刚退出），个别实例读不到只丢那几条；缺了 CPU 总量、GPU 引擎或进程整类计数器就隔一秒重取，同一次采样连取五次仍缺才跳过预检，并打印 `Get-Counter` 的错误原文。采样在 `tools/Countdown.SuiteBackgroundLoad.psm1`，启动器只决定哪些阶段要预检、阈值、跳过与报告；采样行为由 Tooling 跑的 `tools/Test-SuiteLoadPreflight.ps1` 守住：它正常导入这个 module，注入假计数器与假等待，不读真实计数器。
 
@@ -183,64 +177,57 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 
 标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 
-标注：五阶段套件与 10 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/6/8/9/10 步与五阶段逐字相同，连跑等于整套跑两遍。收口 runner 的 CSharp/SourceValidation 走同一隔离启动器；`desktop-launcher` 与 `instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
+标注：五阶段套件与 9 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/5/7/8/9 步与五阶段逐字相同，连跑等于整套跑两遍。收口 runner 的 CSharp/SourceValidation 走同一隔离启动器；`instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
 
 标注：issue 关闭前按 [`docs/agents/issue-acceptance.md`](docs/agents/issue-acceptance.md) 生成结构化记录；`candidate`、`dry-run`、`deployed` 和 `live verified` 分开记录。`tools/Invoke-IssueWriteback.ps1` 不带 `-Apply` 时只生成评论和父票汇总计划，不发送 GitHub 请求。
 
 本地迭代使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage IncrementalBuild`；它保留增量编译，仍走隔离桌面与 BelowNormal。`Build` 始终表示受管 `-Clean` + R2R。开始正式收尾时，使用 `pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage Build,Core,CSharp,SourceValidation,InstallValidate -Closeout`：入口先用现有 `-RequireClean` 预检当前 checkout 的清理能力，失败就不启动长阶段；完成状态由五阶段结果及构建实际输出的 `CleanR2R` 回执共同判定。只有退出0但没有模式回执、增量构建或缺少任何必需阶段，都不能算正式收尾完成。回执另记程序目录的聚合哈希 `PayloadAggregateSha256`，新部署入口据此确认送出的就是套件测过的那份构建输出；这个字段之前跑出的套件记录没有它，部署前要用当前构建脚本重跑套件。
 
-启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-DesktopLauncherOnly`、`-InstanceActivationMatrix`、#288 真实安装验收 `tools/Invoke-CountdownRealInstallCheck.ps1 -Mode Run`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行（`-AllowForegroundDesktopLauncher`）。真实安装验收的 `-Mode Run` 注册一个临时的真实计划任务，在当前用户桌面上显示悬浮窗并打开一次资源管理器窗口，只在用户当场同意后运行，同意的原话传给 `-Consent`（不给就拒绝）；`Prepare`、`DryRun`、`Cleanup` 不注册任务、不开窗口。下方为启动器转发的**实现细节**（不是复制模板；CSharp/SourceValidation 直跑会 fail-closed）：
+启动器未覆盖的运行（`verification\MinminCountdown.Verification.exe` 直跑、`-InstanceActivationMatrix`、#288 真实安装验收 `tools/Invoke-CountdownRealInstallCheck.ps1 -Mode Run`）遵循同一前提；其中会渲染窗口的变体只在用户明确授权时前台运行（`-AllowForegroundWindowedSteps`）。真实安装验收的 `-Mode Run` 注册一个临时的真实计划任务，在当前用户桌面上显示悬浮窗并打开一次资源管理器窗口，只在用户当场同意后运行，同意的原话传给 `-Consent`（不给就拒绝）；`Prepare`、`DryRun`、`Cleanup` 不注册任务、不开窗口。下方为启动器转发的**实现细节**（不是复制模板；CSharp/SourceValidation 直跑会 fail-closed）：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./Build-CountdownApplication.ps1 -Clean
 ./verification/MinminCountdown.Verification.exe
 pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1
-pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -DesktopLauncherOnly -AllowForegroundDesktopLauncher  # 2026-08-23 起冷≤4.7s / 暖≤4.5s；用户正在用电脑时禁止
-& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix -AllowForegroundDesktopLauncher  # 诊断并发 probe 共享截止 38900ms（真实矩阵 8×100 强制 1MB 滚动写最差外推 32381ms +20%）；用户正在用电脑时禁止
+& 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix -AllowForegroundWindowedSteps  # 诊断并发 probe 共享截止 38900ms（真实矩阵 8×100 强制 1MB 滚动写最差外推 32381ms +20%）；用户正在用电脑时禁止
 pwsh.exe -NoLogo -NoProfile -File ./Countdown.Core.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File ./Invoke-CountdownSourceValidation.ps1
-pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1 -ValidateOnly
+pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1 -CheckOnly
 ```
 
-正式安装结果默认只返回已安装文件数量和清单 evidence 路径；完整逐文件 SHA-256 清单写入该路径，避免把整份 inventory 回显到终端。
-本机替换现有桌面版本继续使用 `Install-Countdown.ps1` 的正式事务入口；它返回 `InstalledFileCount`、`InstalledFilesEvidencePath`、启动器、计划任务和运行态回读字段，不需要临时替换脚本。
 
-标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-Countdown.ps1 -ValidateOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言；重复成本约 10 秒，不合并。
+标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-CountdownProgram.ps1 -CheckOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言与负控制；重复成本约 10 秒，不合并。
 
-标注：`Countdown.Core.Tests.ps1` 的 Validation 分段与本机 `Install-Countdown.ps1` 正式安装（不带 `-DeferCommit`）调用 `Invoke-CountdownValidationSuite`。Core 逻辑不隔离；C# 回归与应用 `--validate-only` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateApp`，后者直接启动 `app\MinminCountdown.exe` 并显式传入临时设置与诊断日志路径，不经 adapter。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。
+标注：`Countdown.Core.Tests.ps1` 的 Validation 分段调用 `Invoke-CountdownValidationSuite`；新安装器只负责安装，不运行测试套件。Core 逻辑不隔离；C# 回归与应用 `--validate-only` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateApp`，后者直接启动 `app\MinminCountdown.exe` 并显式传入临时设置与诊断日志路径。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。
 
 标注：应用 `--validate-only` 失败时，验证套件先把它的诊断日志（`*.application.jsonl` 及轮转文件）复制进该阶段的证据目录，再照常清理临时文件。CI 任一步失败时上传 `crash-evidence-<run_id>-<attempt>`，内容是 Application 日志里的崩溃事件（Application Error、Windows Error Reporting、.NET Runtime）、`MinminCountdown.exe` 的 WER 小型转储，以及 `D:\agents\run-evidence\clock-countdown-validation` 下的阶段证据。仓库公开，artifact 任何人都能下载，所以只收小型转储。
 
-`-DesktopLauncherOnly` 的冷/暖门槛按 2026-08-23 现役探针五对 runId `ca1179d53398413abb236fc0f4d7b490`、`58c35833a6bf4b5ebbab9e3dab973c2a`、`eb12765e030d413a8520bcbf78c4938c`、`9d6ff40ee86745aab70f4dd96522ce60`、`9cf91f34b4f242b5a93c3b04a2fe1f23` 校准。口径是真实首帧 WPF `ContentRendered`（命名事件 `Local\CountdownDesktopLauncherWindowReady`）；测量钟在首次 window-ready 之后才查询 `Win32_Process`。探针 stopwatch T0→T4 冷 p95/max=3776ms、暖 p95/max=3439ms，分段 Σp95+20% 取整为冷 4700ms、暖 4500ms。机器：i5-14600KF / 可用内存约 7.3GiB / CPU 中低 / 2026-08-23 16:46–16:49 +08。样本只用于归因，不汇入门槛样本池。`-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
+`-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
 以上命令只证明当前机器上的源码行为、发布包与安装合同，不构成办公室部署或现场验收。正式部署只使用 `Deploy-CountdownProgram.ps1`，只读实时状态使用同一入口的 `-StatusOnly`。部署预检接受干净、已推送且与 `origin/main` 一致的 `main` 当前提交，并要求本 checkout 有同一提交、套件起止工作树都干净且整轮通过的五阶段记录；Build 必须是 `CleanR2R`，当前构建输出的聚合哈希必须等于回执，实际随包节假日数据还须通过年度覆盖守卫。部署直接打包这套件测过的程序目录、载荷清单和新安装器，打包逐文件核对 SHA-256，不重新导出、不重建；安装后以一次实时状态读取判定成功。历史证据边界、结果未知时的处理，以及放弃的保护与三项替代见 [办公室部署](docs/办公室部署.md)。
 
 ## 运行应用
 
 ```powershell
-./CountdownLauncher.exe
+./app/MinminCountdown.exe
 ```
 
-启动链：桌面 `敏敏子倒计时.exe`（安装器复制的 `CountdownLauncher.exe`）→ `app\MinminCountdown.exe`。启动器优先用自身目录下的 `app\MinminCountdown.exe`，没有时回退到 `D:\敏敏子倒计时\app\MinminCountdown.exe`；它不带参数启动宿主，宿主不读启动请求。登录任务执行 `pwsh -STA -File 敏敏子倒计时.ps1`，adapter 以 `--require-startup-request` 启动宿主；宿主从应用根目录（`app\` 的上一级）读取安装器写出的 `startup-request.json`，缺失或损坏即拒绝启动（fail-closed）。#275 起，宿主不再按 adapter 文件推断应用根目录：宿主位于 `app\` 时应用根目录总是它的上一级，不随工作目录变化；其他布局（如经 `dotnet` 运行源码构建输出）以调用方给的工作目录为应用根目录。随包节假日数据和图标从程序目录（安装布局里即 `app\`）读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。不带参数直接启动 `app\MinminCountdown.exe` 可编辑，悬浮窗首帧后照常写出运行状态回执。构建不写启动请求，所以在仓库 checkout 里直接运行 adapter 会被拒绝。
+登录任务直接执行安装根下的 `app\MinminCountdown.exe`，不带参数并以普通优先级运行；桌面入口是指向同一 EXE 的 `敏敏子倒计时.lnk` 快捷方式。正常登录和双击都不经过 PowerShell、WMI 或其他启动器，也不读取安装器留下的启动请求。只有 #292 待退役的显式验收路径还使用启动请求与过渡回执身份。
+
+宿主位于 `app\` 时，应用根总是它的上一级，不随工作目录变化；其他布局以调用方给的工作目录或显式设置/诊断路径为准。随包节假日数据和图标从程序目录读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。
 
 ## 安装
 
-安装前先运行 `Build-CountdownApplication.ps1 -Clean`。改了发布契约 `IntegrityHashes` 覆盖的文件（办公室安装会加载的 PowerShell 模块与 adapter、启动器、图标、节假日数据、根目录官方立绘和 14 个程序目录随包资源）后，按当前提交 blob 更新 `Countdown.ReleaseContract.psm1` 里对应的 SHA-256：先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1`（读暂存区 blob 改写钉值；`-Check` 只列出全部不一致项、不改文件）。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值，改它们不用重算钉值。安装器要求已安装 PowerShell 7+（`pwsh.exe`），缺失时会拒绝运行，不会回退到 Windows PowerShell 5.1。它会在全部预检通过后才取得全机安装事务锁：先记录计划任务和 Windows 时间服务状态，再冻结两份旧登录任务以阻止旧程序复活；旧程序静止后才快照安装目录与桌面启动器（含 `.new` 暂存文件），随后校准网络时间、运行测试、复制程序、把启动器安装到桌面，并另行注册登录任务。桌面双击 `敏敏子倒计时.exe` 直接启动宿主，不经过 schtasks、pwsh 或 adapter；登录任务仍执行 `pwsh -STA -File 敏敏子倒计时.ps1`。登录任务必须用本次启动令牌先写出“窗口首帧已渲染”的 `window-ready` 回执，安装器最多等待 30 秒；设置等价和提交前验收通过、事务进入仍可回滚的 `accepted` 后，应用还必须以同一令牌、进程、会话和应用路径写出 `finalized-ready`，安装器复核计划任务、受管 EXE 身份与运行环境后才把事务标记为 `committed`。正常失败会恢复快照（时间校准本身不可逆）。损坏 journal、缺少备份或用户在崩溃后替换桌面启动器时，安装器会保留证据并拒绝覆盖用户文件，而不是进行破坏性回滚。请在管理员 PowerShell 7 中从仓库根目录运行：
+安装前先运行 `Build-CountdownApplication.ps1 -Clean`。发布 ZIP 只含载荷清单列出的程序目录文件、`app\published-payload.json`、`Install-CountdownProgram.ps1` 与 `Countdown.Installer.psm1`；`Countdown.ReleaseContract.psm1` 的 `PackageFiles` 与实际 ZIP 精确一致。
+
+改了静态钉值覆盖的两个安装器文件或 `BuildAssets` 的源资产后，先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1` 按暂存区 blob 更新 `Countdown.ReleaseContract.psm1`；`-Check` 只列出全部不一致项、不改文件。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值。安装与部署仍要求 PowerShell 7+，不回退到 Windows PowerShell 5.1。
+
+真实安装在取得全机安装锁之前先检查节假日年度覆盖，再校验包、停止应用、快照设置并在副本上演练迁移、替换程序目录、登记直接 EXE 登录任务和桌面快捷方式，等待启动就绪后提交；失败时按新事务边界回滚。安装只替换程序目录，不运行测试、不配置 Windows 时间服务，也不处理遗留任务或启动器。`-CheckOnly` 只检查包与环境、不做任何改动，年度覆盖按契约豁免；它失败时输出失败 JSON 并非零退出。默认包根是脚本所在目录，默认安装根是 `D:\敏敏子倒计时`：
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File ./Install-Countdown.ps1
+pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1
 ```
-
-安装器只支持安装目录和交互用户桌面均位于 `D:\` 的设备，这是当前办公室设备的安全边界。
 
 办公室设备的稳定部署方式见 [办公室部署](docs/办公室部署.md)。
-
-## 重新编译启动器
-
-```powershell
-pwsh.exe -NoLogo -NoProfile -File ./Build-Launcher.ps1
-```
-
-重新生成 `CountdownLauncher.exe` 后，需要同步更新 `Countdown.ReleaseContract.psm1` 中对应的 SHA-256。
 
 重新生成图标需要 Python 和 Pillow：
 

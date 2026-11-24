@@ -7,7 +7,7 @@
 输出不含设置内容、凭据、主机名或账号。字段：commit 与 aggregateSha256 取自载荷清单，清单缺失或没记提交时为 null（未知）；
 manifest 为 present/missing/invalid；exe.matchesManifest 在清单不可用时为 null；processes 只列映像路径是已安装 EXE 的进程；
 loginTask.mismatches 列出与期望定义不符的项；settings 只有长度、修改时间与 SHA-256；transactionMarkerPresent 表示有未完成的安装；
-installInProgress 表示此刻有安装、切换或回退正在运行（全机安装锁在），这时其余各项可能正在变。
+installInProgress 表示此刻有安装正在运行（全机安装锁在），这时其余各项可能正在变。
 -Port 供测试注入进程与计划任务查询；不传时查询真实 Windows。-LockName 供测试换用自己的锁名。
 #>
 [CmdletBinding()]
@@ -15,7 +15,7 @@ param(
     [string] $InstallRoot = 'D:\敏敏子倒计时',
     [string] $TaskName = 'Minmin Countdown',
     [object] $Port,
-    # 与新旧安装器、切换脚本同一把全机安装锁（Countdown.Installer.psm1 的 InstallLockName）；本命令自成一体，只能留一份副本。
+    # 与安装器同一把全机安装锁（Countdown.Installer.psm1 的 InstallLockName）；本命令自成一体，只能留一份副本。
     [string] $LockName = 'Global\MinminCountdownInstallTransaction-v1'
 )
 

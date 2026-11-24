@@ -14,14 +14,16 @@
 备份；恢复本次改过的登录任务；首次安装删除本次创建的登录任务与桌面快捷方式；有旧版本时经登录任务重新启动它。新版本达到
 启动就绪之后不再回滚，也不再用快照覆盖设置。
 只替换程序目录：恢复证据、诊断日志和节假日缓存不被移动或改写，设置及其备份只在上述回滚里写回快照。本机与远端是同一个入口。
--CheckOnly 只执行到前置检查，不产生任何改动（也不做中断恢复，只报告看到的状态），结果的 plannedSteps 写明将要执行的步骤。
+真实安装在取得锁之前执行节假日年度覆盖守卫；CheckOnly 按契约豁免。CheckOnly 只执行到前置检查，不产生任何改动
+（也不做中断恢复，只报告看到的状态），结果的 plannedSteps 写明将要执行的步骤；失败时输出同一份失败 JSON 并以非零退出。
 结果 JSON 写明成功或失败、失败阶段与原因、有界的错误摘要、中断恢复 recovery（看到的目录状态、做了什么、结论与停下的原因）、
 设置迁移演练的结论、登录任务与桌面快捷方式各做了什么（改了哪些项）、
 回滚结果 rollback（outcome 为 not-needed、rolled-back 或 rollback-failed）、新版本在启动就绪之前退出时它的退出码
 startupExitCode、事务标记是否还在、应用诊断日志的位置，
 以及设置在安装前后的指纹（长度、修改时间与 SHA-256），不含设置内容、凭据或账号。安装失败同样输出结果 JSON，
 成败看 succeeded 与 failedStage。
--Port 供测试注入计划任务、进程、交互会话、桌面目录、快捷方式、目录改名与候选 EXE 的无界面命令，-LockName 供测试隔离安装锁；
+-Port 供测试注入计划任务、进程、交互会话、桌面目录、快捷方式、目录改名与候选 EXE 的无界面命令，-LockName 供测试隔离安装锁，
+-BeijingNow 供测试确定节假日年度覆盖守卫的当前北京时间；
 不传时操作真实 Windows。
 #>
 [CmdletBinding()]
@@ -31,14 +33,22 @@ param(
     [string] $TaskName = 'Minmin Countdown',
     [switch] $CheckOnly,
     [object] $Port,
-    [string] $LockName
+    [string] $LockName,
+    [DateTimeOffset] $BeijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'China Standard Time')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
 
-$arguments = @{ PackageRoot = $PackageRoot; InstallRoot = $InstallRoot; TaskName = $TaskName; CheckOnly = $CheckOnly }
+$arguments = @{ PackageRoot = $PackageRoot; InstallRoot = $InstallRoot; TaskName = $TaskName; CheckOnly = $CheckOnly; BeijingNow = $BeijingNow }
 if ($null -ne $Port) { $arguments.Ports = $Port }
 if (-not [string]::IsNullOrWhiteSpace($LockName)) { $arguments.LockName = $LockName }
-Install-CountdownProgram @arguments | ConvertTo-Json -Depth 6 -EscapeHandling EscapeNonAscii
+$result = Install-CountdownProgram @arguments
+$json = $result | ConvertTo-Json -Depth 6 -EscapeHandling EscapeNonAscii
+if ($CheckOnly -and -not [bool] $result.succeeded) {
+    # InstallValidate 以进程退出码判阶段；失败 JSON 必须同时非零闭锁，不能假绿。
+    [Console]::Out.WriteLine($json)
+    exit 1
+}
+$json

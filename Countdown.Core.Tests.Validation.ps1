@@ -243,7 +243,7 @@ public static class SuiteEvidenceDesktopProbe
     ('allowUnisolated=' + [Environment]::GetEnvironmentVariable('MINMIN_SUITE_ALLOW_UNISOLATED') +
         [Environment]::NewLine + 'desktop=' + [SuiteEvidenceDesktopProbe]::GetDesktopName()),
     [System.Text.UTF8Encoding]::new(`$false))
-'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
+'{`"Passed`":13,`"Failed`":0}'
 "@
     }
     foreach ($fixture in $validationFixtures.GetEnumerator()) {
@@ -377,9 +377,8 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     Assert-Equal 13 ([int] $validationResult.CSharpTestsPassed) 'Validation interface exposes C# assertion count'
     Assert-Equal $false ($validationResult.PSObject.Properties.Name -contains 'UiTestsPassed') 'Validation interface retires the compatibility UI stage count'
     Assert-Equal $true ([bool] $validationResult.UiValid) 'Validation interface exposes application validate-only state'
-    Assert-Equal $true ([bool] $validationResult.AdapterUiValidated) 'Validation interface preserves adapter UI evidence'
     Assert-Equal '{"Passed":11,"Failed":0}' ([string] $validationResult.TestOutput) 'Validation interface preserves Core JSON compatibility'
-    Assert-Equal '{"Passed":13,"Failed":0,"AdapterUiValidated":true}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
+    Assert-Equal '{"Passed":13,"Failed":0}' ([string] $validationResult.CSharpTestOutput) 'Validation interface preserves C# JSON compatibility'
     Assert-Equal $false ($validationResult.PSObject.Properties.Name -contains 'UiTestOutput') 'Validation interface retires the compatibility UI stage output'
     Assert-Equal $validationApplicationJson ([string] $validationResult.UiValidationOutput) 'Validation interface preserves application JSON compatibility'
     $applicationInvocation = [System.IO.File]::ReadAllLines($fakeApplicationRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json
@@ -454,7 +453,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         @"
 [System.IO.File]::AppendAllText(`$env:COUNTDOWN_VALIDATION_ORDER_PATH, 'csharp' + [Environment]::NewLine)
 [Console]::Error.WriteLine('expected diagnostic')
-'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'
+'{`"Passed`":13,`"Failed`":0}'
 "@,
         $utf8NoBom)
     $successfulDiagnosticPreserved = $false
@@ -465,7 +464,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
             -DotnetPath $fixtureDotnet
         $successfulDiagnosticPreserved =
             [bool] $diagnosticValidationResult.Valid -and
-            [string] $diagnosticValidationResult.CSharpTestOutput -eq '{"Passed":13,"Failed":0,"AdapterUiValidated":true}'
+            [string] $diagnosticValidationResult.CSharpTestOutput -eq '{"Passed":13,"Failed":0}'
     }
     catch {
         $successfulDiagnosticPreserved = $false
@@ -474,7 +473,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
 
     [System.IO.File]::WriteAllText(
         (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
-        "'{`"Passed`":12,`"Failed`":1,`"AdapterUiValidated`":true}'",
+        "'{`"Passed`":12,`"Failed`":1}'",
         $utf8NoBom)
     $reportedFailureRejected = $false
     try {
@@ -490,23 +489,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
 
     [System.IO.File]::WriteAllText(
         (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
-        "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":false}'",
-        $utf8NoBom)
-    $adapterUiFailureRejected = $false
-    try {
-        Invoke-CountdownValidationSuite `
-            -Root $validationTestRoot `
-            -PowerShell7Path $validationPowerShell `
-            -DotnetPath $fixtureDotnet | Out-Null
-    }
-    catch {
-        $adapterUiFailureRejected = $_.Exception.Message -match 'C# 回归未确认 adapter UI 验证'
-    }
-    Assert-Equal $true $adapterUiFailureRejected 'Validation interface requires adapter UI evidence before reporting success'
-
-    [System.IO.File]::WriteAllText(
-        (Join-Path $validationTestRoot 'Countdown.CSharp.Tests.ps1'),
-        "'{`"Passed`":13,`"Failed`":0,`"AdapterUiValidated`":true}'",
+        "'{`"Passed`":13,`"Failed`":0}'",
         $utf8NoBom)
     [System.IO.File]::WriteAllText(
         $fakeApplicationReport,

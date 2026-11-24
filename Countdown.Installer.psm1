@@ -13,11 +13,11 @@ $ErrorActionPreference = 'Stop'
 # 已有成功路径（#280）、换程序前的设置保护（#282）、登录任务与桌面快捷方式的登记（#281）、失败回滚（#283）和
 # 安装开始时的中断恢复（#284，Invoke-CountdownInstallRecovery）。
 
-# 与旧安装器（Countdown.InstallTransaction.psm1）同名：新旧安装器在同一台机器上互斥。
+# 全机安装锁防止同一台机器上的两个安装并发；状态命令用同一个名字做只读探测。
 $script:InstallLockName = 'Global\MinminCountdownInstallTransaction-v1'
 $script:ApplicationProcessName = 'MinminCountdown.exe'
 $script:ExecutableManifestPath = 'app\MinminCountdown.exe'
-# 桌面快捷方式的名字沿用旧安装器放在桌面上的启动器 敏敏子倒计时.exe（#281）。
+# 桌面快捷方式沿用既有的中文名称，目标直接是已安装 EXE（#281）。
 $script:DesktopShortcutName = '敏敏子倒计时.lnk'
 $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 # 设置及其两代备份（docs/设置与持久化.md）：快照与迁移演练的对象，安装器从不写安装根里的这三份文件。
@@ -1320,6 +1320,44 @@ function ConvertTo-CountdownBoundedError {
     $text
 }
 
+# 节假日年度覆盖守卫直接读取包内程序目录，包内不需要再带发布契约 module。
+# 真实安装在取得锁与调用任何 Windows port 之前执行；CheckOnly 按现行契约豁免。
+function Test-CountdownInstallerHolidayYearCoverage {
+    param(
+        [Parameter(Mandatory)] [string] $PackageRoot,
+        [Parameter(Mandatory)] [DateTimeOffset] $BeijingNow
+    )
+
+    $holidayDirectory = Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app\holiday-data'
+    $packagedYears = @()
+    if (Test-Path -LiteralPath $holidayDirectory -PathType Container) {
+        $packagedYears = @(
+            Get-ChildItem -LiteralPath $holidayDirectory -File -Filter '*.json' |
+                ForEach-Object { if ($_.Name -match '^(\d{4})\.json$') { [int] $Matches[1] } })
+    }
+    $nextYear = $BeijingNow.Year + 1
+    if ($BeijingNow.Month -lt 12 -or $packagedYears.Contains($nextYear)) {
+        return [pscustomobject]@{ Covered = $true; MissingYear = $null; Message = '' }
+    }
+    [pscustomobject]@{
+        Covered = $false
+        MissingYear = $nextYear
+        Message = "随包节假日数据尚未覆盖 $nextYear 年：当前北京时间已进入 $($BeijingNow.Year) 年 12 月。请按 holiday-data/README.md 的更新流程补齐 $nextYear 年随包数据（固定上游提交、重新生成全年 days 数组、更新来源提交、年份与 IntegrityHashes，工单 #234），再重新运行验证。"
+    }
+}
+
+function Assert-CountdownInstallerHolidayYearCoverage {
+    param(
+        [Parameter(Mandatory)] [string] $PackageRoot,
+        [Parameter(Mandatory)] [DateTimeOffset] $BeijingNow
+    )
+
+    $coverage = Test-CountdownInstallerHolidayYearCoverage -PackageRoot $PackageRoot -BeijingNow $BeijingNow
+    if (-not $coverage.Covered) {
+        throw (New-CountdownInstallRejection -Reason 'holiday-year-coverage-missing' -Message $coverage.Message)
+    }
+}
+
 function Install-CountdownProgram {
     <#
     .SYNOPSIS
@@ -1351,7 +1389,8 @@ function Install-CountdownProgram {
         [ValidateNotNullOrEmpty()] [string] $LockName = $script:InstallLockName,
         [ValidateRange(1, 300)] [int] $ReadyTimeoutSeconds = 30,
         [ValidateRange(1, 300)] [int] $StopTimeoutSeconds = 10,
-        [ValidateRange(0, 300)] [int] $FileLockRetrySeconds = 15
+        [ValidateRange(0, 300)] [int] $FileLockRetrySeconds = 15,
+        [DateTimeOffset] $BeijingNow = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTimeOffset]::UtcNow, 'China Standard Time')
     )
 
     if ($null -eq $Ports) { $Ports = New-CountdownInstallerWindowsPorts }
@@ -1392,6 +1431,9 @@ function Install-CountdownProgram {
     $candidateOwned = $false
     $transaction = $null
     try {
+        if (-not $CheckOnly) {
+            Assert-CountdownInstallerHolidayYearCoverage -PackageRoot $PackageRoot -BeijingNow $BeijingNow
+        }
         # 安装路径检查与设置指纹只读、不需要锁：被安装锁拒绝的结果里也有设置指纹。
         $layout = Resolve-CountdownInstallerLayout -InstallRoot $InstallRoot
         $result.installRoot = $layout.Root

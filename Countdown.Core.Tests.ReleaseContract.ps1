@@ -31,12 +31,10 @@ $expectedFloatingPlushAssets = @(
 )
 
 Assert-Equal 1 $releaseContract.ContractVersion 'Release contract exposes version one'
-$expectedPackageCount = @($publishedPayloadManifest.files).Count + 3
-Assert-Equal $expectedPackageCount @($releaseContract.PackageFiles).Count 'Release contract declares exactly the payload, its manifest and the two new installer files'
-Assert-Equal $expectedPackageCount $releaseContract.IntegrityHashes.Count 'Release contract pins every package file exactly once'
+$expectedPackageCount = @($publishedPayloadManifest.files).Count + 4
+Assert-Equal $expectedPackageCount @($releaseContract.PackageFiles).Count 'Release contract declares the payload, two manifests and two installer files'
 foreach ($buildOnlyInput in @('src\MinminCountdown\NoteCompletionExit.cs', 'src\MinminCountdown\app.manifest')) {
     Assert-Equal $false ($buildOnlyInput -in @($releaseContract.PackageFiles)) "Build input stays out of the office package: $buildOnlyInput"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($buildOnlyInput) "Build input is not statically pinned: $buildOnlyInput"
 }
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.PackageFiles)) 'Plush source metadata stays in the repository, outside the office package'
 Assert-Equal $false ('assets\floating-plush\SOURCES.md' -in @($releaseContract.InstalledFiles)) 'Plush source metadata is not installed as a runtime file'
@@ -44,6 +42,10 @@ Assert-Equal $false ('tools\Countdown.BuildPreflight.psm1' -in @($releaseContrac
 Assert-Equal $false ('tools\Test-CountdownBuildPreflight.ps1' -in @($releaseContract.PackageFiles)) 'PowerShell build preflight entry point stays out of the office package'
 Assert-Equal $false ('DESIGN.md' -in @($releaseContract.PackageFiles)) 'Design contract stays in the repository, outside the office package'
 Assert-Equal 14 @($releaseContract.BuildAssets).Count 'Release contract declares fourteen explicit application asset mappings'
+Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PSObject.Properties.Name -contains 'SHA256' }).Count 'Build asset mappings carry no static SHA-256 pins'
+foreach ($removedProperty in @('IntegrityHashes', 'PackageTrustRoots', 'BuildInputFiles', 'SourceBuildFiles')) {
+    Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains $removedProperty) "Release contract exposes no retired manual list: $removedProperty"
+}
 $installedSupportFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -notlike 'app\*' })
 Assert-Equal 0 $installedSupportFiles.Count 'Release contract installs no legacy support files outside the program directory'
 $installedApplicationFiles = @($releaseContract.InstalledFiles | Where-Object { $_ -like 'app\*' })
@@ -51,7 +53,8 @@ Assert-Equal ((@($publishedPayloadManifest.files.path) + @('app\published-payloa
 Assert-Equal 0 @($publishedPayloadManifest.files.path | Where-Object { $_ -match 'CsWin32|Win32Metadata|Win32Docs' }).Count '#333 build-time CsWin32 packages add zero runtime files to the published payload'
 $expectedOfficePackageSupportFiles = @(
     'Install-CountdownProgram.ps1',
-    'Countdown.Installer.psm1'
+    'Countdown.Installer.psm1',
+    'package-manifest.json'
 )
 $officePackageSupportFiles = @(
     $releaseContract.PackageFiles |
@@ -96,7 +99,6 @@ $actualPublishedLicenseFiles = @($publishedPayloadManifest.files.path | Where-Ob
 Assert-Equal (($expectedPublishedLicenseFiles | Sort-Object) -join ',') (($actualPublishedLicenseFiles | Sort-Object) -join ',') 'Published payload retains the complete audited license and notices set'
 foreach ($publishedLicenseFile in $expectedPublishedLicenseFiles) {
     Assert-Equal $true ($publishedLicenseFile -in @($releaseContract.InstalledFiles)) "Third-party license is installed: $publishedLicenseFile"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($publishedLicenseFile) "Third-party license is integrity protected: $publishedLicenseFile"
 }
 $notifyIconLicenseSource = 'docs\third-party\H.NotifyIcon\2.4.1\LICENSE.md'
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.PackageFiles)) 'Office package gets the published H.NotifyIcon license copy instead of the repository source'
@@ -104,11 +106,10 @@ Assert-Equal 'B41F5ADB8391601E3C693462925317E4CBE446270BCD646BDB8D02572821FE80' 
 Assert-Equal $false ($notifyIconLicenseSource -in @($releaseContract.InstalledFiles)) 'Runtime uses the published license copy instead of the repository source path'
 foreach ($offlineHolidayFile in @('holiday-data\2026.json', 'holiday-data\2027.json', 'holiday-data\README.md', 'holiday-data\LICENSE.txt')) {
     Assert-Equal $false ($offlineHolidayFile -in @($releaseContract.PackageFiles)) "Repository-root holiday input stays out of the ZIP: $offlineHolidayFile"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($offlineHolidayFile) "Repository-root holiday input is not a package hash entry: $offlineHolidayFile"
     Assert-Equal $false ($offlineHolidayFile -in @($releaseContract.InstalledFiles)) "Repository-root holiday input is not installed outside the program directory: $offlineHolidayFile"
 }
 # #275 程序目录自足：随包节假日数据与图标随构建输出进 app\，载荷清单按仓库原字节覆盖它们，
-# 安装与完整性钉值一并包含，不再复制到安装根。
+# 根级生成包清单与安装精确闭包继续保护这些字节，不再复制到安装根。
 $expectedProgramDirectoryResources = [ordered]@{
     'app\holiday-data\2026.json' = 'holiday-data\2026.json'
     'app\holiday-data\2027.json' = 'holiday-data\2027.json'
@@ -129,7 +130,6 @@ foreach ($programResource in $expectedProgramDirectoryResources.GetEnumerator())
         Assert-Equal $repositoryHash (Get-FileHash -Algorithm SHA256 -LiteralPath $builtResource).Hash "#275 build output copies the repository bytes: $publishedPath"
     }
     Assert-Equal $true ($publishedPath -in @($releaseContract.InstalledFiles)) "#275 install copies the program-directory resource: $publishedPath"
-    Assert-Equal $repositoryHash ([string] $releaseContract.IntegrityHashes[$publishedPath]) "#275 release integrity pins the program-directory resource: $publishedPath"
 }
 
 # #260 独立期望直接转录自国务院办公厅国办发明电〔2026〕10号，不读取上游数据或转换代码：
@@ -200,17 +200,14 @@ Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'Compat
 Assert-Equal $false ($releaseContract.PSObject.Properties.Name -contains 'LegacyFloatingRegressionAssets') 'Release contract no longer exposes a legacy floating regression asset list'
 foreach ($installerFile in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')) {
     Assert-Equal $true ($installerFile -in @($releaseContract.PackageFiles)) "New installer is packaged: $installerFile"
-    Assert-Equal $true $releaseContract.IntegrityHashes.Contains($installerFile) "New installer is integrity protected: $installerFile"
     Assert-Equal $false ($installerFile -in @($releaseContract.InstalledFiles)) "Package installer is not copied into the installed program directory: $installerFile"
 }
 foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1')) {
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.PackageFiles)) "Module the office install never loads stays out of the office package: $repositoryOnlyModule"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($repositoryOnlyModule) "Module the office install never loads is not statically pinned: $repositoryOnlyModule"
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.InstalledFiles)) "Module the office install never loads is not installed as runtime: $repositoryOnlyModule"
 }
 foreach ($retiredSettingsModule in @('Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Settings.psm1')) {
     Assert-Equal $false ($retiredSettingsModule -in @($releaseContract.PackageFiles)) "Retired PowerShell settings implementation stays out of the office package: $retiredSettingsModule"
-    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($retiredSettingsModule) "Retired PowerShell settings implementation is not statically pinned: $retiredSettingsModule"
     Assert-Equal $false ($retiredSettingsModule -in @($releaseContract.InstalledFiles)) "Retired PowerShell settings implementation is not installed as runtime: $retiredSettingsModule"
 }
 foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
@@ -323,9 +320,7 @@ foreach ($visualBaselineDefinition in $visualBaselineDefinitions) {
 }
 } # End of if ($visualBaselinesAvailable)
 
-Assert-Equal 0 @($releaseContract.PackageTrustRoots).Count 'Release contract has no legacy trust roots outside the hashed package'
 Assert-Equal $false ('Countdown.ReleaseContract.psm1' -in @($releaseContract.PackageFiles)) 'Release contract module itself stays out of the office ZIP'
-Assert-Equal $false $releaseContract.IntegrityHashes.Contains('Countdown.ReleaseContract.psm1') 'Release contract does not hash itself'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside the release package'
 Assert-Equal 0 @($releaseContract.InstalledFiles | Where-Object { $_ -like 'assets\ui-references\*' }).Count 'UI references stay outside installed runtime'
 Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath -like '*ui-references*' }).Count 'UI references stay outside build targets'
@@ -333,35 +328,13 @@ Assert-Equal 0 @($releaseContract.BuildAssets | Where-Object { $_.PublishedPath 
 $mutableReleaseContract = Get-CountdownReleaseContract
 $mutableReleaseContract.PackageFiles[0] = 'mutated-package-file'
 $mutableReleaseContract.BuildAssets[0].SourcePath = 'mutated-build-source'
-$mutableReleaseContract.IntegrityHashes['Install-CountdownProgram.ps1'] = ('0' * 64)
 $freshReleaseContract = Get-CountdownReleaseContract
 Assert-Equal $false ('mutated-package-file' -in @($freshReleaseContract.PackageFiles)) 'Release contract returns a fresh package list'
 Assert-Equal $false ('mutated-build-source' -in @($freshReleaseContract.BuildAssets.SourcePath)) 'Release contract returns fresh build asset records'
-Assert-Equal $false (($freshReleaseContract.IntegrityHashes['Install-CountdownProgram.ps1']) -eq ('0' * 64)) 'Release contract returns a fresh integrity map'
 
 $releaseContractTestRoot = Join-Path $PSScriptRoot ("release-contract-test-" + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Path $releaseContractTestRoot -Force | Out-Null
-
-    # 新 Windows 克隆即使 core.autocrlf=true，受 .gitattributes 约束的许可证仍须保持发布契约钉住的字节。
-    # 这是真实 Git checkout 行为，不读取或断言任何部署脚本源码。
-    $autocrlfSource = Join-Path $releaseContractTestRoot 'autocrlf-source'
-    $autocrlfHoliday = New-Item -ItemType Directory -Path (Join-Path $autocrlfSource 'holiday-data') -Force
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot '.gitattributes') -Destination (Join-Path $autocrlfSource '.gitattributes')
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'holiday-data\LICENSE.txt') -Destination (Join-Path $autocrlfHoliday.FullName 'LICENSE.txt')
-    & git init --quiet $autocrlfSource
-    Assert-Equal 0 $LASTEXITCODE 'autocrlf fixture repository initializes'
-    & git -C $autocrlfSource -c core.autocrlf=true add .
-    Assert-Equal 0 $LASTEXITCODE 'autocrlf fixture adds locked text bytes'
-    & git -C $autocrlfSource -c user.name=Test -c user.email=test@example.invalid -c core.hooksPath=NUL commit --quiet -m fixture
-    Assert-Equal 0 $LASTEXITCODE 'autocrlf fixture commits locked text bytes'
-    $autocrlfClone = Join-Path $releaseContractTestRoot 'autocrlf-checkout'
-    & git -c core.autocrlf=true clone --quiet --no-local $autocrlfSource $autocrlfClone
-    Assert-Equal 0 $LASTEXITCODE 'autocrlf fixture clones into a fresh checkout'
-    Assert-Equal 'C1614A521EFA0BD3FC0D271D01E38E9450C8BA3A13825044C325E433B4870142' `
-        (Get-FileHash -LiteralPath (Join-Path $autocrlfClone 'holiday-data\LICENSE.txt') -Algorithm SHA256).Hash `
-        'Fresh autocrlf checkout preserves the release license hash'
-    Remove-Item -LiteralPath $autocrlfSource, $autocrlfClone -Recurse -Force
 
     # #261：在隔离 module 副本里注入“12 月且缺下一年数据”的判定结果。导入仍须成功，
     # 只有发布入口显式调用守卫时才失败；纯函数本身的日期与年份边界由 MainDomain 分段覆盖。
@@ -416,121 +389,6 @@ function Test-CountdownHolidayYearCoverage {
     }
     Remove-Item -LiteralPath $holidayGuardModulePath -Force
 
-    $missingPackageRejected = $false
-    try {
-        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
-    }
-    catch {
-        $missingPackageRejected = $_.Exception.Message -match '缺少发布包文件'
-    }
-    Assert-Equal $true $missingPackageRejected 'Release package assertion rejects missing files'
-
-    foreach ($relativePath in $releaseContract.PackageFiles) {
-        $sourcePath = Join-Path $PSScriptRoot $relativePath
-        $testPath = Join-Path $releaseContractTestRoot $relativePath
-        $testParent = Split-Path -Parent $testPath
-        if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
-            New-Item -ItemType Directory -Path $testParent -Force | Out-Null
-        }
-        Copy-Item -LiteralPath $sourcePath -Destination $testPath -Force
-    }
-    $isolatedPackageFiles = @(
-        Get-ChildItem -LiteralPath $releaseContractTestRoot -File -Recurse |
-            ForEach-Object { $_.FullName.Substring($releaseContractTestRoot.Length + 1) }
-    )
-    Assert-Equal 0 @($isolatedPackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Isolated package starts without bin or obj outputs'
-    Assert-Equal `
-        ((@($releaseContract.PackageFiles) | Sort-Object) -join ',') `
-        (($isolatedPackageFiles | Sort-Object) -join ',') `
-        'Isolated package contains exactly the deployment ZIP allowlist'
-    $isolatedPackageValidation = Assert-CountdownReleasePackage -Root $releaseContractTestRoot
-    Assert-Equal $true ([bool] $isolatedPackageValidation.Valid) 'Isolated deployment package passes the release assertion'
-    foreach ($retiredLegacyPackageFile in @(
-            'Countdown.App.psm1',
-            'Countdown.Core.psm1',
-            'assets\floating-plush\floating-plush-mymelody-front.png',
-            'assets\floating-plush\floating-plush-mymelody-pose.png',
-            'assets\floating-plush\floating-plush-cinnamoroll-front.png',
-            'assets\floating-plush\floating-plush-cinnamoroll-pose.png',
-            'assets\floating-plush\floating-plush-kuromi-front.png',
-            'assets\floating-plush\floating-plush-kuromi-pose.png'
-        )) {
-        $retiredLegacyPackagePath = Join-Path $releaseContractTestRoot $retiredLegacyPackageFile
-        $retiredLegacyPackageParent = Split-Path -Parent $retiredLegacyPackagePath
-        if (-not (Test-Path -LiteralPath $retiredLegacyPackageParent -PathType Container)) {
-            New-Item -ItemType Directory -Path $retiredLegacyPackageParent -Force | Out-Null
-        }
-        [System.IO.File]::WriteAllText($retiredLegacyPackagePath, 'retired legacy host fixture', [System.Text.UTF8Encoding]::new($false))
-        $actualPackageWithRetired = @(
-            Get-ChildItem -LiteralPath $releaseContractTestRoot -File -Recurse |
-                ForEach-Object { $_.FullName.Substring($releaseContractTestRoot.Length + 1) })
-        $expectedPackageWithRetired = @($releaseContract.PackageFiles) + @($retiredLegacyPackageFile)
-        Assert-Equal `
-            (($expectedPackageWithRetired | Sort-Object) -join ',') `
-            (($actualPackageWithRetired | Sort-Object) -join ',') `
-            "Package inventory identifies exactly one deleted legacy-host addition: $retiredLegacyPackageFile"
-        $unexpectedPackageFiles = @($actualPackageWithRetired | Where-Object { $_ -notin @($releaseContract.PackageFiles) })
-        Assert-Equal $retiredLegacyPackageFile (@($unexpectedPackageFiles) -join ',') "Deleted legacy-host content is outside the package allowlist: $retiredLegacyPackageFile"
-        Remove-Item -LiteralPath $retiredLegacyPackagePath -Force
-    }
-
-    function Write-InvalidReleaseContentWithRetry {
-        param([Parameter(Mandatory)] [string] $Path)
-
-        $deadline = [DateTime]::UtcNow.AddSeconds(10)
-        while ($true) {
-            try {
-                [System.IO.File]::WriteAllText($Path, 'invalid release content', [System.Text.UTF8Encoding]::new($false))
-                return
-            }
-            catch [System.IO.IOException] {
-                if ([DateTime]::UtcNow -ge $deadline) { throw }
-                [System.Threading.Thread]::Sleep(100)
-            }
-        }
-    }
-
-    $lockRetryFixturePath = Join-Path $releaseContractTestRoot 'invalid-content-lock-retry.txt'
-    [System.IO.File]::WriteAllText($lockRetryFixturePath, 'original', [System.Text.UTF8Encoding]::new($false))
-    $lockRetryStream = [System.IO.File]::Open(
-        $lockRetryFixturePath,
-        [System.IO.FileMode]::Open,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::None)
-    $lockRetryReleaseJob = Start-ThreadJob -ScriptBlock {
-        Start-Sleep -Milliseconds 500
-        ($using:lockRetryStream).Dispose()
-    }
-    try {
-        Write-InvalidReleaseContentWithRetry -Path $lockRetryFixturePath
-    }
-    finally {
-        [void] (Receive-CountdownTestThreadJob -Job $lockRetryReleaseJob)
-        $lockRetryStream.Dispose()
-    }
-    Assert-Equal 'invalid release content' `
-        ([System.IO.File]::ReadAllText($lockRetryFixturePath)) `
-        'Invalid-content overwrite waits for a FileShare.None lock to be released'
-
-    foreach ($relativePath in $releaseContract.PackageFiles) {
-        $testPath = Join-Path $releaseContractTestRoot $relativePath
-        $testParent = Split-Path -Parent $testPath
-        if (-not (Test-Path -LiteralPath $testParent -PathType Container)) {
-            New-Item -ItemType Directory -Path $testParent -Force | Out-Null
-        }
-        Write-InvalidReleaseContentWithRetry -Path $testPath
-    }
-    Assert-Equal 'invalid release content' `
-        ([System.IO.File]::ReadAllText((Join-Path $releaseContractTestRoot 'app\MinminCountdown.exe'))) `
-        'Invalid-content retry still overwrites the application payload'
-    $invalidHashRejected = $false
-    try {
-        Assert-CountdownReleasePackage -Root $releaseContractTestRoot | Out-Null
-    }
-    catch {
-        $invalidHashRejected = $_.Exception.Message -match '发布包哈希不匹配'
-    }
-    Assert-Equal $true $invalidHashRejected 'Release package assertion rejects invalid content'
 }
 finally {
     Remove-CountdownReleaseContractTestTree -Path $releaseContractTestRoot

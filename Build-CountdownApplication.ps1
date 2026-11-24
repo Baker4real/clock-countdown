@@ -205,7 +205,6 @@ $assetManifest = @(
             Source = $source
             Target = $target
             RelativePath = [System.IO.Path]::GetRelativePath($applicationOutput, $target)
-            SHA256 = [string] $asset.SHA256
         }
     }
 )
@@ -337,9 +336,6 @@ $assetResults = foreach ($asset in $assetManifest) {
     }
     $sourceHash = (Get-FileHash -LiteralPath $asset.Source -Algorithm SHA256).Hash
     $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
-    if ($sourceHash -ne $asset.SHA256) {
-        throw "发布源资产不符合发布契约：$($asset.Source)"
-    }
     if ($sourceHash -ne $targetHash) {
         throw "发布资产校验失败：$target"
     }

@@ -317,6 +317,31 @@ function Write-CountdownInstallerTestProgram {
     [System.IO.File]::WriteAllText((Join-Path $Root 'app\published-payload.json'), ($manifest | ConvertTo-Json -Depth 4), $installerUtf8)
 }
 
+function Write-CountdownInstallerTestPackageManifest {
+    param([Parameter(Mandatory)] [string] $PackageRoot)
+
+    $files = @(
+        Get-ChildItem -LiteralPath $PackageRoot -File -Recurse -Force |
+            Where-Object { $_.FullName -ne (Join-Path $PackageRoot 'package-manifest.json') } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    Path = [System.IO.Path]::GetRelativePath($PackageRoot, $_.FullName)
+                    Sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                }
+            } |
+            Sort-Object -Property Path)
+    $aggregateInput = [System.Text.StringBuilder]::new()
+    foreach ($file in $files) {
+        [void] $aggregateInput.Append($file.Path).Append([char] 0).Append($file.Sha256).Append([char] 10)
+    }
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        aggregateSha256 = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
+        files = @($files | ForEach-Object { [ordered]@{ path = $_.Path; sha256 = $_.Sha256 } })
+    }
+    [System.IO.File]::WriteAllText((Join-Path $PackageRoot 'package-manifest.json'), ($manifest | ConvertTo-Json -Depth 4), $installerUtf8)
+}
+
 function New-CountdownInstallerTestCase {
     param(
         [Parameter(Mandatory)] [string] $Name,
@@ -333,6 +358,10 @@ function New-CountdownInstallerTestCase {
     foreach ($file in $packageFiles) { [void] $aggregateInput.Append($file.Path).Append([char] 0).Append($file.Sha256).Append([char] 10) }
     $packageAggregate = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
     Write-CountdownInstallerTestProgram -Root $packageRoot -Files $packageFiles -Commit $installerCommitV2 -AggregateSha256 $packageAggregate
+    foreach ($installerFileName in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')) {
+        [System.IO.File]::Copy((Join-Path $PSScriptRoot $installerFileName), (Join-Path $packageRoot $installerFileName))
+    }
+    Write-CountdownInstallerTestPackageManifest -PackageRoot $packageRoot
     $root = Join-Path $caseRoot 'install'
     $desktop = Join-Path $caseRoot 'desktop'
     New-Item -ItemType Directory -Path $desktop -Force | Out-Null
@@ -733,12 +762,19 @@ try {
     Assert-Equal 'skipped-no-settings||' "$($firstRehearsal.settingsRehearsal.outcome)|$($firstRehearsal.settingsRehearsal.migration)|$($firstRehearsal.settingsRehearsal.equivalence)" 'Result JSON reports the rehearsal skipped without a settings file'
     Assert-Equal 0 $installerCase.Commands.Count 'First install without a settings file runs no candidate command'
 
-    # 前置检查失败：包内文件与载荷清单不符（文件被改、文件缺少）、没有交互会话、有多个交互会话。都在停止旧应用之前拒绝：
+    # 前置检查失败：包内文件被改、多出或缺少，安装器文件或根级生成清单被改/缺少，以及会话环境不合法。
+    # 全包校验在安装锁与中断恢复之前，所有反例都在停止旧应用之前拒绝：
     # 除删除候选外安装根没有任何改动（首次安装时连安装根也不留下），应用照常运行，登录任务照旧，也不创建登录任务。
     # “只检查、不改动”同样核对包。上次安装没走完时的中断恢复（#284）见后面的 recover-* 各例。
     $installerRejections = @(
         [pscustomobject]@{ Name = 'reject-tampered-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 tampered', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-missing-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::Delete((Join-Path $installerCase.PackageRoot 'app\holiday-data\2027.json')) } }
+        [pscustomobject]@{ Name = 'reject-extra-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\rogue.txt'), 'not in the payload manifest', $installerUtf8) } }
+        [pscustomobject]@{ Name = 'reject-missing-package-manifest'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::Delete((Join-Path $installerCase.PackageRoot 'package-manifest.json')) } }
+        [pscustomobject]@{ Name = 'reject-tampered-installer-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::AppendAllText((Join-Path $installerCase.PackageRoot 'Countdown.Installer.psm1'), "`n# package tampering`n", $installerUtf8) } }
+        [pscustomobject]@{ Name = 'reject-missing-installer-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::Delete((Join-Path $installerCase.PackageRoot 'Countdown.Installer.psm1')) } }
+        [pscustomobject]@{ Name = 'reject-extra-package-file'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'rogue.txt'), 'not in the package manifest', $installerUtf8) } }
+        [pscustomobject]@{ Name = 'reject-tampered-package-manifest'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'payload-mismatch'; Arrange = { [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'package-manifest.json'), '{"schemaVersion":1,"aggregateSha256":"invalid","files":[]}', $installerUtf8) } }
         [pscustomobject]@{ Name = 'reject-no-session'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'no-interactive-session'; Arrange = { $installerCase.Sessions = @() } }
         [pscustomobject]@{ Name = 'reject-two-sessions'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'multiple-interactive-sessions'; Arrange = { $installerCase.Sessions = @($installerCase.Sessions) + @([pscustomobject]@{ SessionId = 5; User = 'MINMIN-OFFICE\second-account'; Sid = $installerOtherSid }) } }
         [pscustomobject]@{ Name = 'reject-no-desktop'; Installed = $true; CheckOnly = $false; Stage = 'preflight'; Reason = 'desktop-unavailable'; Arrange = { $installerCase.Desktop = $null } }
@@ -1399,9 +1435,9 @@ if ($PSBoundParameters.ContainsKey('BeijingNow')) { $entryArguments.BeijingNow =
 exit $LASTEXITCODE
 '@
     [System.IO.File]::WriteAllText($installerCliProbe, $installerCliProbeSource, $installerUtf8)
-    $installerCase = New-CountdownInstallerTestCase -Name 'reject-check-only-cli-tampered'
+    $installerCase = New-CountdownInstallerTestCase -Name 'reject-check-only-cli-extra-package-file'
     Initialize-CountdownInstallerTestInstalledVersion
-    [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'app\MinminCountdown.exe'), 'installer exe v2 cli tampered', $installerUtf8)
+    [System.IO.File]::WriteAllText((Join-Path $installerCase.PackageRoot 'rogue.txt'), 'check-only must reject a file outside the generated closure', $installerUtf8)
     $installerCliCaseRoot = Split-Path -Parent $installerCase.Root
     $installerCliTreeBefore = Get-CountdownInstallerTestTree -Root $installerCliCaseRoot -Detailed
     $installerCliRunningBefore = Get-CountdownInstallerTestRunning
@@ -1457,6 +1493,17 @@ exit $LASTEXITCODE
     $installerCommandPorts = $installerPorts.PSObject.Copy()
     $installerCommandPorts.RunHeadlessCommand = (New-CountdownInstallerWindowsPorts).RunHeadlessCommand
     $installerBuiltDllSha256 = Get-CountdownInstallerTestFileHash -Path (Join-Path $PSScriptRoot 'app\MinminCountdown.dll')
+    $installerBuiltCommit = [string] ([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'app\published-payload.json')) | ConvertFrom-Json).commit
+    $installerDeployerModule = Import-Module (Join-Path $PSScriptRoot 'Countdown.Deployer.psm1') -Force -PassThru
+    $installerBuiltPackageZip = Join-Path $installerTestRoot 'built-package.zip'
+    $installerBuiltPackageRoot = Join-Path $installerTestRoot 'built-package'
+    [void] (& $installerDeployerModule {
+            param($Root, $Commit, $PackagePath)
+            $buildOutput = Read-CountdownDeployBuildOutput -RepositoryRoot $Root -Commit $Commit
+            New-CountdownDeployPackage -RepositoryRoot $Root -BuildOutput $buildOutput -PackagePath $PackagePath `
+                -BeijingNow ([DateTimeOffset]'2026-11-30T12:00:00+08:00')
+        } $PSScriptRoot $installerBuiltCommit $installerBuiltPackageZip)
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($installerBuiltPackageZip, $installerBuiltPackageRoot)
     $installerFixtureV9 = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.50,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-pending","text":"待送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"pending"}},{"id":"note-v9-delivered","text":"已送达一次提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T02:30:00.0000000+00:00","delivery":"delivered"}},{"id":"note-v9-repeat","text":"已开始循环提醒 settings-sentinel-282","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2026-01-01T00:00:00.0000000+00:00","intervalMinutes":30}}]}'
     $installerFixtureV2 = '{"schemaVersion":2,"timeZoneId":"China Standard Time","countdowns":[{"id":"countdown-v2","name":"倒计时 settings-sentinel-282","targetUtc":"2030-02-03T04:05:06.0000000+00:00"}]}'
     $installerFixtureBackups = @(
@@ -1472,7 +1519,7 @@ exit $LASTEXITCODE
             [pscustomobject]@{ Name = 'real-port-unrunnable-candidate'; BuiltPackage = $false; Settings = $installerFixtureV9; Outcome = 'False|settings-rehearsal|settings-rehearsal-failed'; Report = 'failed||' }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $realRehearsal.Name
-        if ($realRehearsal.BuiltPackage) { $installerCase.PackageRoot = $PSScriptRoot }
+        if ($realRehearsal.BuiltPackage) { $installerCase.PackageRoot = $installerBuiltPackageRoot }
         Initialize-CountdownInstallerTestInstalledVersion
         foreach ($member in @(@('settings.json', $realRehearsal.Settings), @('settings.json.backup1', $installerFixtureBackups[0]), @('settings.json.backup2', $installerFixtureBackups[1]))) {
             $memberPath = Join-Path $installerCase.Root $member[0]
@@ -1506,7 +1553,7 @@ exit $LASTEXITCODE
     $installerRealRoot = Join-Path $installerRealParent 'install'
     $installerRealTask = 'Minmin Countdown Installer Probe ' + [guid]::NewGuid().ToString('N')
     $installerRealLock = 'Local\MinminCountdownInstallerTest-' + [guid]::NewGuid().ToString('N')
-    $installerRealOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerScript -PackageRoot $PSScriptRoot -InstallRoot $installerRealRoot -TaskName $installerRealTask -CheckOnly -LockName $installerRealLock)
+    $installerRealOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File $installerScript -PackageRoot $installerBuiltPackageRoot -InstallRoot $installerRealRoot -TaskName $installerRealTask -CheckOnly -LockName $installerRealLock)
     $installerRealExit = $LASTEXITCODE
     $installerRealText = $installerRealOutput -join "`n"
     $installerReal = $installerRealText | ConvertFrom-Json -DateKind String

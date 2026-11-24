@@ -8,9 +8,9 @@ $installerValidationLock = 'Local\MinminCountdownInstallValidation-' + [guid]::N
 New-Item -ItemType Directory -Path $installerValidationRoot -Force | Out-Null
 try {
     $installerValidationJson = & $installerValidationEngine -NoLogo -NoProfile -NonInteractive `
-        -File (Join-Path $PSScriptRoot 'Install-CountdownProgram.ps1') `
-        -PackageRoot $PSScriptRoot -InstallRoot $installerValidationInstallRoot `
-        -TaskName $installerValidationTask -CheckOnly -LockName $installerValidationLock | Out-String
+        -File (Join-Path $PSScriptRoot 'tools\Invoke-CountdownInstallValidation.ps1') `
+        -RepositoryRoot $PSScriptRoot -InstallRoot $installerValidationInstallRoot `
+        -TaskName $installerValidationTask -LockName $installerValidationLock | Out-String
     $installerValidationExit = $LASTEXITCODE
     $installerValidation = $installerValidationJson | ConvertFrom-Json -DateKind String
     Assert-Equal 0 $installerValidationExit 'Installer CheckOnly returns zero for a valid package and environment'

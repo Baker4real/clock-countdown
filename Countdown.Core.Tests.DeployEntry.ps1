@@ -28,6 +28,9 @@ $deploySessionSid = 'S-1-5-21-2850000000-2850000001-2850000002-1001'
 $deployRepo = $null
 $deployCase = $null
 Import-Module (Join-Path $PSScriptRoot 'tools\Countdown.SuiteStages.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.ReleaseContract.psm1') -Force
+$deploySourceAssetPaths = @((Get-CountdownReleaseContract).BuildAssets | ForEach-Object { [string] $_.SourcePath })
+$deploySourcePackagePaths = @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1') + $deploySourceAssetPaths
 # 桌面快捷方式用安装器的生产 port（WScript.Shell）读写，只落在每个用例假办公室里的桌面目录；本分段自己导入安装器模块取 port。
 Import-Module (Join-Path $PSScriptRoot 'Countdown.Installer.psm1') -Force
 $deployShortcutPorts = New-CountdownInstallerWindowsPorts
@@ -53,8 +56,13 @@ function New-CountdownDeployTestRepository {
     foreach ($setting in @(@('user.name', 'Deploy fixture'), @('user.email', 'fixture@example.invalid'), @('core.autocrlf', 'false'))) {
         [void] (Invoke-CountdownDeployTestGit -Root $root -Arguments (@('config') + $setting))
     }
-    foreach ($name in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1', 'Get-CountdownInstallStatus.ps1')) {
+    foreach ($name in @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1', 'Get-CountdownInstallStatus.ps1', '.gitattributes')) {
         [System.IO.File]::Copy((Join-Path $PSScriptRoot $name), (Join-Path $root $name))
+    }
+    foreach ($relativePath in $deploySourceAssetPaths) {
+        $destination = Join-Path $root $relativePath
+        [void] [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($destination))
+        [System.IO.File]::Copy((Join-Path $PSScriptRoot $relativePath), $destination)
     }
     [System.IO.File]::WriteAllText((Join-Path $root '.gitignore'), "app/`nlogs/`n", $deployUtf8)
     [void] (Invoke-CountdownDeployTestGit -Root $root -Arguments @('add', '--all'))
@@ -494,6 +502,42 @@ try {
     $deployRepo = New-CountdownDeployTestRepository
     $deployAppTree = Get-CountdownDeployTestTree -Root (Join-Path $deployRepo.Root 'app')
 
+    # core.autocrlf=true 的真实新克隆：所有 Git 来源包文件都保持提交 blob 字节。
+    # 独立负例强制把安装器文本改成 CRLF；即使之后重新生成包清单，blob 身份门仍必须拒绝。
+    $deployAutocrlfClone = Join-Path $deployTestRoot 'autocrlf-clone'
+    [void] (Invoke-CountdownDeployTestGit -Root $deployTestRoot -Arguments @('-c', 'core.autocrlf=true', 'clone', '--quiet', '--no-local', $deployRepo.Root, $deployAutocrlfClone))
+    foreach ($relativePath in $deploySourcePackagePaths) {
+        $gitPath = $relativePath.Replace('\', '/')
+        $expectedBlob = (@(Invoke-CountdownDeployTestGit -Root $deployAutocrlfClone -Arguments @('rev-parse', '--verify', "HEAD:$gitPath")) -join '').Trim()
+        $actualBlob = (@(Invoke-CountdownDeployTestGit -Root $deployAutocrlfClone -Arguments @('hash-object', '--no-filters', '--', (Join-Path $deployAutocrlfClone $relativePath))) -join '').Trim()
+        Assert-Equal $expectedBlob $actualBlob "Fresh autocrlf checkout preserves the committed package bytes: $relativePath"
+    }
+    $deploySourceModule = Import-Module (Join-Path $PSScriptRoot 'Countdown.Deployer.psm1') -Force -PassThru
+    $deployCloneBuildOutput = & $deploySourceModule {
+        param($Root, $Commit)
+        Read-CountdownDeployBuildOutput -RepositoryRoot $Root -Commit $Commit
+    } $deployRepo.Root $deployRepo.Head
+    Copy-Item -LiteralPath (Join-Path $deployRepo.Root 'app') -Destination (Join-Path $deployAutocrlfClone 'app') -Recurse
+    $deployAutocrlfScript = Join-Path $deployAutocrlfClone 'Install-CountdownProgram.ps1'
+    $deployLfText = [System.IO.File]::ReadAllText($deployAutocrlfScript).Replace("`r`n", "`n")
+    [System.IO.File]::WriteAllText($deployAutocrlfScript, $deployLfText.Replace("`n", "`r`n"), $deployUtf8)
+    $deployCrlfPackagePath = Join-Path $deployTestRoot 'crlf-rehashed-package.zip'
+    [void] (& $deploySourceModule {
+            param($Root, $BuildOutput, $PackagePath)
+            New-CountdownDeployPackage -RepositoryRoot $Root -BuildOutput $BuildOutput -PackagePath $PackagePath `
+                -BeijingNow ([DateTimeOffset]'2026-11-30T12:00:00+08:00')
+        } $deployAutocrlfClone $deployCloneBuildOutput $deployCrlfPackagePath)
+    Assert-Equal $true (Test-Path -LiteralPath $deployCrlfPackagePath -PathType Leaf) 'CRLF fixture is really repackaged with freshly generated hashes before the independent rejection'
+    $deployCrlfRejection = & $deploySourceModule {
+        param($Root, $Paths)
+        try {
+            Assert-CountdownDeploySourceBlobs -RepositoryRoot $Root -Commit 'HEAD' -RelativePaths $Paths
+            'accepted'
+        }
+        catch { [string] $_.Exception.Data['CountdownDeployReason'] }
+    } $deployAutocrlfClone $deploySourcePackagePaths
+    Assert-Equal 'source-blob-mismatch' $deployCrlfRejection 'CRLF conversion cannot be legalized by regenerating package hashes'
+
     # 曳光弹：把已推送的 main 部署到一台还没装过的办公室。
     $deployCase = New-CountdownDeployTestCase -Name 'first'
     $deployed = Invoke-CountdownDeployTest -Label 'first deploy'
@@ -538,6 +582,8 @@ try {
 
     # 包和暂存内容不长期保留。
     Assert-Equal $true ([string] $deployResult.package.sha256 -match '^[0-9A-F]{64}$') 'Deploy reports the package SHA-256'
+    Assert-Equal $true ([string] $deployResult.package.manifestSha256 -match '^[0-9A-F]{64}$') 'Deploy reports the generated package manifest SHA-256'
+    Assert-Equal $true ([bool] $deployResult.install.packageManifestVerified) 'The remote entry verifies the package manifest itself before starting the installer'
     Assert-Equal ([string] $deployResult.package.sha256) ([string] $deployResult.transfer.remoteSha256) 'The transfer verified the package hash on the office'
     Assert-Equal $false (Test-Path -LiteralPath ([string] $deployResult.remoteStagingDirectory)) 'The office staging directory is removed after the install'
     Assert-Equal $true ([bool] $deployResult.install.stagingRemoved) 'The remote install reports the staging directory removed'
@@ -741,6 +787,94 @@ function Test-CountdownHolidayYearCoverage {
     Assert-Equal 'holiday-year-coverage-missing' ([string] $deployPackageGuardError.Exception.Data['CountdownDeployReason']) 'Package creation rejects December output without the next year'
     Assert-Equal $true (([string] $deployPackageGuardError.Exception.Message).Contains('2028') -and ([string] $deployPackageGuardError.Exception.Message).Contains('holiday-data/README.md')) 'Package coverage rejection names the missing year and refresh runbook'
     Assert-Equal $false (Test-Path -LiteralPath $deployPackageGuardPath) 'Rejected package coverage creates no ZIP'
+
+    # 真实 ZIP 的根级生成清单精确覆盖其余 entries，清单 SHA-256 独立于 ZIP 哈希注入远端入口。
+    $deployClosureZip = Join-Path $deployTestRoot 'package-closure.zip'
+    $deployClosurePackage = & $deployerModule {
+        param($Root, $BuildOutput, $PackagePath)
+        New-CountdownDeployPackage -RepositoryRoot $Root -BuildOutput $BuildOutput -PackagePath $PackagePath `
+            -BeijingNow ([DateTimeOffset]'2026-11-30T12:00:00+08:00')
+    } $deployRepo.Root $deployPackageBuildOutput $deployClosureZip
+    $deployClosureArchive = [System.IO.Compression.ZipFile]::OpenRead($deployClosureZip)
+    try {
+        $deployClosureZipFiles = @($deployClosureArchive.Entries | ForEach-Object { $_.FullName.Replace('/', '\') })
+        $deployClosureManifestEntry = $deployClosureArchive.GetEntry('package-manifest.json')
+        Assert-Equal $true ($null -ne $deployClosureManifestEntry) 'Deployment ZIP contains the generated root package manifest'
+        $deployClosureManifestStream = $deployClosureManifestEntry.Open()
+        $deployClosureManifestMemory = [System.IO.MemoryStream]::new()
+        try { $deployClosureManifestStream.CopyTo($deployClosureManifestMemory) }
+        finally { $deployClosureManifestStream.Dispose() }
+        $deployClosureManifestBytes = $deployClosureManifestMemory.ToArray()
+        $deployClosureManifestMemory.Dispose()
+    }
+    finally { $deployClosureArchive.Dispose() }
+    $deployClosureManifest = [System.Text.Encoding]::UTF8.GetString($deployClosureManifestBytes) | ConvertFrom-Json
+    Assert-Equal ((@($deployClosureZipFiles | Where-Object { $_ -ne 'package-manifest.json' }) | Sort-Object) -join ',') `
+        ((@($deployClosureManifest.files.path) | Sort-Object) -join ',') 'Generated package manifest covers exactly every other ZIP entry'
+    Assert-Equal $deployClosurePackage.ManifestSha256 ([Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($deployClosureManifestBytes))) `
+        'Deployer reports the generated package manifest SHA-256'
+
+    # 合法源文件变化不需要手工同步哈希：改过安装器源文件后直接重新打包，清单记录新字节。
+    $deployChangedInstallerPath = Join-Path $deployRepo.Root 'Install-CountdownProgram.ps1'
+    $deployChangedInstallerBytes = [System.IO.File]::ReadAllBytes($deployChangedInstallerPath)
+    $deployChangedInstallerZip = Join-Path $deployTestRoot 'changed-installer-package.zip'
+    try {
+        [System.IO.File]::AppendAllText($deployChangedInstallerPath, "`n# legitimate source change`n", $deployUtf8)
+        [void] (& $deployerModule {
+                param($Root, $BuildOutput, $PackagePath)
+                New-CountdownDeployPackage -RepositoryRoot $Root -BuildOutput $BuildOutput -PackagePath $PackagePath `
+                    -BeijingNow ([DateTimeOffset]'2026-11-30T12:00:00+08:00')
+            } $deployRepo.Root $deployPackageBuildOutput $deployChangedInstallerZip)
+        $deployChangedArchive = [System.IO.Compression.ZipFile]::OpenRead($deployChangedInstallerZip)
+        try {
+            $deployChangedEntry = $deployChangedArchive.GetEntry('package-manifest.json')
+            $deployChangedReader = [System.IO.StreamReader]::new($deployChangedEntry.Open(), [System.Text.Encoding]::UTF8)
+            try { $deployChangedManifest = $deployChangedReader.ReadToEnd() | ConvertFrom-Json }
+            finally { $deployChangedReader.Dispose() }
+        }
+        finally { $deployChangedArchive.Dispose() }
+        $deployChangedInstallerEntry = @($deployChangedManifest.files | Where-Object { $_.path -eq 'Install-CountdownProgram.ps1' })
+        Assert-Equal (Get-CountdownDeployTestFileHash -Path $deployChangedInstallerPath) ([string] $deployChangedInstallerEntry[0].sha256) `
+            'A legitimate installer source change is packaged without manual hash synchronization'
+    }
+    finally { [System.IO.File]::WriteAllBytes($deployChangedInstallerPath, $deployChangedInstallerBytes) }
+
+    # 独立负例：ZIP 哈希已按篡改后的字节更新，但部署端注入的清单哈希仍是原值。
+    # 远端必须停在安装器启动之前，证明攻击者不能只重算包内清单或外层 ZIP 哈希来合法化篡改。
+    $deployTamperedManifestBytes = [byte[]] @($deployClosureManifestBytes + [byte] 32)
+    $deployTamperedArchive = [System.IO.Compression.ZipFile]::Open($deployClosureZip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $deployTamperedEntry = $deployTamperedArchive.GetEntry('package-manifest.json')
+        $deployTamperedEntry.Delete()
+        $deployTamperedEntry = $deployTamperedArchive.CreateEntry('package-manifest.json')
+        $deployTamperedStream = $deployTamperedEntry.Open()
+        try { $deployTamperedStream.Write($deployTamperedManifestBytes, 0, $deployTamperedManifestBytes.Length) }
+        finally { $deployTamperedStream.Dispose() }
+    }
+    finally { $deployTamperedArchive.Dispose() }
+    $deployCase = New-CountdownDeployTestCase -Name 'package-manifest-binding'
+    $deployBindingStaging = Join-Path $deployCase.StagingRoot 'manifest-binding'
+    [void] [System.IO.Directory]::CreateDirectory($deployBindingStaging)
+    [System.IO.File]::Copy($deployClosureZip, (Join-Path $deployBindingStaging 'package.zip'))
+    $deployBindingZipHash = Get-CountdownDeployTestFileHash -Path $deployClosureZip
+    $deployBindingScript = & $deployerModule {
+        param($Values)
+        Expand-CountdownDeployTemplate -Template $script:RemoteInstallScript -Values $Values
+    } ([ordered]@{
+            '__STAGING__' = $deployBindingStaging
+            '__SHA256__' = $deployBindingZipHash
+            '__PACKAGE_MANIFEST_SHA256__' = $deployClosurePackage.ManifestSha256
+            '__ENTRY__' = 'Install-CountdownProgram.ps1'
+            '__INSTALL_ROOT__' = $deployCase.InstallRoot
+            '__TASK_NAME__' = $deployCase.TaskName
+        })
+    $deployPreviousTarget = $env:CODEX_REMOTE_EXECUTION_TARGET
+    $env:CODEX_REMOTE_EXECUTION_TARGET = 'office'
+    try { $deployBindingEnvelope = (& ([scriptblock]::Create($deployBindingScript)) -Port $deployWindowsPorts -LockName $deployLockName) | ConvertFrom-Json }
+    finally { $env:CODEX_REMOTE_EXECUTION_TARGET = $deployPreviousTarget }
+    Assert-Equal 'True|False|False' "$($deployBindingEnvelope.packageVerified)|$($deployBindingEnvelope.packageManifestVerified)|$($deployBindingEnvelope.installerStarted)" `
+        'A changed package manifest stops before the installer even when the outer ZIP hash is recomputed'
+    Assert-Equal $false (Test-Path -LiteralPath $deployCase.InstallRoot) 'Manifest binding rejection creates no install root'
 
     # 必过阶段不全：这一轮没跑 SourceValidation，CSharp 以 75（参考基线待重拍）退出；拒绝时两项都写明，不只报第一项。
     $deployCase = New-CountdownDeployTestCase -Name 'stages'
@@ -999,10 +1133,11 @@ Write-Host 'scp to $deployHostSentinel'
 }
 finally {
     # Windows 上 git init 把 .git 设为隐藏，入口的清理函数不枚举隐藏项，所以先去掉隐藏属性。
-    $deployGitDirectory = Join-Path $deployTestRoot 'repo\.git'
-    if (Test-Path -LiteralPath $deployGitDirectory -PathType Container) {
-        $deployGitDirectoryItem = Get-Item -LiteralPath $deployGitDirectory -Force
-        $deployGitDirectoryItem.Attributes = $deployGitDirectoryItem.Attributes -band -bnot [System.IO.FileAttributes]::Hidden
+    foreach ($deployGitDirectory in @((Join-Path $deployTestRoot 'repo\.git'), (Join-Path $deployTestRoot 'autocrlf-clone\.git'))) {
+        if (Test-Path -LiteralPath $deployGitDirectory -PathType Container) {
+            $deployGitDirectoryItem = Get-Item -LiteralPath $deployGitDirectory -Force
+            $deployGitDirectoryItem.Attributes = $deployGitDirectoryItem.Attributes -band -bnot [System.IO.FileAttributes]::Hidden
+        }
     }
     Remove-CountdownIsolatedTestTree -Path $deployTestRoot -AllowedRoot ([System.IO.Path]::GetTempPath())
 }

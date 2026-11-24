@@ -92,4 +92,4 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 - 现行 WPF 与 PowerShell 依赖继续按各项目文件、发布契约和许可证证据管理。
 - Tauri、React、TypeScript、Vite、Rust 或 WebView2 版本只在隔离候选中锁定和验证；生产采用另受视觉、数据、安装和部署门禁约束。
 - `candidate`、`dry-run`、`deployed` 与 `live verified` 分开记录；本地切片、合成探针或 `ValidateOnly` 不得替代办公室验收。
-- 任何改变 `Countdown.ReleaseContract.psm1` `IntegrityHashes` 覆盖文件的提交，按 README 和项目规则更新静态哈希。
+- 包内源文件变化由 Build、Deployer 生成清单和正式部署 blob/ZIP/安装闭包门接管，不维护手工静态哈希或源码输入清单；逐项接替见 `docs/agents/release-integrity-replacement.md`。

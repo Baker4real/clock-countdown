@@ -53,7 +53,7 @@ intent: 逐条记录 #248 空态区域验证事实、相邻断言与产品载体
 | `src\MinminCountdown\ValidationExercises.Density.cs`、`src\MinminCountdown\WindowValidationScenarios.Density.cs` | 无事实删除；承接原空态文件仍被 #251 消费的隔离宿主与四个私有辅助成员，并改为 Density 名称 | **保留其他区域**：密度场景、窗口档、DPI、实拍和判定仍由产品原区域执行；没有新增 partial 文件或公共 API。 |
 | `src\MinminCountdown\ValidationReport.Create.cs` | `mainEmptyStateViewport` / `mainEmptyStateGuidance` 编排及两条同名报告字段 | 不再由产品 EXE 重复运行或输出。 |
 | `src\MinminCountdown\ValidationReport.cs` | `CreateEmptyStateEvidenceWriter` | 非门禁实拍由窗口 runner 写出。 |
-| `Countdown.ReleaseContract.psm1` 与 `Countdown.Core.Tests.ReleaseContract.ps1` | 两个产品源文件退出产品闭包；两个窗口验证源文件进入构建身份 | `SourceBuildFiles` 102→100；`BuildInputFiles` 保持 108。 |
+| `Countdown.ReleaseContract.psm1` 与 `Countdown.Core.Tests.ReleaseContract.ps1` | 两个产品源文件退出产品闭包；两个窗口验证源文件进入构建身份 | 当时的源码登记已退役；#294 起不再维护 `SourceBuildFiles` / `BuildInputFiles`，SDK 项目直接编译增删的源码。 |
 | `Countdown.CSharp.Tests.ps1` | 旧的一字段曳光弹断言、单条产品缺字段断言、空态 XAML 正则 | 改为精确三字段、逐事实、退出码及三个产品缺字段断言；换行改行为判定。 |
 
 ## RED 证据

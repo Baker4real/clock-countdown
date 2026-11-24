@@ -2,7 +2,7 @@
 
 <#
 .SYNOPSIS
-    标准化 9 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 7 步收口验证 runner。单目录、单次不间断全绿。
 
 .DESCRIPTION
     在 D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -11,20 +11,18 @@
     约束：
     - namespace 仅为 soak 或 full；默认 full。soak 不抵扣收口。
     - runId 必须唯一；已存在的 attempt 目录永不覆盖，需换新 runId。
-    - 9 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
+    - 7 步按固定顺序单次执行；任一步失败则整链作废，后续步不跑，保留现场。
     - 默认不重试。-Retry 必须保持关闭；打开则拒绝执行。
     - 不把 settings.json、便签或凭据拷进 evidence，不写 C:\。
 
-    9 步（顺序不可增减）：
-    1. env-pre：Countdown.ReleaseContract.psm1 IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
-    2. git-diff-check：git diff --check
-    3. build：pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
-    4. pin-after-build：verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）与 app\MinminCountdown.exe 现役条目（fail-fast；本 runner 不改 ReleaseContract）
-    5. csharp-default：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
-    6. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
-    7. core：pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
-    8. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    9. install-validate：pwsh -NoLogo -NoProfile -File Install-CountdownProgram.ps1 -CheckOnly
+    7 步（顺序不可增减）：
+    1. git-diff-check：git diff --check
+    2. build：pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
+    3. csharp-default：pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
+    4. instance-activation-matrix：钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
+    5. core：pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
+    6. source-validation：pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    7. install-validate：真实 Deployer 生成测试包并运行包内安装器 CheckOnly
 
     非矩阵步优先使用 D:\Codex\tools\PowerShell\7.6.5\pwsh.exe；矩阵步固定 7.6.4。不修改 ExecutionPolicy。
 
@@ -36,7 +34,7 @@
     已存在的 runId 会被拒绝，不会覆盖。
 
 .PARAMETER DryRun
-    创建 attempt 目录、先写 meta、拷贝 runner 并列出 9 步，不执行验证。
+    创建 attempt 目录、先写 meta、拷贝 runner 并列出 7 步，不执行验证。
 
 .PARAMETER Retry
     必须关闭。默认关闭。打开则拒绝执行；失败后请换新 runId 重跑。
@@ -84,17 +82,16 @@ $script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $script:AttemptDir = $null
 $script:MetaPath = $null
 $script:Meta = $null
-$script:ExpectedPins = $null
 
 function Show-CountdownVerificationRunHelp {
     @'
 SYNOPSIS
-    标准化 9 步收口验证 runner。单目录、单次不间断全绿。
+    标准化 7 步收口验证 runner。单目录、单次不间断全绿。
 
 参数
     -Namespace  soak | full（默认 full）。soak 不抵扣收口。
     -RunId      必须唯一。省略则用 UTC yyyyMMddTHHmmssZ + 短随机。禁止覆盖已有 attempt。
-    -DryRun     只写 meta、拷贝 runner、列出 9 步，不跑验证。
+    -DryRun     只写 meta、拷贝 runner、列出 7 步，不跑验证。
     -Retry      必须保持关闭。打开则拒绝。默认不重试。
     -AllowForegroundWindowedSteps
                 前台跑 instance-activation-matrix。
@@ -106,17 +103,14 @@ SYNOPSIS
     meta 先写（status=running）后补。runner 自拷贝并记录 SHA-256。失败保留现场。
     不写 C:\。不把 settings.json / 便签 / 凭据拷进 evidence。不改 ExecutionPolicy。
 
-9 步（顺序不可增减）
-    1. env-pre                      IntegrityHashes 工作树 vs 契约钉（fail-fast，不继续 build）
-    2. git-diff-check               git diff --check
-    3. build                        pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
-    4. pin-after-build              verification\MinminCountdown.Verification.exe 静态 pin（契约已钉时核对，未钉则跳过）
-                                    与 app\MinminCountdown.exe 现役哈希（fail-fast；不改 ReleaseContract）
-    5. csharp-default               pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
-    6. instance-activation-matrix   钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
-    7. core                         pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
-    8. source-validation            pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
-    9. install-validate             pwsh -NoLogo -NoProfile -File Install-CountdownProgram.ps1 -CheckOnly
+7 步（顺序不可增减）
+    1. git-diff-check               git diff --check
+    2. build                        pwsh -NoLogo -NoProfile -File Build-CountdownApplication.ps1 -Clean
+    3. csharp-default               pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1
+    4. instance-activation-matrix   钉 7.6.4 pwsh -NoLogo -NoProfile -STA -File Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix
+    5. core                         pwsh -NoLogo -NoProfile -File Countdown.Core.Tests.ps1
+    6. source-validation            pwsh -NoLogo -NoProfile -STA -File Invoke-CountdownSourceValidation.ps1
+    7. install-validate             真实 Deployer 生成测试包并运行包内安装器 CheckOnly
 
 证据根
     D:\agents\run-evidence\clock-countdown-verification\<namespace>\<runId>\
@@ -213,13 +207,6 @@ function Resolve-CountdownRepoPath {
         throw "拒绝写入或引用 C:\：$resolved"
     }
     return $resolved
-}
-
-function Test-CountdownGeneratedIntegrityPath {
-    param([Parameter(Mandatory)] [string] $RelativePath)
-
-    return $RelativePath.StartsWith('app\', [System.StringComparison]::OrdinalIgnoreCase) -or
-        $RelativePath.StartsWith('verification\', [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Invoke-CountdownCapturedProcess {
@@ -327,15 +314,13 @@ function Get-CountdownGitState {
 
 function Get-CountdownVerificationSteps {
     @(
-        [pscustomobject]@{ Index = 1; Id = 'env-pre'; Kind = 'env-pre'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 2; Id = 'git-diff-check'; Kind = 'git'; Sta = $false; Engine = 'git'; ScriptName = ''; Arguments = @('diff', '--check'); Isolation = 'none' }
-        [pscustomobject]@{ Index = 3; Id = 'build'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Build-CountdownApplication.ps1'; Arguments = @('-Clean'); Isolation = 'none' }
-        [pscustomobject]@{ Index = 4; Id = 'pin-after-build'; Kind = 'pin-after-build'; Sta = $false; Engine = 'in-process'; ScriptName = ''; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 5; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyCSharp' }
-        [pscustomobject]@{ Index = 6; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
-        [pscustomobject]@{ Index = 7; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
-        [pscustomobject]@{ Index = 8; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
-        [pscustomobject]@{ Index = 9; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Install-CountdownProgram.ps1'; Arguments = @('-CheckOnly'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 1; Id = 'git-diff-check'; Kind = 'git'; Sta = $false; Engine = 'git'; ScriptName = ''; Arguments = @('diff', '--check'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 2; Id = 'build'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Build-CountdownApplication.ps1'; Arguments = @('-Clean'); Isolation = 'none' }
+        [pscustomobject]@{ Index = 3; Id = 'csharp-default'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifyCSharp' }
+        [pscustomobject]@{ Index = 4; Id = 'instance-activation-matrix'; Kind = 'pwsh'; Sta = $true; Engine = 'matrix'; ScriptName = 'Countdown.CSharp.Tests.ps1'; Arguments = @('-InstanceActivationMatrix'); Isolation = 'foreground-authorized' }
+        [pscustomobject]@{ Index = 5; Id = 'core'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'Countdown.Core.Tests.ps1'; Arguments = @(); Isolation = 'none' }
+        [pscustomobject]@{ Index = 6; Id = 'source-validation'; Kind = 'pwsh'; Sta = $true; Engine = 'managed'; ScriptName = 'Invoke-CountdownSourceValidation.ps1'; Arguments = @(); Isolation = 'isolated-desktop'; IsolatedDesktopName = 'MinminSuiteIso-VerifySourceValidation' }
+        [pscustomobject]@{ Index = 7; Id = 'install-validate'; Kind = 'pwsh'; Sta = $false; Engine = 'managed'; ScriptName = 'tools\Invoke-CountdownInstallValidation.ps1'; Arguments = @(); Isolation = 'none' }
     )
 }
 
@@ -348,8 +333,6 @@ function Get-CountdownStepCommandTokens {
     )
 
     switch ([string] $Step.Kind) {
-        'env-pre' { @('in-process', 'IntegrityHashes') }
-        'pin-after-build' { @('in-process', 'verification.exe+apphost-pin') }
         'git' { @($GitPath) + @($Step.Arguments) }
         'pwsh' {
             $engine = if ([string] $Step.Engine -eq 'matrix') { $MatrixPwsh } else { $ManagedPwsh }
@@ -402,186 +385,6 @@ function Write-CountdownStepEvidence {
         command = @($Record.Command)
     }
     Write-CountdownUtf8File -LiteralPath (Join-Path $StepDir 'result.json') -Content (ConvertTo-Json -InputObject $result -Depth 6)
-}
-
-function Invoke-CountdownEnvPre {
-    param(
-        [Parameter(Mandatory)] [string] $ProjectRoot,
-        [Parameter(Mandatory)] [string] $StepDir
-    )
-
-    $stdout = [System.Text.StringBuilder]::new()
-    $stderr = [System.Text.StringBuilder]::new()
-    $contractModule = Resolve-CountdownRepoPath -Root $ProjectRoot -RelativePath 'Countdown.ReleaseContract.psm1'
-    Import-Module -Name $contractModule -Force
-    $contract = Get-CountdownReleaseContract
-    $hashes = $contract.IntegrityHashes
-    $verificationKey = 'verification\MinminCountdown.Verification.exe'
-    $appHostKey = 'app\MinminCountdown.exe'
-    $verificationExpected = if ($hashes.Contains($verificationKey)) { [string] $hashes[$verificationKey] } else { '' }
-    $appHostExpected = if ($hashes.Contains($appHostKey)) { [string] $hashes[$appHostKey] } else { '' }
-
-    $script:ExpectedPins = [ordered]@{
-        verificationRelative = $verificationKey
-        verificationExpectedSha256 = $verificationExpected
-        appHostRelative = $appHostKey
-        appHostExpectedSha256 = $appHostExpected
-        capturedBeforeBuild = $true
-    }
-    Write-CountdownUtf8File -LiteralPath (Join-Path $StepDir 'pins.json') -Content ($script:ExpectedPins | ConvertTo-Json -Depth 4)
-
-    $checked = 0
-    $skipped = 0
-    $mismatches = [System.Collections.Generic.List[object]]::new()
-    foreach ($entry in $hashes.GetEnumerator()) {
-        $relative = [string] $entry.Key
-        $expected = [string] $entry.Value
-        if (Test-CountdownGeneratedIntegrityPath -RelativePath $relative) {
-            $skipped++
-            continue
-        }
-
-        $fullPath = Resolve-CountdownRepoPath -Root $ProjectRoot -RelativePath $relative
-        $checked++
-        if (-not (Test-Path -LiteralPath $fullPath -PathType Leaf)) {
-            $mismatches.Add([pscustomobject]@{
-                    path = $relative
-                    reason = 'missing'
-                    expectedSha256 = $expected
-                    actualSha256 = ''
-                })
-            continue
-        }
-
-        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $fullPath).Hash
-        if (-not [string]::Equals($actual, $expected, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $mismatches.Add([pscustomobject]@{
-                    path = $relative
-                    reason = 'mismatch'
-                    expectedSha256 = $expected
-                    actualSha256 = $actual
-                })
-        }
-    }
-
-    [void] $stdout.AppendLine("checked=$checked")
-    [void] $stdout.AppendLine("skippedGenerated=$skipped")
-    [void] $stdout.AppendLine("mismatches=$($mismatches.Count)")
-    [void] $stdout.AppendLine("verificationPin=$verificationExpected")
-    [void] $stdout.AppendLine("appHostPin=$appHostExpected")
-
-    $mismatchPath = Join-Path $StepDir 'mismatches.json'
-    Write-CountdownUtf8File -LiteralPath $mismatchPath -Content (ConvertTo-Json -InputObject @($mismatches) -Depth 6)
-
-    if ([string]::IsNullOrWhiteSpace($verificationExpected)) {
-        [void] $stdout.AppendLine('verificationPinSkipped=契约未钉 verification exe（构建产物不再静态 pin），跳过该项。')
-    }
-    if ([string]::IsNullOrWhiteSpace($appHostExpected)) {
-        [void] $stderr.AppendLine("契约缺少现役条目：$appHostKey")
-    }
-    if ($mismatches.Count -gt 0) {
-        [void] $stderr.AppendLine("IntegrityHashes 预检失败：$($mismatches.Count) 项。")
-        foreach ($item in $mismatches) {
-            [void] $stderr.AppendLine(('{0} {1}' -f [string] $item.reason, [string] $item.path))
-        }
-    }
-
-    $failed = ($mismatches.Count -gt 0) -or
-        [string]::IsNullOrWhiteSpace($appHostExpected)
-    [pscustomobject]@{
-        ExitCode = $(if ($failed) { 1 } else { 0 })
-        Stdout = $stdout.ToString()
-        Stderr = $stderr.ToString()
-    }
-}
-
-function Invoke-CountdownPinAfterBuild {
-    param(
-        [Parameter(Mandatory)] [string] $ProjectRoot,
-        [Parameter(Mandatory)] [string] $StepDir
-    )
-
-    $stdout = [System.Text.StringBuilder]::new()
-    $stderr = [System.Text.StringBuilder]::new()
-    $pins = $script:ExpectedPins
-    if ($null -eq $pins) {
-        throw 'pin-after-build 缺少 env-pre 捕获的现役 pin。'
-    }
-
-    $verificationRelative = [string] $pins['verificationRelative']
-    $appHostRelative = [string] $pins['appHostRelative']
-    $verificationExpected = [string] $pins['verificationExpectedSha256']
-    $appHostExpected = [string] $pins['appHostExpectedSha256']
-    $verificationPath = Resolve-CountdownRepoPath -Root $ProjectRoot -RelativePath $verificationRelative
-    $appHostPath = Resolve-CountdownRepoPath -Root $ProjectRoot -RelativePath $appHostRelative
-    $drift = [System.Collections.Generic.List[object]]::new()
-
-    $verificationActual = ''
-    if ([string]::IsNullOrWhiteSpace($verificationExpected)) {
-        [void] $stdout.AppendLine('verificationPinSkipped=契约未钉 verification exe（构建产物不再静态 pin），跳过该项。')
-    }
-    elseif (-not (Test-Path -LiteralPath $verificationPath -PathType Leaf)) {
-        $drift.Add([pscustomobject]@{ path = $verificationRelative; reason = 'missing'; expectedSha256 = $verificationExpected; actualSha256 = '' })
-    }
-    else {
-        $verificationActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $verificationPath).Hash
-        if ([string]::IsNullOrWhiteSpace($verificationExpected) -or
-            -not [string]::Equals($verificationActual, $verificationExpected, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $drift.Add([pscustomobject]@{
-                    path = $verificationRelative
-                    reason = 'mismatch'
-                    expectedSha256 = $verificationExpected
-                    actualSha256 = $verificationActual
-                })
-        }
-    }
-
-    $appHostActual = ''
-    if (-not (Test-Path -LiteralPath $appHostPath -PathType Leaf)) {
-        $drift.Add([pscustomobject]@{ path = $appHostRelative; reason = 'missing'; expectedSha256 = $appHostExpected; actualSha256 = '' })
-    }
-    else {
-        $appHostActual = (Get-FileHash -Algorithm SHA256 -LiteralPath $appHostPath).Hash
-        if ([string]::IsNullOrWhiteSpace($appHostExpected) -or
-            -not [string]::Equals($appHostActual, $appHostExpected, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $drift.Add([pscustomobject]@{
-                    path = $appHostRelative
-                    reason = 'mismatch'
-                    expectedSha256 = $appHostExpected
-                    actualSha256 = $appHostActual
-                })
-        }
-    }
-
-    $report = [ordered]@{
-        verificationExpectedSha256 = $verificationExpected
-        verificationActualSha256 = $verificationActual
-        appHostExpectedSha256 = $appHostExpected
-        appHostActualSha256 = $appHostActual
-        drifted = ($drift.Count -gt 0)
-        drift = @($drift)
-        releaseContractUpdated = $false
-    }
-    Write-CountdownUtf8File -LiteralPath (Join-Path $StepDir 'drift.json') -Content (ConvertTo-Json -InputObject $report -Depth 6)
-
-    [void] $stdout.AppendLine("verificationExpected=$verificationExpected")
-    [void] $stdout.AppendLine("verificationActual=$verificationActual")
-    [void] $stdout.AppendLine("appHostExpected=$appHostExpected")
-    [void] $stdout.AppendLine("appHostActual=$appHostActual")
-    [void] $stdout.AppendLine("drifted=$($drift.Count -gt 0)")
-
-    if ($drift.Count -gt 0) {
-        [void] $stderr.AppendLine('pin-after-build 漂移。本 runner 不修改 Countdown.ReleaseContract.psm1。')
-        foreach ($item in $drift) {
-            [void] $stderr.AppendLine(('{0} {1} expected={2} actual={3}' -f [string] $item.reason, [string] $item.path, [string] $item.expectedSha256, [string] $item.actualSha256))
-        }
-    }
-
-    [pscustomobject]@{
-        ExitCode = $(if ($drift.Count -gt 0) { 1 } else { 0 })
-        Stdout = $stdout.ToString()
-        Stderr = $stderr.ToString()
-    }
 }
 
 if ($Help) {
@@ -663,8 +466,8 @@ $script:Meta = [ordered]@{
 Save-CountdownVerificationMeta
 
 $steps = @(Get-CountdownVerificationSteps)
-if ($steps.Count -ne 10) {
-    throw "内部步骤表必须恰好 10 项，实际 $($steps.Count)。"
+if ($steps.Count -ne 7) {
+    throw "内部步骤表必须恰好 7 项，实际 $($steps.Count)。"
 }
 $stepPlan = @(
     foreach ($step in $steps) {
@@ -683,7 +486,7 @@ Write-Output ("namespace={0}" -f $Namespace)
 Write-Output ("runId={0}" -f $RunId)
 Write-Output ("attemptDir={0}" -f $attemptDir)
 Write-Output ("runnerSha256={0}" -f $runnerSha256)
-Write-Output 'steps=10'
+Write-Output 'steps=7'
 foreach ($item in $stepPlan) {
     Write-Output ('{0,2}. {1}' -f [int] $item.index, [string] $item.id)
 }
@@ -705,18 +508,12 @@ try {
         $stepDir = Join-Path $attemptDir $stepLabel
         New-Item -ItemType Directory -Path $stepDir | Out-Null
         $commandTokens = @(Get-CountdownStepCommandTokens -Step $step -ManagedPwsh $managedPwsh -MatrixPwsh $matrixPwsh -GitPath $gitPath)
-        Write-Output ("STEP {0}/10 {1} starting" -f [int] $step.Index, [string] $step.Id)
+        Write-Output ("STEP {0}/7 {1} starting" -f [int] $step.Index, [string] $step.Id)
 
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         $captured = $null
         try {
             switch ([string] $step.Kind) {
-                'env-pre' {
-                    $captured = Invoke-CountdownEnvPre -ProjectRoot $projectRoot -StepDir $stepDir
-                }
-                'pin-after-build' {
-                    $captured = Invoke-CountdownPinAfterBuild -ProjectRoot $projectRoot -StepDir $stepDir
-                }
                 'git' {
                     $captured = Invoke-CountdownCapturedProcess -FilePath $gitPath -WorkingDirectory $projectRoot -ArgumentList @($step.Arguments)
                 }
@@ -786,7 +583,7 @@ try {
             Command = $commandTokens
         }
         Write-CountdownStepEvidence -StepDir $stepDir -Record $record
-        Write-Output ("STEP {0}/10 {1} {2} exit={3} durationMs={4}" -f [int] $step.Index, [string] $step.Id, $status, $exitCode, $record.DurationMs)
+        Write-Output ("STEP {0}/7 {1} {2} exit={3} durationMs={4}" -f [int] $step.Index, [string] $step.Id, $status, $exitCode, $record.DurationMs)
 
         if ($exitCode -ne 0) {
             $failedStepId = [string] $step.Id

@@ -45,11 +45,17 @@ $staging = __STAGING__
 $packagePath = Join-Path $staging 'package.zip'
 $packageRoot = Join-Path $staging 'package'
 # installerStarted：安装器开始运行之后才可能动到安装根；它之前的失败（包哈希、解包）什么都没改。
-$envelope = [ordered]@{ packageVerified = $false; installerStarted = $false; installer = $null; stagingRemoved = $false; error = $null }
+$envelope = [ordered]@{ packageVerified = $false; packageManifestVerified = $false; installerStarted = $false; installer = $null; stagingRemoved = $false; error = $null }
 try {
     if ((Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash -ne __SHA256__) { throw '暂存目录里的包与部署端算出的包哈希不一致。' }
     $envelope.packageVerified = $true
     [System.IO.Compression.ZipFile]::ExtractToDirectory($packagePath, $packageRoot)
+    $packageManifestPath = Join-Path $packageRoot 'package-manifest.json'
+    if (-not (Test-Path -LiteralPath $packageManifestPath -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $packageManifestPath -Algorithm SHA256).Hash -ne __PACKAGE_MANIFEST_SHA256__) {
+        throw '解包后的生成包清单与部署端注入的清单哈希不一致。'
+    }
+    $envelope.packageManifestVerified = $true
     $arguments = @{ PackageRoot = $packageRoot; InstallRoot = __INSTALL_ROOT__; TaskName = __TASK_NAME__ }
     if ($null -ne $Port) { $arguments.Port = $Port }
     if ($LockName) { $arguments.LockName = $LockName }
@@ -174,6 +180,41 @@ function Invoke-CountdownDeployGit {
         Lines = $lines
         Text = ($lines -join "`n").Trim()
         Error = ConvertTo-CountdownDeployBoundedText -Text ($errors -join ' ')
+    }
+}
+
+# Git 来源包文件必须保留提交 blob 的原始字节。hash-object --no-filters 不做 clean/CRLF 转换，
+# 因而“工作树看起来干净”或重新计算生成清单都不能把换行漂移、篡改合法化。
+function Assert-CountdownDeploySourceBlobs {
+    param(
+        [Parameter(Mandatory)] [string] $RepositoryRoot,
+        [Parameter(Mandatory)] [string] $Commit,
+        [Parameter(Mandatory)] [string[]] $RelativePaths
+    )
+
+    $gitPaths = @($RelativePaths | ForEach-Object { $_.Replace('\', '/') })
+    $tree = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments (@('ls-tree', $Commit, '--') + $gitPaths)
+    if ($tree.ExitCode -ne 0) {
+        throw (New-CountdownDeployFailure -Reason 'source-blob-mismatch' -Message "读不出提交里的包文件 blob 身份：$($tree.Error)")
+    }
+    $expectedByPath = @{}
+    foreach ($line in $tree.Lines) {
+        if ($line -notmatch '^[0-9]{6} blob ([0-9a-f]{40})\t(.+)$') {
+            throw (New-CountdownDeployFailure -Reason 'source-blob-mismatch' -Message "提交树里的包文件条目无效：$line")
+        }
+        $expectedByPath[$Matches[2]] = $Matches[1]
+    }
+    $fullPaths = @($RelativePaths | ForEach-Object { Join-Path $RepositoryRoot $_ })
+    $actual = Invoke-CountdownDeployGit -Root $RepositoryRoot -Arguments (@('hash-object', '--no-filters', '--') + $fullPaths)
+    if ($actual.ExitCode -ne 0 -or $actual.Lines.Count -ne $gitPaths.Count) {
+        throw (New-CountdownDeployFailure -Reason 'source-blob-mismatch' -Message "读不出工作树包文件的原始 blob 身份：$($actual.Error)")
+    }
+    for ($index = 0; $index -lt $gitPaths.Count; $index++) {
+        $expected = [string] $expectedByPath[$gitPaths[$index]]
+        if ([string]::IsNullOrWhiteSpace($expected) -or
+            -not [string]::Equals($expected, [string] $actual.Lines[$index], [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw (New-CountdownDeployFailure -Reason 'source-blob-mismatch' -Message "Git 来源包文件与提交 blob 不一致：$($RelativePaths[$index])。保留提交原始字节，不能用重算生成清单替代来源身份。")
+        }
     }
 }
 
@@ -392,6 +433,8 @@ function Get-CountdownDeployPreflight {
         $remoteHead = if ($pushed.Text) { $pushed.Text.Substring(0, [Math]::Min(7, $pushed.Text.Length)) } else { '（不存在）' }
         throw (New-CountdownDeployFailure -Reason 'not-pushed' -Message "提交 $($commit.Substring(0, 7)) 尚未推送：origin/main 是 $remoteHead。只部署与 origin/main 一致的 HEAD。")
     }
+    $sourcePaths = @($script:InstallerFiles) + @((Get-CountdownReleaseContract).BuildAssets | ForEach-Object { [string] $_.SourcePath })
+    Assert-CountdownDeploySourceBlobs -RepositoryRoot $RepositoryRoot -Commit $commit -RelativePaths $sourcePaths
     $suiteRun = Find-CountdownDeploySuiteRun -RepositoryRoot $RepositoryRoot -Commit $commit
     $buildOutput = Read-CountdownDeployBuildOutput -RepositoryRoot $RepositoryRoot -Commit $commit
     if ($buildOutput.AggregateSha256 -ne $suiteRun.PayloadAggregateSha256) {
@@ -440,8 +483,9 @@ function Add-CountdownDeployPackageEntry {
     finally { $hash.Dispose() }
 }
 
-# 包：程序目录里载荷清单列出的文件、载荷清单和两个安装器文件。程序目录的文件取自本机构建输出，
-# 不重新导出、不重新构建；边写进包边算 SHA-256，与清单不一致就停。
+# 包：程序目录里载荷清单列出的文件、载荷清单、两个安装器文件和根级生成包清单。
+# 程序目录的文件取自本机构建输出，不重新导出、不重新构建；边写进包边算 SHA-256，与清单不一致就停。
+# 根级清单列出其余全部包文件；清单自身由整包 ZIP SHA-256 与部署端注入的清单 SHA-256 绑定。
 function New-CountdownDeployPackage {
     param(
         [Parameter(Mandatory)] [string] $RepositoryRoot,
@@ -461,6 +505,8 @@ function New-CountdownDeployPackage {
             throw (New-CountdownDeployFailure -Reason 'holiday-year-coverage-missing' -Message $coverage.Message)
         }
     }
+    $packageFiles = [System.Collections.Generic.List[object]]::new()
+    $manifestSha256 = $null
     $archive = [System.IO.Compression.ZipFile]::Open($PackagePath, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
         if ($null -ne $BuildOutput) {
@@ -469,17 +515,38 @@ function New-CountdownDeployPackage {
                 if ($sha256 -ne $file.Sha256) {
                     throw (New-CountdownDeployFailure -Reason 'build-output-modified' -Message "构建输出在套件之后被改动：$($file.Path) 的 SHA-256 与载荷清单不一致，程序目录不是套件测过的那份。重新跑一轮套件，部署它测过的构建输出。")
                 }
+                $packageFiles.Add([pscustomobject]@{ Path = [string] $file.Path; Sha256 = $sha256 })
             }
-            [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath $BuildOutput.ManifestPath -EntryName 'app\published-payload.json')
+            $payloadManifestSha256 = Add-CountdownDeployPackageEntry -Archive $archive -SourcePath $BuildOutput.ManifestPath -EntryName 'app\published-payload.json'
+            $packageFiles.Add([pscustomobject]@{ Path = 'app\published-payload.json'; Sha256 = $payloadManifestSha256 })
         }
         foreach ($name in $Scripts) {
-            [void] (Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $name) -EntryName $name)
+            $sha256 = Add-CountdownDeployPackageEntry -Archive $archive -SourcePath (Join-Path $RepositoryRoot $name) -EntryName $name
+            $packageFiles.Add([pscustomobject]@{ Path = [string] $name; Sha256 = $sha256 })
         }
+
+        $manifestFiles = @($packageFiles | Sort-Object -Property Path)
+        $aggregateInput = [System.Text.StringBuilder]::new()
+        foreach ($file in $manifestFiles) {
+            [void] $aggregateInput.Append($file.Path).Append([char] 0).Append($file.Sha256).Append([char] 10)
+        }
+        $manifestDocument = [ordered]@{
+            schemaVersion = 1
+            aggregateSha256 = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
+            files = @($manifestFiles | ForEach-Object { [ordered]@{ path = $_.Path; sha256 = $_.Sha256 } })
+        }
+        $manifestBytes = $script:Utf8NoBom.GetBytes(($manifestDocument | ConvertTo-Json -Depth 4))
+        $manifestSha256 = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($manifestBytes))
+        $manifestEntry = $archive.CreateEntry('package-manifest.json', [System.IO.Compression.CompressionLevel]::Optimal)
+        $manifestStream = $manifestEntry.Open()
+        try { $manifestStream.Write($manifestBytes, 0, $manifestBytes.Length) }
+        finally { $manifestStream.Dispose() }
     }
     finally { $archive.Dispose() }
     [pscustomobject]@{
         Path = $PackagePath
         Sha256 = (Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash
+        ManifestSha256 = $manifestSha256
         Bytes = (Get-Item -LiteralPath $PackagePath).Length
     }
 }
@@ -590,7 +657,7 @@ function ConvertFrom-CountdownDeployInstallEnvelope {
     if ($null -ne $envelopeError) {
         $install | Add-Member -NotePropertyName error -NotePropertyValue (ConvertTo-CountdownDeployBoundedText -Text ([string] $envelopeError)) -Force
     }
-    foreach ($name in @('packageVerified', 'installerStarted', 'stagingRemoved')) {
+    foreach ($name in @('packageVerified', 'packageManifestVerified', 'installerStarted', 'stagingRemoved')) {
         $install | Add-Member -NotePropertyName $name -NotePropertyValue (Test-CountdownDeployTrue (Get-CountdownDeployProperty -Object $Envelope -Name $name)) -Force
     }
     $install
@@ -779,7 +846,7 @@ function Invoke-CountdownDeployment {
         Write-CountdownDeployProgress -Step 'package' -Message '把程序目录、载荷清单和安装器打成一个包'
         [void] [System.IO.Directory]::CreateDirectory($workDirectory)
         $package = New-CountdownDeployPackage -RepositoryRoot $RepositoryRoot -BuildOutput $preflight.BuildOutput -PackagePath $packagePath
-        $result.package = [ordered]@{ sha256 = $package.Sha256; bytes = $package.Bytes; retained = $true }
+        $result.package = [ordered]@{ sha256 = $package.Sha256; manifestSha256 = $package.ManifestSha256; bytes = $package.Bytes; retained = $true }
 
         # 连通性探测就是一次只读状态读取：连得上，也知道办公室现在运行的是什么。安装后的状态读取用同一份脚本。
         $step = 'probe'
@@ -807,7 +874,8 @@ function Invoke-CountdownDeployment {
             $step = 'install'
             Write-CountdownDeployProgress -Step 'install' -Message '经远端执行入口核对包哈希、解包并运行包内安装器'
             $installText = Expand-CountdownDeployTemplate -Template $script:RemoteInstallScript -Values ([ordered]@{
-                    '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__ENTRY__' = $entryName; '__MODE__' = 'install'
+                    '__STAGING__' = $staging; '__SHA256__' = $package.Sha256; '__PACKAGE_MANIFEST_SHA256__' = $package.ManifestSha256
+                    '__ENTRY__' = $entryName; '__MODE__' = 'install'
                     '__INSTALL_ROOT__' = $RemoteInstallRoot; '__TASK_NAME__' = $TaskName
                 })
             $installScript = Write-CountdownDeployScript -Path (Join-Path $workDirectory 'install.ps1') -Text $installText

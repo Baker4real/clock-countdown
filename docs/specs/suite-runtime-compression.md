@@ -52,7 +52,7 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 22. As a 维护者, I want 五阶段套件与 10 步收口 runner 不在同一会话连跑, so that 不做无意识的整套双跑。
 23. As a 维护者, I want 本地迭代可选增量构建模式, so that 非收口的验证循环更快；该模式以插桩实测数据为引入前提。
 24. As a 发布者, I want 发布收口仍然走全量 -Clean + R2R, so that 发布产物的性能与完整性合同不变。
-25. As a 发布者, I want 改动 IntegrityHashes 覆盖文件后同步更新静态哈希, so that 发布合同持续有效。
+25. As a 发布者, I want 包内文件改动后由 Build 与 Deployer 重新生成清单并由来源 blob、ZIP 和安装闭包门核对, so that 发布合同持续有效且无需手工同步。
 26. As a 维护者, I want 四个增量各自独立交付、独立验收、独立回退, so that 任一增量出问题不影响其他收益。
 27. As a 维护者, I want 每个增量前后各有一次全绿基线对比, so that 耗时收益与有效性都有实测证据。
 28. As a 维护者, I want InstallValidate 与 Core 内联安装器验证的双轨被文档标注为有意为之, so that 后来者不会误删其一。
@@ -65,7 +65,7 @@ intent: 将 2026-09-13 套件耗时调查的已确认事实、约束、改进决
 - C# 宿主选项与应用入口：ExitAfterReadyForTest 自退间隔成为宿主选项（新命令行参数，测试与工具直接传入），未指定时保持 30 秒；套件两处集成段传 2-3 秒。有效性论证：被测对象是 window-ready 回执与自退路径，不是时长本身；实现前由维护者确认 30 秒不承载稳定性观察窗语义。
 - CSharp / Ui 测试脚本：使用短自退间隔；按断言映射表去重——CSharp 阶段保留 canonical 完整应用 validate-only（含视觉基线 12 帧抓帧与 shape SHA）；Ui 阶段保留旧 PowerShell WPF 宿主验证、UIA 段与独有断言，逐字重复副本删除前其独有断言必须先迁移归属；ExercisePersistenceFailures 三遍保一对（预期失败 + 预期通过），ExerciseNoteAdd 两遍保一遍；Ui 阶段报告数从硬编码改为实际计数。
 - Core 测试脚本：加分段计时；内联安装器验证调用与 InstallValidate 独立阶段都保留——前者带合同断言、后者是阶段级红即停门禁，重复成本约 10 秒，标注为有意双轨。
-- 发布合同 module：本 spec 触及的测试脚本与构建脚本在 IntegrityHashes 覆盖内，每次改动后按当前提交 blob 更新静态 SHA-256（既有合同义务，不新增机制）。
+- 发布合同 module：#294 已删除本条的旧静态哈希义务；现役 Build / Deployer 生成清单，正式部署核对提交 blob、整包 ZIP、清单自身与安装精确闭包。
 - 流程决策：五阶段套件与 9 步收口 runner 不在同一会话连跑（后者第 3/5/7/8/9 步与五阶段逐字相同，连跑等于整套两遍）；README 注明。
 - 并行安全前置条件（调查已核实，实现时逐条守住）：五阶段测试数据根均为 GUID 唯一目录；CSharp / Ui 的 validate-only 均使用临时 settings 文件，不写仓库根 settings.json，SourceValidation 的根快照闭锁不受影响；CSharp 默认路径不按生产安装路径结束进程；Ui 的仓库内固定诊断目录与 CSharp / SourceValidation 的 GUID 诊断路径不相交；Core 的全局安装事务 mutex 探针为 1 秒有界且其余四阶段不取该锁。
 - 依赖事实（已核实，含对调查中间结论的修正）：全部五个验证阶段都依赖 Build——Ui 经 adapter 间接启动 C# 宿主 exe，不能与 Build 并行；Build 是唯一必须先行的阶段，并行扇出在 Build 绿之后。

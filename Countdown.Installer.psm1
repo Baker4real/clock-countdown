@@ -265,11 +265,132 @@ function Read-CountdownPayloadManifest {
     }
 }
 
+function Test-CountdownPackageManifestPath {
+    param([AllowEmptyString()] [string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [System.IO.Path]::IsPathRooted($Path) -or
+        $Path.Contains('/') -or [System.Management.Automation.WildcardPattern]::ContainsWildcardCharacters($Path)) {
+        return $false
+    }
+    $invalidCharacters = [System.IO.Path]::GetInvalidFileNameChars()
+    foreach ($segment in $Path.Split('\')) {
+        if ($segment -in @('', '.', '..') -or $segment.IndexOfAny($invalidCharacters) -ge 0 -or
+            $segment.EndsWith(' ') -or $segment.EndsWith('.')) {
+            return $false
+        }
+    }
+    $true
+}
+
+# 根级生成包清单覆盖除自身以外的全部包文件。整包 ZIP SHA-256 与部署端注入的清单 SHA-256
+# 在解包后、安装器启动前绑定这份清单；本函数负责解包后的精确文件闭包与两份清单的一致性。
+function Read-CountdownPackageManifest {
+    param([Parameter(Mandatory)] [string] $PackageRoot)
+
+    $manifestPath = Join-Path $PackageRoot 'package-manifest.json'
+    $mismatch = { param([string] $Detail) New-CountdownInstallRejection -Reason 'payload-mismatch' -Message "发布包与生成包清单不符：$Detail" }
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw (& $mismatch '缺少 package-manifest.json') }
+    try { $document = [System.IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json }
+    catch { throw (& $mismatch 'package-manifest.json 不是有效 JSON') }
+    if ($null -eq $document -or (Get-CountdownInstallerProperty -Object $document -Name 'schemaVersion') -ne 1) {
+        throw (& $mismatch 'package-manifest.json 的 schemaVersion 不是 1')
+    }
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $aggregateInput = [System.Text.StringBuilder]::new()
+    foreach ($file in @(Get-CountdownInstallerProperty -Object $document -Name 'files')) {
+        $path = [string] (Get-CountdownInstallerProperty -Object $file -Name 'path')
+        $sha256 = ([string] (Get-CountdownInstallerProperty -Object $file -Name 'sha256')).ToUpperInvariant()
+        if (-not (Test-CountdownPackageManifestPath -Path $path) -or
+            [string]::Equals($path, 'package-manifest.json', [System.StringComparison]::OrdinalIgnoreCase) -or
+            $sha256 -notmatch '^[0-9A-F]{64}$' -or -not $seen.Add($path)) {
+            throw (& $mismatch "清单条目无效：$path")
+        }
+        if (-not $path.StartsWith('app\', [System.StringComparison]::OrdinalIgnoreCase) -and
+            $path -notin @('Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')) {
+            throw (& $mismatch "清单包含非发布包文件：$path")
+        }
+        $entries.Add([pscustomobject]@{ Path = $path; Sha256 = $sha256 })
+        [void] $aggregateInput.Append($path).Append([char] 0).Append($sha256).Append([char] 10)
+    }
+    foreach ($required in @('app\published-payload.json', $script:ExecutableManifestPath, 'Install-CountdownProgram.ps1', 'Countdown.Installer.psm1')) {
+        if (-not $seen.Contains($required)) { throw (& $mismatch "清单没有 $required") }
+    }
+    $aggregate = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
+    if (-not [string]::Equals($aggregate, [string] (Get-CountdownInstallerProperty -Object $document -Name 'aggregateSha256'), [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw (& $mismatch '聚合哈希与清单的文件列表不一致')
+    }
+    [pscustomobject]@{ Path = $manifestPath; AggregateSha256 = $aggregate; Files = $entries.ToArray() }
+}
+
+function Assert-CountdownPackageMatchesManifest {
+    param(
+        [Parameter(Mandatory)] [string] $PackageRoot,
+        [Parameter(Mandatory)] [object] $Manifest,
+        [Parameter(Mandatory)] [object] $PayloadManifest
+    )
+
+    $mismatch = { param([string] $Detail) New-CountdownInstallRejection -Reason 'payload-mismatch' -Message "发布包与生成包清单不符：$Detail" }
+    $expected = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($entry in $Manifest.Files) { [void] $expected.Add([string] $entry.Path) }
+    $actual = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($file in Get-ChildItem -LiteralPath $PackageRoot -File -Recurse -Force) {
+        $relative = [System.IO.Path]::GetRelativePath($PackageRoot, $file.FullName)
+        if (-not [string]::Equals($relative, 'package-manifest.json', [System.StringComparison]::OrdinalIgnoreCase)) {
+            [void] $actual.Add($relative)
+        }
+    }
+    $missing = @($expected | Where-Object { -not $actual.Contains($_) } | Sort-Object)
+    $extra = @($actual | Where-Object { -not $expected.Contains($_) } | Sort-Object)
+    if ($missing.Count -gt 0 -or $extra.Count -gt 0) {
+        $details = @(
+            if ($missing.Count -gt 0) { "缺少 $($missing -join '、')" }
+            if ($extra.Count -gt 0) { "多出 $($extra -join '、')" }
+        )
+        throw (& $mismatch ($details -join '；'))
+    }
+    foreach ($entry in $Manifest.Files) {
+        $path = Join-Path $PackageRoot $entry.Path
+        if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.Sha256) {
+            throw (& $mismatch "$($entry.Path) 的 SHA-256 不同")
+        }
+    }
+
+    $packageApplicationFiles = @($Manifest.Files | Where-Object {
+            $_.Path.StartsWith('app\', [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not [string]::Equals($_.Path, 'app\published-payload.json', [System.StringComparison]::OrdinalIgnoreCase)
+        })
+    if ($packageApplicationFiles.Count -ne @($PayloadManifest.Files).Count) {
+        throw (& $mismatch '应用文件集合与载荷清单不一致')
+    }
+    foreach ($payloadFile in $PayloadManifest.Files) {
+        $packageFile = @($packageApplicationFiles | Where-Object {
+                [string]::Equals($_.Path, $payloadFile.Path, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($packageFile.Count -ne 1 -or $packageFile[0].Sha256 -ne $payloadFile.Sha256) {
+            throw (& $mismatch "应用文件条目与载荷清单不一致：$($payloadFile.Path)")
+        }
+    }
+}
+
 function Assert-CountdownProgramDirectoryMatchesManifest {
     param(
         [Parameter(Mandatory)] [string] $Directory,
         [Parameter(Mandatory)] [object] $Manifest
     )
+
+    $expectedPaths = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] (@($Manifest.Files | ForEach-Object { [string] $_.Path }) + @('app\published-payload.json')),
+        [System.StringComparer]::OrdinalIgnoreCase)
+    $actualPaths = @(
+        Get-ChildItem -LiteralPath $Directory -File -Recurse -Force | ForEach-Object {
+            'app\' + [System.IO.Path]::GetRelativePath($Directory, $_.FullName)
+        })
+    $extraPaths = @($actualPaths | Where-Object { -not $expectedPaths.Contains($_) } | Sort-Object)
+    if ($extraPaths.Count -gt 0) {
+        throw (New-CountdownInstallRejection -Reason 'payload-mismatch' -Message "包内文件与载荷清单不符：多出 $($extraPaths -join '、')")
+    }
 
     foreach ($entry in $Manifest.Files) {
         $path = Join-Path $Directory $entry.RelativePath
@@ -282,7 +403,7 @@ function Assert-CountdownProgramDirectoryMatchesManifest {
     }
 }
 
-# 候选程序目录只含清单列出的文件和清单本身；包里清单之外的文件不装。
+# 候选程序目录只含清单列出的文件和清单本身；源包的清单外文件已在安装锁之前拒绝。
 function Copy-CountdownProgramCandidate {
     param(
         [Parameter(Mandatory)] [string] $SourceDirectory,
@@ -1342,7 +1463,7 @@ function Test-CountdownInstallerHolidayYearCoverage {
     [pscustomobject]@{
         Covered = $false
         MissingYear = $nextYear
-        Message = "随包节假日数据尚未覆盖 $nextYear 年：当前北京时间已进入 $($BeijingNow.Year) 年 12 月。请按 holiday-data/README.md 的更新流程补齐 $nextYear 年随包数据（固定上游提交、重新生成全年 days 数组、更新来源提交、年份与 IntegrityHashes，工单 #234），再重新运行验证。"
+        Message = "随包节假日数据尚未覆盖 $nextYear 年：当前北京时间已进入 $($BeijingNow.Year) 年 12 月。请按 holiday-data/README.md 的更新流程补齐 $nextYear 年随包数据（固定上游提交、重新生成全年 days 数组并更新来源提交与年份，工单 #234），再重新运行验证。"
     }
 }
 
@@ -1363,9 +1484,9 @@ function Install-CountdownProgram {
     .SYNOPSIS
     把包里的程序目录装到安装根：首次安装与升级同一流程，等到启动就绪后提交，返回结果（由入口脚本输出为 JSON）。
     .DESCRIPTION
-    步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；取得全机安装锁；中断恢复（#284，见
-    Invoke-CountdownInstallRecovery）：安装根留有上次没走完的安装时先按恢复表收拾好，收拾不了时停在恢复阶段、不继续安装；
-    前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并按载荷清单逐项核对）；
+    步骤：检查安装路径并记下设置指纹（只读，被安装锁拒绝时结果里也有指纹）；验证根级生成包清单、应用载荷清单和全包精确闭包；
+    取得全机安装锁；中断恢复（#284，见 Invoke-CountdownInstallRecovery）：安装根留有上次没走完的安装时先按恢复表收拾好，
+    收拾不了时停在恢复阶段、不继续安装；前置检查（唯一的交互会话及其桌面目录、把候选程序目录放到安装根下并精确核对）；
     停止应用（先结束运行中的登录任务实例并给进程有界正常退出时间，再按 PID 复核并结束剩余进程；结果分别记开始时、正常退出与强杀的进程数）；写下事务标记；把设置及其两代备份快照到事务目录；
     有设置文件时用候选 EXE 在事务目录里的副本上演练迁移，并用产品的等价判定核对快照与迁移结果；现役程序目录改名为
     旧版本目录、候选改名为现役；登录任务不存在时创建、与期望定义不一致时更新；登记桌面快捷方式（缺失时创建，属于安装器时
@@ -1431,15 +1552,24 @@ function Install-CountdownProgram {
     $candidateOwned = $false
     $transaction = $null
     try {
-        if (-not $CheckOnly) {
-            Assert-CountdownInstallerHolidayYearCoverage -PackageRoot $PackageRoot -BeijingNow $BeijingNow
-        }
         # 安装路径检查与设置指纹只读、不需要锁：被安装锁拒绝的结果里也有设置指纹。
         $layout = Resolve-CountdownInstallerLayout -InstallRoot $InstallRoot
         $result.installRoot = $layout.Root
         # 应用的诊断日志（新版本起不来的原因在这里），在安装根里，安装与回滚都不动它。
         $result.diagnosticLogPath = Join-Path $layout.Root 'logs\application.jsonl'
         $result.settings.before = Get-CountdownSettingsFingerprint -Path $layout.SettingsPath
+
+        # 全包精确闭包必须先于安装锁、中断恢复和任何 Windows port。中断恢复会改安装根，
+        # 因此不能在恢复之后才第一次验证新包。
+        $packageRootPath = Resolve-CountdownInstallerPath -Path $PackageRoot
+        $sourceDirectory = Join-Path $packageRootPath 'app'
+        $manifest = Read-CountdownPayloadManifest -ProgramDirectory $sourceDirectory
+        $packageManifest = Read-CountdownPackageManifest -PackageRoot $packageRootPath
+        Assert-CountdownPackageMatchesManifest -PackageRoot $packageRootPath -Manifest $packageManifest -PayloadManifest $manifest
+        $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
+        if (-not $CheckOnly) {
+            Assert-CountdownInstallerHolidayYearCoverage -PackageRoot $packageRootPath -BeijingNow $BeijingNow
+        }
 
         $stage = 'lock'
         $lock = Enter-CountdownInstallLock -Name $LockName
@@ -1453,9 +1583,6 @@ function Install-CountdownProgram {
         $stage = 'preflight'
         $session = Get-CountdownSingleInteractiveSession -Ports $Ports
         $desktopDirectory = Resolve-CountdownDesktopDirectory -Session $session -Ports $Ports
-        $sourceDirectory = Join-Path (Resolve-CountdownInstallerPath -Path $PackageRoot) 'app'
-        $manifest = Read-CountdownPayloadManifest -ProgramDirectory $sourceDirectory
-        $result.package = [ordered]@{ commit = $manifest.Commit; aggregateSha256 = $manifest.AggregateSha256 }
         # 只检查时没做的恢复会把旧版本目录换回 app，因此旧版本目录在也不算首次安装；恢复做完之后不会留下旧版本目录。
         $result.firstInstall = -not (Test-Path -LiteralPath $layout.ProgramDirectory -PathType Container) -and -not (Test-Path -LiteralPath $layout.PreviousDirectory)
         $plan = [System.Collections.Generic.List[string]]::new()
@@ -1468,7 +1595,6 @@ function Install-CountdownProgram {
         $plan.AddRange([string[]] @('register-desktop-shortcut', 'start-and-wait-ready', 'commit'))
 
         if ($CheckOnly) {
-            Assert-CountdownProgramDirectoryMatchesManifest -Directory $sourceDirectory -Manifest $manifest
             $result.plannedSteps = $plan.ToArray()
             $result.succeeded = $true
         }

@@ -57,7 +57,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
 - `Countdown.Validation.psm1`：本机 Core、C# 与应用 validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
-- `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
+- `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与派生包/安装清单；应用与全包 SHA-256 分别由 Build 和 Deployer 生成，不保存手工静态钉值
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
 - `countdown-icon.ico`：窗口、托盘和桌面启动器图标；构建另复制一份进程序目录 `app\`，应用托盘从那里读取（#275）
 - `sanrio-official-mymelody.png`、`sanrio-official-cinnamoroll.png`、`sanrio-official-kuromi.png`：主窗口兼容回退与来源校验使用的三张官方透明角色立绘
@@ -71,7 +71,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Deploy-CountdownProgram.ps1`、`Countdown.Deployer.psm1`：唯一办公室部署入口与编排 module，支持部署和 `-StatusOnly` 只读状态读取。预检、年度覆盖检查、真实 ZIP 打包、受管传输/远端执行与安装后一次状态读取由该链完成，不再提供布局切换或回退模式。
 - `Countdown.Core.Tests.ps1`：核心与发布契约测试可直跑。入口只留参数、公共断言、分段开关、计时与收尾，各分段正文在同目录 `Countdown.Core.Tests.<分段>.ps1`，由入口点源执行，不单独运行
 - `Countdown.CSharp.Tests.ps1`、`Invoke-CountdownSourceValidation.ps1`：窗口套件内层实现，仅由低影响启动器转发，直跑 fail-closed
-- `tools/Invoke-CountdownVerificationRun.ps1`：标准化 9 步收口验证 runner；桌面启动器退役后不再有时延探针，实例激活矩阵保留独立门禁
+- `tools/Invoke-CountdownVerificationRun.ps1`：标准化 7 步收口验证 runner；桌面启动器退役后不再有时延探针，实例激活矩阵保留独立门禁
 - `tools/Invoke-CountdownSuiteLowImpact.ps1`：低影响官方套件启动器（BelowNormal + 默认不可见 Win32 桌面隔离 + 用户桌面泄漏监测 + 红即停），五阶段套件默认入口；Build 绿后 Core/CSharp/SourceValidation/InstallValidate 四阶段并行调度（`-MaxParallel` 默认 2，范围 1-5；每阶段唯一隔离桌面），任一阶段红即取消在跑阶段并保留已完成日志与 summary（参考基线待重拍的退出码 75 除外，见「本机验证」）。`-IsolatedDesktop` 可显式传入（兼容旧命令）；关闭隔离必须 `-AllowUnisolatedDesktop`（用户正在用电脑时禁止）。`tools/Countdown.SuiteStages.psm1` 是当前必过五阶段（Build / Core / CSharp / SourceValidation / InstallValidate）的唯一来源，启动器、运行记录与办公室部署门都读取它；`Countdown.SuiteRun.psm1` 负责原子 run/summary（替换目标被杀毒扫描等瞬时占用时重试约 2 秒）、阶段超时、取消和失效 owner 的 `Interrupted` 回读；run.json 的 `Source` 记录开跑与收尾时的 HEAD 和工作树是否干净，办公室部署据此核对同一提交的本机验收证据；配套 `tools/Start-IsolatedSuiteProcess.ps1`（隔离桌面进程启动）与 `tools/Watch-DesktopWindows.ps1`（用户桌面窗口泄漏监测）
 - `tools/Test-CountdownTooling.ps1`：不在用户桌面开窗的自检：issue 验收 schema、回写 dry-run、PowerShell 解析、弹层验证夹具 C# 只编译、日间纯装饰图生成契约（`tools/Test-MainDayOrnamentScene.ps1`）、隔离启动器崩溃对话框看门狗（`tools/Test-IsolatedCrashDialogWatchdog.ps1`，对话框只弹在自建的隔离桌面上）、套件状态原子写的瞬时占用重试（`tools/Test-SuiteRunStateWrite.ps1`）、CI 工作流脚本都有本机阶段跑到的对等检查、生产脚本 `Move-Item -Force` 只减不增、通过的子测试不在 `logs\` 与仓库根留下 `*-test-*` 测试根和 `git diff --check`；`tools/Test-PopupValidationContract.ps1` 由低影响启动器的 `ValidationHarness` 阶段执行弹层真实动作与反例，夹具 C# 在 `tools/PopupValidationContract.cs`
 - `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
@@ -157,7 +157,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 `ValidationHarness` 的生产动效检查必须在 300 ms 内取得真实的 10%–90% 中间帧，终态或缺帧都不算通过。只有某场景唯一的失败与实测卡顿重合时，才重跑该场景。卡顿指以下任一情况：采样窗口内最长无帧间隔不短于最短 90 ms token 的 10%–90% 区间（约 37 ms）；或反转后的首帧到达时，整段动效时长已经过去。每个场景最多重跑 2 次，每轮最多 4 次。每次因卡顿失败的尝试都记入 `Motion.Results[].StarvedAttempts`；阈值、实际用量、注入卡顿自检和判定对照见 `Motion.StallRetry`。最终判定仍取自一次完整的真实通过。
 
-视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），按其提示重算 `IntegrityHashes` 并构建当前源码，再单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
+视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），再构建当前源码并单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate
@@ -173,7 +173,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Al
 
 标注：本文档命令的脚本路径统一用 `./` 前缀：该写法在 PowerShell、cmd 与 Git Bash 下均可直接执行；`.\` 前缀会被 Git Bash 等 POSIX shell 当作转义符吃掉反斜杠，导致 `pwsh -File` 报找不到脚本。
 
-标注：五阶段套件与 9 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 3/5/7/8/9 步与五阶段逐字相同，连跑等于整套跑两遍。收口 runner 的 CSharp/SourceValidation 走同一隔离启动器；`instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
+标注：五阶段套件与 7 步收口 runner（`tools/Invoke-CountdownVerificationRun.ps1`）不在同一会话连跑：后者第 2/3/5/6/7 步与五阶段对应，连跑等于整套跑两遍。收口 runner 的 CSharp/SourceValidation 走同一隔离启动器；`instance-activation-matrix` 默认拒绝前台跑，需要时显式 `-AllowForegroundWindowedSteps`（用户正在用电脑时禁止）。
 
 标注：issue 关闭前按 [`docs/agents/issue-acceptance.md`](docs/agents/issue-acceptance.md) 生成结构化记录；`candidate`、`dry-run`、`deployed` 和 `live verified` 分开记录。`tools/Invoke-IssueWriteback.ps1` 不带 `-Apply` 时只生成评论和父票汇总计划，不发送 GitHub 请求。
 
@@ -188,18 +188,18 @@ pwsh.exe -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1
 & 'D:\Codex\tools\PowerShell\7.6.4\pwsh.exe' -NoLogo -NoProfile -STA -File ./Countdown.CSharp.Tests.ps1 -InstanceActivationMatrix -AllowForegroundWindowedSteps  # 诊断并发 probe 共享截止 38900ms（真实矩阵 8×100 强制 1MB 滚动写最差外推 32381ms +20%）；用户正在用电脑时禁止
 pwsh.exe -NoLogo -NoProfile -File ./Countdown.Core.Tests.ps1
 pwsh.exe -NoLogo -NoProfile -STA -File ./Invoke-CountdownSourceValidation.ps1
-pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1 -CheckOnly
+pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownInstallValidation.ps1
 ```
 
 
-标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用（`Countdown.Core.Tests.ps1` 与 `Install-CountdownProgram.ps1 -CheckOnly`）是有意双轨：前者是阶段级红即停门禁，后者带合同断言与负控制；重复成本约 10 秒，不合并。
+标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用是有意双轨：两者都经 `tools/Invoke-CountdownInstallValidation.ps1` 由真实 Deployer 生成并解压测试包，再运行包内安装器 `CheckOnly`，不把源码树当发布包；前者是阶段级红即停门禁，后者带合同断言与负控制，重复成本约 10 秒，不合并。
 
 标注：`Countdown.Core.Tests.ps1` 的 Validation 分段调用 `Invoke-CountdownValidationSuite`；新安装器只负责安装，不运行测试套件。Core 逻辑不隔离；C# 回归与应用 `--validate-only` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateApp`，后者直接启动 `app\MinminCountdown.exe` 并显式传入临时设置与诊断日志路径。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。
 
 标注：应用 `--validate-only` 失败时，验证套件先把它的诊断日志（`*.application.jsonl` 及轮转文件）复制进该阶段的证据目录，再照常清理临时文件。CI 任一步失败时上传 `crash-evidence-<run_id>-<attempt>`，内容是 Application 日志里的崩溃事件（Application Error、Windows Error Reporting、.NET Runtime）、`MinminCountdown.exe` 的 WER 小型转储，以及 `D:\agents\run-evidence\clock-countdown-validation` 下的阶段证据。仓库公开，artifact 任何人都能下载，所以只收小型转储。
 
 `-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
-以上命令只证明当前机器上的源码行为、发布包与安装合同，不构成办公室部署或现场验收。正式部署只使用 `Deploy-CountdownProgram.ps1`，只读实时状态使用同一入口的 `-StatusOnly`。部署预检接受干净、已推送且与 `origin/main` 一致的 `main` 当前提交，并要求本 checkout 有同一提交、套件起止工作树都干净且整轮通过的五阶段记录；Build 必须是 `CleanR2R`，当前构建输出的聚合哈希必须等于回执，实际随包节假日数据还须通过年度覆盖守卫。部署直接打包这套件测过的程序目录、载荷清单和新安装器，打包逐文件核对 SHA-256，不重新导出、不重建；安装后以一次实时状态读取判定成功。历史证据边界、结果未知时的处理，以及放弃的保护与三项替代见 [办公室部署](docs/办公室部署.md)。
+以上命令只证明当前机器上的源码行为、发布包与安装合同，不构成办公室部署或现场验收。正式部署只使用 `Deploy-CountdownProgram.ps1`，只读实时状态使用同一入口的 `-StatusOnly`。部署预检接受干净、已推送且与 `origin/main` 一致的 `main` 当前提交，并要求本 checkout 有同一提交、套件起止工作树都干净且整轮通过的五阶段记录；Build 必须是 `CleanR2R`，当前构建输出的聚合哈希必须等于回执，实际随包节假日数据还须通过年度覆盖守卫。部署预检还逐文件核对 Git 来源包文件与提交 blob 原始字节；部署直接打包这套件测过的程序目录、载荷清单和新安装器，在真实 ZIP 内生成覆盖其余全部包文件的 `package-manifest.json`，逐文件核对 SHA-256，不重新导出、不重建。传输核对整包 ZIP SHA-256，远端解包后另核对部署端注入的清单 SHA-256，安装器再验证全包精确闭包；安装后以一次实时状态读取判定成功。历史证据边界、结果未知时的处理，以及放弃的保护与三项替代见 [办公室部署](docs/办公室部署.md)。
 
 ## 运行应用
 
@@ -213,11 +213,11 @@ pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1 -CheckOnly
 
 ## 安装
 
-安装前先运行 `Build-CountdownApplication.ps1 -Clean`。发布 ZIP 只含载荷清单列出的程序目录文件、`app\published-payload.json`、`Install-CountdownProgram.ps1` 与 `Countdown.Installer.psm1`；`Countdown.ReleaseContract.psm1` 的 `PackageFiles` 与实际 ZIP 精确一致。
+安装前先经官方 Build 生成当前构建输出。发布 ZIP 只含载荷清单列出的程序目录文件、`app\published-payload.json`、两个安装器文件和根级 `package-manifest.json`；`Countdown.ReleaseContract.psm1` 的 `PackageFiles` 与实际 ZIP 精确一致。根级清单由 Deployer 在打包时生成，列出其余全部包文件与 SHA-256。
 
-改了静态钉值覆盖的两个安装器文件或 `BuildAssets` 的源资产后，先 `git add` 改过的文件，再运行 `tools/Update-CountdownIntegrityHashes.ps1` 按暂存区 blob 更新 `Countdown.ReleaseContract.psm1`；`-Check` 只列出全部不一致项、不改文件。C# 源码、测试、构建与验证工具和 `DESIGN.md` 不进静态钉值。安装与部署仍要求 PowerShell 7+，不回退到 Windows PowerShell 5.1。
+包内源文件改动后直接重新构建和打包，不需要手工同步哈希；增删 C# 源码也不需要维护 `BuildInputFiles` / `SourceBuildFiles`。正式部署的提交 blob 门与 `.gitattributes` LF 约束继续保证 Git 来源文本和提交原始字节一致。逐项接替见 [发布完整性接替门与静态钉值退役对照](docs/agents/release-integrity-replacement.md)。安装与部署仍要求 PowerShell 7+，不回退到 Windows PowerShell 5.1。
 
-真实安装在取得全机安装锁之前先检查节假日年度覆盖，再校验包、停止应用、快照设置并在副本上演练迁移、替换程序目录、登记直接 EXE 登录任务和桌面快捷方式，等待启动就绪后提交；失败时按新事务边界回滚。安装只替换程序目录，不运行测试、不配置 Windows 时间服务，也不处理遗留任务或启动器。`-CheckOnly` 只检查包与环境、不做任何改动，年度覆盖按契约豁免；它失败时输出失败 JSON 并非零退出。默认包根是脚本所在目录，默认安装根是 `D:\敏敏子倒计时`：
+真实安装与 `-CheckOnly` 都在取得安装锁、中断恢复、候选创建和任何 Windows port 之前验证全包精确闭包：文件被改、多出、缺少以及两份清单不一致均拒绝。真实安装随后检查节假日年度覆盖，再停止应用、快照设置并在副本上演练迁移、替换程序目录、登记直接 EXE 登录任务和桌面快捷方式，等待启动就绪后提交；失败时按新事务边界回滚。安装只替换程序目录，不运行测试、不配置 Windows 时间服务，也不处理遗留任务或启动器。`-CheckOnly` 不做任何改动，年度覆盖按契约豁免；它失败时输出失败 JSON 并非零退出。安装入口的包根必须是真实发布 ZIP 的解压目录，默认是脚本所在目录，默认安装根是 `D:\敏敏子倒计时`：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1

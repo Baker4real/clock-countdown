@@ -50,5 +50,6 @@ intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引
 审计或核对多表面画面表现时，直接按以下三处路径定位，省去多轮目录枚举（同一流列文件名用 `-Name` 或 `-ExpandProperty`，避免混排异构 `Select-Object` 列）：
 
 - **方向参考图与现役双窗基线**：`assets/ui-references/` 根级 `*-ai-optimized-*.png`（5 张方向参考图），现役版本号由 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 唯一声明，对应 `assets/ui-references/main-window/864x1000/<Version>/`（9 帧）与 `assets/ui-references/floating-window/520x390/<Version>/`（5 帧）。
-- **版本化次级窗口与状态实拍证据**：`docs/evidence/clock-countdown-issue-250-surfaces/`（提醒中心、规则编辑器、确认框、四大弹层、错误态与系统高对比度）及同级 `issue-247-countdown-rows`、`issue-249-note-rows`、`issue-251-density-scroll-context`、`issue-255-focus-policy` 目录。
+- **底层贴图资产与分带生成依赖**：悬浮窗外壳与标题栏底图在 `assets/floating-plush/component-day-*.png`；管理窗口双工作区装饰场景图在 `assets/main-decorations/main-*-scene-day.png`，由 `tools/Build-MainDayOrnamentScene.ps1` 按 `tools/MainDecorationSceneBands.psd1` 的分带配置生成并由 `tools/Test-MainDayOrnamentScene.ps1` 校验带外纯净度（改动装饰贴图时须同步检查分带配置与发布契约静态哈希）。
+- **版本化次级窗口与状态实拍证据**：`docs/evidence/clock-countdown-issue-253-final-surfaces/` 与 `docs/evidence/clock-countdown-issue-250-surfaces/`（提醒中心、规则编辑器、确认框、四大弹层、错误态与系统高对比度），以及同级 `issue-247-countdown-rows`、`issue-249-note-rows`、`issue-251-density-scroll-context`、`issue-255-focus-policy`、`issue-339-sliding-pill-baseline` 目录。
 - **本机最近验证实拍（未跟踪）**：`logs/ui-captures/` 下按时间戳命名的子目录（如 `*-validate-only`、`*-density`、`*-scroll-hint`）。

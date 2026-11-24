@@ -62,3 +62,12 @@ WPF 把 `FocusVisualStyle` 装饰层画在实际拿到键盘焦点的元素上�
 - 联合规则（例如「结束时间晚于开始时间」）只在联合条件本身恢复合法时清除联合错误，同时保留各字段独立格式错误。
 
 反例：#313 表单错误边框扩展到成对输入字段后，修改其中一项的局部修正分支一并清除了另一项仍非法字段的 `InputErrorState` 边框，导致非法兄弟字段静默恢复常规边框。`1f89a0e` 改为按字段独立评估并仅清除已通过字段后修复。
+
+## 滚动视口边缘渐隐遮罩与内部粘性置顶锚点解耦
+
+WPF 在 `ScrollViewer` 的 `PART_ScrollContentPresenter`（或其父容器）上挂载 `LinearGradientBrush` `OpacityMask` 时，会先将整个子树合成为一张离屏表面，再按视口坐标乘以遮罩 Alpha。若子树内同时有元素通过 `TranslateTransform` 反向抵消滚动偏移以“粘性置顶”在视口顶部，该置顶元素恰好落在顶缘低 Alpha 渐隐带内，会被遮罩一起半透明洗白；同时若粘性元素自身带内缩边距或圆角，滚入其后方的正文还会在顶距与圆角缝隙露出残字。
+
+- diff 为包含粘性置顶头（日期条、分组标题、固定表头）的滚动区挂载或修改边缘渐隐 `OpacityMask` 时，核对置顶锚点是否位于渐隐遮罩宿主之外，或遮罩渐隐起点是否已下移至置顶锚点底沿下方，确保置顶元素保持 `100%` 不透明度。
+- diff 实现子树内 `TranslateTransform` 粘性置顶时，核对是否配有同宽度、同卡片/画布不透明底色且同步位移的顶缘护板遮住内顶沿与圆角缝隙，防止正文半行残字穿透。
+
+反例：`FloatingWindow.ScrollContext.cs` 在 `PART_ScrollContentPresenter` 上挂了顶缘 `18` DIP（`40% → 100%` Alpha）渐隐遮罩，而 `FloatingWindow.Notes.cs` 的 `UpdateNoteDateStampStickyOffsets` 把 `18` DIP 高、带 `9` DIP 顶距的绿色日期条用 `TranslateTransform` 钉在视口顶缘；结果长便签滚到底部时（`v87` `long-notes-day-bottom.png`），置顶日期条整体被洗白发虚，且上方 `9` DIP 缝隙漏出半截汉字残影（#365）。

@@ -18,12 +18,16 @@
     "docs/**/SKILL.md",
     "docs/**/.scratch/**",
     "docs/**/.planning/**",
-    "docs/**/.gsd/**"
+    "docs/**/.gsd/**",
+    "docs/third-party/**"
   ],
   "allowed_types": [
     "wiki-chapter",
     "adr",
+    "decision",
+    "evidence",
     "index",
+    "plan",
     "reference",
     "report",
     "readme",

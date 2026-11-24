@@ -729,6 +729,86 @@ $contentHostDetail = if ($contentHostProblems.Count -eq 0) {
 } else { $contentHostProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:content-host-single-padding' -Passed ($contentHostProblems.Count -eq 0) -Detail $contentHostDetail
 
+# TextBox / ComboBox / DatePicker 模板的可见外框 Surface 均为零外边距，若 Button 样式模板为给外层 FocusRing
+# 留位而给可见 Surface 设置非零内缩 Margin（如 2、3 或 FocusBorderThickness），同行等高排列的按钮可见高度会比
+# 相邻输入框矮 4–6 DIP（标准动作按钮存量由 #358 改为 Surface Margin="0" + FocusRing 外扩绘制后收紧）。
+function Get-ButtonSurfaceInsetMarginLeaks {
+    param([Parameter(Mandatory)] [System.Collections.IDictionary] $XamlByName)
+    $presentation = 'http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+    $xamlNamespace = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $isZeroOrNegativeThickness = {
+        param([string] $raw)
+        [string]::IsNullOrWhiteSpace($raw) -or
+        $raw.Trim() -match '^0(?:\s*,\s*0){0,3}$' -or
+        $raw.Trim() -match '^-'
+    }
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $checkedButtons = 0
+    foreach ($entry in $XamlByName.GetEnumerator()) {
+        foreach ($style in ([xml] $entry.Value).GetElementsByTagName('Style', $presentation)) {
+            $targetType = $style.GetAttribute('TargetType')
+            if ($targetType -notmatch '(?:^|\{x:Type\s+)Button\}?$') { continue }
+            $template = @($style.ChildNodes | Where-Object { $_.LocalName -eq 'Setter' -and $_.GetAttribute('Property') -eq 'Template' } |
+                ForEach-Object { $_.GetElementsByTagName('ControlTemplate', $presentation) } | Select-Object -First 1)
+            if ($template.Count -eq 0) { continue }
+            $allNodes = @($template[0].SelectNodes('.//*'))
+            $hasFocusRing = @($allNodes | Where-Object { $_.GetAttribute('Name', $xamlNamespace) -eq 'FocusRing' }).Count -gt 0
+            if (-not $hasFocusRing) { continue }
+            $surface = @($allNodes | Where-Object { $_.GetAttribute('Name', $xamlNamespace) -eq 'Surface' } | Select-Object -First 1)
+            if ($surface.Count -eq 0) { continue }
+            $checkedButtons++
+            $surfaceMargin = $surface[0].GetAttribute('Margin')
+            if (& $isZeroOrNegativeThickness $surfaceMargin) { continue }
+            $key = $style.GetAttribute('Key', $xamlNamespace)
+            $name = if ($key) { $key } else { "TargetType=$targetType" }
+            $leaks.Add("$($entry.Key):$name")
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); CheckedButtons = $checkedButtons }
+}
+
+$buttonSurfaceSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'numeric-inset-margin'; Leaks = 1; Body = '<Style x:Key="A" TargetType="{x:Type Button}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type Button}"><Grid><Border x:Name="FocusRing" /><Border x:Name="Surface" Margin="2" /></Grid></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'resource-inset-margin'; Leaks = 1; Body = '<Style TargetType="{x:Type Button}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type Button}"><Grid><Border x:Name="FocusRing" /><Border x:Name="Surface" Margin="{DynamicResource FocusBorderThickness}" /></Grid></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'explicit-zero-margin'; Leaks = 0; Body = '<Style x:Key="A" TargetType="{x:Type Button}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type Button}"><Grid><Border x:Name="FocusRing" Margin="-3" /><Border x:Name="Surface" Margin="0" /></Grid></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'omitted-margin'; Leaks = 0; Body = '<Style x:Key="A" TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Grid><Border x:Name="FocusRing" Margin="-3" /><Border x:Name="Surface" /></Grid></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'toggle-segment-ignored'; Leaks = 0; Body = '<Style x:Key="Seg" TargetType="{x:Type ToggleButton}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type ToggleButton}"><Grid><Border x:Name="FocusRing" /><Border x:Name="Surface" Margin="3" /></Grid></ControlTemplate></Setter.Value></Setter></Style>' }
+    )) {
+    $caseLeaks = @((Get-ButtonSurfaceInsetMarginLeaks -XamlByName @{ 'case.xaml' = ($focusXamlRoot -f $case.Body) }).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $buttonSurfaceSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+$buttonSurfaceKnownExemptions = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]] @(
+        'App.xaml:TargetType={x:Type Button}'
+        'App.xaml:PrimaryButton'
+        'App.xaml:FloatingAccentButton'
+        'App.xaml:FloatingHeaderIconButton'
+        'MainWindow.xaml:MainEmptyStateGuideButton'
+        'MainWindow.xaml:MainNoteDateDisclosureButton'
+        'MainWindow.xaml:MainPrimaryButton'
+        'MainWindow.xaml:MainSecondarySolidButton'
+    ),
+    [System.StringComparer]::Ordinal)
+$buttonSurfaceScan = Get-ButtonSurfaceInsetMarginLeaks -XamlByName $focusXaml
+$buttonSurfaceActualSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($buttonSurfaceScan.Leaks), [System.StringComparer]::Ordinal)
+$buttonSurfaceFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($leak in $buttonSurfaceScan.Leaks) {
+    if (-not $buttonSurfaceKnownExemptions.Contains($leak)) {
+        $buttonSurfaceFailures.Add("$leak 的 Button 模板同时含 FocusRing 与非零内缩 Surface Margin，会导致同行按钮可见高度矮于输入框")
+    }
+}
+foreach ($exempt in $buttonSurfaceKnownExemptions) {
+    if (-not $buttonSurfaceActualSet.Contains($exempt)) {
+        $buttonSurfaceFailures.Add("豁免项 $exempt 已清零 Surface 内缩 Margin：请从 buttonSurfaceKnownExemptions 移除以收紧棘轮")
+    }
+}
+$buttonSurfaceProblems = @($buttonSurfaceSelfTestFailures) + @($buttonSurfaceFailures)
+$buttonSurfaceDetail = if ($buttonSurfaceProblems.Count -eq 0) {
+    "检查 $($buttonSurfaceScan.CheckedButtons) 个带 FocusRing 的 Button 模板（存量豁免 $($buttonSurfaceKnownExemptions.Count) 项）；自检 5 例通过"
+} else { $buttonSurfaceProblems -join ' | ' }
+Add-ToolingCheck -Name 'xaml:button-surface-zero-margin' -Passed ($buttonSurfaceProblems.Count -eq 0) -Detail $buttonSurfaceDetail
+
 # CONTEXT.md 须持续满足 to-spec / to-tickets 的 glossary_hits.py 解析规则：每个「## 词条」小节下须有匹配的
 # ASCII 冒号「**词条**: 说明」声明，_Avoid_: 行须紧跟定义段且不隔空行，不得出现中文冒号词条头或无词空表。
 function Get-GlossaryFormatIssues {

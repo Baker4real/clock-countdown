@@ -5260,8 +5260,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $interactiveRuleId = [string] $interactiveMigratedSettings.notes[0].reminderRules[0].id
     $interactiveReminderState = $interactiveMigratedSettings.reminderStates.PSObject.Properties[$interactiveRuleId].Value
     $interactiveMigrationUtc = ([DateTimeOffset] $interactiveReminderState.handledThroughUtc).ToUniversalTime()
-    Assert-Equal $true ($interactiveMigrationUtc -ge $interactiveMigrationStartedUtc -and $interactiveMigrationUtc -le $interactiveMigrationFinishedUtc) `
-        '正常迁移使用本次启动的实时时钟，而不是安装器请求冻结时刻'
+    # handledThroughUtc 是不大于迁移墙钟的最后一个整分钟发生点，最多自然早 1 分钟，不等于迁移墙钟本身。
+    Assert-Equal $true ($interactiveMigrationUtc -gt $interactiveMigrationStartedUtc.AddMinutes(-1) -and $interactiveMigrationUtc -le $interactiveMigrationFinishedUtc) `
+        '正常迁移游标来自本次启动实时时钟的一分钟发生点，而不是安装器请求冻结时刻'
     Assert-Equal $true (
         Test-CountdownSettingsDeploymentTransition `
             -BeforeHash $interactiveLegacyHash `

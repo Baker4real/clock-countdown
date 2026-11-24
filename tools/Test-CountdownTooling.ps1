@@ -634,6 +634,101 @@ $motionBorderDetail = if ($motionBorderProblems.Count -eq 0) {
 } else { $motionBorderProblems -join ' | ' }
 Add-ToolingCheck -Name 'xaml:motion-surface-border-brush' -Passed ($motionBorderProblems.Count -eq 0) -Detail $motionBorderDetail
 
+# WPF TextBoxBase.OnApplyTemplate 在 PART_ContentHost 为 Control（如 ScrollViewer）时会把控件自身的 Padding
+# 复制给 PART_ContentHost.Padding；若模板同时写 Margin="{TemplateBinding Padding}" 且未显式加 Padding="0"，
+# 水平与垂直内边距会被双重计入，导致输入文字起点与占位提示发生偏移（存量由 #341 收零）。
+function Get-ContentHostDoublePaddingLeaks {
+    param([Parameter(Mandatory)] [System.Collections.IDictionary] $XamlByName)
+    $presentation = 'http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+    $xamlNamespace = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $styles = @(foreach ($entry in $XamlByName.GetEnumerator()) {
+            foreach ($style in ([xml] $entry.Value).GetElementsByTagName('Style', $presentation)) {
+                [pscustomobject]@{ File = $entry.Key; Element = $style }
+            }
+        })
+    $stylesByKey = @{}
+    foreach ($style in $styles) {
+        $key = $style.Element.GetAttribute('Key', $xamlNamespace)
+        if (-not $key) { $key = $style.Element.GetAttribute('TargetType') -replace '^\{x:Type\s+|\}$', '' }
+        if ($key) { $stylesByKey[$key] = $style.Element }
+    }
+    $setters = { param($element) @($element.ChildNodes | Where-Object { $_.LocalName -eq 'Setter' }) }
+    $resolveChainSetter = {
+        param($startElement, [regex] $propertyPattern)
+        $current = $startElement
+        for ($depth = 0; $null -ne $current -and $depth -lt 16; $depth++) {
+            $hit = @(& $setters $current | Where-Object { $_.GetAttribute('Property') -match $propertyPattern } | Select-Object -First 1)
+            if ($hit.Count -gt 0) { return $hit[0].GetAttribute('Value') }
+            $basedOn = [regex]::Match($current.GetAttribute('BasedOn'), '^\{StaticResource\s+(?:\{x:Type\s+)?([^\s{}]+)\}?\}$')
+            $current = if ($basedOn.Success) { $stylesByKey[$basedOn.Groups[1].Value] } else { $null }
+        }
+        return $null
+    }
+    $isZeroThickness = {
+        param([string] $raw)
+        -not [string]::IsNullOrWhiteSpace($raw) -and $raw.Trim() -match '^0(?:\s*,\s*0){0,3}$'
+    }
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $checkedHosts = 0
+    foreach ($style in $styles) {
+        $template = @(& $setters $style.Element | Where-Object { $_.GetAttribute('Property') -eq 'Template' } |
+            ForEach-Object { $_.GetElementsByTagName('ControlTemplate', $presentation) } | Select-Object -First 1)
+        if ($template.Count -eq 0) { continue }
+        $hosts = @($template[0].SelectNodes('.//*') | Where-Object {
+                $_.GetAttribute('Name', $xamlNamespace) -eq 'PART_ContentHost' -and $_.LocalName -eq 'ScrollViewer'
+            })
+        foreach ($hostNode in $hosts) {
+            $checkedHosts++
+            $marginAttr = $hostNode.GetAttribute('Margin')
+            if ($marginAttr -notmatch '^\{TemplateBinding\s+(?:Control\.)?Padding\}$') { continue }
+            $hostPadding = $hostNode.GetAttribute('Padding')
+            if (& $isZeroThickness $hostPadding) { continue }
+            $stylePadding = & $resolveChainSetter $style.Element '^(?:Control\.)?Padding$'
+            if (& $isZeroThickness $stylePadding) { continue }
+            $name = $style.Element.GetAttribute('Key', $xamlNamespace)
+            if (-not $name) { $name = "TargetType=$($style.Element.GetAttribute('TargetType'))" }
+            $leaks.Add("$($style.File):$name")
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); CheckedHosts = $checkedHosts }
+}
+
+$contentHostSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'double-margin-padding'; Leaks = 1; Body = '<Style TargetType="{x:Type TextBox}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type TextBox}"><ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" /></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'margin-with-zero-host-padding'; Leaks = 0; Body = '<Style TargetType="{x:Type TextBox}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type TextBox}"><ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" Padding="0" /></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'host-padding-only'; Leaks = 0; Body = '<Style TargetType="{x:Type TextBox}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type TextBox}"><ScrollViewer x:Name="PART_ContentHost" /></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'zero-style-padding'; Leaks = 0; Body = '<Style TargetType="{x:Type TextBox}"><Setter Property="Padding" Value="0" /><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type TextBox}"><ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" /></ControlTemplate></Setter.Value></Setter></Style>' },
+        @{ Name = 'decorator-host'; Leaks = 0; Body = '<Style TargetType="{x:Type TextBox}"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="{x:Type TextBox}"><Decorator x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" /></ControlTemplate></Setter.Value></Setter></Style>' }
+    )) {
+    $caseLeaks = @((Get-ContentHostDoublePaddingLeaks -XamlByName @{ 'case.xaml' = ($focusXamlRoot -f $case.Body) }).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $contentHostSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+$contentHostKnownExemptions = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]] @(
+        'App.xaml:TargetType={x:Type TextBox}'
+        'App.xaml:DatePickerTextBoxStyle'
+    ),
+    [System.StringComparer]::Ordinal)
+$contentHostScan = Get-ContentHostDoublePaddingLeaks -XamlByName $focusXaml
+$contentHostActualSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($contentHostScan.Leaks), [System.StringComparer]::Ordinal)
+$contentHostFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($leak in $contentHostScan.Leaks) {
+    if (-not $contentHostKnownExemptions.Contains($leak)) {
+        $contentHostFailures.Add("$leak 的 ScrollViewer PART_ContentHost 绑定了 Margin={TemplateBinding Padding} 却未显式设 Padding=""0""，会叠加双重内边距")
+    }
+}
+foreach ($exempt in $contentHostKnownExemptions) {
+    if (-not $contentHostActualSet.Contains($exempt)) {
+        $contentHostFailures.Add("豁免项 $exempt 已消除双重内边距：请从 contentHostKnownExemptions 移除以收紧棘轮")
+    }
+}
+$contentHostProblems = @($contentHostSelfTestFailures) + @($contentHostFailures)
+$contentHostDetail = if ($contentHostProblems.Count -eq 0) {
+    "检查 $($contentHostScan.CheckedHosts) 个 ScrollViewer PART_ContentHost 模板（存量豁免 $($contentHostKnownExemptions.Count) 项）；自检 5 例通过"
+} else { $contentHostProblems -join ' | ' }
+Add-ToolingCheck -Name 'xaml:content-host-single-padding' -Passed ($contentHostProblems.Count -eq 0) -Detail $contentHostDetail
+
 # CONTEXT.md 须持续满足 to-spec / to-tickets 的 glossary_hits.py 解析规则：每个「## 词条」小节下须有匹配的
 # ASCII 冒号「**词条**: 说明」声明，_Avoid_: 行须紧跟定义段且不隔空行，不得出现中文冒号词条头或无词空表。
 function Get-GlossaryFormatIssues {
@@ -949,6 +1044,187 @@ foreach ($scriptFile in $externalInvocationPaths) {
 $externalInvocationProblems = @($externalInvocationSelfTestFailures) + @($externalInvocationFailures)
 $externalInvocationDetail = if ($externalInvocationProblems.Count -eq 0) { "扫描 $($externalInvocationPaths.Count) 个脚本无退役 shim 或裸 Start-Process *.ps1；自检 6 例通过" } else { $externalInvocationProblems -join ' | ' }
 Add-ToolingCheck -Name 'powershell:external-script-invocation' -Passed ($externalInvocationProblems.Count -eq 0) -Detail $externalInvocationDetail
+
+# 纯 C# 构造 System.Windows.Shapes.Path 矢量图标时默认 Stretch=None，若对象初始化器与紧随语句既未设 Stretch
+# 也未同时给 Width 与 Height，图形会按原始坐标贴死在较大容器左上角（如 ReminderWindow 存量 #352）。
+function Get-UnboundedCodePathIconLeaks {
+    param([Parameter(Mandatory)] [System.Collections.IDictionary] $CodeByName)
+    $pathInitPattern = [regex]'(?s)(?:(?<var>[A-Za-z_]\w*)\s*=\s*)?\bnew\s+(?:System\.Windows\.Shapes\.)?Path\s*\{(?<body>[^{}]*)\}'
+    $memberDeclPattern = [regex]'(?m)^\s*(?:private|public|internal|protected)\s+(?:static\s+|sealed\s+|override\s+|async\s+)*[\w<>.,\[\]\?\s]+\s+(?<member>[A-Za-z_]\w*)\s*\('
+    $leaks = [System.Collections.Generic.List[string]]::new()
+    $checkedPaths = 0
+    foreach ($entry in $CodeByName.GetEnumerator()) {
+        $source = [string] $entry.Value
+        $memberMatches = @($memberDeclPattern.Matches($source))
+        foreach ($match in $pathInitPattern.Matches($source)) {
+            $body = $match.Groups['body'].Value
+            if ($body -notmatch '\bData\s*=') { continue }
+            $checkedPaths++
+            $hasStretch = $body -match '\bStretch\s*='
+            $hasWidth = $body -match '\bWidth\s*='
+            $hasHeight = $body -match '\bHeight\s*='
+            $varName = $match.Groups['var'].Value
+            if (-not ($hasStretch -or ($hasWidth -and $hasHeight)) -and -not [string]::IsNullOrWhiteSpace($varName)) {
+                $tailLength = [Math]::Min(320, $source.Length - ($match.Index + $match.Length))
+                $afterText = if ($tailLength -gt 0) { $source.Substring($match.Index + $match.Length, $tailLength) } else { '' }
+                $escapedVar = [regex]::Escape($varName)
+                if ($afterText -match "\b$escapedVar\s*\.\s*Stretch\s*=") { $hasStretch = $true }
+                if ($afterText -match "\b$escapedVar\s*\.\s*Width\s*=") { $hasWidth = $true }
+                if ($afterText -match "\b$escapedVar\s*\.\s*Height\s*=") { $hasHeight = $true }
+            }
+            if ($hasStretch -or ($hasWidth -and $hasHeight)) { continue }
+            $enclosing = $memberMatches | Where-Object { $_.Index -lt $match.Index } | Select-Object -Last 1
+            $memberName = if ($null -ne $enclosing) { $enclosing.Groups['member'].Value } else { '<top>' }
+            $leaks.Add("$($entry.Key):$memberName")
+        }
+    }
+    [pscustomobject]@{ Leaks = @($leaks); CheckedPaths = $checkedPaths }
+}
+
+$codePathIconSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'missing-bounds'; Leaks = 1; Code = "class C { private static Path F() => new Path { Data = g, StrokeThickness = 1.5 }; }" },
+        @{ Name = 'unrelated-following-grid-size'; Leaks = 1; Code = "class C { private static Grid F() { var p = new Path { Data = g }; var box = new Grid { Width = 16, Height = 16 }; return box; } }" },
+        @{ Name = 'has-stretch'; Leaks = 0; Code = "class C { private static Path F() => new Path { Stretch = Stretch.Uniform, Data = g }; }" },
+        @{ Name = 'has-width-height'; Leaks = 0; Code = "class C { private static Path F() => new System.Windows.Shapes.Path { Width = 20, Height = 20, Data = g }; }" },
+        @{ Name = 'assigned-after-init'; Leaks = 0; Code = "class C { private static Path F() { var p = new Path { Data = g }; p.Width = 14; p.Height = 14; return p; } }" },
+        @{ Name = 'system-io-path'; Leaks = 0; Code = "class C { private static string F() => System.IO.Path.Combine(""a"", ""b""); }" }
+    )) {
+    $caseLeaks = @((Get-UnboundedCodePathIconLeaks -CodeByName @{ 'Case.cs' = $case.Code }).Leaks).Count
+    if ($caseLeaks -ne $case.Leaks) { $codePathIconSelfTestFailures.Add("self-test $($case.Name): expected $($case.Leaks), got $caseLeaks") }
+}
+$codePathIconKnownExemptions = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]] @(
+        'FloatingWindow.xaml.cs:CreateAddNoteToggleContent'
+        'ReminderWindow.cs:CreateExternalLinkIcon'
+        'ReminderWindow.cs:CreateNoteIcon'
+    ),
+    [System.StringComparer]::Ordinal)
+$codePathIconScan = Get-UnboundedCodePathIconLeaks -CodeByName $windowCodeByName
+$codePathIconActualSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($codePathIconScan.Leaks), [System.StringComparer]::Ordinal)
+$codePathIconFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($leak in $codePathIconScan.Leaks) {
+    if (-not $codePathIconKnownExemptions.Contains($leak)) {
+        $codePathIconFailures.Add("$leak 构造了带 Data 的 Path 却未声明 Stretch 或 Width+Height，会在较大容器中缩到左上角")
+    }
+}
+foreach ($exempt in $codePathIconKnownExemptions) {
+    if (-not $codePathIconActualSet.Contains($exempt)) {
+        $codePathIconFailures.Add("豁免项 $exempt 已补齐显式尺寸或 Stretch：请从 codePathIconKnownExemptions 移除以收紧棘轮")
+    }
+}
+$codePathIconProblems = @($codePathIconSelfTestFailures) + @($codePathIconFailures)
+$codePathIconDetail = if ($codePathIconProblems.Count -eq 0) {
+    "检查 $($codePathIconScan.CheckedPaths) 处 C# Path 图标初始化（存量豁免 $($codePathIconKnownExemptions.Count) 项）；自检 6 例通过"
+} else { $codePathIconProblems -join ' | ' }
+Add-ToolingCheck -Name 'csharp:path-icon-explicit-bounds' -Passed ($codePathIconProblems.Count -eq 0) -Detail $codePathIconDetail
+
+# PowerShell 同一语句块向默认输出流连续写出两个不同显式属性集的未捕获 Select-Object 管道时，
+# 首个对象的默认表格列头会锁死后续格式器，导致后一条 Select-Object 的异名属性静默输出为空行。
+function Get-SelectObjectPropertySignature {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.CommandAst] $Command)
+    if ($Command.GetCommandName() -notin @('Select-Object', 'select')) { return $null }
+    $elements = $Command.CommandElements
+    $props = [System.Collections.Generic.List[string]]::new()
+    $consumeArgument = {
+        param($argAst)
+        if ($argAst -is [System.Management.Automation.Language.ArrayLiteralAst]) {
+            foreach ($sub in $argAst.Elements) {
+                if ($sub -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $sub.Value -ne '*') {
+                    $props.Add($sub.Value.Trim().ToLowerInvariant())
+                }
+                else { return $false }
+            }
+            return $true
+        }
+        if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $argAst.Value -ne '*') {
+            $props.Add($argAst.Value.Trim().ToLowerInvariant())
+            return $true
+        }
+        return $false
+    }
+    for ($i = 1; $i -lt $elements.Count; $i++) {
+        $el = $elements[$i]
+        if ($el -is [System.Management.Automation.Language.CommandParameterAst]) {
+            $pName = $el.ParameterName
+            if ($pName -match '^Expand') { return $null }
+            if ($pName -match '^Prop') {
+                $arg = if ($null -ne $el.Argument) { $el.Argument } elseif ($i + 1 -lt $elements.Count) { $i++; $elements[$i] } else { $null }
+                if ($null -eq $arg -or -not (& $consumeArgument $arg)) { return $null }
+            }
+            elseif ($pName -in @('Unique', 'Wait', 'CaseInsensitive')) {
+                continue
+            }
+            else {
+                if ($null -eq $el.Argument -and $i + 1 -lt $elements.Count -and $elements[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
+                    $i++
+                }
+            }
+        }
+        else {
+            if (-not (& $consumeArgument $el)) { return $null }
+        }
+    }
+    if ($props.Count -eq 0) { return $null }
+    return ($props -join ',')
+}
+
+function Get-MixedSelectObjectStreamIssues {
+    param([Parameter(Mandatory)] [System.Management.Automation.Language.Ast] $Ast)
+    $issues = [System.Collections.Generic.List[string]]::new()
+    $blocks = @($Ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.StatementBlockAst] -or
+                $node -is [System.Management.Automation.Language.NamedBlockAst]
+            }, $true))
+    foreach ($block in $blocks) {
+        $firstSig = $null
+        $firstLine = 0
+        foreach ($stmt in $block.Statements) {
+            if ($stmt -isnot [System.Management.Automation.Language.PipelineAst]) { continue }
+            if ($stmt.PipelineElements.Count -eq 0) { continue }
+            $lastElement = $stmt.PipelineElements[-1]
+            if ($lastElement -isnot [System.Management.Automation.Language.CommandAst]) { continue }
+            if ($lastElement.Redirections.Count -gt 0) { continue }
+            $sig = Get-SelectObjectPropertySignature -Command $lastElement
+            if ([string]::IsNullOrWhiteSpace($sig)) { continue }
+            if ($null -eq $firstSig) {
+                $firstSig = $sig
+                $firstLine = $stmt.Extent.StartLineNumber
+            }
+            elseif ($sig -ne $firstSig) {
+                $issues.Add("第 $($stmt.Extent.StartLineNumber) 行与第 $firstLine 行在同一输出流混排不同属性集的 Select-Object（[$firstSig] vs [$sig]）")
+            }
+        }
+    }
+    @($issues)
+}
+
+$mixedSelectSelfTestFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($case in @(
+        @{ Name = 'mixed-stream'; Issues = 1; Source = 'Get-ChildItem a | Select-Object -First 5 Name; Get-ChildItem b | Select-Object -First 5 FullName' },
+        @{ Name = 'same-properties'; Issues = 0; Source = 'Get-ChildItem a | Select-Object Name, Length; Get-ChildItem b | Select-Object Name, Length' },
+        @{ Name = 'expand-property'; Issues = 0; Source = 'Get-ChildItem a | Select-Object -First 5 Name; Get-ChildItem b | Select-Object -ExpandProperty FullName' },
+        @{ Name = 'captured-variables'; Issues = 0; Source = '$x = Get-ChildItem a | Select-Object Name; $y = Get-ChildItem b | Select-Object FullName' },
+        @{ Name = 'piped-to-json'; Issues = 0; Source = 'Get-ChildItem a | Select-Object Name | ConvertTo-Json; Get-ChildItem b | Select-Object FullName | ConvertTo-Json' }
+    )) {
+    $tokens = $null
+    $errors = $null
+    $caseIssues = @(Get-MixedSelectObjectStreamIssues -Ast ([System.Management.Automation.Language.Parser]::ParseInput($case.Source, [ref] $tokens, [ref] $errors))).Count
+    if ($caseIssues -ne $case.Issues) { $mixedSelectSelfTestFailures.Add("self-test $($case.Name): expected $($case.Issues), got $caseIssues") }
+}
+$mixedSelectFailures = [System.Collections.Generic.List[string]]::new()
+foreach ($scriptFile in $externalInvocationPaths) {
+    $tokens = $null
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($scriptFile.FullName, [ref] $tokens, [ref] $errors)
+    foreach ($issue in @(Get-MixedSelectObjectStreamIssues -Ast $ast)) {
+        $mixedSelectFailures.Add("$([System.IO.Path]::GetRelativePath($repoRoot, $scriptFile.FullName))：$issue")
+    }
+}
+$mixedSelectProblems = @($mixedSelectSelfTestFailures) + @($mixedSelectFailures)
+$mixedSelectDetail = if ($mixedSelectProblems.Count -eq 0) { "扫描 $($externalInvocationPaths.Count) 个脚本无同流异构 Select-Object 混排；自检 5 例通过" } else { $mixedSelectProblems -join ' | ' }
+Add-ToolingCheck -Name 'powershell:mixed-select-object-stream' -Passed ($mixedSelectProblems.Count -eq 0) -Detail $mixedSelectDetail
 
 if ([string]::IsNullOrWhiteSpace($BaseCommit)) { $BaseCommit = 'origin/main' }
 if ([string]::IsNullOrWhiteSpace($CandidateCommit)) { $CandidateCommit = 'HEAD' }

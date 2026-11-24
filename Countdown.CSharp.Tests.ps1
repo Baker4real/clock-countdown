@@ -5,7 +5,6 @@ param(
     [switch] $InstanceActivationOnly,
     [switch] $InstanceActivationMatrix,
     [switch] $AllowForegroundWindowedSteps,
-    [switch] $MigrationParityOnly,
     [switch] $ExternalCloseOnly,
     [ValidateSet('FloatingVisible', 'Tray', 'Hidden', 'Minimized', 'MainVisible')]
     [string] $InstanceActivationTestState = 'FloatingVisible',
@@ -2142,7 +2141,7 @@ function Invoke-InstanceActivationMatrixTests {
 . (Join-Path $PSScriptRoot 'Countdown.CSharp.Tests.ExternalClose.ps1')
 Write-TestSegmentTiming -Name 'Setup'
 if ($ExternalCloseOnly) {
-    if ($InstanceActivationOnly -or $InstanceActivationMatrix -or $MigrationParityOnly -or $AllowForegroundWindowedSteps) {
+    if ($InstanceActivationOnly -or $InstanceActivationMatrix -or $AllowForegroundWindowedSteps) {
         throw '-ExternalCloseOnly 不能与其他测试范围或前台桌面开关组合。'
     }
     $externalCloseOnlyResult = Invoke-ExternalCloseOnlyTests -RepositoryRoot $PSScriptRoot
@@ -2216,110 +2215,6 @@ $referenceBaselineMode = Resolve-ReferenceBaselineMode `
 )
 
 Write-TestSegmentTiming -Name 'Preflight'
-if ($MigrationParityOnly) {
-    $migrationParityRoot = Join-Path 'D:\agents\run-evidence\migration-preflight-20260825T013156Z\clock-countdown-migration-parity' ([guid]::NewGuid().ToString('N'))
-    $migrationSettingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
-    $migrationDotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
-    $migrationVerificationDll = Join-Path $PSScriptRoot 'src\MinminCountdown.Verification\bin\Release\net10.0-windows\MinminCountdown.Verification.dll'
-    $migrationUtc = [DateTimeOffset] '2031-09-10T02:16:00Z'
-    $migrationFiles = [System.Collections.Generic.List[string]]::new()
-    $migrationFixtures = @(
-        [pscustomobject]@{ Version = 3; Json = '{"schemaVersion":3,"timeZoneId":"China Standard Time","displayPrecision":"Minute","monthlySalary":12345.67,"workStart":"08:30","workEnd":"17:45","countdowns":[{"id":"countdown-v3","name":"版本三倒计时","targetUtc":"2030-03-04T05:06:07.0000000+00:00"}]}' },
-        [pscustomobject]@{ Version = 4; Json = '{"schemaVersion":4,"timeZoneId":"China Standard Time","displayPrecision":"Hour","monthlySalary":8800,"workStart":"09:00","workEnd":"18:00","countdowns":[{"id":"countdown-v4","name":"版本四倒计时","targetUtc":"2030-04-05T06:07:08.0000000+00:00"}],"notes":[{"id":"note-v4","text":"版本四便签","isCompleted":true}]}' },
-        [pscustomobject]@{ Version = 5; Json = '{"schemaVersion":5,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":10000,"workStart":"09:15","workEnd":"18:15","tags":[{"id":"tag-work","name":"工作","color":"#FF8A70"}],"countdowns":[{"id":"countdown-v5","name":"版本五倒计时","targetUtc":"2030-05-06T07:08:09.0000000+00:00","tagIds":["tag-work"]}],"notes":[{"id":"note-v5","text":"版本五便签","isCompleted":false,"tagIds":["tag-work"]}]}' },
-        [pscustomobject]@{ Version = 6; Json = '{"schemaVersion":6,"timeZoneId":"China Standard Time","displayPrecision":"Day","monthlySalary":15000,"workStart":"08:00","workEnd":"17:00","tags":[],"countdowns":[{"id":"countdown-v6","name":"版本六倒计时","targetUtc":"2030-06-07T08:09:10.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v6","text":"版本六便签","date":"2030-06-07","isCompleted":false,"tagIds":[]}]}' },
-        [pscustomobject]@{ Version = 7; Json = '{"schemaVersion":7,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","tags":[],"countdowns":[{"id":"countdown-v7","name":"版本七倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v7","text":"版本七循环提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminderIntervalMinutes":30,"reminderStartUtc":"2031-09-10T01:00:00.0000000+00:00"}]}' },
-        [pscustomobject]@{ Version = 8; Json = '{"schemaVersion":8,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","tags":[],"countdowns":[{"id":"countdown-v8","name":"版本八倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v8","text":"版本八已送达提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"once","firstDueUtc":"2031-09-10T01:30:00.0000000+00:00","delivery":"delivered"}}]}' },
-        [pscustomobject]@{ Version = 9; Json = '{"schemaVersion":9,"timeZoneId":"China Standard Time","displayPrecision":"Second","monthlySalary":20000.5,"workStart":"09:00","workEnd":"18:30","themePreference":"Night","tags":[],"countdowns":[{"id":"countdown-v9","name":"版本九倒计时","targetUtc":"2031-09-10T11:12:13.0000000+00:00","tagIds":[]}],"notes":[{"id":"note-v9-repeat","text":"已开始循环提醒","date":"2031-09-10","isCompleted":false,"tagIds":[],"reminder":{"type":"repeat","firstDueUtc":"2031-09-10T01:00:00.0000000+00:00","intervalMinutes":30}}]}' }
-    )
-    try {
-        foreach ($requiredPath in @($migrationSettingsModule, $migrationDotnet, $migrationVerificationDll)) {
-            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-                throw "迁移 parity 缺少受管依赖：$requiredPath"
-            }
-        }
-        New-Item -ItemType Directory -Path $migrationParityRoot -Force | Out-Null
-        Import-Module $migrationSettingsModule -Force
-        foreach ($fixture in $migrationFixtures) {
-            $migrationFixturePath = Join-Path $migrationParityRoot "schema-v$($fixture.Version).settings.json"
-            $migrationCSharpPath = Join-Path $migrationParityRoot "schema-v$($fixture.Version).csharp.json"
-            foreach ($path in @(
-                    $migrationFixturePath,
-                    $migrationCSharpPath,
-                    "$migrationCSharpPath.tmp",
-                    "$migrationCSharpPath.backup1",
-                    "$migrationCSharpPath.backup2",
-                    "$migrationCSharpPath.backup2.tmp",
-                    "$migrationCSharpPath.backup2.rollback"
-                )) {
-                [void] $migrationFiles.Add($path)
-            }
-            [System.IO.File]::WriteAllText($migrationFixturePath, $fixture.Json, [System.Text.UTF8Encoding]::new($false))
-            $migrationFixtureHash = (Get-FileHash -LiteralPath $migrationFixturePath -Algorithm SHA256).Hash
-            $powerShellCanonical = ConvertTo-CountdownSettingsJson -State (
-                ConvertFrom-CountdownSettingsObject `
-                    -Settings ($fixture.Json | ConvertFrom-Json -DateKind String) `
-                    -MigrationUtc $migrationUtc)
-            $migrationOutput = Invoke-CheckedNativeCommand `
-                -FilePath $migrationDotnet `
-                -Operation "运行 schema v$($fixture.Version) C#/PowerShell migration parity" `
-                -ArgumentList @(
-                    $migrationVerificationDll,
-                    'round-trip',
-                    '--input', $migrationFixturePath,
-                    '--output', $migrationCSharpPath,
-                    '--migration-utc', $migrationUtc.ToString('o'),
-                    '--json')
-            $migrationOutput | ConvertFrom-Json | Out-Null
-            $csharpCanonical = [System.IO.File]::ReadAllText($migrationCSharpPath, [System.Text.Encoding]::UTF8)
-            Assert-Equal $powerShellCanonical $csharpCanonical "schema v$($fixture.Version) 使用同一迁移时刻得到相同 canonical v10"
-            Assert-Equal $migrationFixtureHash (Get-FileHash -LiteralPath $migrationFixturePath -Algorithm SHA256).Hash "schema v$($fixture.Version) parity 保持共享输入字节不变"
-
-            $canonicalObject = $csharpCanonical | ConvertFrom-Json -DateKind String
-            Assert-Equal 10 ([int] $canonicalObject.schemaVersion) "schema v$($fixture.Version) 迁移到 canonical v10"
-            if ($fixture.Version -ge 7) {
-                $rule = $canonicalObject.notes[0].reminderRules[0]
-                $ruleId = [string] $rule.id
-                $state = $canonicalObject.reminderStates.PSObject.Properties[$ruleId].Value
-                Assert-Equal $null $state.lastDispositionOccurrenceKey "schema v$($fixture.Version) 不伪造 disposition"
-                Assert-Equal $null $state.activeSnooze "schema v$($fixture.Version) 不伪造 snooze"
-                if ($fixture.Version -eq 8) {
-                    Assert-Equal '2031-09-10T01:30:00.0000000+00:00' ([string] $rule.scheduledUtc) 'schema v8 保留一次提醒时刻'
-                    Assert-Equal ("{0}|2031-09-10T01:30:00.0000000+00:00" -f $ruleId) ([string] $state.lastDeliveredOccurrenceKey) 'schema v8 保留 delivery occurrence'
-                }
-                else {
-                    $expectedFirstDueUtc = if ($fixture.Version -eq 7) {
-                        '2031-09-10T01:30:00.0000000+00:00'
-                    }
-                    else {
-                        '2031-09-10T01:00:00.0000000+00:00'
-                    }
-                    Assert-Equal $expectedFirstDueUtc ([string] $rule.firstDueUtc) "schema v$($fixture.Version) 保留重复提醒起点"
-                    Assert-Equal '2031-09-10T02:00:00.0000000+00:00' ([string] $state.handledThroughUtc) "schema v$($fixture.Version) cursor 以固定迁移时刻计算"
-                    Assert-Equal $null $state.lastDeliveredOccurrenceKey "schema v$($fixture.Version) 不伪造 delivery"
-                }
-                if ($fixture.Version -eq 9) {
-                    Assert-Equal 'legacy-d71c35d11bb6b27f66e7c582ef71e036a4f36314a86250d45318b5d32763ca75' $ruleId 'schema v9 repeat 保持稳定规则 ID'
-                }
-            }
-        }
-        Write-TestSegmentTiming -Name 'MigrationParityOnly'
-        Write-TestSegmentTotal
-        [pscustomobject]@{ Passed = $script:assertions; Failed = 0; Scope = 'MigrationParity' } | ConvertTo-Json
-        exit 0
-    }
-    finally {
-        foreach ($path in $migrationFiles) {
-            if (Test-Path -LiteralPath $path -PathType Leaf) {
-                [System.IO.File]::Delete($path)
-            }
-        }
-        if (Test-Path -LiteralPath $migrationParityRoot -PathType Container) {
-            [System.IO.Directory]::Delete($migrationParityRoot, $false)
-        }
-    }
-}
-
 if (-not ('MinminCountdown.Tests.BundleAssetProbe' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -2354,7 +2249,6 @@ public static class BundleAssetProbe
 $verificationRunner = Join-Path $PSScriptRoot 'verification\MinminCountdown.Verification.exe'
 $windowVerificationRunner = Join-Path $PSScriptRoot 'window-verification\MinminCountdown.WindowVerification.exe'
 $application = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
-$settingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
 $pwsh = (Get-Process -Id $PID).Path
 
 if (-not (Test-Path -LiteralPath $verificationRunner -PathType Leaf)) {
@@ -2444,9 +2338,6 @@ $embeddedRetiredAssets = [MinminCountdown.Tests.BundleAssetProbe]::FindPayloadNa
     [string[]] $retiredFloatingRuntimeAssetFiles
 )
 Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不包含已淘汰的旧悬浮窗 PNG 资产名'
-if (-not (Test-Path -LiteralPath $settingsModule -PathType Leaf)) {
-    throw "未找到 PowerShell 设置契约 module：$settingsModule"
-}
 if (-not [string]::Equals(
         [System.IO.Path]::GetFileName($pwsh),
         'pwsh.exe',
@@ -2474,7 +2365,8 @@ if (-not $testRoot.StartsWith($testCapabilityRootPrefix, [System.StringCompariso
 }
 
 $fixturePath = Join-Path $testRoot 'settings-input.json'
-$powerShellCanonicalPath = Join-Path $testRoot 'settings-powershell-canonical.json'
+$canonicalInputPath = Join-Path $testRoot 'settings-canonical-input.json'
+$populatedFixturePath = Join-Path $testRoot 'populated-fixture-input.json'
 $roundTripPath = Join-Path $testRoot 'settings-round-trip.json'
 $themeExercisePath = Join-Path $testRoot 'theme-exercise.settings.json'
 $persistenceExercisePath = Join-Path $testRoot 'persistence-exercise.settings.json'
@@ -3073,13 +2965,19 @@ exit 23
 
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash
-    Import-Module -Name $settingsModule -Force
-    $powerShellState = ConvertFrom-CountdownSettingsObject -Settings (
-        Get-Content -LiteralPath $fixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $canonicalInputOutput = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '生成 C# canonical 测试输入' -ArgumentList @(
+        'round-trip',
+        '--input',
+        $fixturePath,
+        '--output',
+        $canonicalInputPath,
+        '--migration-utc',
+        '2031-09-10T02:16:00.0000000+00:00',
+        '--json'
     )
-    $powerShellCanonical = ConvertTo-CountdownSettingsJson -State $powerShellState
-    [System.IO.File]::WriteAllText($powerShellCanonicalPath, $powerShellCanonical, $utf8NoBom)
-    $powerShellCanonicalHash = (Get-FileHash -LiteralPath $powerShellCanonicalPath -Algorithm SHA256).Hash
+    $canonicalInputOutput | ConvertFrom-Json | Out-Null
+    Assert-Equal $fixtureHash (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash 'C# canonical 输入生成保持来源 fixture 不变'
+    $canonicalInputHash = (Get-FileHash -LiteralPath $canonicalInputPath -Algorithm SHA256).Hash
 
     $verifyOutput = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '运行 C# 内建验证' -ArgumentList @(
         'verify',
@@ -3090,17 +2988,17 @@ exit 23
     $verifyOutput | ConvertFrom-Json | Out-Null
     Assert-Equal $fixtureHash (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash 'C# 内建验证保持输入设置不变'
 
-    $roundTripOutput = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '运行 C# 设置 round-trip' -ArgumentList @(
+    $roundTripOutput = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '复读 C# canonical 设置' -ArgumentList @(
         'round-trip',
         '--input',
-        $powerShellCanonicalPath,
+        $canonicalInputPath,
         '--output',
         $roundTripPath,
         '--json'
     )
     $roundTripOutput | ConvertFrom-Json | Out-Null
-    Assert-Equal $powerShellCanonicalHash (Get-FileHash -LiteralPath $powerShellCanonicalPath -Algorithm SHA256).Hash 'C# round-trip 保持 PowerShell 输入设置不变'
-    Assert-Equal $fixtureHash (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash '跨实现 round-trip 保持来源 fixture 不变'
+    Assert-Equal $canonicalInputHash (Get-FileHash -LiteralPath $canonicalInputPath -Algorithm SHA256).Hash 'C# round-trip 保持 canonical 输入设置不变'
+    Assert-Equal $fixtureHash (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash 'C# canonical 往返保持来源 fixture 不变'
     if (-not (Test-Path -LiteralPath $roundTripPath -PathType Leaf)) {
         throw "C# round-trip 未生成显式输出：$roundTripPath"
     }
@@ -3108,9 +3006,7 @@ exit 23
     Assert-Equal 10 $canonicalSettings.schemaVersion 'C# round-trip 输出 schemaVersion'
     Assert-Equal 'China Standard Time' $canonicalSettings.timeZoneId 'C# round-trip 输出时区'
     Assert-Equal 'Auto' $canonicalSettings.themePreference 'C# round-trip 为旧设置补齐自动主题偏好'
-    $powerShellReloadedState = ConvertFrom-CountdownSettingsObject -Settings $canonicalSettings
-    $powerShellReloadedCanonical = ConvertTo-CountdownSettingsJson -State $powerShellReloadedState
-    Assert-Equal $powerShellCanonical $powerShellReloadedCanonical 'PowerShell/C# 双向领域值等价'
+    Assert-Equal $canonicalInputHash (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash 'C# canonical v10 复读后字节稳定'
     Write-TestSegmentTiming -Name 'FixtureRoundTrip'
 
     # #272：部署设置等价命令是产品 EXE 的只读、无窗口 CLI；在隔离目录捕获完整 stdout。
@@ -3124,7 +3020,7 @@ exit 23
     $equivalenceBeforePath = Join-Path $equivalenceRoot 'before.json'
     $equivalenceAfterPath = Join-Path $equivalenceRoot 'after.json'
     [System.IO.File]::Copy($fixturePath, $equivalenceBeforePath)
-    [System.IO.File]::Copy($powerShellCanonicalPath, $equivalenceAfterPath)
+    [System.IO.File]::Copy($canonicalInputPath, $equivalenceAfterPath)
     $equivalenceChangedPath = Join-Path $equivalenceRoot 'changed.json'
     $equivalenceChanged = Get-Content -LiteralPath $equivalenceAfterPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $equivalenceChanged.monthlySalary = 1
@@ -3599,34 +3495,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
     [Console]::Error.WriteLine('HOST_OPTIONS_PARSE_CONTRACT_SECONDS_ASSERTED=10')
     Write-TestSegmentTiming -Name 'HostOptionsParseProbe'
 
-    $powerShellMutex = Enter-CountdownSettingsWriteMutex -Path $mutexSettingsPath -TimeoutSeconds 1
-    try {
-        $blockedCSharpProbe = Invoke-NativeCommandResult -FilePath $verificationRunner -ArgumentList @(
-            'mutex-probe',
-            '--settings-path',
-            $mutexSettingsPath,
-            '--timeout-seconds',
-            '1',
-            '--json'
-        )
-        Assert-Equal 1 $blockedCSharpProbe.ExitCode 'PowerShell 持锁时 C# probe 超时退出码'
-        $blockedCSharpProbeJson = $blockedCSharpProbe.Output | ConvertFrom-Json
-        Assert-Equal $false ([bool] $blockedCSharpProbeJson.acquired) 'PowerShell 持锁时 C# 不得获取 mutex'
-    }
-    finally {
-        Exit-CountdownSettingsWriteMutex -Mutex $powerShellMutex
-    }
-
-    $releasedCSharpProbe = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '验证 PowerShell 释放后 C# 获取 mutex' -ArgumentList @(
-        'mutex-probe',
-        '--settings-path',
-        $mutexSettingsPath,
-        '--timeout-seconds',
-        '1',
-        '--json'
-    ) | ConvertFrom-Json
-    Assert-Equal $true ([bool] $releasedCSharpProbe.acquired) 'PowerShell 释放后 C# 可获取 mutex'
-
     $mutexHolderArguments = @(
         'hold-mutex',
         '--settings-path',
@@ -3655,50 +3523,55 @@ function Get-RejectionMessage([string[]] $Arguments) {
         throw "C# mutex holder 未进入持锁状态：$holderError"
     }
 
-    $powerShellTimedOut = $false
-    $unexpectedPowerShellMutex = $null
-    try {
-        $unexpectedPowerShellMutex = Enter-CountdownSettingsWriteMutex -Path $mutexSettingsPath -TimeoutSeconds 1
-    }
-    catch {
-        if ($_.Exception.Message -notlike '等待设置写入锁超时*') {
-            throw
-        }
-        $powerShellTimedOut = $true
-    }
-    finally {
-        if ($null -ne $unexpectedPowerShellMutex) {
-            Exit-CountdownSettingsWriteMutex -Mutex $unexpectedPowerShellMutex
-        }
-    }
-    Assert-Equal $true $powerShellTimedOut 'C# 持锁时 PowerShell 超时'
+    $blockedCSharpProbe = Invoke-NativeCommandResult -FilePath $verificationRunner -ArgumentList @(
+        'mutex-probe',
+        '--settings-path',
+        $mutexSettingsPath,
+        '--timeout-seconds',
+        '1',
+        '--json'
+    )
+    Assert-Equal 1 $blockedCSharpProbe.ExitCode 'C# 持锁时第二个 C# probe 超时退出码'
+    $blockedCSharpProbeJson = $blockedCSharpProbe.Output | ConvertFrom-Json
+    Assert-Equal $false ([bool] $blockedCSharpProbeJson.acquired) 'C# 持锁时第二个 C# 进程不得获取 mutex'
     if (-not $mutexHolderProcess.WaitForExit(5000)) {
         throw 'C# mutex holder 未在预期时间内释放。'
     }
     Assert-Equal 0 $mutexHolderProcess.ExitCode 'C# mutex holder 退出码'
     $mutexHolderProcess = $null
-    $releasedPowerShellMutex = Enter-CountdownSettingsWriteMutex -Path $mutexSettingsPath -TimeoutSeconds 1
-    try {
-        Assert-Equal $true ($null -ne $releasedPowerShellMutex) 'C# 释放后 PowerShell 可获取 mutex'
-    }
-    finally {
-        Exit-CountdownSettingsWriteMutex -Mutex $releasedPowerShellMutex
-    }
 
-    Write-TestSegmentTiming -Name 'MutexInterop'
+    $releasedCSharpProbe = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '验证 C# 释放后另一个 C# 进程获取 mutex' -ArgumentList @(
+        'mutex-probe',
+        '--settings-path',
+        $mutexSettingsPath,
+        '--timeout-seconds',
+        '1',
+        '--json'
+    ) | ConvertFrom-Json
+    Assert-Equal $true ([bool] $releasedCSharpProbe.acquired) 'C# 释放后另一个 C# 进程可获取 mutex'
+
+    Write-TestSegmentTiming -Name 'CSharpMutexContract'
     # #129 去重：直连 exe 的 validate-only 烟测（原 C1 执行点）删除。其唯一断言（设置哈希不变）
     # 由 validate-only 断言面末尾对同一 $roundTripPath 的哈希断言逐字覆盖（DS-4）。
     $canonicalHash = (Get-FileHash -LiteralPath $roundTripPath -Algorithm SHA256).Hash
 
     # #264：复用现役 Auto validate-only 报告，输入换成 Ui ListValidation 的 canonical populated fixture。
     # #277：现役测试直接启动应用 EXE 并显式传入设置与诊断日志路径，不再经 adapter。
-    $populatedState = ConvertFrom-CountdownSettingsObject -Settings (
-        $populatedFixture | ConvertFrom-Json)
-    [System.IO.File]::WriteAllText(
+    [System.IO.File]::WriteAllText($populatedFixturePath, $populatedFixture, $utf8NoBom)
+    $populatedFixtureHash = (Get-FileHash -LiteralPath $populatedFixturePath -Algorithm SHA256).Hash
+    $populatedCanonicalOutput = Invoke-CheckedNativeCommand -FilePath $verificationRunner -Operation '生成 populated C# canonical 测试输入' -ArgumentList @(
+        'round-trip',
+        '--input',
+        $populatedFixturePath,
+        '--output',
         $themeExercisePath,
-        (ConvertTo-CountdownSettingsJson -State $populatedState),
-        $utf8NoBom)
-    Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 canonical schema-v10 合同生成'
+        '--migration-utc',
+        '2031-09-10T02:16:00.0000000+00:00',
+        '--json'
+    )
+    $populatedCanonicalOutput | ConvertFrom-Json | Out-Null
+    Assert-Equal $populatedFixtureHash (Get-FileHash -LiteralPath $populatedFixturePath -Algorithm SHA256).Hash 'populated C# canonical 输入生成保持来源 fixture 不变'
+    Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 C# canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
     $applicationValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
@@ -3780,13 +3653,11 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # 主题迁移启动用例（Night→日间）：旧设置 themePreference=Night 必须按日间解释、不报错、不被强制回写。
     Write-TestSegmentTiming -Name 'ApplicationValidationRun'
     $nightMigrationPath = Join-Path $testRoot 'theme-migration-night.settings.json'
-    $nightMigrationState = ConvertFrom-CountdownSettingsObject -Settings (
-        Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    )
-    $nightMigrationState.Preferences.ThemePreference = 'Night'
+    $nightMigrationSettings = Get-Content -LiteralPath $roundTripPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $nightMigrationSettings.themePreference = 'Night'
     [System.IO.File]::WriteAllText(
         $nightMigrationPath,
-        (ConvertTo-CountdownSettingsJson -State $nightMigrationState),
+        ($nightMigrationSettings | ConvertTo-Json -Depth 100),
         $utf8NoBom)
     Assert-Equal 'Night' ([string] (Get-Content -LiteralPath $nightMigrationPath -Raw -Encoding UTF8 | ConvertFrom-Json).themePreference) '主题迁移启动用例隔离设置写入旧 Night 偏好'
     $nightMigrationHash = (Get-FileHash -LiteralPath $nightMigrationPath -Algorithm SHA256).Hash
@@ -5187,6 +5058,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     }
     $interactiveLegacyJson = $interactiveLegacySettings | ConvertTo-Json -Depth 20
     [System.IO.File]::WriteAllText($interactiveSettingsPath, $interactiveLegacyJson, $utf8NoBom)
+    $interactiveLegacySnapshotPath = Join-Path $testRoot 'interactive-before.settings.json'
+    [System.IO.File]::WriteAllText($interactiveLegacySnapshotPath, $interactiveLegacyJson, $utf8NoBom)
     $interactiveLegacyHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
     $interactiveMigrationStartedUtc = [DateTimeOffset]::UtcNow
 
@@ -5263,14 +5136,21 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # handledThroughUtc 是不大于迁移墙钟的最后一个整分钟发生点，最多自然早 1 分钟，不等于迁移墙钟本身。
     Assert-Equal $true ($interactiveMigrationUtc -gt $interactiveMigrationStartedUtc.AddMinutes(-1) -and $interactiveMigrationUtc -le $interactiveMigrationFinishedUtc) `
         '正常迁移游标来自本次启动实时时钟的一分钟发生点，而不是安装器请求冻结时刻'
-    Assert-Equal $true (
-        Test-CountdownSettingsDeploymentTransition `
-            -BeforeHash $interactiveLegacyHash `
-            -AfterHash $interactiveMigratedHash `
-            -BeforeJson $interactiveLegacyJson `
-            -AfterJson $interactiveMigratedJson `
-            -MigrationUtc $interactiveMigrationUtc
-    ) '正常启动迁移保持 schema v9 数据语义'
+    $interactiveEquivalenceResult = Invoke-CapturedNativeProcess -FilePath $interactiveApplicationPath -WorkingDirectory $testRoot -ArgumentList @(
+        '--settings-equivalence',
+        '--before-settings',
+        $interactiveLegacySnapshotPath,
+        '--after-settings',
+        $interactiveSettingsPath,
+        '--migration-utc',
+        $interactiveMigrationUtc.ToString('o')
+    )
+    Assert-Equal 0 $interactiveEquivalenceResult.ExitCode '正常启动迁移由产品 EXE 判定为等价'
+    Assert-Equal '' $interactiveEquivalenceResult.Stderr '正常启动迁移等价判定不写 stderr'
+    $interactiveEquivalence = $interactiveEquivalenceResult.Stdout | ConvertFrom-Json
+    Assert-Equal $true ([bool] $interactiveEquivalence.equivalent) '正常启动迁移保持 schema v9 数据语义'
+    Assert-Equal 'migrated' ([string] $interactiveEquivalence.reasonCategory) '正常启动迁移等价原因类别'
+    Assert-Equal $interactiveLegacyHash (Get-FileHash -LiteralPath $interactiveLegacySnapshotPath -Algorithm SHA256).Hash '正常启动等价判定保持迁移前快照不变'
 
     $interactiveLegacyStartupPath = Join-Path $interactiveRoot 'startup-request.json'
     $interactiveLegacyAcceptancePath = Join-Path $interactiveRoot 'acceptance-status.json'

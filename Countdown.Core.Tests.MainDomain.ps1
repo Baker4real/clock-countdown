@@ -1,54 +1,5 @@
 # Countdown.Core.Tests.ps1 的 MainDomain 分段：入口按开关点源执行，共用入口的参数、断言函数与已建立的状态，不单独运行。
 
-$firstTag = New-CountdownTagRecord -Id ' work ' -Name ' 工作 ' -Color ' #6B8E23 '
-Assert-Equal 'work' $firstTag.id 'Tag record normalizes ID'
-Assert-Equal '工作' $firstTag.name 'Tag record normalizes name'
-Assert-Equal '#6B8E23' $firstTag.color 'Tag record preserves optional color'
-$invalidTagColorRejected = $false
-try {
-    New-CountdownTagRecord -Id 'invalid-color' -Name '无效颜色' -Color 'red' | Out-Null
-}
-catch {
-    $invalidTagColorRejected = $true
-}
-Assert-Equal $true $invalidTagColorRejected 'Invalid tag color is rejected'
-$tagLibrary = [System.Collections.ArrayList]::new()
-[void] $tagLibrary.Add($firstTag)
-$tagLibraryCopy = Copy-CountdownTags -Tags $tagLibrary
-$tagLibraryCopy[0].name = '已改名'
-Assert-Equal '工作' $tagLibrary[0].name 'Tag library copy does not mutate source tag'
-$normalizedTagIds = ConvertTo-CountdownTagIds -TagIds @(' work ', 'home') -KnownTagIds @('work', 'home')
-Assert-Equal 2 $normalizedTagIds.Count 'Tag IDs retain unique values'
-Assert-Equal 'work' $normalizedTagIds[0] 'Tag IDs preserve first-known canonical value'
-Assert-Equal 'home' $normalizedTagIds[1] 'Tag IDs retain additional values'
-$emptyTagIds = ConvertTo-CountdownTagIds -TagIds $null -KnownTagIds @('work')
-Assert-Equal 0 $emptyTagIds.Count 'Empty tag IDs are valid for untagged records'
-$duplicateTagIdRejected = $false
-try {
-    ConvertTo-CountdownTagIds -TagIds @('work', 'work') -KnownTagIds @('work') | Out-Null
-}
-catch {
-    $duplicateTagIdRejected = $true
-}
-Assert-Equal $true $duplicateTagIdRejected 'Duplicate tag ID is rejected'
-$danglingTagRejected = $false
-try {
-    ConvertTo-CountdownTagIds -TagIds @('missing') -KnownTagIds @('work') | Out-Null
-}
-catch {
-    $danglingTagRejected = $true
-}
-Assert-Equal $true $danglingTagRejected 'Unknown tag ID is rejected'
-Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @() -MatchMode Any) 'Empty tag selection includes tagged records'
-Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @('work') -MatchMode Any) 'Any tag filter matches selected tag'
-Assert-Equal $false (Test-CountdownTagFilter -TagIds @('home') -SelectedTagIds @('work') -MatchMode Any) 'Any tag filter excludes unselected tag'
-Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('home') -MatchMode Any) 'Any tag filter evaluates a non-first selected tag'
-Assert-Equal $true (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('work', 'home') -MatchMode All) 'All tag filter matches every selected tag'
-Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @('work', 'home') -MatchMode All) 'All tag filter requires every selected tag'
-Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work', 'home') -SelectedTagIds @('home', 'office') -MatchMode All) 'All tag filter excludes a missing selected tag'
-Assert-Equal $true (Test-CountdownTagFilter -TagIds @() -SelectedTagIds @() -UntaggedOnly) 'Untagged filter includes untagged record'
-Assert-Equal $false (Test-CountdownTagFilter -TagIds @('work') -SelectedTagIds @() -UntaggedOnly) 'Untagged filter excludes tagged record'
-
 # #218 悬浮窗底部状态解析（纯函数 seam）：直接编译现役 src\MinminCountdown\FloatingBottomStatus.cs，
 # 覆盖 月薪 >0 / =0 与 日历就绪 / 加载中 / 未就绪 的组合；日历未就绪必须返回说明影响范围与
 # 恢复方式的新文案，而不是旧状态文本或鼓励文案。
@@ -139,24 +90,3 @@ Assert-Equal $true ([string] $holidayGuardDecemberMissing.Message.Contains('holi
 $holidayGuardLateDecember = Test-CountdownHolidayYearCoverage -BeijingNow ([DateTimeOffset]'2026-12-31T23:00:00+08:00') -PackagedYears @(2026)
 Assert-Equal $false ([bool] $holidayGuardLateDecember.Covered) 'Holiday year guard still fails at the end of December without the next year'
 Assert-Equal 2027 ([int] $holidayGuardLateDecember.MissingYear) 'Holiday year guard names the missing year at the end of December'
-
-$settingsMutexProbeEngine = (Get-Command pwsh.exe -CommandType Application -ErrorAction Stop | Select-Object -First 1 -ExpandProperty Source)
-$settingsMutexEnterCommand = Get-Command Enter-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
-$settingsMutexExitCommand = Get-Command Exit-CountdownSettingsWriteMutex -Module Countdown.Settings -ErrorAction SilentlyContinue
-Assert-Equal $true ($null -ne $settingsMutexEnterCommand -and $null -ne $settingsMutexExitCommand) 'Settings module exposes a cross-process write mutex'
-$settingsModuleSource = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Countdown.Settings.psm1') -Raw
-Assert-Equal $false ($settingsModuleSource.Contains('[System.Security.Cryptography.SHA256]::HashData') -or $settingsModuleSource.Contains('[Convert]::ToHexString')) 'Settings mutex hashing remains compatible with PowerShell 7.0 and .NET Core 3.1'
-if ($null -ne $settingsMutexEnterCommand -and $null -ne $settingsMutexExitCommand) {
-    $settingsMutexProbePath = Join-Path $PSScriptRoot ("settings-mutex-probe-" + [guid]::NewGuid().ToString('N') + '.json')
-    $settingsMutex = Enter-CountdownSettingsWriteMutex -Path $settingsMutexProbePath -TimeoutSeconds 1
-    try {
-        $settingsMutexModulePath = (Join-Path $PSScriptRoot 'Countdown.Settings.psm1').Replace("'", "''")
-        $escapedSettingsMutexProbePath = $settingsMutexProbePath.Replace("'", "''")
-        $settingsMutexProbeCommand = "Import-Module -Name '$settingsMutexModulePath' -Force; try { `$childMutex = Enter-CountdownSettingsWriteMutex -Path '$escapedSettingsMutexProbePath' -TimeoutSeconds 1; Exit-CountdownSettingsWriteMutex -Mutex `$childMutex; 'unexpected acquisition' } catch { `$_.Exception.Message }"
-        $settingsMutexProbeOutput = & $settingsMutexProbeEngine -NoLogo -NoProfile -NonInteractive -Command $settingsMutexProbeCommand | Out-String
-        Assert-Equal $true ($settingsMutexProbeOutput -match '超时') 'Settings write mutex excludes a second PowerShell process'
-    }
-    finally {
-        Exit-CountdownSettingsWriteMutex -Mutex $settingsMutex
-    }
-}

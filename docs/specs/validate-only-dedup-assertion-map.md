@@ -525,7 +525,7 @@ CSharp 的完整 validate-only 报告运行数保持 4 次：Auto + populated Li
 
 ## 2026-11-12 #266 旧 PowerShell 宿主退役结果
 
-`Countdown.App.psm1`、`Countdown.Core.psm1` 及六张 `floating-plush-{mymelody|cinnamoroll|kuromi}-{front|pose}.png` 旧宿主独占资产已删除；Core 测试入口不再导入旧核心 module，旧核心的纯 PowerShell 领域测试与设置清理测试随之删除。`Countdown.Notes.psm1`、`Countdown.Tags.psm1` 仍被 `Countdown.Settings.psm1` 与现役设置验证使用，不在本票删除。
+`Countdown.App.psm1`、`Countdown.Core.psm1` 及六张 `floating-plush-{mymelody|cinnamoroll|kuromi}-{front|pose}.png` 旧宿主独占资产已删除；Core 测试入口不再导入旧核心 module，旧核心的纯 PowerShell 领域测试与设置清理测试随之删除。当票清点时 `Countdown.Notes.psm1`、`Countdown.Tags.psm1` 仍被 `Countdown.Settings.psm1` 与设置验证使用，所以留到后续票处理；这三份 module 已由 #293 删除。
 
 发布契约相关清单逐项处理如下；`PackageFiles`、`InstalledFiles`、`BuildAssets` 与静态 `IntegrityHashes` 的内容不因本次退役改变。
 

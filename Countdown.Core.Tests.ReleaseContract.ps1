@@ -208,6 +208,11 @@ foreach ($repositoryOnlyModule in @('Countdown.Validation.psm1')) {
     Assert-Equal $false $releaseContract.IntegrityHashes.Contains($repositoryOnlyModule) "Module the office install never loads is not statically pinned: $repositoryOnlyModule"
     Assert-Equal $false ($repositoryOnlyModule -in @($releaseContract.InstalledFiles)) "Module the office install never loads is not installed as runtime: $repositoryOnlyModule"
 }
+foreach ($retiredSettingsModule in @('Countdown.Notes.psm1', 'Countdown.Tags.psm1', 'Countdown.Settings.psm1')) {
+    Assert-Equal $false ($retiredSettingsModule -in @($releaseContract.PackageFiles)) "Retired PowerShell settings implementation stays out of the office package: $retiredSettingsModule"
+    Assert-Equal $false $releaseContract.IntegrityHashes.Contains($retiredSettingsModule) "Retired PowerShell settings implementation is not statically pinned: $retiredSettingsModule"
+    Assert-Equal $false ($retiredSettingsModule -in @($releaseContract.InstalledFiles)) "Retired PowerShell settings implementation is not installed as runtime: $retiredSettingsModule"
+}
 foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
     Assert-Equal $false ($legacyHostModule -in @($releaseContract.PackageFiles)) "Deleted legacy host module stays out of the office package: $legacyHostModule"
     Assert-Equal $false ($legacyHostModule -in @($releaseContract.InstalledFiles)) "Deleted legacy host module is not installed as runtime: $legacyHostModule"

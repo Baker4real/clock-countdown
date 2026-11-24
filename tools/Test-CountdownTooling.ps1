@@ -1009,9 +1009,7 @@ foreach ($case in @(
     $caseCount = Get-ForcedMoveItemCount -Ast ([System.Management.Automation.Language.Parser]::ParseInput($case.Source, [ref] $tokens, [ref] $errors))
     if ($caseCount -ne $case.Count) { $forcedMoveSelfTestFailures.Add("self-test $($case.Name): expected $($case.Count), got $caseCount") }
 }
-$forcedMoveCeilings = @{
-    'Countdown.Settings.psm1' = 1
-}
+$forcedMoveCeilings = @{}
 $forcedMoveFailures = [System.Collections.Generic.List[string]]::new()
 $forcedMovePaths = @(@(
     Get-ChildItem -LiteralPath $repoRoot -File

@@ -28,12 +28,12 @@ internal static class VerificationSuite
         Run(results, "schema-v8-reminder-branches-reject-foreign-fields", VerifyVersionEightReminderBranchesAreStrict);
         Run(results, "schema-v9-reminders-migrate-to-stable-v10-rules", VerifyVersionNineReminderMigration);
         Run(results, "schema-v10-multiple-rules-round-trip-stably", VerifyVersionTenRoundTrip);
-        Run(results, "deployment-equivalence-unchanged-settings-match-power-shell", VerifyDeploymentEquivalenceUnchanged);
+        Run(results, "deployment-equivalence-unchanged-settings-match-pinned-expectation", VerifyDeploymentEquivalenceUnchanged);
         foreach (var fixture in DeploymentEquivalenceFixtures.Versions)
         {
             Run(
                 results,
-                $"deployment-equivalence-v{fixture.Version}-matches-power-shell",
+                $"deployment-equivalence-v{fixture.Version}-matches-pinned-expectation",
                 () => VerifyDeploymentEquivalenceVersion(fixture));
         }
 
@@ -41,7 +41,7 @@ internal static class VerificationSuite
         {
             Run(
                 results,
-                $"deployment-equivalence-{fixture.Name}-matches-power-shell",
+                $"deployment-equivalence-{fixture.Name}-matches-pinned-expectation",
                 () => VerifyDeploymentEquivalenceMutation(fixture));
         }
 
@@ -81,7 +81,7 @@ internal static class VerificationSuite
         Run(results, "failed-backup-rollback-preserves-artifact-and-blocks-next-save", VerifyFailedBackupRollbackPreservesArtifactAndBlocksNextSave);
         Run(results, "failed-write-preserves-existing-settings", VerifyFailedWritePreservesExistingSettings);
         Run(results, "replacement-failure-preserves-existing-settings", VerifyReplacementFailurePreservesExistingSettings);
-        Run(results, "settings-mutex-name-matches-powershell-contract", VerifySettingsMutexName);
+        Run(results, "settings-mutex-name-uses-stable-contract", VerifySettingsMutexName);
         Run(results, "desktop-workspace-snapshot-is-frozen-and-filter-raises-one-change", VerifyDesktopWorkspaceSnapshotAndFilter);
         Run(results, "desktop-workspace-filter-is-one-normalized-immutable-value", VerifyDesktopWorkspaceFilterIsOneNormalizedValue);
         Run(results, "desktop-workspace-failed-commit-changes-neither-memory-nor-disk", VerifyDesktopWorkspaceFailedCommitChangesNothing);

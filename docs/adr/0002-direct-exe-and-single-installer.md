@@ -57,3 +57,12 @@ intent: 记录 #291 删除旧安装事务、adapter、桌面启动器和机器�
 - 两个设置 CLI 保持在色板、日志、单实例和任何窗口之前返回。普通第二实例恢复既有悬浮窗；外部关闭、提醒 tick 和设置保存不经过验收抑制分支。
 - 验证事实去向：`StartupAcceptanceProtocolModuleDeep` 与 `StartupAcceptanceProtocolInterfaceBehavior` 随被测握手删除；仍有价值的 tokenless 精确字段、进程身份、非法日历状态、原子替换和持续占用反例由新 `RuntimeReceiptInterfaceBehavior` 覆盖，真实 EXE 的直接启动矩阵另证明缺失、损坏、active、finalized 和未知 schema 旧文件不影响迁移保存，安装器首安装用 tokenless 回执达到启动就绪。
 - 上方规模与包计数是 #291 完成时的快照；本补充删除过渡运行时 module 与旧协议测试，不沿用其中“过渡协议仍现役”的含义。#293 与 #294 的范围不因本补充提前实施。
+
+## #293 设置实现单一化补充
+
+状态：已采纳（2026-11-25，#293）。
+
+- 设置解析、schema 迁移、canonical 序列化、部署等价和设置写锁只保留 C# Core 一份实现；两个无界面产品 EXE 命令继续供安装器做副本迁移演练与只读等价判定。PowerShell 安装器只编排进程、字节快照和恢复，不读取设置领域值。
+- 删除 `Countdown.Settings.psm1`、只为它及其测试保留的 `Countdown.Notes.psm1` / `Countdown.Tags.psm1`，以及对应 PowerShell 实现测试、parity 夹具和互操作段。#291 后的发布包本就只有程序目录、载荷清单和两个安装器文件，Core 发布测试新增三份 module 的明确排除断言；不提前实施 #294 的静态钉值退役或全包额外文件拒绝。
+- `DeploymentEquivalenceFixtures` 的结论和完整 canonical after 快照仍固定在独立来源 `integration/prd-258 1677a01b`，只把测试名称改为 pinned-expectation；不得由当前 C# 实现重新生成期望。`SettingsFixtures.AllVersions` 仍只含 v1-v9，v10 继续由现有专项与两个 CLI 的现役覆盖验证。
+- CSharp 的 canonical 输入生成、稳定复读、populated/Night 测试输入、两个 C# 进程的写锁竞争和正常启动后的 EXE 等价判定不再依赖 PowerShell 设置实现；C# 设置修复、迁移保存、原子写入、备份轮转和失败行为不变。

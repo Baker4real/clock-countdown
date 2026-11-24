@@ -50,15 +50,12 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex、部署设置等价规则，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
-- `src/MinminCountdown.Verification`：C# 设置契约、PowerShell 部署等价夹具快照与互操作验证程序；只引用 Core，保持无窗口
+- `src/MinminCountdown.Verification`：C# 设置契约、独立固定的部署等价快照与无窗口验证程序；只引用 Core，保持无窗口
 - `src/MinminCountdown.WindowVerification`：#273 独立 WPF 窗口验证项目，引用产品程序集并产出第一条迁出的空态事实；仅由低影响 CSharp 阶段在隔离桌面启动，不并入纯 C# runner，也不进入办公室载荷
 - `Build-CountdownApplication.ps1`：生成 self-contained 的应用、纯 C# 验证与独立窗口验证 EXE，并复制、校验发布契约声明的 14 个程序目录随包资源：9 个现役图片资产，以及 #275 起的随包节假日数据 `app\holiday-data\` 与图标 `app\countdown-icon.ico`（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
-- `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
-- `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
-- `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `Countdown.Validation.psm1`：本机 Core、C# 与应用 validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检

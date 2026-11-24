@@ -38,9 +38,8 @@ public static class SettingsDeploymentEquivalence
 
             var expected = SettingsContract.SerializeCanonical(
                 SettingsContract.Deserialize(beforeJson, migrationUtc: migrationUtc).Settings);
-            // The PowerShell implementation validates the actual v10 payload as well as
-            // comparing it with the expected migration; invalid or foreign fields cannot
-            // be hidden by the comparer.
+            // Validate the actual v10 payload as well as comparing it with the expected
+            // migration; invalid or foreign fields cannot be hidden by the comparer.
             _ = SettingsContract.Deserialize(afterJson, migrationUtc: migrationUtc);
             using var expectedDocument = JsonDocument.Parse(expected);
             using var actualDocument = JsonDocument.Parse(afterJson);

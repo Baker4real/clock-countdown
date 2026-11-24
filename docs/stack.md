@@ -12,7 +12,7 @@ intent: "记录现行 WPF 生产栈、按 #189 执行的渐进升级路线，以
 - 状态：#189 WPF 渐进升级批次已全部完成并合入 main；#209 闸门已于 2026-10-09 执行并决定停止全面重写，WPF 保持唯一生产路径。
 - 记录日期：2026-10-09（闸门收口后修订）。
 - 父级 PRD：[GitHub #189：WPF 渐进式 UI 精致化与现代化（替代全面重写为先）](https://github.com/Baker4real/clock-countdown/issues/189)。
-- 现行生产基线：C# / .NET 10 WPF + PowerShell 7。它继续拥有用户界面、Windows 生命周期、schema v10 设置和办公室发布路径。
+- 现行生产基线：C# / .NET 10 WPF + PowerShell 7。C# 拥有用户界面、Windows 生命周期和 schema v10 设置实现；PowerShell 7 只负责安装、计划任务、验证和办公室发布路径。
 - 当前目标栈：在不改变数据、安装和部署合同的前提下维护现行 WPF 基线；#189 渐进升级批次已全部交付，当前没有已批准的替代运行时。
 - 闸门结果：#209 已于 2026-10-09 用隔离的 `520 x 390` Tauri 切片完成与 WPF 改版的对比，决定停止全面重写，WPF 保持唯一生产路径；证据见 [架构与语言迁移](架构与语言迁移.md) 与 `docs/evidence/clock-countdown-issue-209-tauri-candidate/`。
 

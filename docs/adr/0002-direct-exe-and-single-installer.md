@@ -29,7 +29,7 @@ intent: 记录 #291 删除旧安装事务、adapter、桌面启动器和机器�
 - 登录和双击不再依赖 PowerShell 安装路径、adapter、WMI 服务或启动请求文件。应用是否存活由已安装 EXE 的进程、会话和哈希判断，不再用计划任务 `Ready` / `LastTaskResult` 作为替代指标。
 - 安装器不再修复机器级时间配置；现有系统校时配置保持不变，是否持续校时由 Windows 管理。
 - `RetiredRuntimeFiles` 只作为历史元数据保留，新安装器不据此执行一次性清理。历史 `docs/evidence` 与既有备份不改不删。
-- #292 的启动验收协议、#293 的 PowerShell 设置实现、#294 的静态哈希钉值与更新工具不在本决策中提前删除；只移除本票造成的旧调用接线。
+- #292 的启动验收协议已由下方补充决策退役；#293 的 PowerShell 设置实现、#294 的静态哈希钉值与更新工具不在 #291 中提前删除。
 - 本机最窄分段、Build、Core、Tooling、InstallValidate 可以覆盖退役面；完整五阶段 fresh gate 由合并后的 orchestrator 验收，单实施 worktree 不以阶段组合冒称 fresh 全门。
 
 ## 规模与包计数
@@ -47,3 +47,13 @@ intent: 记录 #291 删除旧安装事务、adapter、桌面启动器和机器�
 | CSharp 与外部关闭测试 | 5,572 | 产品验证、迁移、直接 EXE 激活、#292 启动协议和 C# 诊断并发；共享 helper 已改名保留 |
 
 真实构建载荷为 429 个清单文件，加 `app\published-payload.json` 与两个安装器文件，发布 ZIP 和 `PackageFiles` 均为 **432** 个文件；旧契约的 448 个文件包含已退役的安装链、根目录重复资产和本地信任根。精确闭包由真实 ZIP entries 对契约逐项相等的测试守住，额外文件拒绝仍属于 #294 的范围。
+
+## #292 启动验收协议退役补充
+
+状态：已采纳（2026-11-25，#292）。
+
+- 正常启动只执行现有设置加载、确认恢复、迁移保存、单实例激活和窗口生命周期，不读取安装器留下的文件。删除只读验收、`startup-request.json` 状态推进、`acceptance-status.json`、`--require-startup-request`、PowerShell 过渡运行时 module 及 C# 启动验收类型和 helper。
+- `runtime-status.json` 升为 schema v5，精确字段只有 `schemaVersion`、`stage`、`processId`、`sessionId`、`readyAtUtc`、`calendarState`、`timeZoneId`。删除启动令牌和 adapter `applicationPath`；安装器仍以回执 PID 核对存活已安装 EXE 的映像路径、交互会话与载荷清单哈希，首帧与日历刷新继续原子替换并保留占用重试。
+- 两个设置 CLI 保持在色板、日志、单实例和任何窗口之前返回。普通第二实例恢复既有悬浮窗；外部关闭、提醒 tick 和设置保存不经过验收抑制分支。
+- 验证事实去向：`StartupAcceptanceProtocolModuleDeep` 与 `StartupAcceptanceProtocolInterfaceBehavior` 随被测握手删除；仍有价值的 tokenless 精确字段、进程身份、非法日历状态、原子替换和持续占用反例由新 `RuntimeReceiptInterfaceBehavior` 覆盖，真实 EXE 的直接启动矩阵另证明缺失、损坏、active、finalized 和未知 schema 旧文件不影响迁移保存，安装器首安装用 tokenless 回执达到启动就绪。
+- 上方规模与包计数是 #291 完成时的快照；本补充删除过渡运行时 module 与旧协议测试，不沿用其中“过渡协议仍现役”的含义。#293 与 #294 的范围不因本补充提前实施。

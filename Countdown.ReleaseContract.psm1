@@ -114,7 +114,7 @@ $script:offlineHolidayDataFiles = @(
 # DESIGN.md 留在仓库，不在这里钉死。
 $script:nonAssetHashes = [ordered]@{
     'Install-CountdownProgram.ps1' = 'AD6384EAE3B754D75EC45C674C8A0921585E2851307B38D00E4D669A275ABE7A'
-    'Countdown.Installer.psm1' = 'B599C4C49445D76C83DCE4B8F82A6697EF7A17D4304E4FDA0B96CD7B1AE1D11B'
+    'Countdown.Installer.psm1' = '3F2FAEB7A307CF6DF0917402CD0662AF799BDD37A4435A5AAF9AD927442698B8'
 }
 
 function Assert-CountdownReleaseRelativePath {

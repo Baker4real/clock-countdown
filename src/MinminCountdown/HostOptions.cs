@@ -8,7 +8,6 @@ internal sealed record HostOptions(
     bool ExerciseFatalDiagnostic,
     bool ExitAfterReadyForTest,
     int ExitAfterReadyForTestSeconds,
-    bool RequireStartupRequest,
     string? SettingsFile,
     string? DiagnosticLogPath,
     InstanceActivationTestState? ActivationTestState,
@@ -29,7 +28,6 @@ internal sealed record HostOptions(
         var exerciseFatalDiagnostic = false;
         var exitAfterReadyForTest = false;
         var exitAfterReadyForTestSeconds = DefaultExitAfterReadyForTestSeconds;
-        var requireStartupRequest = false;
         string? settingsFile = null;
         string? diagnosticLogPath = null;
         InstanceActivationTestState? activationTestState = null;
@@ -78,9 +76,6 @@ internal sealed record HostOptions(
                     }
 
                     exitAfterReadyForTestSeconds = parsedExitSeconds;
-                    break;
-                case "requirestartuprequest":
-                    requireStartupRequest = true;
                     break;
                 case "settingsfile":
                     settingsFile = ReadValue(arguments, ref index, arguments[index]);
@@ -148,14 +143,6 @@ internal sealed record HostOptions(
             throw new ArgumentException("--validate-only 必须显式指定 --settings-file。");
         }
 
-        if (requireStartupRequest &&
-            (activationTestState is not null ||
-             activationListenerBehavior != InstanceActivationListenerBehavior.Normal))
-        {
-            throw new ArgumentException(
-                "实例激活测试参数不能与 --require-startup-request 组合。");
-        }
-
         if (activationTestState is not null &&
             (validateOnly ||
              !exitAfterReadyForTest ||
@@ -184,7 +171,6 @@ internal sealed record HostOptions(
             exerciseFatalDiagnostic,
             exitAfterReadyForTest,
             exitAfterReadyForTestSeconds,
-            requireStartupRequest,
             settingsFile,
             diagnosticLogPath,
             activationTestState,

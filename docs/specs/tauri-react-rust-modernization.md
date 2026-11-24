@@ -82,7 +82,7 @@ intent: "定义 #189 WPF 渐进升级完成后可选的 Tauri、React、TypeScri
 - The settings store continues to use same-directory temporary files, atomic replacement, a path-scoped cross-process lock, backup1/backup2 rotation and explicit recovery evidence.
 - The first migration keeps JSON storage. SQLite is explicitly deferred until an independent performance or data-volume requirement exists.
 - The old C# behavior is converted into language-independent fixtures. Rust and the existing C# verifier must agree on canonical JSON, time conversion, recurrence, migration, failure injection and backup outcomes before the new UI writes real settings.
-- The UI must preserve the existing domain glossary: countdown, note, tag, occurrence, cursor, disposition, snooze, current Beijing time, single-instance activation, startup-ready and finalized-ready.
+- The UI must preserve the existing domain glossary: countdown, note, tag, occurrence, cursor, disposition, snooze, current Beijing time, single-instance activation and startup-ready.
 - The visual layer may use CSS gradients, masks, filters, blend modes, SVG, Canvas and WebGL for decoration, but critical text and controls remain semantic DOM controls.
 - Animation defaults to short feedback transitions and stable number updates. `prefers-reduced-motion` disables decorative movement, scale and parallax.
 - The tray provides restore floating window, open management, reset position and exit. The second instance only sends a bounded activation request and never changes filters, drafts or settings.

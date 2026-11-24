@@ -45,6 +45,7 @@ function Invoke-ExternalCloseProgramLaunch {
         # 首帧就绪后按标题找悬浮窗；隔离桌面上不要求 Win32 可见枚举。
         $receiptPath = Join-Path $InstallRoot 'runtime-status.json'
         $readyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(90)
+        $receipt = $null
         $floating = $null
         while ($null -eq $floating -and -not $process.HasExited -and [DateTimeOffset]::UtcNow -lt $readyDeadline) {
             $receipt = Read-CountdownRuntimeReceipt -Path $receiptPath
@@ -143,6 +144,7 @@ function Invoke-ExternalCloseProgramLaunch {
             SecondInstanceExited = $secondInstanceExited
             SecondInstanceExitCode = $secondInstanceExitCode
             PrimaryAliveAfterActivation = $primaryAliveAfterActivation
+            Receipt = $receipt
             Stderr = $stderrTask.GetAwaiter().GetResult()
         }
     }
@@ -181,6 +183,10 @@ function Invoke-ExternalCloseProcessTests {
             ForEach-Object { [string] $_.event })
     $externalCloseDetail = "exit=$($externalClose.ExitCode)；events=$($externalCloseEvents -join ',')；owner=$($externalClose.OwnerTitle) visible=$($externalClose.OwnerVisible)；stderr=$($externalClose.Stderr)"
     Assert-Equal $true $externalClose.FloatingFound "外部关闭：悬浮窗首帧就绪；$externalCloseDetail"
+    Assert-Equal 5 ([int] $externalClose.Receipt.schemaVersion) '外部关闭：首帧运行状态回执使用 tokenless schema v5'
+    $externalCloseReceiptFields = @($externalClose.Receipt.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    Assert-Equal 'calendarState,processId,readyAtUtc,schemaVersion,sessionId,stage,timeZoneId' ($externalCloseReceiptFields -join ',') `
+        '外部关闭：首帧回执不含启动令牌或 adapter 路径'
     Assert-Equal $true $externalClose.OwnerFound "外部关闭：悬浮窗归本进程的一个顶层所有者窗口；$externalCloseDetail"
     Assert-Equal $false ([bool] $externalClose.OwnerVisible) "外部关闭：悬浮窗的所有者是 ShowInTaskbar=False 带来的不可见窗口；$externalCloseDetail"
     Assert-Equal $true $externalClose.Posted "外部关闭：向悬浮窗的所有者投递 WM_CLOSE；$externalCloseDetail"

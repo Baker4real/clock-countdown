@@ -1258,8 +1258,8 @@ function Read-CountdownRuntimeReceipt {
 }
 
 # 启动就绪：运行状态回执由一个存活进程写出，其映像路径是已安装 EXE，会话是交互会话，EXE 哈希与载荷清单一致。
-# 启动前已删除旧回执，回执里的进程身份证明它来自这一次启动；不使用启动令牌，不比较回执的 applicationPath（#279：
-# 它仍指向 adapter）。就绪与否不看任务状态或上次结果；经登录任务启动时（-StartedRun 是启动之前记下的任务），还没就绪就
+# 启动前已删除旧回执，回执里的进程身份证明它来自这一次启动；schema v5 不含启动令牌或 adapter 路径。
+# 就绪与否不看任务状态或上次结果；经登录任务启动时（-StartedRun 是启动之前记下的任务），还没就绪就
 # 再看那次运行结束了没有：结束了、已安装 EXE 也没有进程在运行，就不再等满时限，按 startup-exited 报告退出码（#288）。
 function Wait-CountdownStartupReady {
     param(

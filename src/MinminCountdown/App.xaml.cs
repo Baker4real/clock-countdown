@@ -32,11 +32,9 @@ public sealed partial class App : Application
     private SingleInstanceMutexLease? _singleInstanceLease;
     private InstanceActivationServer? _instanceActivationServer;
     private InstanceActivationScope? _instanceActivationScope;
-    private StartupAcceptanceProtocol? _startupProtocol;
     private DispatcherTimer? _clockTimer;
     private DispatcherTimer? _testExitTimer;
     private string? _applicationRoot;
-    private bool _acceptanceReadOnly;
     private bool _activationTestStateApplied;
     private int _activationCallbackFailureInjected;
     private bool _runtimeReceiptWritten;
@@ -55,7 +53,7 @@ public sealed partial class App : Application
         var exitCode = 1;
         try
         {
-            // #272：只读设置等价命令不得初始化色板、启动请求、日志、单实例或任何窗口。
+            // #272：只读设置等价命令不得初始化色板、日志、单实例或任何窗口。
             if (SettingsEquivalenceCommand.IsRequested(eventArgs.Args))
             {
                 exitCode = SettingsEquivalenceCommand.Run(eventArgs.Args);
@@ -63,7 +61,7 @@ public sealed partial class App : Application
                 return;
             }
 
-            // #278：无界面设置迁移命令同样在色板、启动请求、日志、单实例和窗口之前返回。
+            // #278：无界面设置迁移命令同样在色板、日志、单实例和窗口之前返回。
             if (SettingsMigrationCommand.IsRequested(eventArgs.Args))
             {
                 exitCode = SettingsMigrationCommand.Run(eventArgs.Args);
@@ -75,8 +73,6 @@ public sealed partial class App : Application
             ApplicationTheme.WriteDayPalette(Resources);
             _options = HostOptions.Parse(eventArgs.Args);
             _applicationRoot = ApplicationPaths.ResolveApplicationRoot();
-            _startupProtocol = StartupAcceptanceProtocol.Load(_applicationRoot, _options.RequireStartupRequest);
-            _acceptanceReadOnly = _startupProtocol.AcceptanceReadOnly;
             var diagnosticPath = _options.DiagnosticLogPath ??
                                  Path.Combine(_applicationRoot, "logs", "application.jsonl");
             _logger = new DiagnosticLogger(diagnosticPath);
@@ -136,18 +132,6 @@ public sealed partial class App : Application
             _singleInstanceLease = SingleInstanceMutex.TryAcquire(_applicationRoot, settingsPath);
             if (_singleInstanceLease is null)
             {
-                if (_acceptanceReadOnly)
-                {
-                    _logger.Activation(
-                        "InstanceActivationSuppressedAcceptanceReadOnly",
-                        new ActivationDiagnostic(
-                            _instanceActivationScope.ScopeId,
-                            Guid.NewGuid().ToString("N"),
-                            "Suppressed"));
-                    Shutdown(1);
-                    return;
-                }
-
                 var activation = InstanceActivationClient.SendOnce(
                     _instanceActivationScope,
                     TimeSpan.FromSeconds(3));
@@ -176,21 +160,16 @@ public sealed partial class App : Application
                 return;
             }
 
-            if (!_acceptanceReadOnly)
-            {
-                _instanceActivationServer = new InstanceActivationServer(
-                    _instanceActivationScope,
-                    HandleInstanceActivation,
-                    _options.ActivationListenerBehavior,
-                    LogInstanceActivationRequestReceived,
-                    LogInstanceActivationListenerFailure);
-            }
+            _instanceActivationServer = new InstanceActivationServer(
+                _instanceActivationScope,
+                HandleInstanceActivation,
+                _options.ActivationListenerBehavior,
+                LogInstanceActivationRequestReceived,
+                LogInstanceActivationListenerFailure);
 
             _desktopWorkspace = DesktopWorkspace.Load(
                 settingsPath,
-                chooseRecovery: ShowSettingsRecoveryPrompt,
-                recoveryAllowed: _startupProtocol.RecoveryWritesAllowed,
-                migrationUtc: _startupProtocol.Request.MigrationUtc);
+                chooseRecovery: ShowSettingsRecoveryPrompt);
             var desktopWorkspace = _desktopWorkspace;
             _theme = new ApplicationTheme(Resources);
             _theme.Apply();
@@ -215,10 +194,7 @@ public sealed partial class App : Application
                 AppContext.BaseDirectory,
                 deferAssets: true);
 
-            if (!_acceptanceReadOnly)
-            {
-                desktopWorkspace.PersistMigrationIfNeeded();
-            }
+            desktopWorkspace.PersistMigrationIfNeeded();
             StartInteractiveHost();
             return;
         }
@@ -377,10 +353,6 @@ public sealed partial class App : Application
             eventArgs.Cancel = true;
             window.Hide();
         };
-        if (_acceptanceReadOnly)
-        {
-            window.IsEnabled = false;
-        }
 
         _mainWindow = window;
     }
@@ -392,7 +364,6 @@ public sealed partial class App : Application
             _desktopWorkspace is null ||
             _calendar is null ||
             _theme is null ||
-            _startupProtocol is null ||
             _applicationRoot is null)
         {
             throw new InvalidOperationException("应用宿主尚未初始化。");
@@ -400,12 +371,6 @@ public sealed partial class App : Application
 
         AttachFloatingWindow(_floatingWindow);
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
-        if (_acceptanceReadOnly)
-        {
-            _floatingWindow.IsEnabled = false;
-            _logger?.Info("AcceptanceReadOnlyEnabled");
-        }
-
         _floatingWindow.Show();
     }
 
@@ -436,7 +401,7 @@ public sealed partial class App : Application
     private void WriteFirstFloatingFrameReady()
     {
         if (_runtimeReceiptWritten ||
-            _startupProtocol is null ||
+            _applicationRoot is null ||
             _options is null)
         {
             return;
@@ -448,7 +413,9 @@ public sealed partial class App : Application
         }
 
         ApplyInstanceActivationTestState();
-        _startupProtocol.WriteWindowReady("Pending");
+        RuntimeProtocol.WriteWindowReady(
+            Path.Combine(_applicationRoot, "runtime-status.json"),
+            "Pending");
         _runtimeReceiptWritten = true;
         _logger?.Info("WindowReady");
     }
@@ -597,7 +564,7 @@ public sealed partial class App : Application
     private async Task RefreshHolidayCalendarAsync(DateTimeOffset nowUtc)
     {
         if (_calendar is null ||
-            _startupProtocol is null)
+            _applicationRoot is null)
         {
             return;
         }
@@ -610,7 +577,9 @@ public sealed partial class App : Application
 
         try
         {
-            _startupProtocol.WriteWindowReady(_calendar.State);
+            RuntimeProtocol.WriteWindowReady(
+                Path.Combine(_applicationRoot, "runtime-status.json"),
+                _calendar.State);
         }
         catch (Exception exception)
         {
@@ -637,7 +606,6 @@ public sealed partial class App : Application
             return;
         }
 
-        AdvanceAcceptanceState();
         var nowUtc = _desktopWorkspace.Clock.UtcNow;
         if (_runtimeReceiptWritten)
         {
@@ -651,7 +619,7 @@ public sealed partial class App : Application
         // #214：10 秒撤销窗口唯一的节拍来源；到期判断在工作区里按注入时钟做。
         _desktopWorkspace.ExpireUndoIfDue();
         // 退出确认打开期间旧悬浮窗已被销毁；取消后新建实例再恢复提醒派发。
-        if (_acceptanceReadOnly || _floatingWindowClosed)
+        if (_floatingWindowClosed)
         {
             return;
         }
@@ -664,70 +632,6 @@ public sealed partial class App : Application
         {
             _logger?.Error("NoteReminderFailed", exception);
         }
-    }
-
-    private void AdvanceAcceptanceState()
-    {
-        if (!_acceptanceReadOnly ||
-            _desktopWorkspace is null ||
-            _floatingWindow is null ||
-            _startupProtocol is null)
-        {
-            return;
-        }
-
-        var acceptanceState = _startupProtocol.ReadAcceptanceState();
-        if (string.Equals(acceptanceState, "released", StringComparison.Ordinal))
-        {
-            _desktopWorkspace.PersistMigrationIfNeeded();
-            if (!_startupProtocol.MarkAcceptanceReady())
-            {
-                throw new InvalidOperationException("验收迁移完成后无法确认 ready 状态。");
-            }
-
-            _logger?.Info("AcceptanceMigrationReady");
-            return;
-        }
-
-        if (!string.Equals(acceptanceState, "finalized", StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (_mainWindow is not null)
-        {
-            _mainWindow.IsEnabled = true;
-        }
-
-        _floatingWindow.IsEnabled = true;
-        try
-        {
-            _startupProtocol.WriteAcceptanceReady();
-        }
-        catch
-        {
-            if (_mainWindow is not null)
-            {
-                _mainWindow.IsEnabled = false;
-            }
-
-            _floatingWindow.IsEnabled = false;
-            throw;
-        }
-
-        _acceptanceReadOnly = false;
-        if (_instanceActivationServer is null &&
-            _instanceActivationScope is not null &&
-            _options is not null)
-        {
-            _instanceActivationServer = new InstanceActivationServer(
-                _instanceActivationScope,
-                HandleInstanceActivation,
-                _options.ActivationListenerBehavior,
-                LogInstanceActivationRequestReceived,
-                LogInstanceActivationListenerFailure);
-        }
-        _logger?.Info("AcceptanceReadOnlyReleased");
     }
 
     // #295 外部关闭：悬浮窗没走应用自己的关停就收到 Closed，说明它是被外部关掉的。任务计划停止任务时向进程的
@@ -770,11 +674,6 @@ public sealed partial class App : Application
         _floatingWindowClosed = false;
         AttachFloatingWindow(_floatingWindow);
         _floatingWindow.ExitRequested += (_, _) => ShutdownInteractiveHost();
-        if (_acceptanceReadOnly)
-        {
-            _floatingWindow.IsEnabled = false;
-        }
-
         _floatingWindow.Show();
         EnsureFloatingTrayController();
         _logger?.Info("FloatingWindowRecreatedAfterExternalClose");

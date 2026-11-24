@@ -595,74 +595,46 @@ internal static partial class ValidationExercises
         }
     }
 
-    public static bool RunStartupAcceptanceProtocolInterfaceBehavior()
+    public static bool RunRuntimeReceiptInterfaceBehavior()
     {
         var temporaryRoot = Path.Combine(
             Path.GetTempPath(),
-            $"MinminCountdown-startup-protocol-{Guid.NewGuid():N}");
-        var startupRequestPath = Path.Combine(temporaryRoot, "startup-request.json");
+            $"MinminCountdown-runtime-receipt-{Guid.NewGuid():N}");
         var runtimeStatusPath = Path.Combine(temporaryRoot, "runtime-status.json");
-        var acceptanceStatusPath = Path.Combine(temporaryRoot, "acceptance-status.json");
-        var adapterPath = Path.Combine(temporaryRoot, ApplicationPaths.AdapterFileName);
         Directory.CreateDirectory(temporaryRoot);
 
         try
         {
-            const string launchToken = "validation-startup-token";
-            var requestedAtUtc = new DateTimeOffset(2026, 7, 20, 2, 16, 0, TimeSpan.Zero);
-            WriteStartupRequest(startupRequestPath, launchToken, "active", requestedAtUtc: requestedAtUtc);
-            var ordinary = StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: false);
+            var pending = RuntimeProtocol.WriteWindowReady(runtimeStatusPath, "Pending");
             Must(
-                ordinary.LaunchToken != launchToken &&
-                !ordinary.AcceptanceReadOnly &&
-                ordinary.Request.AcceptanceState == "none" &&
-                ordinary.Request.MigrationUtc is null,
-                "普通启动不应导入相邻的验收请求。");
-            var active = StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true);
-            Must(
-                active.LaunchToken == launchToken &&
-                active.AcceptanceReadOnly &&
-                active.Request.AcceptanceState == "active" &&
-                active.Request.MigrationUtc == requestedAtUtc &&
-                active.RuntimeStatusPath == runtimeStatusPath &&
-                active.AcceptanceStatusPath == acceptanceStatusPath,
-                "启动验收 interface 未完整读取 active 请求。");
-
-            var runtimeReceipt = active.WriteWindowReady("Pending");
-            Must(
-                runtimeReceipt.SchemaVersion == 4 &&
-                runtimeReceipt.Stage == "window-ready" &&
-                runtimeReceipt.LaunchToken == launchToken &&
-                runtimeReceipt.ProcessId == Environment.ProcessId &&
-                runtimeReceipt.SessionId == Process.GetCurrentProcess().SessionId &&
-                runtimeReceipt.ApplicationPath == Path.GetFullPath(adapterPath) &&
-                runtimeReceipt.CalendarState == "Pending" &&
-                runtimeReceipt.TimeZoneId == "China Standard Time" &&
+                pending.SchemaVersion == 5 &&
+                pending.Stage == "window-ready" &&
+                pending.ProcessId == Environment.ProcessId &&
+                pending.SessionId == Process.GetCurrentProcess().SessionId &&
+                pending.ReadyAtUtc > DateTimeOffset.MinValue &&
+                pending.CalendarState == "Pending" &&
+                pending.TimeZoneId == "China Standard Time" &&
                 File.Exists(runtimeStatusPath),
-                "启动验收 interface 未写出匹配当前进程身份的 window-ready 回执。");
-            Must(
-                active.ReadAcceptanceState() == "active" &&
-                !active.MarkAcceptanceReady() &&
-                active.ReadAcceptanceState() == "active",
-                "启动验收 interface 未拒绝 active -> ready 非法推进。");
+                "运行状态 interface 未写出匹配当前进程身份的 tokenless window-ready 回执。");
 
-            WriteStartupRequest(startupRequestPath, launchToken, "released");
-            var released = StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true);
-            Must(
-                released.MarkAcceptanceReady() &&
-                released.ReadAcceptanceState() == "ready" &&
-                !released.MarkAcceptanceReady(),
-                "启动验收 interface 未完成 released -> ready 单次推进。");
+            using (var document = JsonDocument.Parse(File.ReadAllText(runtimeStatusPath)))
+            {
+                var fieldNames = document.RootElement.EnumerateObject()
+                    .Select(property => property.Name)
+                    .OrderBy(name => name, StringComparer.Ordinal);
+                Must(
+                    string.Join(",", fieldNames) ==
+                        "calendarState,processId,readyAtUtc,schemaVersion,sessionId,stage,timeZoneId",
+                    "运行状态 schema v5 的精确字段集包含启动令牌或 adapter 路径。");
+            }
 
-            // 安装器轮询启动请求时持有不共享删除的读句柄：released -> ready 要等句柄关闭后完成替换；
-            // 句柄超过约 2 秒退避预算仍不关闭时带路径失败，启动请求保持 released，不留临时文件。
-            WriteStartupRequest(startupRequestPath, launchToken, "released");
-            var installerPoll = new FileStream(startupRequestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // 安装器轮询回执时持有不共享删除的读句柄：日历状态更新要等句柄关闭后完成替换。
+            var installerPoll = new FileStream(runtimeStatusPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var installerPollClosed = Task.Delay(500).ContinueWith(_ => installerPoll.Dispose(), TaskScheduler.Default);
-            bool readyAfterPollClosed;
+            RuntimeReceipt ready;
             try
             {
-                readyAfterPollClosed = released.MarkAcceptanceReady();
+                ready = RuntimeProtocol.WriteWindowReady(runtimeStatusPath, "Ready");
             }
             finally
             {
@@ -670,16 +642,17 @@ internal static partial class ValidationExercises
             }
 
             Must(
-                readyAfterPollClosed && released.ReadAcceptanceState() == "ready",
-                "启动验收 interface 未等安装器读句柄关闭后完成 released -> ready。");
+                ready.CalendarState == "Ready" &&
+                JsonDocument.Parse(File.ReadAllText(runtimeStatusPath)).RootElement
+                    .GetProperty("calendarState").GetString() == "Ready",
+                "运行状态 interface 未等安装器读句柄关闭后原子更新日历状态。");
 
-            WriteStartupRequest(startupRequestPath, launchToken, "released");
             Exception? stuckPollFailure = null;
-            using (new FileStream(startupRequestPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (new FileStream(runtimeStatusPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 try
                 {
-                    released.MarkAcceptanceReady();
+                    RuntimeProtocol.WriteWindowReady(runtimeStatusPath, "Unavailable");
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
@@ -688,75 +661,20 @@ internal static partial class ValidationExercises
             }
 
             Must(
-                stuckPollFailure?.Message.Contains(startupRequestPath, StringComparison.Ordinal) == true &&
-                released.ReadAcceptanceState() == "released" &&
+                stuckPollFailure?.Message.Contains(runtimeStatusPath, StringComparison.Ordinal) == true &&
+                JsonDocument.Parse(File.ReadAllText(runtimeStatusPath)).RootElement
+                    .GetProperty("calendarState").GetString() == "Ready" &&
                 Directory.GetFiles(temporaryRoot, "*.tmp").Length == 0,
-                "启动验收 interface 未在读句柄超过退避预算时带路径失败并保持 released。");
-
-            WriteStartupRequest(startupRequestPath, launchToken, "finalized");
-            var finalized = StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true);
-            Must(
-                !finalized.AcceptanceReadOnly &&
-                finalized.Request.AcceptanceState == "finalized",
-                "finalized 启动请求必须解除只读状态。");
-
-            var acceptanceReceipt = released.WriteAcceptanceReady();
-            Must(
-                acceptanceReceipt.SchemaVersion == 1 &&
-                acceptanceReceipt.Stage == "finalized-ready" &&
-                acceptanceReceipt.LaunchToken == launchToken &&
-                acceptanceReceipt.ProcessId == Environment.ProcessId &&
-                acceptanceReceipt.SessionId == Process.GetCurrentProcess().SessionId &&
-                acceptanceReceipt.ApplicationPath == Path.GetFullPath(adapterPath) &&
-                File.Exists(acceptanceStatusPath),
-                "启动验收 interface 未写出匹配当前进程身份的 finalized-ready 回执。");
-
-            WriteStartupRequest(startupRequestPath, "different-token", "released");
-            Must(
-                released.ReadAcceptanceState() is null &&
-                !released.MarkAcceptanceReady(),
-                "启动验收 interface 未拒绝已变化的 launch token。");
-
-            WriteStartupRequest(startupRequestPath, launchToken, "unknown-stage");
-            MustThrow<InvalidDataException>(
-                () => StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true),
-                "启动验收 interface 未拒绝未知 acceptanceState。");
-            WriteStartupRequest(startupRequestPath, launchToken, "active", acceptanceReadOnly: false);
-            MustThrow<InvalidDataException>(
-                () => StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true),
-                "启动验收 interface 未拒绝 active 可编辑组合。");
-            WriteStartupRequest(startupRequestPath, launchToken, "finalized", acceptanceReadOnly: true);
-            MustThrow<InvalidDataException>(
-                () => StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true),
-                "启动验收 interface 未拒绝 finalized 只读组合。");
-            WriteStartupRequest(startupRequestPath, string.Empty, "active");
-            MustThrow<InvalidDataException>(
-                () => StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true),
-                "启动验收 interface 未拒绝空 launch token。");
-            File.WriteAllText(
-                startupRequestPath,
-                JsonSerializer.Serialize(new
-                {
-                    schemaVersion = 1,
-                    launchToken,
-                    acceptanceReadOnly = true,
-                    acceptanceState = "active"
-                }),
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            MustThrow<InvalidDataException>(
-                () => StartupAcceptanceProtocol.Load(temporaryRoot, requireStartupRequest: true),
-                "启动验收 interface 未拒绝缺失 requestedAtUtc 的请求。");
+                "运行状态 interface 未在持续占用时带路径失败、保留上一回执并清理临时文件。");
             MustThrow<ArgumentOutOfRangeException>(
-                () => active.WriteWindowReady("Broken"),
-                "启动验收 interface 未拒绝未知日历回执状态。");
+                () => RuntimeProtocol.WriteWindowReady(runtimeStatusPath, "Broken"),
+                "运行状态 interface 未拒绝未知日历回执状态。");
 
             return true;
         }
         finally
         {
-            DeleteFileIfPresent(acceptanceStatusPath);
             DeleteFileIfPresent(runtimeStatusPath);
-            DeleteFileIfPresent(startupRequestPath);
             if (Directory.Exists(temporaryRoot))
             {
                 Directory.Delete(temporaryRoot);

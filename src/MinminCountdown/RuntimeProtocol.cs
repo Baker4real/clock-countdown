@@ -1,18 +1,14 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace MinminCountdown;
 
 internal static class ApplicationPaths
 {
-    public const string AdapterFileName = "敏敏子倒计时.ps1";
-
-    // #275：应用根的判定不看 adapter 是否存在。安装布局里程序目录（应用自身与随包资源所在目录）
-    // 是应用根下的 app\，应用根总是它的上一级，与工作目录无关。源码构建输出等其他布局由调用方
-    // 经工作目录指定应用根；开发和测试运行另用命令行开关显式给出设置与日志位置。
+    // #275：安装布局里程序目录（应用自身与随包资源所在目录）是应用根下的 app\，应用根总是它的上一级，
+    // 与工作目录无关。源码构建输出等其他布局由调用方经工作目录指定应用根；开发和测试运行另用命令行开关
+    // 显式给出设置与日志位置。
     public static string ResolveApplicationRoot()
     {
         var programDirectory = Path.GetFullPath(AppContext.BaseDirectory)
@@ -40,153 +36,20 @@ internal static class RuntimeProtocol
         WriteIndented = true
     };
 
-    public static StartupRequest ReadStartupRequest(string startupRequestPath, bool required = false)
+    public static RuntimeReceipt WriteWindowReady(string path, string calendarState)
     {
-        if (!required)
-        {
-            return new StartupRequest(Guid.NewGuid().ToString("N"), false, "none", null);
-        }
-
-        try
-        {
-            return ParseStartupRequest(startupRequestPath);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
-        {
-            throw new InvalidDataException("启动请求存在但无法验证，拒绝以可编辑模式启动。", exception);
-        }
-    }
-
-    public static string ReadLaunchToken(string startupRequestPath) =>
-        ReadStartupRequest(startupRequestPath).LaunchToken;
-
-    public static string? ReadAcceptanceState(string startupRequestPath, string launchToken)
-    {
-        var request = ParseStartupRequest(startupRequestPath);
-        return string.Equals(request.LaunchToken, launchToken, StringComparison.Ordinal)
-            ? request.AcceptanceState
-            : null;
-    }
-
-    public static bool MarkAcceptanceReady(string startupRequestPath, string launchToken) =>
-        TransitionAcceptanceState(
-            startupRequestPath,
-            launchToken,
-            "released",
-            "ready",
-            "readyAtUtc",
-            acceptanceReadOnly: true);
-
-    private static StartupRequest ParseStartupRequest(string startupRequestPath)
-    {
-        using var document = JsonDocument.Parse(File.ReadAllText(startupRequestPath, Utf8NoBom));
-        if (!document.RootElement.TryGetProperty("schemaVersion", out var schemaElement) ||
-            schemaElement.ValueKind != JsonValueKind.Number ||
-            !schemaElement.TryGetInt32(out var schemaVersion) ||
-            schemaVersion != 1)
-        {
-            throw new InvalidDataException("启动请求 schemaVersion 必须为 1。");
-        }
-
-        if (!document.RootElement.TryGetProperty("launchToken", out var tokenElement))
-        {
-            throw new InvalidDataException("启动请求缺少 launchToken。");
-        }
-
-        var token = tokenElement.GetString();
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            throw new InvalidDataException("启动请求的 launchToken 无效。");
-        }
-
-        if (!document.RootElement.TryGetProperty("acceptanceReadOnly", out var readOnlyElement) ||
-            readOnlyElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-        {
-            throw new InvalidDataException("启动请求的 acceptanceReadOnly 必须是布尔值。");
-        }
-
-        var acceptanceReadOnly = readOnlyElement.GetBoolean();
-        var acceptanceState = document.RootElement.TryGetProperty("acceptanceState", out var stateElement)
-            ? stateElement.GetString()
-            : null;
-        if (acceptanceState is not ("active" or "released" or "ready" or "finalized" or "none"))
-        {
-            throw new InvalidDataException("启动请求的 acceptanceState 无效。");
-        }
-
-        var expectedReadOnly = acceptanceState is "active" or "released" or "ready";
-        if (acceptanceReadOnly != expectedReadOnly)
-        {
-            throw new InvalidDataException("启动请求的 acceptanceReadOnly 与 acceptanceState 不一致。");
-        }
-
-        if (!document.RootElement.TryGetProperty("requestedAtUtc", out var requestedAtElement) ||
-            requestedAtElement.ValueKind != JsonValueKind.String ||
-            !DateTimeOffset.TryParseExact(
-                requestedAtElement.GetString(),
-                "o",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind,
-                out var requestedAtUtc))
-        {
-            throw new InvalidDataException("启动请求的 requestedAtUtc 无效。");
-        }
-
-        return new StartupRequest(
-            token,
-            acceptanceReadOnly,
-            acceptanceState,
-            requestedAtUtc.ToUniversalTime());
-    }
-
-    private static bool TransitionAcceptanceState(
-        string startupRequestPath,
-        string launchToken,
-        string expectedState,
-        string nextState,
-        string timestampProperty,
-        bool acceptanceReadOnly)
-    {
-        var request = JsonNode.Parse(File.ReadAllText(startupRequestPath, Utf8NoBom)) as JsonObject
-            ?? throw new InvalidDataException("启动请求必须是 JSON object。");
-        var requestToken = request["launchToken"]?.GetValue<string>();
-        var currentState = request["acceptanceState"]?.GetValue<string>();
-        if (!string.Equals(requestToken, launchToken, StringComparison.Ordinal) ||
-            !string.Equals(currentState, expectedState, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        request["acceptanceReadOnly"] = acceptanceReadOnly;
-        request["acceptanceState"] = nextState;
-        request[timestampProperty] = DateTimeOffset.UtcNow.ToString("O");
-        WriteJsonAtomically(startupRequestPath, request);
-        return true;
-    }
-
-    public static RuntimeReceipt WriteWindowReady(
-        string path,
-        string launchToken,
-        string applicationPath,
-        string calendarState)
-    {
-        if (string.IsNullOrWhiteSpace(launchToken))
-        {
-            throw new InvalidOperationException("启动回执缺少 launchToken。");
-        }
-
         if (calendarState is not ("Pending" or "Ready" or "Unavailable"))
         {
             throw new ArgumentOutOfRangeException(nameof(calendarState));
         }
 
+        // schema v5 不再携带启动令牌或 adapter 路径。安装器经 processId 找到存活的已安装 EXE，
+        // 再独立核对其交互会话与载荷清单哈希。
         var receipt = new RuntimeReceipt(
-            4,
+            5,
             "window-ready",
-            launchToken,
             Environment.ProcessId,
             Process.GetCurrentProcess().SessionId,
-            Path.GetFullPath(applicationPath),
             DateTimeOffset.UtcNow,
             calendarState,
             "China Standard Time");
@@ -194,29 +57,7 @@ internal static class RuntimeProtocol
         return receipt;
     }
 
-    public static AcceptanceReadyReceipt WriteAcceptanceReady(
-        string path,
-        string launchToken,
-        string applicationPath)
-    {
-        if (string.IsNullOrWhiteSpace(launchToken))
-        {
-            throw new InvalidOperationException("验收确认回执缺少 launchToken。");
-        }
-
-        var receipt = new AcceptanceReadyReceipt(
-            1,
-            "finalized-ready",
-            launchToken,
-            Environment.ProcessId,
-            Process.GetCurrentProcess().SessionId,
-            Path.GetFullPath(applicationPath),
-            DateTimeOffset.UtcNow);
-        WriteJsonAtomically(path, receipt);
-        return receipt;
-    }
-
-    public static void WriteJsonAtomically<T>(string path, T value)
+    private static void WriteJsonAtomically<T>(string path, T value)
     {
         var resolvedPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(resolvedPath)
@@ -237,9 +78,9 @@ internal static class RuntimeProtocol
         }
     }
 
-    // 安装器轮询启动请求和回执时用 File.ReadAllText 打开的读句柄不共享删除，此刻覆盖目标报 Access denied；
+    // 安装器轮询运行状态回执时用 File.ReadAllText 打开的读句柄不共享删除，此刻覆盖目标报 Access denied；
     // 临时文件被扫描占住时报共享冲突。这类占用是瞬时的：按设置文件替换的同一预算退避约 2 秒，仍失败才把
-    // 路径写进消息抛出，不让一次轮询撞车变成验收中的未处理异常。
+    // 路径写进消息抛出，不让一次轮询撞车变成未处理异常。
     private static void ReplaceWithTransientRetry(string temporaryPath, string resolvedPath)
     {
         var elapsed = Stopwatch.StartNew();
@@ -271,95 +112,11 @@ internal static class RuntimeProtocol
     }
 }
 
-internal sealed class StartupAcceptanceProtocol
-{
-    private readonly string _applicationRoot;
-    private readonly string _startupRequestPath;
-    private readonly string _runtimeStatusPath;
-    private readonly string _acceptanceStatusPath;
-
-    private StartupAcceptanceProtocol(
-        string applicationRoot,
-        string startupRequestPath,
-        string runtimeStatusPath,
-        string acceptanceStatusPath,
-        StartupRequest request)
-    {
-        _applicationRoot = applicationRoot;
-        _startupRequestPath = startupRequestPath;
-        _runtimeStatusPath = runtimeStatusPath;
-        _acceptanceStatusPath = acceptanceStatusPath;
-        Request = request;
-    }
-
-    public StartupRequest Request { get; }
-
-    public string LaunchToken => Request.LaunchToken;
-
-    public bool AcceptanceReadOnly => Request.AcceptanceReadOnly;
-
-    public bool RecoveryWritesAllowed =>
-        !string.Equals(Request.AcceptanceState, "active", StringComparison.Ordinal);
-
-    public string RuntimeStatusPath => _runtimeStatusPath;
-
-    public string AcceptanceStatusPath => _acceptanceStatusPath;
-
-    public static StartupAcceptanceProtocol Load(string applicationRoot, bool requireStartupRequest)
-    {
-        var startupRequestPath = Path.Combine(applicationRoot, "startup-request.json");
-        return new StartupAcceptanceProtocol(
-            applicationRoot,
-            startupRequestPath,
-            Path.Combine(applicationRoot, "runtime-status.json"),
-            Path.Combine(applicationRoot, "acceptance-status.json"),
-            RuntimeProtocol.ReadStartupRequest(startupRequestPath, requireStartupRequest));
-    }
-
-    public RuntimeReceipt WriteWindowReady(string calendarState) =>
-        RuntimeProtocol.WriteWindowReady(
-            _runtimeStatusPath,
-            LaunchToken,
-            AdapterPath,
-            calendarState);
-
-    public string? ReadAcceptanceState() =>
-        RuntimeProtocol.ReadAcceptanceState(_startupRequestPath, LaunchToken);
-
-    public bool MarkAcceptanceReady() =>
-        RuntimeProtocol.MarkAcceptanceReady(_startupRequestPath, LaunchToken);
-
-    public AcceptanceReadyReceipt WriteAcceptanceReady() =>
-        RuntimeProtocol.WriteAcceptanceReady(
-            _acceptanceStatusPath,
-            LaunchToken,
-            AdapterPath);
-
-    private string AdapterPath => Path.Combine(_applicationRoot, ApplicationPaths.AdapterFileName);
-}
-
-internal sealed record StartupRequest(
-    string LaunchToken,
-    bool AcceptanceReadOnly,
-    string AcceptanceState,
-    DateTimeOffset? MigrationUtc);
-
 internal sealed record RuntimeReceipt(
     int SchemaVersion,
     string Stage,
-    string LaunchToken,
     int ProcessId,
     int SessionId,
-    string ApplicationPath,
     DateTimeOffset ReadyAtUtc,
     string CalendarState,
     string TimeZoneId);
-
-internal sealed record AcceptanceReadyReceipt(
-    int SchemaVersion,
-    string Stage,
-    string LaunchToken,
-    int ProcessId,
-    int SessionId,
-    string ApplicationPath,
-    DateTimeOffset ReadyAtUtc);

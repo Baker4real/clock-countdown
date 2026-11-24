@@ -257,7 +257,7 @@ $deployWindowsPorts = [pscustomobject]@{
                 CreationDate = [DateTimeOffset]::Parse('2026-11-14T09:40:00Z').LocalDateTime
                 StartedByTask = $startedByTask
             })
-        $receipt = [ordered]@{ schemaVersion = 4; stage = 'window-ready'; processId = $processId; sessionId = 3; readyAtUtc = '2026-11-14T09:40:02.0000000+00:00' }
+        $receipt = [ordered]@{ schemaVersion = 5; stage = 'window-ready'; processId = $processId; sessionId = 3; readyAtUtc = '2026-11-14T09:40:02.0000000+00:00'; calendarState = 'Pending'; timeZoneId = 'China Standard Time' }
         [System.IO.File]::WriteAllText((Join-Path (Split-Path -Parent (Split-Path -Parent $exePath)) 'runtime-status.json'), ($receipt | ConvertTo-Json), $deployUtf8)
     }
     MoveDirectory = {

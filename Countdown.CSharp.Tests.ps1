@@ -11,7 +11,7 @@ param(
     [string] $InstanceActivationTestState = 'FloatingVisible',
     [ValidateSet('Normal', 'Timeout', 'ProtocolMismatch', 'Disconnect', 'CallbackFailureOnce')]
     [string] $InstanceActivationListenerBehavior = 'Normal',
-    [ValidateSet('Normal', 'AcceptanceReadOnly', 'Finalized', 'ValidateExercise', 'StalledRecovery', 'OptionGuard', 'DiagnosticConcurrency', 'DisposeRace', 'Scope')]
+    [ValidateSet('Normal', 'ValidateExercise', 'StalledRecovery', 'DiagnosticConcurrency', 'DisposeRace', 'Scope')]
     [string] $InstanceActivationClientMode = 'Normal'
 )
 
@@ -1387,53 +1387,6 @@ function Invoke-InstanceActivationProcessTests {
         [System.IO.File]::WriteAllText($settingsPath, $settingsJson, $utf8NoBom)
         $settingsHashBefore = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash
 
-        if ($InstanceActivationClientMode -eq 'OptionGuard') {
-            $guardOutputPath = Join-Path $testRoot 'option-guard.stdout.txt'
-            $guardErrorPath = Join-Path $testRoot 'option-guard.stderr.txt'
-            $secondaryProcess = Start-Process -FilePath $dotnet -ArgumentList @(
-                $sourceApplication,
-                '--require-startup-request',
-                '--exit-after-ready-for-test',
-                '--instance-activation-test-state',
-                'FloatingVisible',
-                '--settings-file',
-                $settingsPath,
-                '--diagnostic-log-path',
-                $diagnosticPath
-            ) -WorkingDirectory $testRoot -PassThru -WindowStyle Hidden `
-                -RedirectStandardOutput $guardOutputPath -RedirectStandardError $guardErrorPath
-            if (-not $secondaryProcess.WaitForExit(5000)) {
-                throw 'test-only 与 required 参数组合未在有界期限内退出。'
-            }
-            $secondaryProcess.WaitForExit()
-            Assert-Equal 1 $secondaryProcess.ExitCode 'test-only 与 required 参数组合失败闭锁'
-            $guardError = Get-Content -LiteralPath $guardErrorPath -Raw -Encoding UTF8
-            Assert-Equal $true $guardError.Contains(
-                '实例激活测试参数不能与 --require-startup-request 组合',
-                [System.StringComparison]::Ordinal) '参数解析明确拒绝 test-only 与 required 组合'
-            Assert-Equal $settingsHashBefore (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash `
-                '参数失败不写隔离设置'
-            [pscustomobject]@{
-                Passed = $script:assertions
-                Failed = 0
-                InstanceActivationOnly = $true
-                ProcessScenarios = 1
-            } | ConvertTo-Json
-            return
-        }
-
-        if ($InstanceActivationClientMode -eq 'Finalized') {
-            $startupRequestPath = Join-Path $testRoot 'startup-request.json'
-            $activeRequest = [ordered]@{
-                schemaVersion = 1
-                launchToken = [guid]::NewGuid().ToString('N')
-                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-                acceptanceReadOnly = $true
-                acceptanceState = 'active'
-            } | ConvertTo-Json -Compress
-            [System.IO.File]::WriteAllText($startupRequestPath, $activeRequest, $utf8NoBom)
-        }
-
         $primaryArguments = @(
             $sourceApplication,
             '--exit-after-ready-for-test',
@@ -1493,30 +1446,7 @@ function Invoke-InstanceActivationProcessTests {
             '--diagnostic-log-path',
             $diagnosticPath
         )
-        if ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
-            $startupRequestPath = Join-Path $testRoot 'startup-request.json'
-            $startupRequest = [ordered]@{
-                schemaVersion = 1
-                launchToken = [guid]::NewGuid().ToString('N')
-                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-                acceptanceReadOnly = $true
-                acceptanceState = 'active'
-            } | ConvertTo-Json -Compress
-            [System.IO.File]::WriteAllText($startupRequestPath, $startupRequest, $utf8NoBom)
-            $secondaryArguments += '--require-startup-request'
-        }
-        elseif ($InstanceActivationClientMode -eq 'Finalized') {
-            $finalizedRequest = [ordered]@{
-                schemaVersion = 1
-                launchToken = [guid]::NewGuid().ToString('N')
-                requestedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-                acceptanceReadOnly = $false
-                acceptanceState = 'finalized'
-            } | ConvertTo-Json -Compress
-            [System.IO.File]::WriteAllText($startupRequestPath, $finalizedRequest, $utf8NoBom)
-            $secondaryArguments += '--require-startup-request'
-        }
-        elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
+        if ($InstanceActivationClientMode -eq 'ValidateExercise') {
             $secondaryArguments = @(
                 $sourceApplication,
                 '--validate-only',
@@ -1858,10 +1788,10 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             -RedirectStandardOutput $secondaryOutputPath -RedirectStandardError $secondaryErrorPath
         $expectedSecondaryExitCode = if (
             $InstanceActivationListenerBehavior -in @('Normal', 'CallbackFailureOnce') -and
-            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')
+            $InstanceActivationClientMode -in @('Normal', 'StalledRecovery')
         ) { 0 } else { 1 }
         if ($expectedSecondaryExitCode -eq 1 -and
-            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+            $InstanceActivationClientMode -in @('Normal', 'StalledRecovery')) {
             Close-InstanceActivationFailurePrompt -Process $secondaryProcess -DiagnosticLogPath $diagnosticPath
         }
         if (-not $secondaryProcess.WaitForExit(7000)) {
@@ -1876,10 +1806,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
             Get-Content -LiteralPath $diagnosticPath -Encoding UTF8 |
                 ForEach-Object { $_ | ConvertFrom-Json }
         )
-        $expectedClientEvent = if ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
-            'InstanceActivationSuppressedAcceptanceReadOnly'
-        }
-        elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
+        $expectedClientEvent = if ($InstanceActivationClientMode -eq 'ValidateExercise') {
             'FatalUnhandledException'
         }
         else {
@@ -1914,7 +1841,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
         $expectedRequestCount = if ($InstanceActivationListenerBehavior -eq 'CallbackFailureOnce') {
             2
         }
-        elseif ($InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+        elseif ($InstanceActivationClientMode -in @('Normal', 'StalledRecovery')) {
             1
         }
         else { 0 }
@@ -1949,7 +1876,7 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
         )
         Assert-Equal 0 $unexpectedActivationDiagnosticFields.Count '激活诊断只含结果与非内容身份/窗口状态'
         if ($InstanceActivationListenerBehavior -in @('Normal', 'CallbackFailureOnce') -and
-            $InstanceActivationClientMode -in @('Normal', 'Finalized', 'StalledRecovery')) {
+            $InstanceActivationClientMode -in @('Normal', 'StalledRecovery')) {
             Assert-Equal 1 $activationHandled.Count '主实例处理一次激活请求'
             Assert-Equal (
                 [string] $activationClientResult[0].activationScopeId
@@ -2043,9 +1970,6 @@ for ($index = 0; $index -lt $WriteCount; $index++) {
                         }
                 ).Count '主实例记录停滞连接超时且 listener 继续服务'
             }
-        }
-        elseif ($InstanceActivationClientMode -eq 'AcceptanceReadOnly') {
-            Assert-Equal 0 $activationHandled.Count 'acceptance-read-only 调用不发送激活请求'
         }
         elseif ($InstanceActivationClientMode -eq 'ValidateExercise') {
             Assert-Equal 0 $activationHandled.Count 'validate-only exercise 探针不发送激活请求'
@@ -2166,11 +2090,8 @@ function Invoke-InstanceActivationMatrixTests {
         [pscustomobject]@{ Name = 'Listener-ProtocolMismatch'; Arguments = @('-InstanceActivationListenerBehavior', 'ProtocolMismatch') },
         [pscustomobject]@{ Name = 'Listener-Disconnect'; Arguments = @('-InstanceActivationListenerBehavior', 'Disconnect') },
         [pscustomobject]@{ Name = 'Listener-CallbackFailureOnce'; Arguments = @('-InstanceActivationListenerBehavior', 'CallbackFailureOnce') },
-        [pscustomobject]@{ Name = 'Client-AcceptanceReadOnly'; Arguments = @('-InstanceActivationClientMode', 'AcceptanceReadOnly') },
-        [pscustomobject]@{ Name = 'Client-Finalized'; Arguments = @('-InstanceActivationClientMode', 'Finalized') },
         [pscustomobject]@{ Name = 'Client-ValidateExercise'; Arguments = @('-InstanceActivationClientMode', 'ValidateExercise') },
         [pscustomobject]@{ Name = 'Client-StalledRecovery'; Arguments = @('-InstanceActivationClientMode', 'StalledRecovery') },
-        [pscustomobject]@{ Name = 'Client-OptionGuard'; Arguments = @('-InstanceActivationClientMode', 'OptionGuard') },
         [pscustomobject]@{ Name = 'Client-DiagnosticConcurrency'; Arguments = @('-InstanceActivationClientMode', 'DiagnosticConcurrency') },
         [pscustomobject]@{ Name = 'Client-DisposeRace'; Arguments = @('-InstanceActivationClientMode', 'DisposeRace') },
         [pscustomobject]@{ Name = 'Client-Scope'; Arguments = @('-InstanceActivationClientMode', 'Scope') }
@@ -2434,7 +2355,6 @@ $verificationRunner = Join-Path $PSScriptRoot 'verification\MinminCountdown.Veri
 $windowVerificationRunner = Join-Path $PSScriptRoot 'window-verification\MinminCountdown.WindowVerification.exe'
 $application = Join-Path $PSScriptRoot 'app\MinminCountdown.exe'
 $settingsModule = Join-Path $PSScriptRoot 'Countdown.Settings.psm1'
-$runtimeModule = Join-Path $PSScriptRoot 'Countdown.Runtime.psm1'
 $pwsh = (Get-Process -Id $PID).Path
 
 if (-not (Test-Path -LiteralPath $verificationRunner -PathType Leaf)) {
@@ -2527,9 +2447,6 @@ Assert-Equal '' ($embeddedRetiredAssets -join ',') 'C# 单文件 EXE 不包含�
 if (-not (Test-Path -LiteralPath $settingsModule -PathType Leaf)) {
     throw "未找到 PowerShell 设置契约 module：$settingsModule"
 }
-if (-not (Test-Path -LiteralPath $runtimeModule -PathType Leaf)) {
-    throw "未找到 PowerShell 运行协议 module：$runtimeModule"
-}
 if (-not [string]::Equals(
         [System.IO.Path]::GetFileName($pwsh),
         'pwsh.exe',
@@ -2574,20 +2491,15 @@ $noteExerciseDiagnosticPath = Join-Path $testRoot 'note-exercise-application.jso
 $interactiveRoot = Join-Path $testRoot 'interactive-application-root'
 $interactiveApplicationDirectory = Join-Path $interactiveRoot 'app'
 $interactiveApplicationPath = Join-Path $interactiveApplicationDirectory 'MinminCountdown.exe'
-$interactiveProtocolApplicationPath = Join-Path $interactiveRoot '敏敏子倒计时.ps1'
 $interactiveSettingsPath = Join-Path $interactiveRoot 'settings.json'
-$interactiveStartupRequestPath = Join-Path $interactiveRoot 'startup-request.json'
 $interactiveRuntimeStatusPath = Join-Path $interactiveRoot 'runtime-status.json'
-$interactiveAcceptanceStatusPath = Join-Path $interactiveRoot 'acceptance-status.json'
 $interactiveDiagnosticPath = Join-Path $interactiveRoot 'logs\application.jsonl'
 $interactiveLaunchOutputPath = Join-Path $testRoot 'interactive-application.stdout.txt'
 $interactiveLaunchErrorPath = Join-Path $testRoot 'interactive-application.stderr.txt'
 $duplicateApplicationOutputPath = Join-Path $testRoot 'duplicate-application.stdout.txt'
 $duplicateApplicationErrorPath = Join-Path $testRoot 'duplicate-application.stderr.txt'
-$requiredRequestOutputPath = Join-Path $testRoot 'required-request.stdout.txt'
-$requiredRequestErrorPath = Join-Path $testRoot 'required-request.stderr.txt'
-$unknownSchemaOutputPath = Join-Path $testRoot 'unknown-schema.stdout.txt'
-$unknownSchemaErrorPath = Join-Path $testRoot 'unknown-schema.stderr.txt'
+$retiredStartupOptionOutputPath = Join-Path $testRoot 'retired-startup-option.stdout.txt'
+$retiredStartupOptionErrorPath = Join-Path $testRoot 'retired-startup-option.stderr.txt'
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $mutexHolderProcess = $null
 $interactiveLaunchProcess = $null
@@ -2893,11 +2805,18 @@ exit 23
         Assert-Equal $true $Launch.Exited "$Name 在有界期限内按测试开关自退；$detail"
         Assert-Equal 0 $Launch.ExitCode "$Name 正常退出；$detail"
         Assert-Equal $true ($null -ne $Launch.Receipt) "$Name 在安装根写出运行状态回执；$detail"
-        Assert-Equal 4 ([int] $Launch.Receipt.schemaVersion) "$Name 回执 schemaVersion"
+        Assert-Equal 5 ([int] $Launch.Receipt.schemaVersion) "$Name 回执 schemaVersion"
         Assert-Equal 'window-ready' ([string] $Launch.Receipt.stage) "$Name 回执在悬浮窗首帧后写出"
         Assert-Equal $Launch.ProcessId ([int] $Launch.Receipt.processId) "$Name 回执属于这次启动的 EXE"
         Assert-Equal ([System.Diagnostics.Process]::GetCurrentProcess().SessionId) ([int] $Launch.Receipt.sessionId) "$Name 回执属于当前会话"
         Assert-Equal 'Ready' ([string] $Launch.Receipt.calendarState) "$Name 离线时节假日日历就绪；$detail"
+        Assert-Equal 'China Standard Time' ([string] $Launch.Receipt.timeZoneId) "$Name 回执保留北京时间时区标识"
+        $receiptFields = @($Launch.Receipt.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+        Assert-Equal 'calendarState,processId,readyAtUtc,schemaVersion,sessionId,stage,timeZoneId' ($receiptFields -join ',') `
+            "$Name 回执精确字段集不含启动令牌或 adapter 路径"
+        $receiptReadyAtUtc = [DateTimeOffset]::MinValue
+        Assert-Equal $true ([DateTimeOffset]::TryParse([string] $Launch.Receipt.readyAtUtc, [ref] $receiptReadyAtUtc)) `
+            "$Name 回执保留可解析的首帧 UTC 时刻"
     }
 
     $directLaunchRoot = Join-Path $testRoot 'direct-program-launch'
@@ -2930,6 +2849,61 @@ exit 23
     }
     $directSettings = Get-Content -LiteralPath $directSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
     Assert-Equal 10 ([int] $directSettings.schemaVersion) '直接启动可编辑：安装根的旧版设置被迁移并写回原处'
+    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $directInstallRoot 'startup-request.json')) `
+        '缺少启动请求的正常启动不创建启动请求'
+    Assert-Equal $false (Test-Path -LiteralPath (Join-Path $directInstallRoot 'acceptance-status.json')) `
+        '缺少验收文件的正常启动不创建验收确认回执'
+
+    # 正常启动完全不消费旧安装器文件。每个反例都重新放入旧设置，迁移保存成功证明窗口没有进入只读验收模式。
+    $legacyStartupCases = @(
+        [pscustomobject]@{
+            Name = 'active 启动请求与损坏验收文件'
+            StartupRequest = '{"schemaVersion":1,"launchToken":"legacy-active","requestedAtUtc":"2026-07-20T02:16:00.0000000+00:00","acceptanceReadOnly":true,"acceptanceState":"active"}'
+            AcceptanceStatus = '{broken-json'
+        },
+        [pscustomobject]@{
+            Name = '损坏启动请求'
+            StartupRequest = '{broken-json'
+            AcceptanceStatus = $null
+        },
+        [pscustomobject]@{
+            Name = 'finalized 启动请求'
+            StartupRequest = '{"schemaVersion":1,"launchToken":"legacy-finalized","requestedAtUtc":"2026-07-20T02:16:00.0000000+00:00","acceptanceReadOnly":false,"acceptanceState":"finalized"}'
+            AcceptanceStatus = '{"schemaVersion":1,"stage":"finalized-ready","launchToken":"legacy-finalized"}'
+        },
+        [pscustomobject]@{
+            Name = '未知 schema 启动请求'
+            StartupRequest = '{"schemaVersion":999,"launchToken":"legacy-unknown","requestedAtUtc":"2026-07-20T02:16:00.0000000+00:00","acceptanceReadOnly":true,"acceptanceState":"active"}'
+            AcceptanceStatus = $null
+        }
+    )
+    foreach ($legacyCase in $legacyStartupCases) {
+        $legacyStartupPath = Join-Path $directInstallRoot 'startup-request.json'
+        $legacyAcceptancePath = Join-Path $directInstallRoot 'acceptance-status.json'
+        [System.IO.File]::WriteAllText($legacyStartupPath, $legacyCase.StartupRequest, $utf8NoBom)
+        if ($null -eq $legacyCase.AcceptanceStatus) {
+            if (Test-Path -LiteralPath $legacyAcceptancePath) {
+                Remove-Item -LiteralPath $legacyAcceptancePath -Force
+            }
+        }
+        else {
+            [System.IO.File]::WriteAllText($legacyAcceptancePath, $legacyCase.AcceptanceStatus, $utf8NoBom)
+        }
+        $legacyStartupHash = (Get-FileHash -LiteralPath $legacyStartupPath -Algorithm SHA256).Hash
+        [System.IO.File]::WriteAllText($directSettingsPath, $fixture, $utf8NoBom)
+        $legacyLaunch = Invoke-DirectProgramLaunch `
+            -Application $directProgramApplication `
+            -InstallRoot $directInstallRoot `
+            -WorkingDirectory $directDecoyRoot
+        Assert-DirectProgramLaunchReady -Launch $legacyLaunch -DecoyRoot $directDecoyRoot -Name $legacyCase.Name
+        $legacySettings = Get-Content -LiteralPath $directSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-Equal 10 ([int] $legacySettings.schemaVersion) "$($legacyCase.Name) 不阻止旧设置迁移保存"
+        Assert-Equal $legacyStartupHash (Get-FileHash -LiteralPath $legacyStartupPath -Algorithm SHA256).Hash `
+            "$($legacyCase.Name) 不被正常启动改写"
+        $unexpectedAcceptanceCreated = $null -eq $legacyCase.AcceptanceStatus -and
+            (Test-Path -LiteralPath $legacyAcceptancePath -PathType Leaf)
+        Assert-Equal $false $unexpectedAcceptanceCreated "$($legacyCase.Name) 不创建验收确认回执"
+    }
 
     # 安装根缓存优先于随包数据：程序目录里当年的随包数据换成无效内容、安装根放一份有效缓存，
     # 日历仍就绪只能来自安装根的节假日缓存。
@@ -3100,7 +3074,6 @@ exit 23
     [System.IO.File]::WriteAllText($fixturePath, $fixture, $utf8NoBom)
     $fixtureHash = (Get-FileHash -LiteralPath $fixturePath -Algorithm SHA256).Hash
     Import-Module -Name $settingsModule -Force
-    Import-Module -Name $runtimeModule -Force
     $powerShellState = ConvertFrom-CountdownSettingsObject -Settings (
         Get-Content -LiteralPath $fixturePath -Raw -Encoding UTF8 | ConvertFrom-Json
     )
@@ -4042,7 +4015,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $requestNoteDeleteBody -notmatch 'NoteDeleted') '悬浮窗删除便签确认写明 10 秒可撤销，确认后才带撤销提交、在悬浮窗就地登记撤销载荷（#214 源码契约）'
     $updateInteractiveStateBody = [regex]::Match(
         $appHostSource,
-        'private void UpdateInteractiveState\(\).*?\r?\n    private void AdvanceAcceptanceState',
+        'private void UpdateInteractiveState\(\).*?\r?\n    private void ShutdownAfterExternalClose',
         [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
     Assert-Equal $true (
         $updateInteractiveStateBody -match '_desktopWorkspace\.ExpireUndoIfDue\(\);') '应用节拍驱动工作区检查 10 秒撤销是否到期；validate-only 没有这个节拍（#214 源码契约）'
@@ -5186,34 +5159,19 @@ function Get-RejectionMessage([string[]] $Arguments) {
 
     New-Item -ItemType Directory -Path $interactiveApplicationDirectory | Out-Null
     Copy-CountdownApplicationPayload -SourceHost $application -DestinationHost $interactiveApplicationPath
-    $requiredRequestProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @('--require-startup-request') `
+    $retiredStartupOptionProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @('--require-startup-request') `
         -PassThru -Wait -WindowStyle Hidden `
-        -RedirectStandardOutput $requiredRequestOutputPath `
-        -RedirectStandardError $requiredRequestErrorPath
+        -RedirectStandardOutput $retiredStartupOptionOutputPath `
+        -RedirectStandardError $retiredStartupOptionErrorPath
     try {
-        Assert-Equal 1 $requiredRequestProcess.ExitCode '生产模式缺失启动请求时 C# 宿主 fail-closed'
-        $requiredRequestError = Get-Content -LiteralPath $requiredRequestErrorPath -Raw -Encoding UTF8
-        Assert-Equal $true $requiredRequestError.Contains('启动请求存在但无法验证', [System.StringComparison]::Ordinal) '生产模式报告缺失启动请求而不进入可编辑窗口'
+        Assert-Equal 1 $retiredStartupOptionProcess.ExitCode '已退役启动请求开关按未知参数失败'
+        $retiredStartupOptionError = Get-Content -LiteralPath $retiredStartupOptionErrorPath -Raw -Encoding UTF8
+        Assert-Equal $true $retiredStartupOptionError.Contains(
+            '不支持的启动参数：--require-startup-request',
+            [System.StringComparison]::Ordinal) '已退役启动请求开关不再被 HostOptions 接受'
     }
     finally {
-        $requiredRequestProcess.Dispose()
-    }
-    [System.IO.File]::WriteAllText(
-        $interactiveStartupRequestPath,
-        '{"schemaVersion":999,"launchToken":"unknown-schema","acceptanceState":"active"}',
-        $utf8NoBom
-    )
-    $unknownSchemaProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList @('--require-startup-request') `
-        -PassThru -Wait -WindowStyle Hidden `
-        -RedirectStandardOutput $unknownSchemaOutputPath `
-        -RedirectStandardError $unknownSchemaErrorPath
-    try {
-        Assert-Equal 1 $unknownSchemaProcess.ExitCode '生产模式拒绝未知启动请求 schema'
-        $unknownSchemaError = Get-Content -LiteralPath $unknownSchemaErrorPath -Raw -Encoding UTF8
-        Assert-Equal $true $unknownSchemaError.Contains('启动请求存在但无法验证', [System.StringComparison]::Ordinal) 'C# 对未知启动请求 schema 保持 fail-closed'
-    }
-    finally {
-        $unknownSchemaProcess.Dispose()
+        $retiredStartupOptionProcess.Dispose()
     }
     $interactiveLegacySettings = $fixture | ConvertFrom-Json
     $interactiveLegacySettings.schemaVersion = 9
@@ -5227,29 +5185,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
                 intervalMinutes = 1
             }) -Force
     }
-    $interactiveMigrationUtc = [DateTimeOffset] '2026-07-20T02:16:00Z'
     $interactiveLegacyJson = $interactiveLegacySettings | ConvertTo-Json -Depth 20
     [System.IO.File]::WriteAllText($interactiveSettingsPath, $interactiveLegacyJson, $utf8NoBom)
     $interactiveLegacyHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
-    $interactiveLaunchToken = [guid]::NewGuid().ToString('N')
-    $interactiveStartupRequest = [ordered]@{
-        schemaVersion = 1
-        launchToken = $interactiveLaunchToken
-        requestedAtUtc = $interactiveMigrationUtc.ToString('o')
-        acceptanceReadOnly = $true
-        acceptanceState = 'active'
-    } | ConvertTo-Json -Compress
-    [System.IO.File]::WriteAllText(
-        $interactiveStartupRequestPath,
-        $interactiveStartupRequest,
-        $utf8NoBom
-    )
+    $interactiveMigrationStartedUtc = [DateTimeOffset]::UtcNow
 
     $interactiveApplicationArguments = @(
-        '--require-startup-request',
         '--exit-after-ready-for-test',
-        # 自退间隔 15 秒：该段的重复实例门（产品内固定 3 秒激活超时+提示窗收口）与验收迁移
-        # 都发生在窗口就绪之后，间隔必须大于该流程的最差耗时；15 秒仍是全段最短的防退化值。
+        # 自退间隔 15 秒：首帧、真实第二实例激活与迁移保存都完成后再验证正常自退。
         '--exit-after-ready-seconds',
         '15',
         '--settings-file',
@@ -5257,7 +5200,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '--diagnostic-log-path',
         ('"{0}"' -f $interactiveDiagnosticPath)
     )
-    Write-TestSegmentTiming -Name 'StartupRequestModes'
+    Write-TestSegmentTiming -Name 'InteractiveStartupSetup'
     $interactiveLaunchProcess = Start-Process -FilePath $interactiveApplicationPath -ArgumentList $interactiveApplicationArguments `
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $interactiveLaunchOutputPath `
@@ -5283,15 +5226,12 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $runtimeReceipt = Get-Content -LiteralPath $interactiveRuntimeStatusPath -Raw -Encoding UTF8 |
         ConvertFrom-Json
     $interactiveReadyObservedUtc = [DateTimeOffset]::UtcNow
-    Assert-Equal 4 ([int] $runtimeReceipt.schemaVersion) '交互启动回执 schemaVersion'
+    Assert-Equal 5 ([int] $runtimeReceipt.schemaVersion) '交互启动回执 schemaVersion'
     Assert-Equal 'window-ready' ([string] $runtimeReceipt.stage) '交互启动回执阶段'
-    Assert-Equal $interactiveLaunchToken ([string] $runtimeReceipt.launchToken) '交互启动回执令牌'
     Assert-Equal 'China Standard Time' ([string] $runtimeReceipt.timeZoneId) '交互启动回执时区'
-    Assert-Equal (
-        [System.IO.Path]::GetFullPath($interactiveProtocolApplicationPath)
-    ) (
-        [System.IO.Path]::GetFullPath([string] $runtimeReceipt.applicationPath)
-    ) '交互启动回执保持启动协议的应用路径身份（#292 后续退役）'
+    $interactiveReceiptFields = @($runtimeReceipt.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    Assert-Equal 'calendarState,processId,readyAtUtc,schemaVersion,sessionId,stage,timeZoneId' ($interactiveReceiptFields -join ',') `
+        '交互启动回执精确字段集不含启动令牌或 adapter 路径'
     Assert-Equal (
         [System.Diagnostics.Process]::GetCurrentProcess().SessionId
     ) (
@@ -5307,9 +5247,34 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [System.IO.Path]::GetFullPath($interactiveApplicationProcess.Path)
     ) '交互启动 PID 对应临时应用根内 C# EXE'
     Assert-Equal $interactiveLaunchProcess.Id ([int] $runtimeReceipt.processId) 'window-ready 回执属于直接启动的 C# EXE 进程'
-    $acceptanceDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
-    Assert-Equal $true $acceptanceDiagnostic.Contains('AcceptanceReadOnlyEnabled', [System.StringComparison]::Ordinal) '延期验收启动时 C# 窗口进入只读状态'
+    $interactiveDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
+    Assert-Equal $false $interactiveDiagnostic.Contains('AcceptanceReadOnlyEnabled', [System.StringComparison]::Ordinal) '正常启动没有只读验收模式'
 
+    $interactiveMigratedJson = Get-Content -LiteralPath $interactiveSettingsPath -Raw -Encoding UTF8
+    $interactiveMigratedHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
+    $interactiveMigratedSettings = $interactiveMigratedJson | ConvertFrom-Json
+    $interactiveMigrationFinishedUtc = [DateTimeOffset]::UtcNow
+    Assert-Equal 10 ([int] $interactiveMigratedSettings.schemaVersion) '正常启动把 schema v9 写回 canonical v10'
+    Assert-Equal 'Auto' ([string] $interactiveMigratedSettings.themePreference) '正常启动保留 schema v9 自动主题偏好'
+    Assert-Equal $false ($interactiveLegacyHash -eq $interactiveMigratedHash) '正常启动实际写回迁移后的设置'
+    $interactiveRuleId = [string] $interactiveMigratedSettings.notes[0].reminderRules[0].id
+    $interactiveReminderState = $interactiveMigratedSettings.reminderStates.PSObject.Properties[$interactiveRuleId].Value
+    $interactiveMigrationUtc = ([DateTimeOffset] $interactiveReminderState.handledThroughUtc).ToUniversalTime()
+    Assert-Equal $true ($interactiveMigrationUtc -ge $interactiveMigrationStartedUtc -and $interactiveMigrationUtc -le $interactiveMigrationFinishedUtc) `
+        '正常迁移使用本次启动的实时时钟，而不是安装器请求冻结时刻'
+    Assert-Equal $true (
+        Test-CountdownSettingsDeploymentTransition `
+            -BeforeHash $interactiveLegacyHash `
+            -AfterHash $interactiveMigratedHash `
+            -BeforeJson $interactiveLegacyJson `
+            -AfterJson $interactiveMigratedJson `
+            -MigrationUtc $interactiveMigrationUtc
+    ) '正常启动迁移保持 schema v9 数据语义'
+
+    $interactiveLegacyStartupPath = Join-Path $interactiveRoot 'startup-request.json'
+    $interactiveLegacyAcceptancePath = Join-Path $interactiveRoot 'acceptance-status.json'
+    [System.IO.File]::WriteAllText($interactiveLegacyStartupPath, '{broken-startup-request', $utf8NoBom)
+    [System.IO.File]::WriteAllText($interactiveLegacyAcceptancePath, '{broken-acceptance-status', $utf8NoBom)
     $duplicateApplicationArguments = @(
         '--settings-file',
         ('"{0}"' -f $interactiveSettingsPath),
@@ -5320,7 +5285,6 @@ function Get-RejectionMessage([string[]] $Arguments) {
         -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput $duplicateApplicationOutputPath `
         -RedirectStandardError $duplicateApplicationErrorPath
-    Close-InstanceActivationFailurePrompt -Process $duplicateApplicationProcess -DiagnosticLogPath $interactiveDiagnosticPath
     if (-not $duplicateApplicationProcess.WaitForExit(7000)) {
         $duplicateError = if (Test-Path -LiteralPath $duplicateApplicationErrorPath -PathType Leaf) {
             Get-Content -LiteralPath $duplicateApplicationErrorPath -Raw
@@ -5334,12 +5298,13 @@ function Get-RejectionMessage([string[]] $Arguments) {
         throw "真实第二个 C# EXE 未在单实例门禁期限内退出；首实例已退出=$($interactiveApplicationProcess.HasExited)；stderr=$duplicateError；diagnostic=$duplicateLog"
     }
     $duplicateApplicationProcess.WaitForExit()
-    Assert-Equal 1 $duplicateApplicationProcess.ExitCode '验收只读主实例不提供交互激活 ACK'
+    Assert-Equal 0 $duplicateApplicationProcess.ExitCode '损坏旧启动文件不妨碍第二实例收到交互激活 ACK'
     $interactiveApplicationProcess.Refresh()
-    Assert-Equal $false $interactiveApplicationProcess.HasExited '第二实例激活超时后首个 C# EXE 仍存活'
+    Assert-Equal $false $interactiveApplicationProcess.HasExited '第二实例激活后首个 C# EXE 仍存活'
     $duplicateDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
-    Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationTimedOut', [System.StringComparison]::Ordinal) '验收只读主实例未监听时第二实例记录超时诊断'
-    Assert-Equal $false $duplicateDiagnostic.Contains('InstanceActivationSucceeded', [System.StringComparison]::Ordinal) '验收只读阶段不冒充恢复成功'
+    Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationSucceeded', [System.StringComparison]::Ordinal) '普通主实例监听时第二实例记录激活成功'
+    Assert-Equal $true $duplicateDiagnostic.Contains('InstanceActivationHandled', [System.StringComparison]::Ordinal) '普通主实例处理第二实例恢复请求'
+    Assert-Equal $false $duplicateDiagnostic.Contains('InstanceActivationTimedOut', [System.StringComparison]::Ordinal) '正常单实例激活不再等待只读验收超时'
     $interactiveEntries = @(
         Get-Content -LiteralPath $interactiveDiagnosticPath -Encoding UTF8 |
             ForEach-Object { $_ | ConvertFrom-Json }
@@ -5356,46 +5321,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $duplicateApplicationProcess.Dispose()
     $duplicateApplicationProcess = $null
 
-    Assert-Equal $interactiveLegacyHash (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash 'active 验收期间 settings 文件保持只读'
-    Assert-Equal $true (Complete-CountdownStartupRequest -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '同 token 原子授权 C# 持久化 schema 迁移'
-    [void] (Wait-CountdownStartupRequestState -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken -ExpectedState ready -TimeoutSeconds 30 -PollMilliseconds 50)
-    $acceptanceReadyDeadline = [DateTimeOffset]::UtcNow.AddSeconds(30)
-    do {
-        $acceptanceReadyDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
-        if ($acceptanceReadyDiagnostic.Contains('AcceptanceMigrationReady', [System.StringComparison]::Ordinal)) { break }
-        Start-Sleep -Milliseconds 50
-    } while ([DateTimeOffset]::UtcNow -lt $acceptanceReadyDeadline)
-    Assert-Equal $true $acceptanceReadyDiagnostic.Contains('AcceptanceMigrationReady', [System.StringComparison]::Ordinal) 'C# 持久化迁移后确认 ready 且窗口继续只读'
-    $interactiveMigratedJson = Get-Content -LiteralPath $interactiveSettingsPath -Raw -Encoding UTF8
-    $interactiveMigratedHash = (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash
-    $interactiveMigratedSettings = $interactiveMigratedJson | ConvertFrom-Json
-    Assert-Equal 10 ([int] $interactiveMigratedSettings.schemaVersion) 'released 阶段把 schema v9 写回 canonical v10'
-    Assert-Equal 'Auto' ([string] $interactiveMigratedSettings.themePreference) 'released 阶段保留 schema v9 自动主题偏好'
-    Assert-Equal $false ($interactiveLegacyHash -eq $interactiveMigratedHash) 'released 阶段实际写回迁移后的设置'
-    $interactiveRuleId = [string] $interactiveMigratedSettings.notes[0].reminderRules[0].id
-    $interactiveReminderState = $interactiveMigratedSettings.reminderStates.PSObject.Properties[$interactiveRuleId].Value
-    Assert-Equal $interactiveMigrationUtc ([DateTimeOffset] $interactiveReminderState.handledThroughUtc).ToUniversalTime() 'C# 初次迁移使用启动请求冻结时刻而非后续墙钟'
-    Assert-Equal $true (
-        Test-CountdownSettingsDeploymentTransition `
-            -BeforeHash $interactiveLegacyHash `
-            -AfterHash $interactiveMigratedHash `
-            -BeforeJson $interactiveLegacyJson `
-            -AfterJson $interactiveMigratedJson `
-            -MigrationUtc $interactiveMigrationUtc
-    ) 'released 阶段迁移保持 schema v9 数据语义'
-    Assert-Equal $true (Set-CountdownStartupRequestFinalized -Path $interactiveStartupRequestPath -LaunchToken $interactiveLaunchToken) '事务提交标记只把 ready 请求推进为 finalized'
-    $acceptanceReleaseDeadline = [DateTimeOffset]::UtcNow.AddSeconds(5)
-    do {
-        $acceptanceReleaseDiagnostic = Read-SharedTestEvidenceText -Path $interactiveDiagnosticPath
-        if ($acceptanceReleaseDiagnostic.Contains('AcceptanceReadOnlyReleased', [System.StringComparison]::Ordinal)) { break }
-        Start-Sleep -Milliseconds 50
-    } while ([DateTimeOffset]::UtcNow -lt $acceptanceReleaseDeadline)
-    Assert-Equal $true $acceptanceReleaseDiagnostic.Contains('AcceptanceReadOnlyReleased', [System.StringComparison]::Ordinal) 'finalized 后 C# 窗口解除只读状态'
-    $acceptanceStatus = Get-Content -LiteralPath $interactiveAcceptanceStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    Assert-Equal 1 ([int] $acceptanceStatus.schemaVersion) '应用解锁确认回执使用 schema v1'
-    Assert-Equal 'finalized-ready' ([string] $acceptanceStatus.stage) '应用真实观察 finalized 后写出确认回执'
-    Assert-Equal $interactiveLaunchToken ([string] $acceptanceStatus.launchToken) '应用解锁确认回执绑定同一 token'
-    Assert-Equal ([int] $runtimeReceipt.processId) ([int] $acceptanceStatus.processId) '应用解锁确认回执绑定同一 C# PID'
+    Assert-Equal $interactiveMigratedHash (Get-FileHash -LiteralPath $interactiveSettingsPath -Algorithm SHA256).Hash '第二实例激活不写设置'
+    Assert-Equal '{broken-startup-request' ([System.IO.File]::ReadAllText($interactiveLegacyStartupPath)) '第二实例不读取或改写损坏启动请求'
+    Assert-Equal '{broken-acceptance-status' ([System.IO.File]::ReadAllText($interactiveLegacyAcceptancePath)) '第二实例不读取或改写验收状态文件'
 
     # Nested HWND/IsActive ACK must not share the desktop foreground with this host.
     $interactiveSelfExitWait = [System.Diagnostics.Stopwatch]::StartNew()
@@ -5454,23 +5382,21 @@ function Get-RejectionMessage([string[]] $Arguments) {
         }
     }
 
-    $finalizedActivationOutput = Invoke-CheckedNativeCommand `
+    $ordinaryActivationOutput = Invoke-CheckedNativeCommand `
         -FilePath $pwsh `
-        -Operation '使用独立 canonical v10 设置验证 finalized 后实例激活' `
+        -Operation '使用独立 canonical v10 设置验证普通实例激活' `
         -ArgumentList @(
             '-NoLogo',
             '-NoProfile',
             '-File',
             $PSCommandPath,
-            '-InstanceActivationOnly',
-            '-InstanceActivationClientMode',
-            'Finalized'
+            '-InstanceActivationOnly'
         )
-    $finalizedActivation = $finalizedActivationOutput | ConvertFrom-Json
-    Assert-Equal 0 ([int] $finalizedActivation.Failed) '独立 finalized 激活场景全部通过'
-    Assert-Equal $true ([bool] $finalizedActivation.InstanceActivationOnly) '独立 finalized 激活使用真实进程 seam'
-    Assert-Equal 1 ([int] $finalizedActivation.ProcessScenarios) '独立 finalized 激活只运行一个进程场景'
-    Write-TestSegmentTiming -Name 'FinalizedActivation'
+    $ordinaryActivation = $ordinaryActivationOutput | ConvertFrom-Json
+    Assert-Equal 0 ([int] $ordinaryActivation.Failed) '独立普通激活场景全部通过'
+    Assert-Equal $true ([bool] $ordinaryActivation.InstanceActivationOnly) '独立普通激活使用真实进程 seam'
+    Assert-Equal 1 ([int] $ordinaryActivation.ProcessScenarios) '独立普通激活只运行一个进程场景'
+    Write-TestSegmentTiming -Name 'OrdinaryActivation'
     Write-TestSegmentTotal
     [pscustomobject]@{
         Passed = $script:assertions

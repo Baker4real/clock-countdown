@@ -58,7 +58,6 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
 - `Countdown.Notes.psm1`：便签候选状态变更与持久化事务
 - `Countdown.Tags.psm1`：共享标签的领域模型、筛选语义与显示名称解析
-- `Countdown.Runtime.psm1`：#292 待退役启动验收协议的 PowerShell 一侧，包括启动令牌、窗口首帧回执与有界等待；诊断日志只由 C# 写入
 - `Countdown.Settings.psm1`：设置 schema 迁移、校验、原子写入与部署等价校验
 - `Countdown.Validation.psm1`：本机 Core、C# 与应用 validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与 SHA-256 契约
@@ -211,7 +210,7 @@ pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1 -CheckOnly
 ./app/MinminCountdown.exe
 ```
 
-登录任务直接执行安装根下的 `app\MinminCountdown.exe`，不带参数并以普通优先级运行；桌面入口是指向同一 EXE 的 `敏敏子倒计时.lnk` 快捷方式。正常登录和双击都不经过 PowerShell、WMI 或其他启动器，也不读取安装器留下的启动请求。只有 #292 待退役的显式验收路径还使用启动请求与过渡回执身份。
+登录任务直接执行安装根下的 `app\MinminCountdown.exe`，不带参数并以普通优先级运行；桌面入口是指向同一 EXE 的 `敏敏子倒计时.lnk` 快捷方式。正常登录和双击都不经过 PowerShell、WMI 或其他启动器，也不读取安装器留下的文件。悬浮窗首帧后写出的 `runtime-status.json` 使用 schema v5，精确字段为 `schemaVersion`、`stage`、`processId`、`sessionId`、`readyAtUtc`、`calendarState`、`timeZoneId`；不含启动令牌或 adapter 路径。安装器经回执 PID 核对存活 EXE 的映像路径、交互会话与载荷清单哈希。
 
 宿主位于 `app\` 时，应用根总是它的上一级，不随工作目录变化；其他布局以调用方给的工作目录或显式设置/诊断路径为准。随包节假日数据和图标从程序目录读取，设置、诊断日志、节假日缓存与运行状态回执在应用根目录。
 

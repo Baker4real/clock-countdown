@@ -272,26 +272,6 @@ internal static partial class ValidationExercises
         return result;
     }
 
-    private static void WriteStartupRequest(
-        string path,
-        string launchToken,
-        string acceptanceState,
-        bool? acceptanceReadOnly = null,
-        DateTimeOffset? requestedAtUtc = null)
-    {
-        var payload = JsonSerializer.Serialize(new
-        {
-            schemaVersion = 1,
-            launchToken,
-            requestedAtUtc = (requestedAtUtc ??
-                new DateTimeOffset(2026, 7, 20, 2, 16, 0, TimeSpan.Zero)).ToString("o"),
-            acceptanceReadOnly = acceptanceReadOnly ??
-                acceptanceState is "active" or "released" or "ready",
-            acceptanceState
-        });
-        File.WriteAllText(path, payload, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-    }
-
     private static string CreateHolidayCalendarPayload(
         int year,
         bool includeMaySixthWorkday = true)

@@ -40,11 +40,6 @@ Assert-Equal $true $buildSource.Contains('$resolvedCleanPath -notin $expectedCle
 Assert-Equal $true $buildSource.Contains("`$runEvidenceCapabilityRoot = 'D:\agents\run-evidence'") 'Clean build uses the governed run-evidence capability root for isolated release clones'
 Assert-Equal $true $buildSource.Contains('$resolvedCleanPath.StartsWith($runEvidenceRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)') 'Clean build detects output paths inside the governed run-evidence tree'
 Assert-Equal $true $buildSource.Contains('-CapabilityRoot $cleanupCapabilityRoot') 'Clean build passes the resolved stable capability root to safe-delete'
-Assert-Equal $false $buildSource.Contains('New-CountdownStartupRequest') 'Build writes no startup request: the host reads the installer request at the application root, never app\startup-request.json'
-$buildPayloadHashSegmentIndex = $buildSource.IndexOf("Write-BuildSegmentTiming -Name 'AssetValidationAndPayloadHash'")
-$buildPayloadEnumerationIndex = $buildSource.IndexOf('$payloadFiles = @(')
-$buildPayloadLegacyStartupRequestExclusionIndex = $buildSource.IndexOf('$_.FullName -ne $legacyStartupRequestPath')
-Assert-Equal $true ($buildPayloadEnumerationIndex -ge 0 -and $buildPayloadLegacyStartupRequestExclusionIndex -gt $buildPayloadEnumerationIndex -and $buildPayloadLegacyStartupRequestExclusionIndex -lt $buildPayloadHashSegmentIndex) 'Payload enumeration skips a stale app\startup-request.json left by older builds so incremental and -Clean manifests match'
 Assert-Equal $false ('Build-CountdownApplication.ps1' -in @($releaseContract.PackageFiles)) 'Build script stays out of the office package'
 $legacyV3Settings = [pscustomobject]@{
     schemaVersion = 3

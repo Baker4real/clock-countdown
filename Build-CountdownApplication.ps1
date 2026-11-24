@@ -366,12 +366,9 @@ if (Test-Path -LiteralPath $sourcesMetadata) {
     throw "发布不得包含资产来源说明：$sourcesMetadata"
 }
 
-# 旧版构建曾在 app\ 补写 startup-request.json，但宿主只读应用根目录（app\ 的上一级）那份，从不读它。
-# 增量构建不清空 app\，枚举时排除这份残留，清单才与 -Clean 构建一致。
-$legacyStartupRequestPath = Join-Path $applicationOutput 'startup-request.json'
 $payloadFiles = @(
     Get-ChildItem -LiteralPath $applicationOutput -File -Recurse |
-        Where-Object { $_.Name -ne 'published-payload.json' -and $_.FullName -ne $legacyStartupRequestPath } |
+        Where-Object { $_.Name -ne 'published-payload.json' } |
         ForEach-Object {
             $relative = [System.IO.Path]::GetRelativePath($applicationOutput, $_.FullName)
             [pscustomobject]@{

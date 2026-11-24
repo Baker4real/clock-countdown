@@ -1201,8 +1201,8 @@ internal static partial class ValidationReport
             ValidationExercises.RunReminderEditingInterfaceBehavior();
         var calendarReminderBehavior =
             ValidationExercises.RunCalendarReminderBehavior();
-        var startupAcceptanceProtocolInterfaceBehavior =
-            ValidationExercises.RunStartupAcceptanceProtocolInterfaceBehavior();
+        var runtimeReceiptInterfaceBehavior =
+            ValidationExercises.RunRuntimeReceiptInterfaceBehavior();
         var holidayCalendarInterfaceBehavior =
             ValidationExercises.RunHolidayCalendarInterfaceBehavior();
         var interactiveClockCadenceBehavior =
@@ -1231,13 +1231,12 @@ internal static partial class ValidationReport
 
         var report = new ValidationReportProjection
         {
-            ["StartupAcceptanceProtocolModuleDeep"] = Must(startupAcceptanceProtocolInterfaceBehavior, "兼容字段由启动验收真实 interface 行为计算"),
             ["WorkdayCalendarModuleDeep"] = Must(holidayCalendarInterfaceBehavior, "兼容字段由工作日历真实 interface 行为计算"),
             ["ReminderEditingInterfaceBehavior"] = Must(reminderEditingInterfaceBehavior, "提醒编辑 interface 统一模式、时间、间隔与既有提醒保留行为"),
             ["CalendarReminderBehavior"] = Must(calendarReminderBehavior, "日历提醒覆盖类型化规则、北京时间 occurrence、错过合并与 Ical.Net 失败闭锁"),
-            ["StartupAcceptanceProtocolInterfaceBehavior"] = Must(
-                startupAcceptanceProtocolInterfaceBehavior,
-                "启动验收 protocol interface 覆盖请求、回执、状态推进与拒绝路径"),
+            ["RuntimeReceiptInterfaceBehavior"] = Must(
+                runtimeReceiptInterfaceBehavior,
+                "运行状态 schema v5 interface 覆盖 tokenless 精确字段、进程身份、日历状态、原子替换与占用失败路径"),
             ["HolidayCalendarInterfaceBehavior"] = Must(holidayCalendarInterfaceBehavior, "工作日历 interface 覆盖缓存初始化、派生结果与失败状态"),
             ["VirtualWorkdayCountdownExcludedFromReminders"] =
                 holidayCalendarInterfaceBehavior,

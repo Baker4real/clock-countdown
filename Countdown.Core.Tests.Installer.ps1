@@ -129,12 +129,10 @@ $installerPorts = [pscustomobject]@{
         if (-not $launch.WritesReceipt) { return }
         $applicationRoot = Split-Path -Parent (Split-Path -Parent $exePath)
         $receipt = [ordered]@{
-            schemaVersion = 4
+            schemaVersion = 5
             stage = 'window-ready'
-            launchToken = [guid]::NewGuid().ToString('N')
             processId = $processId
             sessionId = $launch.SessionId
-            applicationPath = Join-Path $applicationRoot 'app\MinminCountdown.exe'
             readyAtUtc = '2026-11-14T09:20:00.0000000+00:00'
             calendarState = 'Pending'
             timeZoneId = 'China Standard Time'
@@ -500,6 +498,14 @@ try {
     Assert-Equal '4|False|False' "$($firstTask.Priority)|$($firstTask.DisallowStartIfOnBatteries)|$($firstTask.StopIfGoingOnBatteries)" 'First install registers the login task at priority 4, starting and staying on battery power'
     Assert-Equal 6001 ([int] $firstInstall.readyProcess.processId) 'First install reports the process that reached startup readiness'
     Assert-Equal 3 ([int] $firstInstall.readyProcess.sessionId) 'First install reports the interactive session of the ready process'
+    $firstReadyLiveProcess = @($installerCase.Processes | Where-Object { [int] $_.ProcessId -eq 6001 })[0]
+    Assert-Equal $installerCase.ExePath ([string] $firstReadyLiveProcess.ExecutablePath) 'First install resolves readiness to the live installed EXE'
+    $firstReceipt = Get-Content -LiteralPath (Join-Path $installerCase.Root 'runtime-status.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-Equal 5 ([int] $firstReceipt.schemaVersion) 'First install accepts the tokenless runtime receipt schema v5'
+    $firstReceiptFields = @($firstReceipt.PSObject.Properties.Name | Sort-Object -CaseSensitive)
+    Assert-Equal 'calendarState,processId,readyAtUtc,schemaVersion,sessionId,stage,timeZoneId' ($firstReceiptFields -join ',') `
+        'First install readiness uses the exact tokenless receipt fields without an adapter path'
+    Assert-Equal 6001 ([int] $firstReceipt.processId) 'First install receipt binds the live ready process'
     foreach ($file in $installerPackageFilesV2) {
         Assert-Equal $file.Sha256 (Get-CountdownInstallerTestFileHash -Path (Join-Path $installerCase.Root $file.Path)) "First install places the package file: $($file.Path)"
     }
@@ -1143,7 +1149,7 @@ try {
             [pscustomobject]@{ Name = 'recover-after-replace-running'; Running = '4103,5001'; Final = '4103,6001'; Arrange = {
                     $installerCase.Processes = @($installerCase.Processes) + @(New-CountdownInstallerTestProcess -ProcessId 5001 -ExecutablePath $installerCase.ExePath -StartedByTask $installerCase.TaskName)
                     $installerCase.Tasks[$installerCase.TaskName].State = 'Running'
-                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":5001,"sessionId":3}', $installerUtf8)
+                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":5,"stage":"window-ready","processId":5001,"sessionId":3,"readyAtUtc":"2026-11-14T09:20:00.0000000+00:00","calendarState":"Pending","timeZoneId":"China Standard Time"}', $installerUtf8)
                 } }
         )) {
         $installerCase = New-CountdownInstallerTestCase -Name $accepted.Name
@@ -1228,7 +1234,7 @@ try {
                     [System.IO.File]::Delete((Join-Path $installerCase.Root 'install-transaction.json'))
                     $installerCase.Processes = @($installerCase.Processes) + @(New-CountdownInstallerTestProcess -ProcessId 5001 -ExecutablePath $installerCase.ExePath -StartedByTask $installerCase.TaskName)
                     $installerCase.Tasks[$installerCase.TaskName].State = 'Running'
-                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":4,"stage":"window-ready","processId":5001,"sessionId":3}', $installerUtf8)
+                    [System.IO.File]::WriteAllText((Join-Path $installerCase.Root 'runtime-status.json'), '{"schemaVersion":5,"stage":"window-ready","processId":5001,"sessionId":3,"readyAtUtc":"2026-11-14T09:20:00.0000000+00:00","calendarState":"Pending","timeZoneId":"China Standard Time"}', $installerUtf8)
                 } }
             [pscustomobject]@{ Name = 'recover-leftovers-without-marker'; Running = '4103'; Final = '4103,6001'; Arrange = {
                     Set-CountdownInstallerTestInterruptedInstall -Phase 'before-replace'

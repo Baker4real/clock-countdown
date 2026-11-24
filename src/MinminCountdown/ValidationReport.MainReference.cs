@@ -499,6 +499,10 @@ internal static partial class ValidationReport
         var captures = new List<MainReferenceActualCapture>();
         var stressCountdownTitles = new List<MainStressCountdownTitleMeasurement>();
         var noteCardReminderFonts = new List<MainNoteCardReminderFontMeasurement>();
+        // 正式参考帧固定为 864×1000，不能继承宿主工作区不足时对产品窗口的夹取。
+        // 只使用现有验证注入点，不改变产品运行时的 MonitorWorkAreaResolver 行为。
+        using var referenceWorkArea = MonitorWorkAreaResolver.OverrideForValidation(
+            new MonitorWorkArea(new Rect(0, 0, captureWidth + 240, captureHeight + 240), 1, 1));
 
         try
         {

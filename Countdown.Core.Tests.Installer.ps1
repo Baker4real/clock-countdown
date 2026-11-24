@@ -1588,6 +1588,31 @@ exit $LASTEXITCODE
         Assert-Equal $true ($installerRealTaskXml.Contains('<Task', [System.StringComparison]::Ordinal) -and $installerRealTaskXml.Contains('<Actions', [System.StringComparison]::Ordinal)) 'The task export port exports an existing task as Task Scheduler XML'
     }
     Assert-Equal $true ($null -eq (& $installerWindowsPorts.ExportTask $installerRealTask)) 'The task export port reports a missing task as absent'
+
+    # #294 review：真实安装探针的 Prepare 必须交付三个完整新格式包，DryRun 的三个 CheckOnly
+    # 都经同一全包闭包门通过。这里不运行 Mode Run，不注册任务、不开窗口。
+    $installerPrepareRun = Join-Path $installerTestRoot ('minmin-288-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $installerPrepareOutput = Join-Path $installerTestRoot ('real-install-check-output-' + [guid]::NewGuid().ToString('N'))
+    $installerFaultApp = Join-Path $installerPrepareRun 'fault-app'
+    [void] [System.IO.Directory]::CreateDirectory($installerPrepareRun)
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'app') -Destination $installerFaultApp -Recurse
+    [System.IO.File]::AppendAllText((Join-Path $installerFaultApp 'holiday-data\README.md'), "`n# harmless package-closure fault injection`n", $installerUtf8)
+    $installerRealInstallCheck = Join-Path $PSScriptRoot 'tools\Invoke-CountdownRealInstallCheck.ps1'
+    & $installerRealInstallCheck -Mode Prepare -RunDirectory $installerPrepareRun -OutputDirectory $installerPrepareOutput `
+        -PreviousApp (Join-Path $PSScriptRoot 'app') -CurrentApp (Join-Path $PSScriptRoot 'app') -FaultInjectedPublish $installerFaultApp | Out-Null
+    & $installerRealInstallCheck -Mode DryRun -RunDirectory $installerPrepareRun -OutputDirectory $installerPrepareOutput | Out-Null
+    $installerPrepared = [System.IO.File]::ReadAllText((Join-Path $installerPrepareOutput 'prepare.json')) | ConvertFrom-Json -DateKind String
+    $installerDryRun = [System.IO.File]::ReadAllText((Join-Path $installerPrepareOutput 'dryrun.json')) | ConvertFrom-Json -DateKind String
+    Assert-Equal 3 @($installerPrepared.packages.PSObject.Properties).Count 'Real-install Prepare records all three package versions'
+    foreach ($name in @('v1', 'v2', 'v3')) {
+        $packageRoot = Join-Path $installerPrepareRun "packages\$name"
+        Assert-Equal $true (Test-Path -LiteralPath (Join-Path $packageRoot 'Install-CountdownProgram.ps1') -PathType Leaf) "Prepare includes the package installer entry: $name"
+        Assert-Equal $true (Test-Path -LiteralPath (Join-Path $packageRoot 'Countdown.Installer.psm1') -PathType Leaf) "Prepare includes the package installer module: $name"
+        Assert-Equal $true (Test-Path -LiteralPath (Join-Path $packageRoot 'package-manifest.json') -PathType Leaf) "Prepare includes the generated package manifest: $name"
+        $check = $installerDryRun.checkOnly.PSObject.Properties[$name].Value
+        Assert-Equal 'True|preflight-not-rejected' "$([bool] $check.result.succeeded)|$(if ($check.result.failedStage -eq 'preflight') { 'preflight-rejected' } else { 'preflight-not-rejected' })" "Prepare to DryRun CheckOnly accepts the complete package: $name"
+        Assert-Equal 0 ([int] $check.exitCode) "Prepare to DryRun CheckOnly exits zero: $name"
+    }
 }
 finally {
     Remove-CountdownIsolatedTestTree -Path $installerTestRoot -AllowedRoot $installerTempRoot

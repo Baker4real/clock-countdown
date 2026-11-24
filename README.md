@@ -217,10 +217,11 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownInstallValidation.ps1
 
 包内源文件改动后直接重新构建和打包，不需要手工同步哈希；增删 C# 源码也不需要维护 `BuildInputFiles` / `SourceBuildFiles`。正式部署的提交 blob 门与 `.gitattributes` LF 约束继续保证 Git 来源文本和提交原始字节一致。逐项接替见 [发布完整性接替门与静态钉值退役对照](docs/agents/release-integrity-replacement.md)。安装与部署仍要求 PowerShell 7+，不回退到 Windows PowerShell 5.1。
 
-真实安装与 `-CheckOnly` 都在取得安装锁、中断恢复、候选创建和任何 Windows port 之前验证全包精确闭包：文件被改、多出、缺少以及两份清单不一致均拒绝。真实安装随后检查节假日年度覆盖，再停止应用、快照设置并在副本上演练迁移、替换程序目录、登记直接 EXE 登录任务和桌面快捷方式，等待启动就绪后提交；失败时按新事务边界回滚。安装只替换程序目录，不运行测试、不配置 Windows 时间服务，也不处理遗留任务或启动器。`-CheckOnly` 不做任何改动，年度覆盖按契约豁免；它失败时输出失败 JSON 并非零退出。安装入口的包根必须是真实发布 ZIP 的解压目录，默认是脚本所在目录，默认安装根是 `D:\敏敏子倒计时`：
+真实安装与 `-CheckOnly` 都在取得安装锁、中断恢复、候选创建和任何 Windows port 之前验证全包精确闭包：文件被改、多出、缺少以及两份清单不一致均拒绝。真实安装随后检查节假日年度覆盖，再停止应用、快照设置并在副本上演练迁移、替换程序目录、登记直接 EXE 登录任务和桌面快捷方式，等待启动就绪后提交；失败时按新事务边界回滚。安装只替换程序目录，不运行测试、不配置 Windows 时间服务，也不处理遗留任务或启动器。`-CheckOnly` 不做任何改动，年度覆盖按契约豁免；它失败时输出失败 JSON 并非零退出。安装入口的包根必须是真实发布 ZIP 的解压目录，默认是脚本所在目录，默认安装根是 `D:\敏敏子倒计时`。本机用 `tools/New-CountdownLocalInstallPackage.ps1` 复用真实 Deployer 打包、解压并核对精确闭包；输出目录及其 `.zip` 必须是全新路径。第一条命令只生成包，不安装；第二条从解压包内启动真实安装：
 
 ```powershell
-pwsh.exe -NoLogo -NoProfile -File ./Install-CountdownProgram.ps1
+pwsh.exe -NoLogo -NoProfile -File ./tools/New-CountdownLocalInstallPackage.ps1 -OutputDirectory D:/agents/tmp/minmin-countdown-package
+pwsh.exe -NoLogo -NoProfile -File D:/agents/tmp/minmin-countdown-package/Install-CountdownProgram.ps1
 ```
 
 办公室设备的稳定部署方式见 [办公室部署](docs/办公室部署.md)。

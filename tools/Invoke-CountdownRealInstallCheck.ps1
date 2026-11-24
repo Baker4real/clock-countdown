@@ -6,8 +6,9 @@
 .DESCRIPTION
 真实任务会在当前用户桌面上显示悬浮窗，资源管理器窗口也会打开一次，所以 -Mode Run 只在用户当场同意之后运行，并要求把
 同意的原话传给 -Consent。其余模式不注册任务、不开窗口：
-- Prepare：把两份门禁构建复制成包 v1（旧）与 v2（新）；在 v2 的程序目录上叠加故障注入构建里变了的文件做成 v3，按构建脚本
-  同一算法重写 v3 的载荷清单；用 v2 的无界面迁移命令生成三份互不相同的当前 schema 设置，作为安装根里的设置与两代备份。
+- Prepare：经真实 Deployer 把两份门禁构建生成并解压成完整包 v1（旧）与 v2（新）；在 v2 的程序目录上叠加故障注入构建里变了的文件，
+  按构建脚本同一算法重写 v3 的载荷清单，再经同一 Deployer 生成完整 v3 包；用 v2 的无界面迁移命令生成三份互不相同的当前 schema 设置，
+  作为安装根里的设置与两代备份。
 - DryRun：不需要真实任务的每一步：现场指纹、安装器 -CheckOnly（三个包）、三个候选 EXE 在设置副本上的迁移与等价判定、
   生产 port 的只读一侧（交互会话、桌面目录、读桌面快捷方式）与在运行目录里写、读、删一个快捷方式、进程事实读取、
   资源管理器窗口列表。
@@ -479,16 +480,17 @@ function Invoke-CheckPrepare {
         if ([string]::IsNullOrWhiteSpace($required) -or -not (Test-Path -LiteralPath $required -PathType Container)) { throw "Prepare 需要 -PreviousApp、-CurrentApp、-FaultInjectedPublish 三个目录：$required" }
     }
     if (Test-Path -LiteralPath $script:StatePath) { throw 'Prepare 只跑一次：check-state.json 已存在。' }
+    $localPackageEntry = Join-Path $script:RepoRoot 'tools\New-CountdownLocalInstallPackage.ps1'
+    [void] [System.IO.Directory]::CreateDirectory((Join-Path $script:RunDirectory 'packages'))
     foreach ($pair in @(@('v1', $PreviousApp), @('v2', $CurrentApp))) {
-        $target = Join-Path $script:Packages[$pair[0]] 'app'
-        [void] [System.IO.Directory]::CreateDirectory($script:Packages[$pair[0]])
-        Copy-Item -LiteralPath $pair[1] -Destination $target -Recurse
+        & $localPackageEntry -AppDirectory $pair[1] -OutputDirectory $script:Packages[$pair[0]] | Out-Null
     }
-    # v3：v2 的程序目录加上故障注入构建里与 v2 清单哈希不同的文件；清单按构建脚本同一算法重写（路径\0哈希\n 的聚合）。
+    # v3：先构造故障注入 app 并重写载荷清单，再由同一真实 Deployer 生成完整包。
     $v2App = Join-Path $script:Packages.v2 'app'
-    $v3App = Join-Path $script:Packages.v3 'app'
-    [void] [System.IO.Directory]::CreateDirectory($script:Packages.v3)
-    Copy-Item -LiteralPath $v2App -Destination $v3App -Recurse
+    $v3WorkRoot = Join-Path $script:RunDirectory 'prepare-v3-source'
+    $v3SourceApp = Join-Path $v3WorkRoot 'app'
+    [void] [System.IO.Directory]::CreateDirectory($v3WorkRoot)
+    Copy-Item -LiteralPath $v2App -Destination $v3SourceApp -Recurse
     $v2Manifest = [System.IO.File]::ReadAllText((Join-Path $v2App 'published-payload.json')) | ConvertFrom-Json
     $overlaid = [System.Collections.Generic.List[string]]::new()
     $entries = [System.Collections.Generic.List[object]]::new()
@@ -497,10 +499,10 @@ function Invoke-CheckPrepare {
         $relative = ([string] $entry.path).Substring(4)
         $injected = Join-Path $FaultInjectedPublish $relative
         if ((Test-Path -LiteralPath $injected -PathType Leaf) -and (Get-FileHash -LiteralPath $injected -Algorithm SHA256).Hash -ne [string] $entry.sha256) {
-            Copy-Item -LiteralPath $injected -Destination (Join-Path $v3App $relative) -Force
+            Copy-Item -LiteralPath $injected -Destination (Join-Path $v3SourceApp $relative) -Force
             $overlaid.Add($relative)
         }
-        $hash = (Get-FileHash -LiteralPath (Join-Path $v3App $relative) -Algorithm SHA256).Hash
+        $hash = (Get-FileHash -LiteralPath (Join-Path $v3SourceApp $relative) -Algorithm SHA256).Hash
         $entries.Add([ordered]@{ path = [string] $entry.path; sha256 = $hash })
         [void] $aggregateInput.Append([string] $entry.path).Append([char] 0).Append($hash).Append([char] 10)
     }
@@ -511,7 +513,10 @@ function Invoke-CheckPrepare {
         aggregateSha256 = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($aggregateInput.ToString())))
         files = $entries.ToArray()
     }
-    [System.IO.File]::WriteAllText((Join-Path $v3App 'published-payload.json'), ($v3Manifest | ConvertTo-Json -Depth 6), $script:Utf8)
+    [System.IO.File]::WriteAllText((Join-Path $v3SourceApp 'published-payload.json'), ($v3Manifest | ConvertTo-Json -Depth 6), $script:Utf8)
+    & $localPackageEntry -AppDirectory $v3SourceApp -OutputDirectory $script:Packages.v3 | Out-Null
+    $v3App = Join-Path $script:Packages.v3 'app'
+    [System.IO.Directory]::Delete($v3WorkRoot, $true)
 
     # 三份互不相同的当前 schema 设置：v7 夹具与它的两个改了一条便签文字的变体，各自在隔离目录里经 v2 的无界面迁移命令迁移。
     $fixture = Join-Path $script:RepoRoot 'src\MinminCountdown.Verification\Fixtures\powershell-v7.settings.json'

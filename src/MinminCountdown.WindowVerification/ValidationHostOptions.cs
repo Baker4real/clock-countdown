@@ -6,6 +6,8 @@ internal sealed record ValidationHostOptions(
     bool ExercisePersistenceFailures,
     bool ExerciseTagInteractions,
     bool ExerciseFatalDiagnostic,
+    bool ExerciseRestoreWriteFailure,
+    bool ExerciseDispatcherFatalDiagnostic,
     string? SettingsFile,
     string? DiagnosticLogPath,
     bool NightMigrationOnly)
@@ -17,6 +19,8 @@ internal sealed record ValidationHostOptions(
         var exercisePersistenceFailures = false;
         var exerciseTagInteractions = false;
         var exerciseFatalDiagnostic = false;
+        var exerciseRestoreWriteFailure = false;
+        var exerciseDispatcherFatalDiagnostic = false;
         string? settingsFile = null;
         string? diagnosticLogPath = null;
         var nightMigrationOnly = false;
@@ -44,6 +48,12 @@ internal sealed record ValidationHostOptions(
                 case "exercisefataldiagnostic":
                     exerciseFatalDiagnostic = true;
                     break;
+                case "exerciserestorewritefailure":
+                    exerciseRestoreWriteFailure = true;
+                    break;
+                case "exercisedispatcherfataldiagnostic":
+                    exerciseDispatcherFatalDiagnostic = true;
+                    break;
                 case "settingsfile":
                     settingsFile = ReadValue(arguments, ref index, arguments[index]);
                     break;
@@ -56,12 +66,12 @@ internal sealed record ValidationHostOptions(
         }
 
         if (nightMigrationOnly &&
-            (!validateOnly || exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic))
+            (!validateOnly || exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic || exerciseRestoreWriteFailure || exerciseDispatcherFatalDiagnostic))
         {
             throw new ArgumentException("--night-migration-only 只能单独与 --validate-only 一起使用。");
         }
 
-        if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
+        if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic || exerciseRestoreWriteFailure || exerciseDispatcherFatalDiagnostic) &&
             !validateOnly)
         {
             throw new ArgumentException("exercise 参数只能与 --validate-only 一起使用。");
@@ -78,6 +88,8 @@ internal sealed record ValidationHostOptions(
             exercisePersistenceFailures,
             exerciseTagInteractions,
             exerciseFatalDiagnostic,
+            exerciseRestoreWriteFailure,
+            exerciseDispatcherFatalDiagnostic,
             settingsFile,
             diagnosticLogPath,
             nightMigrationOnly);

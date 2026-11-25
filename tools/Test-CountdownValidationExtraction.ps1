@@ -8,7 +8,8 @@ replace the CSharp behavior suite or the product-assembly audit performed there.
 #>
 [CmdletBinding()]
 param(
-    [string] $RepositoryRoot = (Join-Path $PSScriptRoot '..')
+    [string] $RepositoryRoot = (Join-Path $PSScriptRoot '..'),
+    [switch] $SelfTest
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -54,7 +55,81 @@ $movedFileNames = @(
     'ValidationReport.SettingsAndReminders.cs',
     'ValidationReportContract.cs'
 )
+
+if ($SelfTest) {
+    $selfTestRoot = Join-Path $PSScriptRoot ('../logs/validation-extraction-contract-test-' + [guid]::NewGuid().ToString('N'))
+    $selfTestRoot = [IO.Path]::GetFullPath($selfTestRoot)
+    $selfTestPwsh = (Get-Command pwsh.exe -CommandType Application | Select-Object -First 1).Source
+    $selfTestScript = $PSCommandPath
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    function New-ExtractionAuditFixture([string]$FixtureRoot) {
+        $fixtureProduct = Join-Path $FixtureRoot 'src/MinminCountdown'
+        $fixtureRunner = Join-Path $FixtureRoot 'src/MinminCountdown.WindowVerification'
+        [void][IO.Directory]::CreateDirectory($fixtureProduct)
+        [void][IO.Directory]::CreateDirectory($fixtureRunner)
+        foreach ($fileName in @($movedFileNames) + @('ValidationHostOptions.cs', 'ValidationEntryPoint.cs')) {
+            [IO.File]::WriteAllText((Join-Path $fixtureRunner $fileName), '// runner fixture', $utf8)
+        }
+        foreach ($fileName in @(
+                'SettingsEquivalenceCommand.cs', 'SettingsMigrationCommand.cs', 'RuntimeProtocol.cs',
+                'MainWindow.xaml.cs', 'FloatingWindow.xaml.cs')) {
+            [IO.File]::WriteAllText((Join-Path $fixtureProduct $fileName), '// product fixture', $utf8)
+        }
+        foreach ($directoryName in @('bin', 'obj')) {
+            $ignoredRoot = Join-Path $fixtureProduct $directoryName
+            [void][IO.Directory]::CreateDirectory($ignoredRoot)
+            [IO.File]::WriteAllText(
+                (Join-Path $ignoredRoot 'ValidationEntryPoint.cs'),
+                'internal sealed class ValidationEntryPoint { }',
+                $utf8)
+        }
+    }
+    function Invoke-ExtractionAuditFixture([string]$FixtureRoot) {
+        $output = & $selfTestPwsh -NoLogo -NoProfile -NonInteractive -File $selfTestScript `
+            -RepositoryRoot $FixtureRoot 2>&1 | Out-String
+        [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    }
+
+    $validRoot = Join-Path $selfTestRoot 'valid'
+    $nestedRoot = Join-Path $selfTestRoot 'nested'
+    New-ExtractionAuditFixture $validRoot
+    New-ExtractionAuditFixture $nestedRoot
+    $nestedSource = Join-Path $nestedRoot 'src/MinminCountdown/Nested/State/MainWindowValidationScenariosRunner.cs'
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $nestedSource))
+    [IO.File]::WriteAllText($nestedSource, 'internal sealed class MainWindowValidationScenariosRunner { }', $utf8)
+    $validResult = Invoke-ExtractionAuditFixture $validRoot
+    $nestedResult = Invoke-ExtractionAuditFixture $nestedRoot
+    $checks = @(
+        [pscustomobject]@{
+            Name = 'valid-fixture-ignores-bin-obj'
+            Passed = $validResult.ExitCode -eq 0
+            Detail = $validResult.Output.Trim()
+        },
+        [pscustomobject]@{
+            Name = 'nested-runner-type-is-rejected'
+            Passed = $nestedResult.ExitCode -ne 0 -and
+                $nestedResult.Output.Contains('ValidationScenariosRunner', [StringComparison]::Ordinal)
+            Detail = $nestedResult.Output.Trim()
+        }
+    )
+    $valid = @($checks | Where-Object { -not $_.Passed }).Count -eq 0
+    [pscustomobject]@{ Valid = $valid; Checks = $checks; TestRoot = $selfTestRoot } |
+        ConvertTo-Json -Depth 6
+    if ($valid) {
+        [IO.Directory]::Delete($selfTestRoot, $true)
+        return
+    }
+    throw "Extraction audit self-test failed; fixture retained at $selfTestRoot"
+}
+
 $failures = [System.Collections.Generic.List[string]]::new()
+$productSourceFiles = @(
+    Get-ChildItem -LiteralPath $productRoot -File -Filter '*.cs' -Recurse |
+        Where-Object {
+            $relative = [IO.Path]::GetRelativePath($productRoot, $_.FullName).Replace('\', '/')
+            $relative -notmatch '^(?:bin|obj)/'
+        }
+)
 foreach ($fileName in $movedFileNames) {
     if (Test-Path -LiteralPath (Join-Path $productRoot $fileName) -PathType Leaf) {
         $failures.Add("Product still owns migrated validation source: $fileName")
@@ -63,7 +138,7 @@ foreach ($fileName in $movedFileNames) {
         $failures.Add("WindowVerification is missing migrated validation source: $fileName")
     }
 }
-foreach ($residual in Get-ChildItem -LiteralPath $productRoot -File -Filter '*.cs') {
+foreach ($residual in $productSourceFiles) {
     if ($residual.Name -match '^(?:ApplicationValidation|ValidationReport.*|ValidationExercises.*|WindowValidationScenarios.*)\.cs$' -and
         $residual.Name -notin $movedFileNames) {
         $failures.Add("Product owns an undeclared residual validation source: $($residual.Name)")
@@ -71,10 +146,10 @@ foreach ($residual in Get-ChildItem -LiteralPath $productRoot -File -Filter '*.c
 }
 $forbiddenProductReferences = @(
     'ApplicationValidation', 'ValidationReport', 'ValidationExercises',
-    'WindowValidationScenarios', 'ValidationHostOptions', 'WindowValidationInput',
+    'WindowValidationScenarios', 'ValidationScenariosRunner', 'ValidationHostOptions', 'WindowValidationInput',
     'ValidationEntryPoint', '--validate-only', 'ValidateOnly'
 )
-foreach ($sourceFile in Get-ChildItem -LiteralPath $productRoot -File -Filter '*.cs') {
+foreach ($sourceFile in $productSourceFiles) {
     $source = [System.IO.File]::ReadAllText($sourceFile.FullName, [System.Text.Encoding]::UTF8)
     foreach ($reference in $forbiddenProductReferences) {
         if ($source.Contains($reference, [System.StringComparison]::Ordinal)) {

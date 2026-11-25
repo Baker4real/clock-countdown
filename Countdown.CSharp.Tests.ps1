@@ -3606,13 +3606,17 @@ function Get-RejectionMessage([string[]] $Arguments) {
     $productValidationTypes = @($productAssembly.GetTypes() | Where-Object {
         $name = $_.FullName
         $name -eq 'MinminCountdown.ApplicationValidation' -or
+        $name -eq 'MinminCountdown.ValidationHostOptions' -or
+        $name -eq 'MinminCountdown.ValidationEntryPoint' -or
         $name.StartsWith('MinminCountdown.ValidationReport', [StringComparison]::Ordinal) -or
         $name.StartsWith('MinminCountdown.ValidationExercises', [StringComparison]::Ordinal) -or
-        $name.StartsWith('MinminCountdown.WindowValidationScenarios', [StringComparison]::Ordinal)
+        $name.StartsWith('MinminCountdown.WindowValidationScenarios', [StringComparison]::Ordinal) -or
+        $name.StartsWith('MinminCountdown.WindowValidationInput', [StringComparison]::Ordinal) -or
+        $name.EndsWith('ValidationScenariosRunner', [StringComparison]::Ordinal)
     })
-    Assert-Equal 0 $productValidationTypes.Count '产品程序集不含 ApplicationValidation、ValidationReport、ValidationExercises 或 WindowValidationScenarios 类型'
+    Assert-Equal 0 $productValidationTypes.Count '产品程序集不含验证入口、options、报告、输入适配器或任何 ValidationScenariosRunner 类型'
     $productHostOptionNames = @($productAssembly.GetType('MinminCountdown.HostOptions', $true).GetProperties().Name)
-    Assert-Equal 0 @($productHostOptionNames | Where-Object { $_ -in @('ValidateOnly', 'ExerciseNoteAdd', 'ExercisePersistenceFailures', 'ExerciseTagInteractions', 'ExerciseFatalDiagnostic', 'NightMigrationOnly') }).Count '产品 HostOptions 不含验证或 exercise 选项'
+    Assert-Equal 0 @($productHostOptionNames | Where-Object { $_ -in @('ValidateOnly', 'ExerciseNoteAdd', 'ExercisePersistenceFailures', 'ExerciseTagInteractions', 'ExerciseFatalDiagnostic', 'ExerciseRestoreWriteFailure', 'ExerciseDispatcherFatalDiagnostic', 'NightMigrationOnly') }).Count '产品 HostOptions 不含验证或 exercise 选项'
 
     $applicationValidationResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',

@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
@@ -14,7 +15,8 @@ internal static class ApplicationValidation
         ValidationHostOptions options,
         string applicationRoot,
         DiagnosticLogger logger,
-        ResourceDictionary resources)
+        ResourceDictionary resources,
+        ValidationUnhandledExceptionHandler unhandledExceptions)
     {
         PrepareRuntime();
         // #211：窗口几何与工作区解析在验证全程注入确定性大工作区（96 DPI），
@@ -110,6 +112,33 @@ internal static class ApplicationValidation
                 ManagerWindowRestore.HideManagerOnly(mainWindow);
 
             floatingWindow.ApplyTheme();
+
+            if (options.ExerciseDispatcherFatalDiagnostic)
+            {
+                mainWindow.Dispatcher.BeginInvoke(
+                    DispatcherPriority.Send,
+                    new Action(() => throw new InvalidOperationException(
+                        "Synthetic dispatcher fatal diagnostic probe.")));
+                try
+                {
+                    WindowValidationInput.Pump(mainWindow.Dispatcher);
+                }
+                catch (Exception) when (unhandledExceptions.FatalExitRequested)
+                {
+                    // The runner-local Dispatcher handler already logged and reported
+                    // the original exception; resource cleanup still owns this path.
+                }
+            }
+
+            if (unhandledExceptions.FatalExitRequested)
+            {
+                return new Dictionary<string, object?>();
+            }
+
+            if (options.ExerciseRestoreWriteFailure)
+            {
+                return new Dictionary<string, object?> { ["RestoreWriteFailureProbe"] = true };
+            }
 
             var report = ValidationReport.Create(
                 mainWindow,

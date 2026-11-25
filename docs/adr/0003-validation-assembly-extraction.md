@@ -25,10 +25,10 @@ intent: 记录 US34–US41 为何把完整窗口验证闭包迁到独立 runner�
 
 - **保留产品验证入口，只让 runner 调用产品**：无法满足最终产品程序集不含验证类型的要求，也会让正常 EXE 继续背负完整验证闭包。
 - **把所有 private 窗口成员改成 internal/public**：迁移最快，但会把场景状态变成产品契约；改用 WPF 行为和极窄 probe 保持封装。
-- **复用旧视觉 manifest**：生成 EXE 与报告源码身份已变，旧证据不能冒充当前证据；必须分配 v89 并重拍。
+- **复用旧视觉 manifest**：生成 EXE 与报告源码身份已变，旧证据不能冒充当前证据；必须分配 v91 并重拍。
 
 ## 后果
 
 - CSharp、SourceValidation、安装验证 module、Core fake host、诊断夹具、GeometryPreflight 和 Tray 工具都以 runner 为完整报告生产者；正常启动与两个设置 CLI 仍以产品 EXE 为被测对象。
 - `tools/Test-CountdownValidationExtraction.ps1` 和 CSharp 程序集反射审计共同防止验证源码/类型回流；Tooling 的按名控件查找上限继续扫描 runner，不能因移动文件而清零。
-- 视觉基线生成器与 source/EXE 身份随 runner 改变；历史 v87 证据保留在 Git 历史，现役 v89 及后续版本必须重新经过完整生成与比较流程。
+- 视觉基线生成器与 source/EXE 身份随 runner 改变；历史 v87 证据保留在 Git 历史，现役 v91 及后续版本必须重新经过完整生成与比较流程。

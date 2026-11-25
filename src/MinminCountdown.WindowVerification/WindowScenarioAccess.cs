@@ -434,9 +434,11 @@ internal static class WindowScenarioAccess
     private static void ClearFieldError(TextBlock field, TextBlock message, params Control[] sources)
     {
         var previous = field.Text;
-        UiAccessibility.Announce(field, string.Empty);
-        AutomationProperties.SetName(field, string.Empty);
-        AutomationProperties.SetHelpText(field, string.Empty);
+        UiAccessibility.Announce(field, string.Empty, block =>
+        {
+            AutomationProperties.SetHelpText(block, string.Empty);
+            block.Visibility = Visibility.Collapsed;
+        });
         foreach (var source in sources)
         {
             if (string.Equals(AutomationProperties.GetHelpText(source), previous, StringComparison.Ordinal))

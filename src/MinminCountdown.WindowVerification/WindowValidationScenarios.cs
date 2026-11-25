@@ -147,6 +147,33 @@ internal sealed partial class MainWindowValidationScenariosRunner
                 window.NoteDateError.Visibility == Visibility.Collapsed &&
                 string.IsNullOrEmpty(window.NoteMessage.Text);
 
+            // The runner cleanup adapter must restore the same collapsed state and
+            // geometry as the product correction path, not merely erase its text.
+            var cleanEditorHeight = window.NoteEditorSurface.ActualHeight;
+            var cleanDateTop = window.NoteDate.TranslatePoint(new Point(0, 0), window).Y;
+            var cleanSaveTop = window.SaveNoteButton.TranslatePoint(new Point(0, 0), window).Y;
+            window.NoteText.Text = string.Empty;
+            window.NoteDate.SelectedDate = null;
+            window.SaveNoteButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            WindowValidationInput.Pump(window.Dispatcher);
+            window.ClearNoteFieldErrors();
+            WindowValidationInput.Pump(window.Dispatcher);
+            window.UpdateLayout();
+            var adapterRowsCollapsed =
+                window.NoteTextError.Visibility == Visibility.Collapsed &&
+                window.NoteDateError.Visibility == Visibility.Collapsed;
+            var adapterHelpCleared =
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteTextError)) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteDateError)) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteText)) &&
+                string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteDate));
+            var adapterHeightDelta = Math.Abs(window.NoteEditorSurface.ActualHeight - cleanEditorHeight);
+            var adapterDateDelta = Math.Abs(window.NoteDate.TranslatePoint(new Point(0, 0), window).Y - cleanDateTop);
+            var adapterSaveDelta = Math.Abs(window.SaveNoteButton.TranslatePoint(new Point(0, 0), window).Y - cleanSaveTop);
+            correctionClears &=
+                adapterRowsCollapsed && adapterHelpCleared &&
+                adapterHeightDelta <= 0.01 && adapterDateDelta <= 0.01 && adapterSaveDelta <= 0.01;
+
             window.NoteText.Text = "便签日期探针";
             window.NoteDate.SelectedDate = Workspace.Snapshot.BeijingNow.Date;
             var reminderDue = Workspace.Snapshot.BeijingNow.AddDays(1).ToUniversalTime();
@@ -3747,6 +3774,25 @@ internal sealed partial class MainWindowValidationScenariosRunner
             window.NoteMessage.Text.Contains("日期", StringComparison.Ordinal);
 
         window.NoteDate.SelectedDate = noteDate;
+        WindowValidationInput.Pump(window.Dispatcher);
+        var cleanEditorHeight = window.NoteEditorSurface.ActualHeight;
+        var cleanDateTop = window.NoteDate.TranslatePoint(new Point(0, 0), window).Y;
+        var cleanSaveTop = window.SaveNoteButton.TranslatePoint(new Point(0, 0), window).Y;
+        window.NoteDate.SelectedDate = null;
+        window.SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WindowValidationInput.Pump(window.Dispatcher);
+        window.ClearNoteFieldErrors();
+        WindowValidationInput.Pump(window.Dispatcher);
+        window.UpdateLayout();
+        var adapterCleanupRestoresLayout =
+            window.NoteDateError.Visibility == Visibility.Collapsed &&
+            string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteDateError)) &&
+            string.IsNullOrEmpty(AutomationProperties.GetHelpText(window.NoteDate)) &&
+            Math.Abs(window.NoteEditorSurface.ActualHeight - cleanEditorHeight) <= 0.01 &&
+            Math.Abs(window.NoteDate.TranslatePoint(new Point(0, 0), window).Y - cleanDateTop) <= 0.01 &&
+            Math.Abs(window.SaveNoteButton.TranslatePoint(new Point(0, 0), window).Y - cleanSaveTop) <= 0.01;
+
+        window.NoteDate.SelectedDate = noteDate;
         WindowScenarioAccess.SetMainNoteReminderRules(window, new ReminderRule[]
         {
             new FixedIntervalReminderRule(
@@ -3758,7 +3804,7 @@ internal sealed partial class MainWindowValidationScenariosRunner
         var afterAdd = Workspace.Snapshot.Settings;
         var added = afterAdd.Notes.LastOrDefault(
             note => string.Equals(note.Text, "验证点击添加便签", StringComparison.Ordinal));
-        var addViaClick = added is not null && afterAdd.Notes.Count == countBefore + 1;
+        var addViaClick = added is not null && afterAdd.Notes.Count == countBefore + 1 && adapterCleanupRestoresLayout;
         var dateViaPicker = added?.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var reminderViaSelector =
             added?.ReminderIntervalMinutes == 30 &&

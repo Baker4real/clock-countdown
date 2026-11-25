@@ -129,6 +129,7 @@ foreach ($requiredPath in @(
         'tools/Test-CountdownIdleMeasurementChildFixture.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
         'tools/Test-CountdownValidationExtraction.ps1',
+        'tools/Test-CountdownValidationEntryPoint.ps1',
         'tools/PopupValidationContract.cs'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
@@ -158,6 +159,8 @@ $windowPreflightContract = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join
 Add-ToolingCheck -Name 'deployment:Test-CountdownWindowPreflightContract.ps1' -Passed ($LASTEXITCODE -eq 0 -and [bool]$windowPreflightContract.Valid) -Detail ($windowPreflightContract | ConvertTo-Json -Compress -Depth 12)
 $validationExtraction = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownValidationExtraction.ps1') | ConvertFrom-Json -Depth 8 -ErrorAction Stop
 Add-ToolingCheck -Name 'validation:extraction-source-ownership' -Passed ($LASTEXITCODE -eq 0 -and [int]$validationExtraction.FailureCount -eq 0) -Detail ($validationExtraction | ConvertTo-Json -Compress -Depth 8)
+$validationExtractionSelfTest = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownValidationExtraction.ps1') -SelfTest | ConvertFrom-Json -Depth 8 -ErrorAction Stop
+Add-ToolingCheck -Name 'validation:extraction-recursive-negative-control' -Passed ($LASTEXITCODE -eq 0 -and [bool]$validationExtractionSelfTest.Valid) -Detail ($validationExtractionSelfTest | ConvertTo-Json -Compress -Depth 8)
 
 # CI 用 -File 或 & 跑的每个脚本，本机都要有启动器阶段跑到：启动器的阶段脚本，加上本脚本用 Join-Path 跑的脚本。
 function Get-JoinPathScriptLeaves {

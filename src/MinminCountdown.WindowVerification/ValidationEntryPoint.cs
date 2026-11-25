@@ -30,76 +30,101 @@ internal static class ValidationEntryPoint
             return 1;
         }
 
-        ApplicationValidation.PrepareRuntime();
-        var app = new App();
-        app.InitializeComponent();
-        var productionStartup = typeof(App).GetMethod(
-            "OnStartup",
-            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
-            ?.CreateDelegate<StartupEventHandler>(app)
-            ?? throw new MissingMethodException(typeof(App).FullName, "OnStartup");
-        // The validation host loads the real application resources but never enters
-        // the product Startup path or its interactive single-instance activation.
-        app.Startup -= productionStartup;
-        ApplicationTheme.WriteDayPalette(app.Resources);
-
-        var applicationRoot = ApplicationPaths.ResolveApplicationRoot();
-        var diagnosticPath = options.DiagnosticLogPath ??
-                             Path.Combine(applicationRoot, "logs", "application.jsonl");
-        var logger = new DiagnosticLogger(diagnosticPath);
-        logger.Info("ProcessStarted");
-        var settingsPath = options.SettingsFile ?? Path.Combine(applicationRoot, "settings.json");
-        var settingsExisted = File.Exists(settingsPath);
-        var settingsBytes = settingsExisted ? File.ReadAllBytes(settingsPath) : null;
-        var settingsMigrated = false;
+        DiagnosticLogger? logger = null;
+        ValidationUnhandledExceptionHandler? unhandledExceptions = null;
         try
         {
-            if (options.ExerciseFatalDiagnostic)
-            {
-                throw new InvalidOperationException("Synthetic fatal diagnostic probe.");
-            }
+            ApplicationValidation.PrepareRuntime();
+            var app = new App();
+            app.InitializeComponent();
+            var productionStartup = typeof(App).GetMethod(
+                "OnStartup",
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                ?.CreateDelegate<StartupEventHandler>(app)
+                ?? throw new MissingMethodException(typeof(App).FullName, "OnStartup");
+            // The validation host loads the real application resources but never enters
+            // the product Startup path or its interactive single-instance activation.
+            app.Startup -= productionStartup;
+            ApplicationTheme.WriteDayPalette(app.Resources);
 
-            var report = ApplicationValidation.Run(options, applicationRoot, logger, app.Resources);
-            settingsMigrated =
-                report.TryGetValue("SettingsWereMigrated", out var migratedValue) &&
-                migratedValue is true;
-            CliOutput.WriteJson(report);
-            logger.Info("ValidationCompleted");
-            return 0;
+            var applicationRoot = ApplicationPaths.ResolveApplicationRoot();
+            var diagnosticPath = options.DiagnosticLogPath ??
+                                 Path.Combine(applicationRoot, "logs", "application.jsonl");
+            logger = new DiagnosticLogger(diagnosticPath);
+            logger.Info("ProcessStarted");
+            unhandledExceptions = new ValidationUnhandledExceptionHandler(app, logger);
+            var settingsPath = options.SettingsFile ?? Path.Combine(applicationRoot, "settings.json");
+            var settingsExisted = File.Exists(settingsPath);
+            var settingsBytes = settingsExisted ? File.ReadAllBytes(settingsPath) : null;
+            var settingsMigrated = false;
+            try
+            {
+                if (options.ExerciseFatalDiagnostic)
+                {
+                    throw new InvalidOperationException("Synthetic fatal diagnostic probe.");
+                }
+
+                var report = ApplicationValidation.Run(
+                    options, applicationRoot, logger, app.Resources, unhandledExceptions);
+                if (unhandledExceptions.FatalExitRequested)
+                {
+                    return 1;
+                }
+                settingsMigrated =
+                    report.TryGetValue("SettingsWereMigrated", out var migratedValue) &&
+                    migratedValue is true;
+                CliOutput.WriteJson(report);
+                logger.Info("ValidationCompleted");
+                return 0;
+            }
+            finally
+            {
+                // Ordinary reports restore the original bytes. Explicit note/tag
+                // exercises keep their persistence writes, and migration keeps the
+                // canonical rewritten settings instead of restoring legacy bytes.
+                if (settingsBytes is not null &&
+                    !options.ExerciseNoteAdd &&
+                    !options.ExerciseTagInteractions &&
+                    !settingsMigrated)
+                {
+                    // The negative fixture uses a real sharing violation, not a
+                    // synthetic throw, and the outermost catch still owns the failure.
+                    using FileStream? restoreFailureLock = options.ExerciseRestoreWriteFailure
+                        ? new FileStream(settingsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+                        : null;
+                    File.WriteAllBytes(settingsPath, settingsBytes);
+                }
+            }
         }
         catch (SettingsRecoveryDeclinedException exception)
         {
-            logger.Info("SettingsRecoveryDeclinedExit");
+            logger?.Info("SettingsRecoveryDeclinedExit");
             CliOutput.WriteError($"{exception.GetType().FullName}: {exception.Message}");
             return 1;
         }
         catch (SettingsRecoveryException exception)
         {
-            logger.Warning("SettingsRecoveryAborted");
+            logger?.Warning("SettingsRecoveryAborted");
             SettingsRecoveryFailurePresentation.TryPresent(
                 exception,
                 SettingsRecoveryWindow.ShowFailure);
             CliOutput.WriteError($"{exception.GetType().FullName}: {exception.Message}");
             return 1;
         }
+        catch (Exception) when (unhandledExceptions?.FatalExitRequested == true)
+        {
+            // The runner-local Dispatcher handler already logged and wrote stderr.
+            return 1;
+        }
         catch (Exception exception)
         {
-            logger.Error("FatalUnhandledException", exception);
+            logger?.Error("FatalUnhandledException", exception);
             CliOutput.WriteError($"{exception.GetType().FullName}: {exception.Message}");
             return 1;
         }
         finally
         {
-            // Ordinary reports restore the original bytes. Explicit note/tag
-            // exercises keep their persistence writes, and migration keeps the
-            // canonical rewritten settings instead of restoring legacy bytes.
-            if (settingsBytes is not null &&
-                !options.ExerciseNoteAdd &&
-                !options.ExerciseTagInteractions &&
-                !settingsMigrated)
-            {
-                File.WriteAllBytes(settingsPath, settingsBytes);
-            }
+            unhandledExceptions?.Dispose();
         }
     }
 }

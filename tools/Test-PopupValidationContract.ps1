@@ -143,6 +143,20 @@ if ($null -eq $trayMenu) {
     $failures.Add('托盘菜单验证未返回可回读的报告。')
 }
 
+$validationEntryPointReport = $null
+try {
+    $validationEntryPointReport = & (Join-Path $PSScriptRoot 'Test-CountdownValidationEntryPoint.ps1') `
+        -RunnerPath (Join-Path $repoRoot 'window-verification/MinminCountdown.WindowVerification.exe') |
+        Out-String |
+        ConvertFrom-Json
+    if (-not [bool] $validationEntryPointReport.Valid) {
+        $failures.Add('窗口验证入口的快照/恢复异常边界未通过。')
+    }
+}
+catch {
+    $failures.Add("窗口验证入口负例：$($_.Exception.Message)")
+}
+
 [pscustomobject]@{
     Suite = 'PopupValidationContract'
     AssemblyPath = $resolvedAssembly
@@ -160,6 +174,7 @@ if ($null -eq $trayMenu) {
     ToolTipCollectibility = $tooltipCollectibility
     Motion = $motion
     TrayMenu = $trayMenu
+    ValidationEntryPoint = $validationEntryPointReport
     Failures = @($failures)
     Passed = $failures.Count -eq 0
 } | ConvertTo-Json -Depth 10

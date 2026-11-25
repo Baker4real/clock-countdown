@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'Countdown.VisualBaselineRetention.psm1') -Force
 $workRoot = Join-Path $FixtureParent ('minmin-visual-baseline-retention-' + [guid]::NewGuid().ToString('N'))
-$currentVersion = '2026-11-25-v90'
+$currentVersion = '2026-11-25-v91'
 $previousVersion = '2026-11-10-v77'
 $olderVersion = '2026-11-09-v76'
 $currentManifestPaths = [System.Collections.Generic.List[string]]::new()

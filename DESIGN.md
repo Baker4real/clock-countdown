@@ -595,7 +595,7 @@ ToolTip 连开（#244）：上一个 ToolTip 关闭（退出结束）后，不�
 
 多文件发布下 `executable.sha256` 只绑定实际生成基线的 apphost `window-verification/MinminCountdown.WindowVerification.exe`，钉不住 runner 内嵌的 `MinminCountdown.dll`；GeometryPreflight 另行显式绑定并证明候选 `$AppPath` 产品 DLL。像素语义以本版 PNG 为准，不改该弱绑定算法，也不把 runner 哈希混入产品 payload aggregate。主窗口与本节共用这一条口径，不再各写一套。
 
-现役五帧与场景对应（v90 基线 `assets/ui-references/floating-window/520x390/2026-11-25-v90/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
+现役五帧与场景对应（v91 基线 `assets/ui-references/floating-window/520x390/2026-11-25-v91/manifest.json`，实际路径与哈希以该 manifest 为唯一依据；#236 新增 `floating-workday-complete-day` 收尾状态）：
 
 | 帧 | 证明的场景 |
 | --- | --- |
@@ -703,13 +703,13 @@ PRD #296 Step 7 代码评审修复零像素差重拍（2026-11-21，v82）：因
 
 中间状态（2026-11-25，#258 US34–US41 验证程序集抽取，v89）：首次抽取重拍的 Build `20261125T090402619-fe693f5f` 与 BaselineGenerate `20261125T090549693-681319b4` 均退出 0，v87→v89 的 14/14 PNG 与状态指纹逐字节一致。后续发布证据门发现 `MainWindow.xaml.cs` 的工作树 CRLF 与 Git blob LF 不同，manifest 源哈希不能作为可发布身份；v89 因此只是未接受的中间证据，不是最终基线。
 
-当前状态（2026-11-25，#258 US34–US41 验证程序集抽取零像素差重拍，v90）：完整窗口验证与报告生成归独立 `MinminCountdown.WindowVerification`，共享 `MainCountdownBlockRenderer` 保持产品唯一排版实现。全部任务修改文本按 `.gitattributes` 归一为 LF 后分配 `2026-11-25-v90`；官方 IncrementalBuild `20261125T100837512-6587eb60` 退出 0（110 秒），独立 BaselineGenerate `20261125T101037034-6c096590` 退出 0（116 秒）并严格自检。主窗源码绑定聚合 SHA-256 为 `2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273`，悬浮窗为 `949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9`；双 manifest `executable.sha256` 均为实际 runner apphost `046311F9A58F810DB3A56BCCF266A4983C7AF25239684480B8A8FF1626C80BCD`。`Compare-CountdownVisualBaseline -From 2026-11-25-v89 -FromCommit 6c6829814d3e5b8554dc7dcfcd52f74e26e2f706 -To 2026-11-25-v90` 从保留的暂存树读取旧证据，证明主窗 9/9、悬浮窗 5/5 共 14/14 帧 PNG 与状态指纹全部逐字节一致；主窗绑定只发生 `MainWindow.xaml.cs` 的 LF 身份修正，悬浮绑定不变。既有像素/alpha/ROI 阈值未改，生成器按 #268 移除旧工作树目录。
+当前状态（2026-11-25，#258 US34–US41 行为审查修复零像素差重拍，v91）：独立 runner 的最外层异常边界覆盖初始化、快照、报告和恢复 finally；logger 建立后注册 Dispatcher/AppDomain/TaskScheduler 异常处理器；错误行清理由与生产一致的 `UiAccessibility.Announce` 回调折叠并清 HelpText；产品防回流审计递归覆盖嵌套源码且排除 bin/obj。官方 IncrementalBuild `20261125T114645729-0a2c085f` 退出 0（97 秒），独立 BaselineGenerate `20261125T114835946-e96a7e74` 退出 0（116 秒）并严格自检。主窗源码绑定聚合 SHA-256 保持 `2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273`，悬浮窗保持 `949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9`；双 manifest `executable.sha256` 均为实际 runner apphost `B7350BCEDD3392381C08EBCFBE23B9EA605CDB5D8665403E3511BC29C5E01F95`。`Compare-CountdownVisualBaseline -From 2026-11-25-v90 -To 2026-11-25-v91` 从提交 `ac7d892` 读取旧证据，证明主窗 9/9、悬浮窗 5/5 共 14/14 帧 PNG 与状态指纹全部逐字节一致，双窗绑定文件均无变化。既有像素/alpha/ROI 阈值未改，生成器按 #268 移除旧工作树目录。
 
-1. #189 的 WPF 改版使用纯日间 **v90** 真实渲染系列，版本目录为 `2026-11-25-v90`；双 manifest、当前源码绑定、实际 runner EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
+1. #189 的 WPF 改版使用纯日间 **v91** 真实渲染系列，版本目录为 `2026-11-25-v91`；双 manifest、当前源码绑定、实际 runner EXE 与独立像素复验全部通过后，才将这组帧视为验收完成。生成经 README 的 `BaselineGenerate` 隔离阶段，已有目录拒绝覆盖。
 
-2. v90 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-25-v90/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
-3. v90 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
-4. #268 起工作树只保留现役版本（当前 v90）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v90，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
+2. v91 主窗口帧规模 9 帧（基线 `assets/ui-references/main-window/864x1000/2026-11-25-v91/manifest.json`）：`main-day-countdowns-empty / -representative / -stress` 与 `main-day-notes-empty / -representative / -stress` 共 6 帧（无主题维度），加常设便签编辑态 `main-day-notes-edit`、筛选弹层打开态 `main-day-notes-filter-open` 和 #235 多选态 `main-day-notes-selected` 3 帧。若某帧无法稳定复现，必须在 manifest 说明并在 Testing Decisions 记录，不得静默减少。
+3. v91 悬浮窗帧规模 5 帧：`floating-countdowns-day`、`floating-workday-complete-day`、`long-notes-day-top`、`long-notes-day-bottom`、`notes-search-expanded-day`。
+4. #268 起工作树只保留现役版本（当前 v91）：每次新版双 manifest 已生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不在生成规则里顺手清理，须经用户按精确路径与体积清单确认后另行删除。门禁脚本和测试只读取 v91，历史版本留在提交历史里；上述历史验收记录仍保留原版本和哈希，需要回看旧帧时使用固定到提交的引用，不要求旧目录仍在工作树。
 5. 旧设置中的 `Auto` / `Night` 偏好一律按日间解释，不报错、不丢数据、不回写强制修改。
 
 ## 12. 假设与已裁决项

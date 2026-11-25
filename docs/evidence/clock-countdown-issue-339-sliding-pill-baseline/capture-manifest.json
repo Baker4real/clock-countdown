@@ -13,18 +13,18 @@
   "run_artifact_surface_manifest_sha256": "D8E9FB915A0742D5490BCD2D38EDA713BA53235C9ACBF91BA875C0F091E38BC2",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-25-v90/manifest.json",
-      "manifest_sha256": "AC48D7174BE52B861CE3AF3DA213765989640F7A9E33426E3DCE85D654231493",
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-25-v91/manifest.json",
+      "manifest_sha256": "51D57135095108ED1DFBD31D315E57EE2D03ADA85B3FAE6FD7CDFE0FF7775064",
       "aggregate_sha256": "2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-25-v90/manifest.json",
-      "manifest_sha256": "551FBFB9EEDEDDFA04EEE5CD2056ADB05386B7A53A12DADE2E1974AC14A88BFC",
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-25-v91/manifest.json",
+      "manifest_sha256": "3600E4EEB1D0BA3A81A34B39B8D0479FC1DC3F7B11944E3162A7B7BE1E22B79C",
       "aggregate_sha256": "949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9"
     }
   },
-  "current_baseline_version": "2026-11-25-v90",
-  "source_scope_note": "baseline_version、build/baseline run、candidate_dll_sha256 与六张复制图均保留 v86 捕获身份；current_source_bindings 按发布证据合同跟随现役 v90，历史 v86 manifest 继续由 HEAD 45f6ddc5bfa48a42c6e1f54e320542fc992ee25e 保存。",
+  "current_baseline_version": "2026-11-25-v91",
+  "source_scope_note": "baseline_version、build/baseline run、candidate_dll_sha256 与六张复制图均保留 v86 捕获身份；current_source_bindings 按发布证据合同跟随现役 v91，历史 v86 manifest 继续由 HEAD 45f6ddc5bfa48a42c6e1f54e320542fc992ee25e 保存。",
   "required_count": 6,
   "copied_and_verified": 6,
   "entries": [

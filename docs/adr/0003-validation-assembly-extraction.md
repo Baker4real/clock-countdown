@@ -31,4 +31,4 @@ intent: 记录 US34–US41 为何把完整窗口验证闭包迁到独立 runner�
 
 - CSharp、SourceValidation、安装验证 module、Core fake host、诊断夹具、GeometryPreflight 和 Tray 工具都以 runner 为完整报告生产者；正常启动与两个设置 CLI 仍以产品 EXE 为被测对象。
 - `tools/Test-CountdownValidationExtraction.ps1` 和 CSharp 程序集反射审计共同防止验证源码/类型回流；Tooling 的按名控件查找上限继续扫描 runner，不能因移动文件而清零。
-- 视觉基线生成器与 source/EXE 身份随 runner 改变；历史 v87 证据保留在 Git 历史，现役 v91 及后续版本必须重新经过完整生成与比较流程。
+- 视觉基线生成器与 source/EXE 身份随 runner 改变；历史 v87 证据保留在 Git 历史，本票 v91 及后续版本必须重新经过完整生成与比较流程，现役版本由 DESIGN.md 指向。

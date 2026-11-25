@@ -124,7 +124,8 @@ function Invoke-CapturedNativeProcess {
     param(
         [Parameter(Mandatory)] [string] $FilePath,
         [Parameter(Mandatory)] [string[]] $ArgumentList,
-        [Parameter(Mandatory)] [string] $WorkingDirectory
+        [Parameter(Mandatory)] [string] $WorkingDirectory,
+        [hashtable] $EnvironmentVariables = @{}
     )
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -134,6 +135,9 @@ function Invoke-CapturedNativeProcess {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
+    foreach ($name in $EnvironmentVariables.Keys) {
+        $startInfo.Environment[$name] = [string] $EnvironmentVariables[$name]
+    }
     # 应用与探针按 UTF-8 输出；不显式指定就按控制台代码页（中文系统为 GBK）解码，中文诊断会乱码并丢字节。
     $startInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
     $startInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -2621,9 +2625,14 @@ exit 23
         FloatingNoteBodyWidthOptionBGeometryAndDateStrip = '悬浮窗便签采用方案 B 上缘单行日期（319 DIP 卡宽内 36/245/36 列、正文可用 237 DIP、18 DIP 日期条与 4 DIP 间距、RadiusChip 圆角、pastel 轮换、系统高对比度映射、有日期与无日期文案及 ≥36 DIP 命中区，520×390 外壳与玩偶/x≤396 安全区不变）（#335）'
         FloatingNoteBodyWidthOptionBScrollSearchTagsAndSticky = '悬浮窗便签方案 B 下验证长便签自然折行、5 个标签绑定与筛选、唯一外层滚动与滚动提示、视口裁切与搜索展开时的上缘单行粘性置顶不覆盖搜索槽/底部命令栏/勾选/…菜单且回顶归零（#335）'
     }
+    $windowVerificationProgressPath = Join-Path $PSScriptRoot 'logs\window-verification-progress.log'
+    [void] [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($windowVerificationProgressPath))
+    if ([System.IO.File]::Exists($windowVerificationProgressPath)) { [System.IO.File]::Delete($windowVerificationProgressPath) }
+    [Console]::Error.WriteLine("WINDOW_VERIFICATION_PROGRESS: $windowVerificationProgressPath")
     $windowVerificationResult = Invoke-CapturedNativeProcess `
         -FilePath $windowVerificationRunner `
         -WorkingDirectory $PSScriptRoot `
+        -EnvironmentVariables @{ MINMIN_WINDOW_VERIFICATION_PROGRESS = $windowVerificationProgressPath } `
         -ArgumentList @('--')
     Save-CSharpValidationEvidence -Name 'window-verification.json' -Text ([string]$windowVerificationResult.Stdout)
     $windowVerification = $windowVerificationResult.Stdout | ConvertFrom-Json
@@ -2637,6 +2646,20 @@ exit 23
     }
     Assert-Equal 0 $windowVerificationResult.ExitCode `
         "独立窗口验证进程退出码；$($windowVerificationResult.Stderr)"
+    $windowProgressLines = @(if (Test-Path -LiteralPath $windowVerificationProgressPath -PathType Leaf) {
+            Get-Content -LiteralPath $windowVerificationProgressPath -Encoding UTF8
+        })
+    Save-CSharpValidationEvidence -Name 'window-verification-progress.log' -Text ($(if ($windowProgressLines.Count -eq 0) { '<missing>' } else { $windowProgressLines -join [Environment]::NewLine }))
+    $windowProgressStartNames = @($windowProgressLines | ForEach-Object {
+            if ($_ -match '^\[window-fact\] \S+ START (.+)$') { $Matches[1] }
+        })
+    $windowProgressEndNames = @($windowProgressLines | ForEach-Object {
+            if ($_ -match '^\[window-fact\] \S+ END (.+) passed=(True|False)$') { $Matches[1] }
+        })
+    $windowProgressErrors = @($windowProgressLines | Where-Object { $_ -match ' ERROR ' })
+    Assert-Equal (@($windowVerificationFacts.Keys) -join ',') ($windowProgressStartNames -join ',') '窗口验证进度按注册顺序记录每个事实 START'
+    Assert-Equal (@($windowVerificationFacts.Keys) -join ',') ($windowProgressEndNames -join ',') '窗口验证进度按注册顺序记录每个事实 END'
+    Assert-Equal 0 $windowProgressErrors.Count '窗口验证全部事实完成且进度日志没有 ERROR'
     Write-TestSegmentTiming -Name 'WindowVerification'
 
     # #275 直接启动：安装根里只有程序目录和用户数据，没有 adapter、启动请求和安装根随包资源。

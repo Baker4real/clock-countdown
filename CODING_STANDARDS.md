@@ -71,3 +71,13 @@ WPF 在 `ScrollViewer` 的 `PART_ScrollContentPresenter`（或其父容器）上
 - diff 实现子树内 `TranslateTransform` 粘性置顶时，核对是否配有同宽度、同卡片/画布不透明底色且同步位移的顶缘护板遮住内顶沿与圆角缝隙，防止正文半行残字穿透。
 
 反例：`FloatingWindow.ScrollContext.cs` 在 `PART_ScrollContentPresenter` 上挂了顶缘 `18` DIP（`40% → 100%` Alpha）渐隐遮罩，而 `FloatingWindow.Notes.cs` 的 `UpdateNoteDateStampStickyOffsets` 把 `18` DIP 高、带 `9` DIP 顶距的绿色日期条用 `TranslateTransform` 钉在视口顶缘；结果长便签滚到底部时（`v87` `long-notes-day-bottom.png`），置顶日期条整体被洗白发虚，且上方 `9` DIP 缝隙漏出半截汉字残影（#365）。
+
+## 进程入口迁移保留完整异常与收尾边界
+
+- diff 迁移进程入口、报告宿主或启动/关闭逻辑时，逐项对照初始化、设置快照、正常输出、`catch` / `finally`、全局异常处理器、退出码和资源释放；任一项留在旧入口或改变顺序都记为缺陷。
+- 同步 `catch` 能包住主流程不等于边界等价：检查 `try` 之前的初始化、`finally` 内的恢复，以及 Dispatcher、AppDomain、后台任务异常是否仍产生既定错误输出和日志。用对应失败路径的行为测试证明，不以成功路径通过代替。
+
+## 发布包格式变更同时迁移全部生产者与消费者
+
+- diff 改变包内文件、清单或安装前置条件时，先列出全部包生成入口、安装/验证消费者和文档命令，逐项证明它们使用同一新格式；真实安装探针、本机安装说明和 CheckOnly 都属于验收面，漏项记为缺陷。
+- 至少用真实打包→解包→CheckOnly 行为覆盖改动、多出、缺少文件；已有真实安装 Prepare 入口时还要跑 Prepare→DryRun。不能只验证部署主路径，也不能通过绕过新完整性门让旧消费者继续通过。

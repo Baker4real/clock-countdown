@@ -23,3 +23,9 @@ intent: 规定本仓库问题、PRD 和 ticket 的 GitHub Issues 操作方式。
 - skill 要求读取 ticket 时，读取对应 GitHub Issue
 - `/to-spec` 与 `/to-tickets` 直接发布为 GitHub Issue（PRD 父票与挂原生 `parent` + `blocked-by` 边的子票，默认标签 `ready-for-agent`），不在仓库 `docs/specs/` 新建重复副本；正文统一使用 `CONTEXT.md` 正名与纯散文契约描述（省去代码围栏、盘符路径、源码扩展名、两位 `#NN` 引用及待决/可选字面词）以一次通过术语、待决与隐私预检；本地草稿、tickets 清单与 `.created.json` 状态回执归位 `D:\agents\run-evidence\<task-slug>\<YYYYMMDD>\`，发布核验通过后回收 `.bodies/` 临时切片目录
 - `/wayfinder` 使用一个 map issue 及其子 issue；优先使用 GitHub 原生子任务和依赖关系
+
+## 批量关闭父票
+
+1. 开始实施前读取父票完整正文与评论，把父票自身验收标准、原生 children 和 blocked 关系列入同一份范围清单；父票独有的终态要求必须显式分配实施与验证 owner。
+2. 子票关闭只更新子票对照，不用 children 全绿代替父票验收。
+3. 关闭父票前独立回读父票自身每项验收标准与原生关系，逐项给出当前提交证据；仍有缺失或未验证项时保持父票开放。

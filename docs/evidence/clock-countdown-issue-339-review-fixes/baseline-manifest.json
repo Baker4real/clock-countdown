@@ -15,13 +15,13 @@
   "run_artifact_validation_report_sha256": "B188328AA5870FD4C7D1605758B845B16CB98B33CEA0D22CD58839D3569713F1",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-25-v91/manifest.json",
-      "manifest_sha256": "51D57135095108ED1DFBD31D315E57EE2D03ADA85B3FAE6FD7CDFE0FF7775064",
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-25-v93/manifest.json",
+      "manifest_sha256": "02A0D23C7892A10838A2A6D436B58EF01A5BFE3AE954BCF7474533F071BEADC0",
       "aggregate_sha256": "2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-25-v91/manifest.json",
-      "manifest_sha256": "3600E4EEB1D0BA3A81A34B39B8D0479FC1DC3F7B11944E3162A7B7BE1E22B79C",
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-25-v93/manifest.json",
+      "manifest_sha256": "0F6CA33E0A60C24E8AFD5D64390CFDEF08C0FF14C21627C01C84FCF68C4AA363",
       "aggregate_sha256": "949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9"
     }
   },

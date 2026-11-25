@@ -55,7 +55,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `Build-CountdownApplication.ps1`：生成 self-contained 的应用、纯 C# 验证与独立窗口验证 EXE，并复制、校验发布契约声明的 14 个程序目录随包资源：9 个现役图片资产，以及 #275 起的随包节假日数据 `app\holiday-data\` 与图标 `app\countdown-icon.ico`（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
-- `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
+- `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式。官方 CSharp 经 `MINMIN_WINDOW_VERIFICATION_PROGRESS` 让 runner 在事实边界写入有界 `START/END/ERROR` 进度，保存 `window-verification-progress.log`，并在 CSharp err 日志打印实际路径；runner 停滞时可从最后一个 `START` 定位场景，未设置该环境变量时不产生进度文件
 - `Countdown.Validation.psm1`：本机 Core、C# 与独立 runner validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与派生包/安装清单；应用与全包 SHA-256 分别由 Build 和 Deployer 生成，不保存手工静态钉值
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检

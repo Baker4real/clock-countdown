@@ -80,7 +80,7 @@
   "spec_review": "原P2动态禁动画与P3键盘/刷新覆盖均已闭环；真实负例单项报红，恢复后绿色。",
   "source_binding": {
     "path": "final-source-binding.json",
-    "sha256": "AFE662DB34068FB2E0BA30038CB3A007B0ABE7B1058FC06D8846F5711DACCA58",
+    "sha256": "9C743852406C72DC7225D1B7AB8EFB9CC575F849EEC304164527205909C04453",
     "run_artifact_sha256": "D9DF5C1821FFABE474193C652BFA0FE8A4EB57AD747893051F0D37295D3892CD"
   },
   "receipts": [

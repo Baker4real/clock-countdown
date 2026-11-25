@@ -53,3 +53,9 @@ intent: 提供仓库源码与测试的精确搜索根、超长文件符号索引
 - **底层贴图资产与分带生成依赖**：悬浮窗外壳与标题栏底图在 `assets/floating-plush/component-day-*.png`；管理窗口双工作区装饰场景图在 `assets/main-decorations/main-*-scene-day.png`，由 `tools/Build-MainDayOrnamentScene.ps1` 按 `tools/MainDecorationSceneBands.psd1` 的分带配置生成并由 `tools/Test-MainDayOrnamentScene.ps1` 校验带外纯净度（改动装饰贴图时须同步检查分带配置，并经官方 Build 重新生成载荷清单）。
 - **版本化次级窗口与状态实拍证据**：`docs/evidence/clock-countdown-issue-253-final-surfaces/` 与 `docs/evidence/clock-countdown-issue-250-surfaces/`（提醒中心、规则编辑器、确认框、四大弹层、错误态与系统高对比度），以及同级 `issue-247-countdown-rows`、`issue-249-note-rows`、`issue-251-density-scroll-context`、`issue-255-focus-policy`、`issue-339-sliding-pill-baseline` 目录。
 - **本机最近验证实拍（未跟踪）**：`logs/ui-captures/` 下按时间戳命名的子目录（如 `*-validate-only`、`*-density`、`*-scroll-hint`）。
+
+## 4. 大 diff 按文件与符号有界评审
+
+1. 先用 `git diff --stat`、`--name-status` 和上表符号索引确定改动面，再一次只读一个文件或一个符号的 hunk；完整 diff 需要追溯时保存到本轮证据目录，模型只读当前判断所需片段。
+2. 不把多个超长文件放进同一条 `git diff` 输出后依赖工具截断。结果被截断时缩小文件/行范围重读，原证据仍在完整 diff 或 transcript，不通过提高无关输出预算重复注入。
+3. 评审结论逐文件记录精确行号；跨文件调用面用 CodeGraph 或 scoped grep 补齐，不能因单个 hunk 未显示就推断没有消费者。

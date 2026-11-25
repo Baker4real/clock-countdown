@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -292,13 +293,23 @@ internal static class Program
             [FloatingNoteBodyWidthOptionBScrollSearchFactName] = false
         };
         var failures = new List<string>();
+        var progressPath = Environment.GetEnvironmentVariable("MINMIN_WINDOW_VERIFICATION_PROGRESS");
+        void Trace(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(progressPath))
+            {
+                File.AppendAllText(progressPath, $"[window-fact] {DateTimeOffset.UtcNow:o} {message}{Environment.NewLine}");
+            }
+        }
 
         void RunFact(string name, string meaning, Func<(bool Passed, string Explanation)> run)
         {
+            Trace($"START {name}");
             try
             {
                 var result = run();
                 facts[name] = result.Passed;
+                Trace($"END {name} passed={result.Passed}");
                 if (!result.Passed)
                 {
                     failures.Add(result.Explanation);
@@ -307,6 +318,7 @@ internal static class Program
             catch (Exception exception)
             {
                 facts[name] = false;
+                Trace($"ERROR {name} {exception.GetType().Name}");
                 failures.Add($"{meaning}；{exception}");
             }
         }

@@ -2,7 +2,7 @@
 type: spec
 title: US34–US41 窗口验证终态抽取
 tags: [spec, validation, assembly-boundary, ticket-258]
-intent: 固定完整验证闭包的唯一生产者、59 条独立事实去向、旧报告对照和实测证据；最终 Clean 五阶段仍由 orchestrator 验收。
+intent: 固定完整验证闭包的唯一生产者、59 条独立事实去向、旧报告对照、实测证据与最终关闭门禁。
 ---
 
 # US34–US41 窗口验证终态抽取
@@ -103,13 +103,13 @@ intent: 固定完整验证闭包的唯一生产者、59 条独立事实去向、
 
 ## 5. 视觉证据
 
-- 现役版本 `2026-11-25-v91`。Build `20261125T114645729-0a2c085f` 0（97 秒）；BaselineGenerate `20261125T114835946-e96a7e74` 0（116 秒），严格自检通过。v90 证据保留在提交 `ac7d892`。
+- 本票验收时版本（历史）`2026-11-25-v91`。Build `20261125T114645729-0a2c085f` 0（97 秒）；BaselineGenerate `20261125T114835946-e96a7e74` 0（116 秒），严格自检通过。v90 证据保留在提交 `ac7d892`；后续现役版本以 DESIGN.md 为准。
 - runner apphost SHA-256：`B7350BCEDD3392381C08EBCFBE23B9EA605CDB5D8665403E3511BC29C5E01F95`；主窗 source aggregate：`2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273`；悬浮窗：`949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9`。
 - `Compare-CountdownVisualBaseline -From 2026-11-25-v90 -To 2026-11-25-v91`：主窗 9/9、悬浮窗 5/5，共 14/14 PNG 与状态指纹逐字节一致；双窗绑定文件均无变化，只有行为审查修复后的 runner EXE 身份变化。像素、alpha、ROI 阈值未改。
 
 ## 6. 验收边界
 
-本轮只执行实施 worktree 获授权的最窄到完整检查并保存实际日志；最终提交的 Clean + R2R 五阶段 fresh gate **未由本实施代理执行，保持 unverified，由 orchestrator 所有**。不得用本文件的增量构建、聚焦 CSharp 或阶段组合冒称 fresh 全门。
+本轮实施代理的增量构建与聚焦阶段没有冒称 fresh 全门。orchestrator 已在最终提交 `8a13febff0b21dc7f0d7a88b6d58337309797957` 完成同提交门禁：Build/Core `20261125T121349374-bfa369f3`、CSharp `20261125T130312206-3be95450`、SourceValidation/InstallValidate `20261125T131010674-4880b49b` 全部退出 0，Build 回执为 CleanR2R；CI `45551918579` success。
 
 ## 7. 当前运行证据
 
@@ -128,7 +128,7 @@ intent: 固定完整验证闭包的唯一生产者、59 条独立事实去向、
 | InstallValidate | v91 `20261125T120402061-492ad13f` | 0，17 秒；最小安装验证 |
 | ValidationHarness | v91 `20261125T114123743-e41c0ed0` | 0，42 秒；原 popup/tray 合同及 4 个新入口/行为负例全通过 |
 | Tooling | v91 `20261125T120527311-a01530f5` | 0，195 秒；递归负控制、诊断 fixture、发布证据、视觉/工具回归全通过 |
-| Clean + R2R 五阶段 fresh gate | orchestrator 所有 | `ac7d892` 已全绿；本轮新提交仍待重跑，**unverified** |
+| Clean + R2R 五阶段 fresh gate | 最终提交 `8a13feb`；Build/Core `20261125T121349374-bfa369f3`、CSharp `20261125T130312206-3be95450`、SourceValidation/InstallValidate `20261125T131010674-4880b49b` | 全部 0；CI `45551918579` success |
 
 ## 8. 行为审查修复 RED → GREEN
 

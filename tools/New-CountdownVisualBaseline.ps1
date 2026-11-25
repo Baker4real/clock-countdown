@@ -11,9 +11,9 @@ Import-Module (Join-Path $PSScriptRoot 'Countdown.VisualBaselineRetention.psm1')
 Assert-SuiteIsolatedDesktop
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$applicationPath = Join-Path $repoRoot 'app/MinminCountdown.exe'
+$applicationPath = Join-Path $repoRoot 'window-verification/MinminCountdown.WindowVerification.exe'
 if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
-    throw "未找到应用：$applicationPath。请先构建当前源码。"
+    throw "未找到窗口验证 runner：$applicationPath。请先构建当前源码。"
 }
 Import-Module (Join-Path $repoRoot 'Countdown.Validation.psm1') -Force
 $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $repoRoot
@@ -70,14 +70,14 @@ try {
         throw "生成报告未通过双基线验证：$stdoutPath"
     }
     if ((Get-FileHash -LiteralPath $applicationPath -Algorithm SHA256).Hash -cne $applicationSha256) {
-        throw '基线生成期间应用 EXE 发生变化。'
+        throw '基线生成期间验证 runner EXE 发生变化。'
     }
     foreach ($manifestPath in $manifestPaths) {
         $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable -DateKind String
         # 版本化回执先固定为UTF-8/LF，再允许下游按Git blob字节记录引用哈希。
         Write-CountdownEvidenceJson -Path $manifestPath -Value $manifest
         if ($manifest.executable.sha256 -cne $applicationSha256) {
-            throw "基线未绑定实际执行的应用 EXE：$manifestPath"
+            throw "基线未绑定实际执行的验证 runner EXE：$manifestPath"
         }
     }
     $generationValidated = $true
@@ -85,6 +85,8 @@ try {
     [pscustomobject]@{
         Valid = $true
         ApplicationSha256 = $applicationSha256
+        GeneratorPath = $applicationPath
+        GeneratorSha256 = $applicationSha256
         Manifests = @($manifestPaths)
         RemovedPreviousBaseline = @($removedPrevious)
         ValidationReport = $stdoutPath

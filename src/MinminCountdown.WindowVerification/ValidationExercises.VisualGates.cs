@@ -573,7 +573,7 @@ internal static partial class ValidationExercises
 
     public static bool RunFloatingQuickAddThemeResourceIsolationBehavior()
     {
-        var passingChecks = FloatingWindow.RequiredQuickAddThemeChecks.ToDictionary(
+        var passingChecks = FloatingWindowValidationScenariosRunner.RequiredQuickAddThemeChecks.ToDictionary(
             name => name,
             _ => true,
             StringComparer.Ordinal);
@@ -583,7 +583,7 @@ internal static partial class ValidationExercises
                 Array.Empty<FloatingQuickAddThemeProbeDiagnostic>()).Passed,
             "悬浮窗快速新增局部主题全通过夹具被错误拒绝。");
 
-        foreach (var target in FloatingWindow.RequiredQuickAddThemeChecks)
+        foreach (var target in FloatingWindowValidationScenariosRunner.RequiredQuickAddThemeChecks)
         {
             var failingChecks = new Dictionary<string, bool>(passingChecks, StringComparer.Ordinal)
             {

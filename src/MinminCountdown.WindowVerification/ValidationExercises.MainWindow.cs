@@ -1959,7 +1959,7 @@ internal static partial class ValidationExercises
             main.Show();
             main.ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(main.Dispatcher);
-            var parts = main.NoteListPartsForValidation;
+            var parts = WindowScenarioAccess.NoteListParts(main);
             var viewport = VisualDescendants<ScrollContentPresenter>(parts.ListRegion).FirstOrDefault();
             Must(viewport is not null, "#249：便签列表须在滚动区域内。");
             var violations = new List<string>();

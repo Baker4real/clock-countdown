@@ -1,10 +1,10 @@
 #requires -Version 7.0
-# 最小复现：以 SourceTree 模式直接启动应用 EXE 跑 --validate-only，触发悬浮窗与主窗口 v22 基线门。
+# 最小复现：以 SourceTree 模式直接启动独立 runner 跑 --validate-only，触发悬浮窗与主窗口现役基线门。
 # -Isolated 时经不可见桌面启动；否则直接在用户桌面跑（窗口可见，约一分钟）。
 [CmdletBinding()]
 param(
     [switch] $Isolated,
-    # 诊断专用：生成模式，把当前实际帧写入（应为空的）v22 基线目录并生成 manifest。
+    # 诊断专用：生成模式，把当前实际帧写入（应为空的）现役版本基线目录并生成 manifest。
     [switch] $GenerateBaseline
 )
 
@@ -18,7 +18,7 @@ $diagPath = Join-Path $env:TEMP 'minmin-baseline-repro-diag.jsonl'
 $stdoutPath = Join-Path $env:TEMP 'minmin-baseline-repro.out.log'
 $stderrPath = Join-Path $env:TEMP 'minmin-baseline-repro.err.log'
 
-$applicationPath = Join-Path $repoRoot 'app\MinminCountdown.exe'
+$applicationPath = Join-Path $repoRoot 'window-verification\MinminCountdown.WindowVerification.exe'
 $argumentList = @(
     '--validate-only', '--settings-file', $settingsPath,
     '--diagnostic-log-path', $diagPath

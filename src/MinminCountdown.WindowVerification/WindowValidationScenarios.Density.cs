@@ -7,12 +7,7 @@ using System.Windows.Media;
 using MinminCountdown.Core;
 
 namespace MinminCountdown;
-
-// #251：管理窗口密度回收与状态/操作上下文的窗口探针。隔离窗口与窗口档由 ValidationExercises.Density 编排，
-// 判定写在文件末尾的测量记录上。这里装入长内容，量两张编辑卡的内部留白、编辑卡到列表与列表到状态栏的区块间距、
-// 两个列表首屏能给行用的视口，以及便签列表顶部的状态分段、搜索与批量操作条在滚动、搜索、筛选与多选下是否固定
-// 可见、互不重叠且不被裁切。只测量；revealed 在每个状态摆好后调用（实拍用）。
-public sealed partial class MainWindow
+internal sealed partial class MainWindowValidationScenariosRunner
 {
     private const string DensityProbeTagName = "密度探针";
     private const string DensityProbeSearch = "密度探针";
@@ -20,7 +15,7 @@ public sealed partial class MainWindow
     // #274：这些辅助成员仍服务本文件的 #251 密度场景；空态场景本身已迁出，不在此保留空态判定。
     private void RequireEmptyDataForDensityProbe()
     {
-        var settings = _desktopWorkspace.Snapshot.Settings;
+        var settings = Workspace.Snapshot.Settings;
         if (settings.Countdowns.Count > 0 || settings.Notes.Count > 0)
         {
             throw new InvalidOperationException("密度探针要求从没有任何倒计时与便签的数据开始。");
@@ -29,13 +24,13 @@ public sealed partial class MainWindow
 
     private void ApplyDensityProbeChange(DesktopWorkspaceChange change)
     {
-        var result = _desktopWorkspace.Apply(change);
+        var result = Workspace.Apply(change);
         if (!result.Succeeded)
         {
             throw new InvalidOperationException($"密度探针写入失败：{result.Error}");
         }
 
-        WindowValidationInput.Pump(Dispatcher);
+        WindowValidationInput.Pump(window.Dispatcher);
     }
 
     private void RestoreAfterDensityProbe(
@@ -47,24 +42,24 @@ public sealed partial class MainWindow
     {
         if (noteIds.Count > 0)
         {
-            _desktopWorkspace.Apply(new DeleteNotesChange(noteIds.ToArray()));
+            Workspace.Apply(new DeleteNotesChange(noteIds.ToArray()));
         }
 
         foreach (var id in countdownIds)
         {
-            _desktopWorkspace.Apply(new DeleteCountdownChange(id));
+            Workspace.Apply(new DeleteCountdownChange(id));
         }
 
         if (originalFilter.HasConstraints)
         {
-            _desktopWorkspace.ApplyFilter(originalFilter);
+            Workspace.ApplyFilter(originalFilter);
         }
         else
         {
-            ClearFilters();
+            window.ClearFilters();
         }
 
-        SelectNotesSegment(originalSegment);
+        window.SelectNotesSegment(originalSegment);
         ShowWorkspace(originalWorkspace);
         SettleDensityProbeLayout();
     }
@@ -73,8 +68,8 @@ public sealed partial class MainWindow
     {
         for (var pass = 0; pass < 2; pass++)
         {
-            WindowValidationInput.Pump(Dispatcher);
-            UpdateLayout();
+            WindowValidationInput.Pump(window.Dispatcher);
+            window.UpdateLayout();
         }
     }
 
@@ -83,21 +78,21 @@ public sealed partial class MainWindow
         Action<string>? revealed = null)
     {
         RequireEmptyDataForDensityProbe();
-        var originalWorkspace = _workspace;
-        var originalFilter = _desktopWorkspace.Snapshot.Filter;
-        var originalSegment = _completedSegmentSelected;
+        var originalWorkspace = window.CurrentWorkspace;
+        var originalFilter = Workspace.Snapshot.Filter;
+        var originalSegment = window.CompletedNotesSegment.IsChecked == true;
         var countdownIds = new List<string>();
         var noteIds = new List<string>();
         string? tagId = null;
         var context = new List<string>();
-        var hostHorizontalOffset = MainWindowScrollHost.HorizontalOffset;
-        var hostVerticalOffset = MainWindowScrollHost.VerticalOffset;
+        var hostHorizontalOffset = window.MainWindowScrollHost.HorizontalOffset;
+        var hostVerticalOffset = window.MainWindowScrollHost.VerticalOffset;
         try
         {
-            var tag = _desktopWorkspace.Apply(new CreateTagChange(DensityProbeTagName, "#F4B6A6"));
+            var tag = Workspace.Apply(new CreateTagChange(DensityProbeTagName, "#F4B6A6"));
             var probeTag = tag.CreatedTag?.Id ?? throw new InvalidOperationException($"密度探针未取得夹具标签：{tag.Error}");
             tagId = probeTag;
-            WindowValidationInput.Pump(Dispatcher);
+            WindowValidationInput.Pump(window.Dispatcher);
             for (var index = 1; index <= 12; index++)
             {
                 var name = index == 1
@@ -106,10 +101,10 @@ public sealed partial class MainWindow
                 ApplyDensityProbeChange(new SaveCountdownChange(
                     null,
                     name,
-                    _desktopWorkspace.Snapshot.UtcNow.AddDays(index),
+                    Workspace.Snapshot.UtcNow.AddDays(index),
                     index % 2 == 0 ? new[] { probeTag } : Array.Empty<string>(),
                     Array.Empty<ReminderRule>()));
-                countdownIds.Add(_desktopWorkspace.Snapshot.Settings.Countdowns.Single(record => record.Name == name).Id);
+                countdownIds.Add(Workspace.Snapshot.Settings.Countdowns.Single(record => record.Name == name).Id);
             }
 
             for (var index = 1; index <= 14; index++)
@@ -121,106 +116,106 @@ public sealed partial class MainWindow
                 ApplyDensityProbeChange(new SaveNoteChange(
                     null,
                     text,
-                    _desktopWorkspace.Snapshot.BeijingNow.Date.AddDays(index % 3),
+                    Workspace.Snapshot.BeijingNow.Date.AddDays(index % 3),
                     false,
                     index % 2 == 0 ? new[] { probeTag } : Array.Empty<string>(),
                     Array.Empty<ReminderRule>()));
-                noteIds.Add(_desktopWorkspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id);
+                noteIds.Add(Workspace.Snapshot.Settings.Notes.Single(note => note.Text == text).Id);
             }
 
             // —— 倒计时页：收起新增区，量编辑卡留白、到列表的间距、列表首屏视口与完整可见行数。
             ShowWorkspace(WorkspaceKind.Countdowns);
-            SetCountdownEditorExpanded(false);
+            window.SetCountdownEditorExpanded(false);
             SettleDensityProbeLayout();
-            CountdownListRegion.ScrollToTop();
+            window.CountdownListRegion.ScrollToTop();
             SettleDensityProbeLayout();
-            var countdownEditor = DensityProbeBounds(CountdownEditorSurface, MainLayoutSurface);
-            var countdownContent = DensityProbeContentBounds(CountdownEditorCard, MainLayoutSurface);
-            var countdownList = DensityProbeBounds(CountdownListRegion, MainLayoutSurface);
-            var countdownViewport = CountdownListRegion.ViewportHeight;
-            var countdownRowsVisible = DensityProbeFullyVisible(CountdownRows.Children.OfType<FrameworkElement>(), CountdownListRegion);
-            var countdownScrollable = CountdownListRegion.ScrollableHeight;
-            Reveal($"{label}-countdowns", CountdownListRegion);
-            CountdownListRegion.ScrollToBottom();
+            var countdownEditor = DensityProbeBounds(window.CountdownEditorSurface, window.MainLayoutSurface);
+            var countdownContent = DensityProbeContentBounds(window.CountdownEditorCard, window.MainLayoutSurface);
+            var countdownList = DensityProbeBounds(window.CountdownListRegion, window.MainLayoutSurface);
+            var countdownViewport = window.CountdownListRegion.ViewportHeight;
+            var countdownRowsVisible = DensityProbeFullyVisible(window.CountdownRows.Children.OfType<FrameworkElement>(), window.CountdownListRegion);
+            var countdownScrollable = window.CountdownListRegion.ScrollableHeight;
+            Reveal($"{label}-countdowns", window.CountdownListRegion);
+            window.CountdownListRegion.ScrollToBottom();
             SettleDensityProbeLayout();
             var countdownEditorStays = DensityProbeSameBounds(
                 countdownEditor,
-                DensityProbeBounds(CountdownEditorSurface, MainLayoutSurface));
-            CountdownListRegion.ScrollToTop();
+                DensityProbeBounds(window.CountdownEditorSurface, window.MainLayoutSurface));
+            window.CountdownListRegion.ScrollToTop();
             SettleDensityProbeLayout();
 
             // —— 便签页：量编辑卡留白、区块间距、列表卡到状态栏的间距与首屏能给行用的视口。
             ShowWorkspace(WorkspaceKind.Notes);
-            SelectNotesSegment(false);
+            window.SelectNotesSegment(false);
             SettleDensityProbeLayout();
-            NotesListRegion.ScrollToTop();
+            window.NotesListRegion.ScrollToTop();
             SettleDensityProbeLayout();
-            var noteEditor = DensityProbeBounds(NoteEditorSurface, MainLayoutSurface);
-            var noteContent = DensityProbeContentBounds(NoteEditorFields, MainLayoutSurface);
-            var notesCard = DensityProbeBounds(NotesListSurface, MainLayoutSurface);
-            var statusBar = DensityProbeBounds(MainStatusBarSurface, MainLayoutSurface);
-            var noteRowsTop = DensityProbeBounds(ActiveNoteRows, NotesListRegion).Top;
-            var noteRowsViewport = NotesListRegion.ViewportHeight - noteRowsTop;
+            var noteEditor = DensityProbeBounds(window.NoteEditorSurface, window.MainLayoutSurface);
+            var noteContent = DensityProbeContentBounds(window.NoteEditorFields, window.MainLayoutSurface);
+            var notesCard = DensityProbeBounds(window.NotesListSurface, window.MainLayoutSurface);
+            var statusBar = DensityProbeBounds(window.MainStatusBarSurface, window.MainLayoutSurface);
+            var noteRowsTop = DensityProbeBounds(window.ActiveNoteRows, window.NotesListRegion).Top;
+            var noteRowsViewport = window.NotesListRegion.ViewportHeight - noteRowsTop;
             var noteCardsVisible = DensityProbeFullyVisible(
-                _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
-                NotesListRegion);
-            var headerInsideScroller = DensityProbeIsDescendant(NotesStatusHeader, NotesListRegion);
+                window.VisibleNoteSelectionRows(),
+                window.NotesListRegion);
+            var headerInsideScroller = DensityProbeIsDescendant(window.NotesStatusHeader, window.NotesListRegion);
             CheckNotesContext("顶部");
-            Reveal($"{label}-notes", NotesListCard);
-            var header = DensityProbeBounds(NotesStatusHeader, MainLayoutSurface);
-            NotesListRegion.ScrollToBottom();
+            Reveal($"{label}-notes", window.NotesListCard);
+            var header = DensityProbeBounds(window.NotesStatusHeader, window.MainLayoutSurface);
+            window.NotesListRegion.ScrollToBottom();
             SettleDensityProbeLayout();
-            var headerStays = DensityProbeSameBounds(header, DensityProbeBounds(NotesStatusHeader, MainLayoutSurface)) &&
-                NotesListRegion.VerticalOffset > 0.5;
+            var headerStays = DensityProbeSameBounds(header, DensityProbeBounds(window.NotesStatusHeader, window.MainLayoutSurface)) &&
+                window.NotesListRegion.VerticalOffset > 0.5;
             CheckNotesContext("滚到底");
-            NotesListRegion.ScrollToBottom();
+            window.NotesListRegion.ScrollToBottom();
             SettleDensityProbeLayout();
-            Reveal($"{label}-notes-scrolled", NotesListCard);
+            Reveal($"{label}-notes-scrolled", window.NotesListCard);
 
             // —— 搜索：命中全部探针便签，列表仍出行，分段与搜索固定可见。
-            NotesListRegion.ScrollToTop();
-            NoteSearch.Text = DensityProbeSearch;
-            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
+            window.NotesListRegion.ScrollToTop();
+            window.NoteSearch.Text = DensityProbeSearch;
+            WindowValidationInput.RaisePreviewKey(window.NoteSearch, Key.Enter);
             SettleDensityProbeLayout();
             var searchShowsRows = DensityProbeFullyVisible(
-                _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
-                NotesListRegion) > 0;
+                window.VisibleNoteSelectionRows(),
+                window.NotesListRegion) > 0;
             CheckNotesContext("搜索");
-            Reveal($"{label}-notes-search", NotesListCard);
-            NoteSearch.Text = string.Empty;
-            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
+            Reveal($"{label}-notes-search", window.NotesListCard);
+            window.NoteSearch.Text = string.Empty;
+            WindowValidationInput.RaisePreviewKey(window.NoteSearch, Key.Enter);
             SettleDensityProbeLayout();
 
             // —— 标签筛选：只剩一半便签，分段与搜索固定可见。
-            _desktopWorkspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = new[] { probeTag } });
+            Workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = new[] { probeTag } });
             SettleDensityProbeLayout();
             var filterShowsRows = DensityProbeFullyVisible(
-                _noteSourceRows.Values.OfType<FrameworkElement>().Where(row => row.IsVisible),
-                NotesListRegion) > 0;
+                window.VisibleNoteSelectionRows(),
+                window.NotesListRegion) > 0;
             CheckNotesContext("标签筛选");
-            ClearFilters();
+            window.ClearFilters();
             SettleDensityProbeLayout();
 
             // —— 多选：两张便签被选中后批量操作条出现在搜索与列表之间，分段、搜索、操作条与列表互不重叠。
-            var selectable = VisibleNoteSelectionRows();
+            var selectable = window.VisibleNoteSelectionRows();
             if (selectable.Length < 2)
             {
                 throw new InvalidOperationException("密度探针需要至少两张可选便签。");
             }
 
-            SelectNoteRow(selectable[0], ModifierKeys.None);
-            SelectNoteRow(selectable[1], ModifierKeys.Control);
+            window.SelectNoteRow(selectable[0], ModifierKeys.None);
+            window.SelectNoteRow(selectable[1], ModifierKeys.Control);
             SettleDensityProbeLayout();
-            var batchVisible = NoteBatchActions.IsVisible;
+            var batchVisible = window.NoteBatchActions.IsVisible;
             CheckNotesContext("多选");
-            var batchViewport = NotesListRegion.ViewportHeight;
-            Reveal($"{label}-notes-selected", NotesListCard);
-            OnClearSelectedNotes(this, new RoutedEventArgs());
+            var batchViewport = window.NotesListRegion.ViewportHeight;
+            Reveal($"{label}-notes-selected", window.NotesListCard);
+            window.OnClearSelectedNotes(this, new RoutedEventArgs());
             SettleDensityProbeLayout();
 
             return new MainWorkbenchDensityMeasurement(
                 label,
-                new Size(ActualWidth, ActualHeight),
+                new Size(window.ActualWidth, window.ActualHeight),
                 DensityProbeHasLayoutScaling(),
                 countdownContent.Top - countdownEditor.Top,
                 countdownEditor.Bottom - countdownContent.Bottom,
@@ -245,17 +240,17 @@ public sealed partial class MainWindow
         }
         finally
         {
-            NoteSearch.Text = string.Empty;
-            WindowValidationInput.RaisePreviewKey(NoteSearch, Key.Enter);
-            OnClearSelectedNotes(this, new RoutedEventArgs());
+            window.NoteSearch.Text = string.Empty;
+            WindowValidationInput.RaisePreviewKey(window.NoteSearch, Key.Enter);
+            window.OnClearSelectedNotes(this, new RoutedEventArgs());
             RestoreAfterDensityProbe(originalWorkspace, originalFilter, originalSegment, countdownIds, noteIds);
             if (tagId is not null)
             {
-                _desktopWorkspace.Apply(new DeleteTagChange(tagId));
+                Workspace.Apply(new DeleteTagChange(tagId));
             }
 
-            MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
-            MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
+            window.MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
+            window.MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
             SettleDensityProbeLayout();
         }
 
@@ -270,8 +265,8 @@ public sealed partial class MainWindow
             subject.BringIntoView();
             SettleDensityProbeLayout();
             revealed(state);
-            MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
-            MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
+            window.MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
+            window.MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
             SettleDensityProbeLayout();
         }
 
@@ -279,24 +274,24 @@ public sealed partial class MainWindow
         // 文字不低于 13 DIP，命中区不低于 28 DIP。
         void CheckNotesContext(string state)
         {
-            var card = DensityProbeBounds(NotesListSurface, NotesListCard);
-            var list = DensityProbeBounds(NotesListRegion, NotesListCard);
+            var card = DensityProbeBounds(window.NotesListSurface, window.NotesListCard);
+            var list = DensityProbeBounds(window.NotesListRegion, window.NotesListCard);
             var targets = new List<(string Name, FrameworkElement Element)>
             {
-                ("未完成分段", ActiveNotesSegment),
-                ("已完成分段", CompletedNotesSegment),
-                ("搜索标签", NoteSearchLabel),
-                ("搜索框", NoteSearch)
+                ("未完成分段", window.ActiveNotesSegment),
+                ("已完成分段", window.CompletedNotesSegment),
+                ("搜索标签", window.NoteSearchLabel),
+                ("搜索框", window.NoteSearch)
             };
-            if (NoteBatchActions.IsVisible)
+            if (window.NoteBatchActions.IsVisible)
             {
-                targets.Add(("已选数量", SelectedNotesCount));
-                targets.AddRange(NoteBatchActions.Children.OfType<ButtonBase>()
+                targets.Add(("已选数量", window.SelectedNotesCount));
+                targets.AddRange(window.NoteBatchActions.Children.OfType<ButtonBase>()
                     .Where(button => button.IsVisible)
                     .Select(button => (button.Content?.ToString() ?? string.Empty, (FrameworkElement)button)));
             }
 
-            var bounds = targets.Select(target => (target.Name, target.Element, Bounds: DensityProbeBounds(target.Element, NotesListCard))).ToArray();
+            var bounds = targets.Select(target => (target.Name, target.Element, Bounds: DensityProbeBounds(target.Element, window.NotesListCard))).ToArray();
             foreach (var (name, element, rect) in bounds)
             {
                 if (!element.IsVisible || rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0)
@@ -335,9 +330,9 @@ public sealed partial class MainWindow
                 }
             }
 
-            foreach (var text in MainValidationDescendants<TextBlock>(NotesListCard)
+            foreach (var text in MainValidationDescendants<TextBlock>(window.NotesListCard)
                          .Where(text => text.IsVisible && !string.IsNullOrEmpty(text.Text) &&
-                                        !DensityProbeIsDescendant(text, NotesListRegion)))
+                                        !DensityProbeIsDescendant(text, window.NotesListRegion)))
             {
                 if (text.FontSize < 13 - 0.01)
                 {
@@ -346,32 +341,32 @@ public sealed partial class MainWindow
             }
 
             // 窄窗口（720 宽）靠窗口级滚动兜底，左侧分段与右侧搜索不必同屏；逐个滚进可视区后各自完整可见。
-            var window = new Rect(0, 0, MainWindowScrollHost.ViewportWidth, MainWindowScrollHost.ViewportHeight);
+            var windowBounds = new Rect(0, 0, window.MainWindowScrollHost.ViewportWidth, window.MainWindowScrollHost.ViewportHeight);
             foreach (var (name, element) in new (string, FrameworkElement)[]
                      {
-                         ("未完成分段", ActiveNotesSegment),
-                         ("已完成分段", CompletedNotesSegment),
-                         ("搜索框", NoteSearch)
+                         ("未完成分段", window.ActiveNotesSegment),
+                         ("已完成分段", window.CompletedNotesSegment),
+                         ("搜索框", window.NoteSearch)
                      })
             {
                 element.BringIntoView();
                 SettleDensityProbeLayout();
-                var inWindow = DensityProbeBounds(element, MainWindowScrollHost);
-                if (!DensityProbeInside(inWindow, window))
+                var inWindow = DensityProbeBounds(element, window.MainWindowScrollHost);
+                if (!DensityProbeInside(inWindow, windowBounds))
                 {
                     context.Add($"{state}：{name}滚进窗口可视区后仍被裁切 {DensityProbeFormat(inWindow)}");
                 }
             }
 
-            MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
-            MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
+            window.MainWindowScrollHost.ScrollToHorizontalOffset(hostHorizontalOffset);
+            window.MainWindowScrollHost.ScrollToVerticalOffset(hostVerticalOffset);
             SettleDensityProbeLayout();
         }
     }
 
     private bool DensityProbeHasLayoutScaling()
     {
-        for (DependencyObject? current = MainLayoutSurface; current is not null; current = VisualTreeHelper.GetParent(current))
+        for (DependencyObject? current = window.MainLayoutSurface; current is not null; current = VisualTreeHelper.GetParent(current))
         {
             if (current is Viewbox ||
                 current is FrameworkElement { LayoutTransform: { } transform } && !transform.Value.IsIdentity)
@@ -447,23 +442,21 @@ public sealed partial class MainWindow
             CultureInfo.InvariantCulture,
             $"({bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##}×{bounds.Height:0.##})");
 }
-
-// #251：悬浮窗滚动上下文提示的窗口探针。读内容呈现器上实际挂着的不透明遮罩，按渐变停靠点还原两侧是否渐隐、
-// 渐隐带长度与边缘不透明度；同时记下其余表面（滚动条、命令区、玩偶层、标题栏、外壳）有没有被挂遮罩，以及滚动条
-// 命中轨、thumb 与正文右界。场景切换（搜索展开、快速新增展开、「…」菜单）走窗口自己的入口。只测量、不判定。
-public sealed partial class FloatingWindow
+internal sealed partial class FloatingWindowValidationScenariosRunner
 {
-    internal ScrollViewer BodyScrollerForValidation => FloatingBodyScroller;
+    internal ScrollViewer BodyScrollerForValidation => window.FloatingBodyScroller;
 
-    internal FrameworkElement IncomeForValidation => ActiveBottomStatusElement;
+    internal FrameworkElement IncomeForValidation => (window.FloatingEncouragement.Visibility == Visibility.Visible
+    ? window.FloatingEncouragement
+    : window.FloatingIncome);
 
     // thumb 拖动输入路径用的真实滚动条 thumb。
     internal Thumb? BodyScrollThumbForValidation
     {
         get
         {
-            FloatingBodyScroller.ApplyTemplate();
-            return (FloatingBodyScroller.Template?.FindName("PART_VerticalScrollBar", FloatingBodyScroller) as ScrollBar)
+            window.FloatingBodyScroller.ApplyTemplate();
+            return (window.FloatingBodyScroller.Template?.FindName("PART_VerticalScrollBar", window.FloatingBodyScroller) as ScrollBar)
                 ?.Track?.Thumb;
         }
     }
@@ -471,25 +464,25 @@ public sealed partial class FloatingWindow
     internal FloatingScrollContextState ScrollContextStateForValidation()
     {
         SettleScrollContextForValidation();
-        FloatingBodyScroller.ApplyTemplate();
-        var presenter = FloatingBodyScroller.Template.FindName("PART_ScrollContentPresenter", FloatingBodyScroller)
+        window.FloatingBodyScroller.ApplyTemplate();
+        var presenter = window.FloatingBodyScroller.Template.FindName("PART_ScrollContentPresenter", window.FloatingBodyScroller)
             as ScrollContentPresenter ?? throw new InvalidOperationException("悬浮窗列表内容呈现器未实例化。");
-        var scrollBar = FloatingBodyScroller.Template.FindName("PART_VerticalScrollBar", FloatingBodyScroller)
+        var scrollBar = window.FloatingBodyScroller.Template.FindName("PART_VerticalScrollBar", window.FloatingBodyScroller)
             as ScrollBar ?? throw new InvalidOperationException("悬浮窗列表滚动条未实例化。");
         scrollBar.ApplyTemplate();
         var rail = scrollBar.Template.FindName("FloatingScrollBarHitRail", scrollBar) as FrameworkElement;
         var thumbVisual = scrollBar.Track?.Thumb is { } thumb
             ? ValidationDescendants<Border>(thumb).FirstOrDefault(border => border.Name == "FloatingScrollBarThumbVisual")
             : null;
-        var root = Content as FrameworkElement ?? throw new InvalidOperationException("悬浮窗根视觉不可用。");
+        var root = window.Content as FrameworkElement ?? throw new InvalidOperationException("悬浮窗根视觉不可用。");
         var strayMasks = new (string Name, UIElement Element)[]
             {
-                ("FloatingBodyScroller", FloatingBodyScroller),
+                ("FloatingBodyScroller", window.FloatingBodyScroller),
                 ("PART_VerticalScrollBar", scrollBar),
-                ("FloatingNotesCommandScroller", FloatingNotesCommandScroller),
-                ("FloatingPlushScene", FloatingPlushScene),
-                ("FloatingHeaderSurface", FloatingHeaderSurface),
-                ("TaskCard", TaskCard)
+                ("FloatingNotesCommandScroller", window.FloatingNotesCommandScroller),
+                ("FloatingPlushScene", window.FloatingPlushScene),
+                ("FloatingHeaderSurface", window.FloatingHeaderSurface),
+                ("TaskCard", window.TaskCard)
             }
             .Where(target => target.Element.OpacityMask is not null)
             .Select(target => target.Name)
@@ -505,8 +498,8 @@ public sealed partial class FloatingWindow
             : Rect.Empty;
         var state = new FloatingScrollContextState(
             _workspace.ToString(),
-            FloatingBodyScroller.VerticalOffset,
-            FloatingBodyScroller.ScrollableHeight,
+            window.FloatingBodyScroller.VerticalOffset,
+            window.FloatingBodyScroller.ScrollableHeight,
             viewportHeight,
             presenter.OpacityMask is not null,
             false,
@@ -521,8 +514,8 @@ public sealed partial class FloatingWindow
             presenterBounds,
             scrollBarBounds,
             DensityProbeIsDescendantOf(scrollBar, presenter) ||
-                DensityProbeIsDescendantOf(FloatingNotesCommandScroller, presenter) ||
-                DensityProbeIsDescendantOf(FloatingPlushScene, presenter));
+                DensityProbeIsDescendantOf(window.FloatingNotesCommandScroller, presenter) ||
+                DensityProbeIsDescendantOf(window.FloatingPlushScene, presenter));
         if (presenter.OpacityMask is not LinearGradientBrush mask || mask.GradientStops.Count < 2)
         {
             return state;
@@ -555,14 +548,14 @@ public sealed partial class FloatingWindow
     {
         for (var pass = 0; pass < 2; pass++)
         {
-            WindowValidationInput.Pump(Dispatcher);
-            UpdateLayout();
+            WindowValidationInput.Pump(window.Dispatcher);
+            window.UpdateLayout();
         }
     }
 
     internal void ScrollBodyForValidation(double offset)
     {
-        FloatingBodyScroller.ScrollToVerticalOffset(offset);
+        window.FloatingBodyScroller.ScrollToVerticalOffset(offset);
         SettleScrollContextForValidation();
     }
 
@@ -570,12 +563,11 @@ public sealed partial class FloatingWindow
     {
         if (expanded)
         {
-            ExpandNoteSearch(focus: false);
+            window.ExpandNoteSearch(focus: false);
         }
         else
         {
-            _searchExpanded = false;
-            UpdateSearchPresentation();
+            window.ClearNoteSearch();
         }
 
         SettleScrollContextForValidation();
@@ -585,10 +577,10 @@ public sealed partial class FloatingWindow
     internal ContextMenu? OpenVisibleNoteOverflowMenuForValidation()
     {
         SettleScrollContextForValidation();
-        var viewport = new Rect(0, 0, FloatingBodyScroller.ViewportWidth, FloatingBodyScroller.ViewportHeight);
+        var viewport = new Rect(0, 0, window.FloatingBodyScroller.ViewportWidth, window.FloatingBodyScroller.ViewportHeight);
         var trigger = NoteOverflowTriggersForValidation().FirstOrDefault(candidate =>
             candidate.IsVisible &&
-            viewport.Contains(candidate.TransformToAncestor(FloatingBodyScroller)
+            viewport.Contains(candidate.TransformToAncestor(window.FloatingBodyScroller)
                 .TransformBounds(new Rect(new Point(0, 0), candidate.RenderSize))));
         if (trigger is null)
         {
@@ -597,7 +589,7 @@ public sealed partial class FloatingWindow
 
         trigger.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         SettleScrollContextForValidation();
-        return _noteOverflowMenu;
+        return window.FindActiveNoteOverflowMenu();
     }
 
     private static bool DensityProbeIsDescendantOf(DependencyObject candidate, DependencyObject ancestor)

@@ -964,7 +964,8 @@ internal static partial class ValidationReport
 
     private static FloatingQuickAddThemeValidation ValidateFloatingQuickAddLocalTheme(
         ApplicationTheme applicationTheme,
-        FloatingWindow floating)
+        FloatingWindow floating,
+        DesktopWorkspace workspace)
     {
         try
         {
@@ -974,7 +975,7 @@ internal static partial class ValidationReport
             var independent = !ReferenceEquals(
                 floating.FindResource("CanvasBrush"),
                 Application.Current.FindResource("CanvasBrush"));
-            var day = floating.ProbeQuickAddThemeResources();
+            var day = new FloatingWindowValidationScenariosRunner(floating, workspace).ProbeQuickAddThemeResources();
             var dayBindings = floating.ProbeQuickAddPaletteBindings();
             var dayCanvas = ResourceColor(floating, "CanvasBrush");
             var dayActive = ResourceColor(floating, "ActiveBrush");

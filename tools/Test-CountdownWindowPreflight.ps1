@@ -14,10 +14,12 @@ $report = [ordered]@{
     FailureCode='InvalidExpectedHash'; Failures=@(); WindowChecksCompleted=0
     SessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId
     DesktopName=$null; NativeWorkArea=$null; DllSha256=$null; AppPath=$AppPath
+    RunnerDll=$null; ValidationProductAssemblyPath=$null
     FixtureDirectory=$null; Checks=@(); ElapsedMilliseconds=0
 }
 $previousTemp = $env:TEMP
 $previousTmp = $env:TMP
+$resolver = $null
 try {
     if ($ExpectedDllSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'ExpectedDllSha256 must contain 64 hexadecimal characters.' }
     $report.FailureCode = 'CandidateMissing'
@@ -71,17 +73,51 @@ public static class CountdownWindowPreflightNative
     $env:TEMP = $fixtureDirectory
     $env:TMP = $fixtureDirectory
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
-    foreach ($name in @('Wpf.Ui.Abstractions.dll','Wpf.Ui.dll')) {
-        [void][Reflection.Assembly]::LoadFrom((Join-Path $report.AppPath $name))
+    $report.FailureCode = 'RunnerMissing'
+    $runnerCandidates = @(
+        (Join-Path $PSScriptRoot '..\src\MinminCountdown.WindowVerification\bin\Release\net10.0-windows\win-x64\MinminCountdown.WindowVerification.dll'),
+        (Join-Path $PSScriptRoot '..\src\MinminCountdown.WindowVerification\bin\Release\net10.0-windows\MinminCountdown.WindowVerification.dll')
+    )
+    $runnerDll = @($runnerCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1)[0]
+    if (-not $runnerDll) { throw 'The source-built WindowVerification DLL was not found. Run IncrementalBuild first.' }
+    $runnerDll = (Resolve-Path -LiteralPath $runnerDll).Path
+    $runnerRoot = Split-Path -Parent $runnerDll
+    $report.RunnerDll = $runnerDll
+
+    # The runner also embeds a product copy in its single-file EXE. Do not execute
+    # that EXE here: bind the candidate product into the default context first,
+    # then load the runner DLL into the same context and prove the type identity.
+    $defaultContext = [Runtime.Loader.AssemblyLoadContext]::Default
+    $resolver = [Func[Runtime.Loader.AssemblyLoadContext, Reflection.AssemblyName, Reflection.Assembly]] {
+        param($context, $assemblyName)
+        foreach ($root in @($report.AppPath, $runnerRoot)) {
+            $candidate = Join-Path $root ($assemblyName.Name + '.dll')
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return $context.LoadFromAssemblyPath([IO.Path]::GetFullPath($candidate))
+            }
+        }
+        return $null
     }
-    $assembly = [Reflection.Assembly]::LoadFrom($dll)
+    $defaultContext.add_Resolving($resolver)
+    $assembly = $defaultContext.LoadFromAssemblyPath($dll)
     if (-not [string]::Equals($assembly.Location, $dll, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'The loaded assembly is not the candidate DLL.'
     }
+    $runnerAssembly = $defaultContext.LoadFromAssemblyPath($runnerDll)
+    $scenarioField = $runnerAssembly.GetType('MinminCountdown.MainWindowValidationScenariosRunner', $true).GetField(
+        'window',
+        [Reflection.BindingFlags]'NonPublic,Instance')
+    if ($null -eq $scenarioField) { throw 'The runner does not expose its expected private scenario field for identity proof.' }
+    $report.ValidationProductAssemblyPath = $scenarioField.FieldType.Assembly.Location
+    if (-not [string]::Equals($report.ValidationProductAssemblyPath, $dll, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'The runner resolved MinminCountdown.MainWindow from a different assembly than the candidate.'
+    }
+
     $flags = [Reflection.BindingFlags]'Public,NonPublic,Static'
-    $entry = $assembly.GetType('MinminCountdown.ValidationReport', $true).GetMethod('RunWindowPreflight', $flags)
+    $entry = $runnerAssembly.GetType('MinminCountdown.ValidationReport', $true).GetMethod('RunWindowPreflight', $flags)
     $report.FailureCode = 'ValidationEntryMissing'
-    if ($null -eq $entry) { throw 'The candidate does not expose the window preflight validation entry.' }
+    if ($null -eq $entry) { throw 'The runner does not expose the window preflight validation entry.' }
+    $runnerAssembly.GetType('MinminCountdown.ApplicationValidation', $true).GetMethod('PrepareRuntime', $flags).Invoke($null, @()) | Out-Null
 
     $report.FailureCode = 'FixtureInitializationFailed'
     if ($null -ne [Windows.Application]::Current) { throw 'The preflight requires its own WPF Application.' }
@@ -113,6 +149,9 @@ catch {
     $report.Failures = @($exception.Message)
 }
 finally {
+    if ($null -ne $resolver) {
+        [Runtime.Loader.AssemblyLoadContext]::Default.remove_Resolving($resolver)
+    }
     $env:TEMP = $previousTemp
     $env:TMP = $previousTmp
     $watch.Stop()

@@ -220,9 +220,15 @@ internal static class Program
         "视口裁切与搜索展开时的上缘单行粘性置顶不覆盖搜索槽/底部命令栏/勾选/…菜单且回顶归零（#335）";
 
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (ValidationEntryPoint.IsRequested(args))
+        {
+            return ValidationEntryPoint.Run(args);
+        }
+
+        ApplicationValidation.PrepareRuntime();
         var facts = new Dictionary<string, bool>
         {
             [ViewportFactName] = false,

@@ -3,6 +3,7 @@
 [CmdletBinding()]
 param(
     [string] $AssemblyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'app/MinminCountdown.dll'),
+    [string] $ValidationAssemblyPath,
     [string] $EvidenceDirectory,
     [switch] $Json
 )
@@ -27,6 +28,16 @@ if (-not (Test-Path -LiteralPath $AssemblyPath -PathType Leaf)) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resolvedAssembly = (Resolve-Path -LiteralPath $AssemblyPath).Path
+if ([string]::IsNullOrWhiteSpace($ValidationAssemblyPath)) {
+    $ValidationAssemblyPath = @(
+        (Join-Path $repoRoot 'src/MinminCountdown.WindowVerification/bin/Release/net10.0-windows/win-x64/MinminCountdown.WindowVerification.dll'),
+        (Join-Path $repoRoot 'src/MinminCountdown.WindowVerification/bin/Release/net10.0-windows/MinminCountdown.WindowVerification.dll')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if ([string]::IsNullOrWhiteSpace($ValidationAssemblyPath) -or -not (Test-Path -LiteralPath $ValidationAssemblyPath -PathType Leaf)) {
+    throw "未找到独立窗口验证程序集：$ValidationAssemblyPath。请先运行 IncrementalBuild。"
+}
+$resolvedValidationAssembly = (Resolve-Path -LiteralPath $ValidationAssemblyPath).Path
 if ([string]::IsNullOrWhiteSpace($EvidenceDirectory)) {
     $captureName = 'tray-menu-{0}-{1}' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'), [Guid]::NewGuid().ToString('N')
     $EvidenceDirectory = Join-Path $repoRoot "logs/ui-captures/$captureName"
@@ -61,6 +72,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -179,12 +191,13 @@ public static class CountdownTrayMenuHarness
     private static readonly Color Highlight = Color.FromRgb(0xC2, 0x3E, 0x68);
     private static readonly Color HighlightInk = Color.FromRgb(0xFF, 0xFD, 0xFC);
 
-    public static TrayMenuVerificationEvidence Run(string assemblyPath, string evidenceDirectory)
+    public static TrayMenuVerificationEvidence Run(string assemblyPath, string validationAssemblyPath, string evidenceDirectory)
     {
         var result = new TrayMenuVerificationEvidence();
         Window owner = null;
         ContextMenu menu = null;
         MethodInfo pump = null;
+        Func<AssemblyLoadContext, AssemblyName, Assembly> resolver = null;
         try
         {
             RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
@@ -192,16 +205,34 @@ public static class CountdownTrayMenuHarness
             if (Application.Current == null)
                 new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 
-            var application = Assembly.LoadFrom(assemblyPath);
+            var context = AssemblyLoadContext.Default;
+            var productRoot = Path.GetDirectoryName(Path.GetFullPath(assemblyPath));
+            var validationRoot = Path.GetDirectoryName(Path.GetFullPath(validationAssemblyPath));
+            resolver = (loadContext, assemblyName) =>
+            {
+                foreach (var root in new[] { productRoot, validationRoot })
+                {
+                    var candidate = Path.Combine(root, assemblyName.Name + ".dll");
+                    if (File.Exists(candidate)) return loadContext.LoadFromAssemblyPath(candidate);
+                }
+                return null;
+            };
+            context.Resolving += resolver;
+            var application = context.LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
+            var validation = context.LoadFromAssemblyPath(Path.GetFullPath(validationAssemblyPath));
+            var scenarioField = validation.GetType("MinminCountdown.MainWindowValidationScenariosRunner", true)
+                .GetField("window", BindingFlags.Instance | BindingFlags.NonPublic);
+            if (scenarioField == null || scenarioField.FieldType.Assembly != application)
+                throw new InvalidOperationException("验证程序集解析到了另一份产品 MainWindow，而非当前候选 DLL。");
             var factory = application.GetType("MinminCountdown.TrayMenuFactory", true)
                 .GetMethod("Create", StaticPrivate);
-            var input = application.GetType("MinminCountdown.WindowValidationInput", true);
+            var input = validation.GetType("MinminCountdown.WindowValidationInput", true);
             pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
             var pointer = input.GetMethod("RaisePickerPointer", StaticPrivate);
             var pointerState = input.GetNestedType("PickerPointerState", BindingFlags.NonPublic);
-            var capture = application.GetType("MinminCountdown.ValidationReport", true)
+            var capture = validation.GetType("MinminCountdown.ValidationReport", true)
                 .GetMethod("CaptureVisual", StaticPrivate);
-            var writePng = application.GetType("MinminCountdown.ValidationReport", true)
+            var writePng = validation.GetType("MinminCountdown.ValidationReport", true)
                 .GetMethod("WriteNewPng", StaticPrivate);
             if (factory == null || pump == null || pointer == null || pointerState == null || capture == null || writePng == null)
                 throw new InvalidOperationException("当前构建缺少生产菜单工厂或既有输入/截图接口。");
@@ -360,6 +391,7 @@ public static class CountdownTrayMenuHarness
         {
             if (menu != null) menu.IsOpen = false;
             if (owner != null) owner.Close();
+            if (resolver != null) AssemblyLoadContext.Default.Resolving -= resolver;
             if (pump != null) Pump(pump, Dispatcher.CurrentDispatcher);
         }
         return result;
@@ -616,7 +648,7 @@ public static class CountdownTrayMenuHarness
 '@
 }
 
-$measured = [CountdownTrayMenuHarness]::Run($resolvedAssembly, $EvidenceDirectory)
+$measured = [CountdownTrayMenuHarness]::Run($resolvedAssembly, $resolvedValidationAssembly, $EvidenceDirectory)
 $reportPath = Join-Path $EvidenceDirectory 'tray-menu-report.json'
 $report = [pscustomobject]@{
     Suite = 'CountdownTrayMenu'
@@ -624,6 +656,8 @@ $report = [pscustomobject]@{
     ApartmentState = [string] [Threading.Thread]::CurrentThread.ApartmentState
     AssemblyPath = $resolvedAssembly
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
+    ValidationAssemblyPath = $resolvedValidationAssembly
+    ValidationAssemblySHA256 = (Get-FileHash -LiteralPath $resolvedValidationAssembly -Algorithm SHA256).Hash
     SourceSHA256 = (Get-FileHash -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown/TrayIconHost.cs') -Algorithm SHA256).Hash
     EvidenceDirectory = $EvidenceDirectory
     ReportPath = $reportPath

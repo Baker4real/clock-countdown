@@ -54,7 +54,7 @@ foreach ($case in @(
 $failure = $null
 try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
 catch { $failure = $_ }
-if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Release 构建*') {
+if ($null -eq $failure -or $failure.Exception.Message -notlike '源码窗口验证 Release 构建*') {
     throw '成功脚本必须越过 Core；已处理的原生负例不得冒充脚本退出码。'
 }
 $assertions++
@@ -77,7 +77,7 @@ $null = & $scopeClosure
 $failure = $null
 try { Invoke-CountdownValidationSuite -Root $root -PowerShell7Path $pwsh -DotnetPath $pwsh -EvidenceDirectory $root | Out-Null }
 catch { $failure = $_ }
-if ($null -eq $failure -or $failure.Exception.Message -notlike '源码应用 Release 构建*') {
+if ($null -eq $failure -or $failure.Exception.Message -notlike '源码窗口验证 Release 构建*') {
     throw "入口必须让脚本级变量与函数在模块作用域和闭包里可见。实际：$(if ($null -ne $failure) { $failure.Exception.Message })"
 }
 $assertions++
@@ -147,7 +147,7 @@ finally {
 
 # CI 上应用 validate-only 偶发以 0xC0000409 崩溃：诊断日志须在清理前复制进该阶段证据目录。
 # 夹具子进程都不开窗口，本进程临时设隔离 opt-out 让它们直接启动；假 dotnet 只让 Release 构建阶段放行。
-# 套件直接启动 <根>\app\MinminCountdown.exe：假应用编译成同名自包含 EXE，按套件给的诊断日志路径写面包屑与轮转文件后以崩溃码退出。
+# 套件直接启动 <根>\window-verification\MinminCountdown.WindowVerification.exe：假 runner 编译成同名自包含 EXE，按套件给的诊断日志路径写面包屑与轮转文件后以崩溃码退出。
 # 夹具源目录与项目名取短名：失败时测试根留作现场，worktree 里 obj 下的路径不能超过受管回收的长度上限。
 $crashRoot = Join-Path $root 'application-crash'
 [void][IO.Directory]::CreateDirectory($crashRoot)
@@ -162,7 +162,7 @@ $crashApplicationSource = Join-Path $crashRoot 'fake-app'
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <AssemblyName>MinminCountdown</AssemblyName>
+    <AssemblyName>MinminCountdown.WindowVerification</AssemblyName>
   </PropertyGroup>
 </Project>
 '@, $utf8)
@@ -181,7 +181,7 @@ return -1073740791;
 Import-Module (Join-Path $PSScriptRoot 'Countdown.BuildPreflight.psm1') -Force
 $sdkDotnet = (Resolve-CountdownBuildDotnet -RepositoryRoot $repo).Path
 $fakeApplicationBuild = & $sdkDotnet publish (Join-Path $crashApplicationSource 'FakeApp.csproj') -c Release -r win-x64 --self-contained true `
-    --disable-build-servers --nologo -o (Join-Path $crashRoot 'app') 2>&1 | Out-String
+    --disable-build-servers --nologo -o (Join-Path $crashRoot 'window-verification') 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) { throw "假应用夹具编译失败，退出码：$LASTEXITCODE`n$fakeApplicationBuild" }
 $fakeDotnet = Join-Path $crashRoot 'dotnet.cmd'
 [IO.File]::WriteAllText($fakeDotnet, "@exit /b 0`r`n", $utf8)

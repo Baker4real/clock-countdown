@@ -11,20 +11,12 @@ namespace MinminCountdown;
 internal static class ApplicationValidation
 {
     public static IReadOnlyDictionary<string, object?> Run(
-        HostOptions options,
+        ValidationHostOptions options,
         string applicationRoot,
         DiagnosticLogger logger,
         ResourceDictionary resources)
     {
-        // Isolated Win32 desktops do not provide a composited DWM surface for
-        // WPF's default hardware renderer. Validation captures must still
-        // produce pixels, while normal application startup keeps its default.
-        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
-        // Unattended or locked sessions can report zero display devices, in
-        // which case WPF skips rendering entirely; captures must still render.
-        // The switch must be set before the first MediaContext is created.
-        AppContext.SetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, true);
-        EnsureIsolatedValidationDesktop();
+        PrepareRuntime();
         // #211：窗口几何与工作区解析在验证全程注入确定性大工作区（96 DPI），
         // 使 864×1000 首选构图与窗口夹取与机器真实显示拓扑解耦；基线像素仍绑定
         // 生成时的显示缩放（见 DESIGN.md「视觉基线演进口径」）。
@@ -124,6 +116,7 @@ internal static class ApplicationValidation
                 floatingWindow,
                 floatingTrayController,
                 desktopWorkspace,
+                calendar,
                 theme,
                 options,
                 AppContext.BaseDirectory);
@@ -144,6 +137,18 @@ internal static class ApplicationValidation
 
     private const string RenderEvenWhenNoDisplayDevicesSwitch =
         "Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable";
+
+    internal static void PrepareRuntime()
+    {
+        // Isolated Win32 desktops do not provide a composited DWM surface for
+        // WPF's default hardware renderer. Validation captures must still
+        // produce pixels, while normal application startup keeps its default.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+        // Set before the first MediaContext is created; unattended sessions can
+        // otherwise skip all rendering when Windows reports no display device.
+        AppContext.SetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, true);
+        EnsureIsolatedValidationDesktop();
+    }
 
     internal static void EnsureIsolatedValidationDesktop()
     {
@@ -210,7 +215,7 @@ internal static class ApplicationValidation
     internal static bool IsRenderEvenWhenNoDisplayDevicesEnabled() =>
         AppContext.TryGetSwitch(RenderEvenWhenNoDisplayDevicesSwitch, out var enabled) && enabled;
 
-    internal static string ResolveSettingsPath(HostOptions options, string applicationRoot)
+    internal static string ResolveSettingsPath(ValidationHostOptions options, string applicationRoot)
     {
         var settingsPath = options.SettingsFile ??
                            throw new ArgumentException(

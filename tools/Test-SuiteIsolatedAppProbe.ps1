@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # 探针 3：真实应用有界 exercise 在不可见桌面中运行（用户屏幕应无任何窗口）
-# 直接启动应用 EXE，设置与诊断日志都显式指向 TEMP，不经 adapter。
+# 直接启动独立窗口验证 EXE，设置与诊断日志都显式指向 TEMP，不经 adapter。
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $probeSettings = Join-Path $env:TEMP 'minmin-iso-probe-settings.json'
 if (Test-Path -LiteralPath $probeSettings) { Remove-Item -LiteralPath $probeSettings -Force }
@@ -13,7 +13,7 @@ $stderrPath = Join-Path $env:TEMP 'minmin-iso-probe.err.log'
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $exitCode = [int] (& (Join-Path $PSScriptRoot 'Start-IsolatedSuiteProcess.ps1') `
-    -FilePath (Join-Path $repoRoot 'app\MinminCountdown.exe') `
+    -FilePath (Join-Path $repoRoot 'window-verification\MinminCountdown.WindowVerification.exe') `
     -ArgumentList @(
         '--validate-only', '--exercise-note-add',
         '--settings-file', $probeSettings,

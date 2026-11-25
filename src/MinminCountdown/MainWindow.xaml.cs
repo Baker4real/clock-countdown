@@ -423,15 +423,50 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             _workspaceTabIndicator.MoveTo(CountdownTab);
             _workspaceTabIndicator.MoveTo(NotesTab);
             _workspaceTabIndicator.MoveTo(CountdownTab);
-            var workspaceStable = WindowValidationInput.WaitUntil(
-                Dispatcher, () => _workspaceTabIndicator.IsAlignedTo(CountdownTab));
+            var workspaceStable = WaitForSegmentIndicatorAlignment(
+                () => _workspaceTabIndicator.IsAlignedTo(CountdownTab));
 
             _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
             _notesSegmentIndicator.MoveTo(CompletedNotesSegment);
             _notesSegmentIndicator.MoveTo(ActiveNotesSegment);
-            var notesStable = WindowValidationInput.WaitUntil(
-                Dispatcher, () => _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment));
+            var notesStable = WaitForSegmentIndicatorAlignment(
+                () => _notesSegmentIndicator.IsAlignedTo(ActiveNotesSegment));
             return workspaceStable && notesStable;
+        }
+    }
+
+    private bool WaitForSegmentIndicatorAlignment(Func<bool> isAligned)
+    {
+        if (isAligned())
+        {
+            return true;
+        }
+
+        var frame = new DispatcherFrame();
+        var deadlineUtc = DateTime.UtcNow.AddMilliseconds(300);
+        var timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10)
+        };
+        EventHandler tick = (_, _) =>
+        {
+            if (isAligned() || DateTime.UtcNow >= deadlineUtc)
+            {
+                timer.Stop();
+                frame.Continue = false;
+            }
+        };
+        timer.Tick += tick;
+        try
+        {
+            timer.Start();
+            Dispatcher.PushFrame(frame);
+            return isAligned();
+        }
+        finally
+        {
+            timer.Stop();
+            timer.Tick -= tick;
         }
     }
 
@@ -573,321 +608,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         NoteDateFilter.SelectedDate,
         _editingCountdownId,
         _editingNoteId);
-
-    private NoteExerciseResult RunNoteAddExercise()
-    {
-        ShowWorkspace(WorkspaceKind.Notes);
-        var initial = _desktopWorkspace.Snapshot;
-        var countBefore = initial.Settings.Notes.Count;
-        var noteDate = initial.BeijingNow.AddDays(2).Date;
-        var firstDueDay = initial.BeijingNow.AddDays(3);
-        var firstDue = new DateTimeOffset(
-            firstDueDay.Year,
-            firstDueDay.Month,
-            firstDueDay.Day,
-            9,
-            30,
-            0,
-            firstDueDay.Offset);
-        NoteText.Text = "验证点击添加便签";
-        _noteReminderRules = Array.Empty<ReminderRule>();
-        _settingDefaultDate = true;
-        NoteDate.SelectedDate = null;
-        _settingDefaultDate = false;
-        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var dateRequired =
-            _desktopWorkspace.Snapshot.Settings.Notes.Count == countBefore &&
-            string.Equals(NoteText.Text, "验证点击添加便签", StringComparison.Ordinal) &&
-            NoteMessage.Text.Contains("日期", StringComparison.Ordinal);
-
-        NoteDate.SelectedDate = noteDate;
-        _noteReminderRules = new ReminderRule[]
-        {
-            new FixedIntervalReminderRule(
-                Guid.NewGuid().ToString("N"),
-                firstDue.ToUniversalTime(),
-                new ReminderInterval(30))
-        };
-        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var afterAdd = _desktopWorkspace.Snapshot.Settings;
-        var added = afterAdd.Notes.LastOrDefault(
-            note => string.Equals(note.Text, "验证点击添加便签", StringComparison.Ordinal));
-        var addViaClick = added is not null && afterAdd.Notes.Count == countBefore + 1;
-        var dateViaPicker = added?.Date == noteDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var reminderViaSelector =
-            added?.ReminderIntervalMinutes == 30 &&
-            added.ReminderStartUtc == firstDue.ToUniversalTime().Subtract(TimeSpan.FromMinutes(30));
-
-        var completionViaCheckbox = false;
-        if (added is not null && _noteCompletionBoxes.TryGetValue(added.Id, out var checkBox))
-        {
-            checkBox.IsChecked = true;
-            var completed = _desktopWorkspace.Snapshot.Settings.Notes
-                .First(note => note.Id == added.Id).IsCompleted;
-            if (_noteCompletionBoxes.TryGetValue(added.Id, out var refreshedCheckBox))
-            {
-                refreshedCheckBox.IsChecked = false;
-            }
-
-            var activeAgain = !_desktopWorkspace.Snapshot.Settings.Notes
-                .First(note => note.Id == added.Id).IsCompleted;
-            completionViaCheckbox = completed && activeAgain;
-        }
-
-        return new NoteExerciseResult(
-            dateRequired,
-            addViaClick,
-            dateViaPicker,
-            reminderViaSelector,
-            completionViaCheckbox);
-    }
-
-    private ReminderModeClickResult RunReminderModeClickExercises()
-    {
-        ShowWorkspace(WorkspaceKind.Notes);
-        var initial = _desktopWorkspace.Snapshot;
-        var noteDate = initial.BeijingNow.AddDays(2).Date;
-        var onceDue = initial.BeijingNow.AddDays(3);
-        onceDue = new DateTimeOffset(
-            onceDue.Year,
-            onceDue.Month,
-            onceDue.Day,
-            9,
-            10,
-            0,
-            onceDue.Offset);
-        var repeatDue = onceDue.AddDays(1).AddMinutes(20);
-
-        NoteText.Text = "验证主窗不提醒";
-        NoteDate.SelectedDate = noteDate;
-        _noteReminderRules = Array.Empty<ReminderRule>();
-        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var noReminderWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
-            note => note.Text == "验证主窗不提醒")?.Reminder is NoReminder;
-
-        NoteText.Text = "验证主窗仅一次";
-        NoteDate.SelectedDate = noteDate;
-        _noteReminderRules = new ReminderRule[]
-        {
-            new AbsoluteOnceReminderRule(
-                Guid.NewGuid().ToString("N"),
-                onceDue.ToUniversalTime())
-        };
-        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var onceWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
-            note => note.Text == "验证主窗仅一次")?.Reminder is OnceReminder
-            {
-                Delivery: OnceDeliveryState.Pending
-            } once &&
-            once.FirstDueUtc == onceDue.ToUniversalTime();
-
-        NoteText.Text = "验证主窗重复提醒";
-        NoteDate.SelectedDate = noteDate;
-        _noteReminderRules = new ReminderRule[]
-        {
-            new FixedIntervalReminderRule(
-                Guid.NewGuid().ToString("N"),
-                repeatDue.ToUniversalTime(),
-                new ReminderInterval(30))
-        };
-        SaveNoteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        var repeatWorks = _desktopWorkspace.Snapshot.Settings.Notes.LastOrDefault(
-            note => note.Text == "验证主窗重复提醒")?.Reminder is RepeatingReminder repeating &&
-            repeating.FirstDueUtc == repeatDue.ToUniversalTime() &&
-            repeating.Interval.Minutes == 30;
-
-        return new ReminderModeClickResult(noReminderWorks, onceWorks, repeatWorks);
-    }
-
-    private (bool TracksBeijingDay, bool PreservesChosenDate) ProbeNoteDateBehavior()
-    {
-        var originalEditingId = _editingNoteId;
-        var originalDirty = _noteDateDirty;
-        var originalDate = NoteDate.SelectedDate;
-        var originalText = NoteText.Text;
-        try
-        {
-            _editingNoteId = null;
-            _noteDateDirty = false;
-            UpdateTime(new DateTimeOffset(2026, 7, 20, 23, 59, 59, TimeSpan.FromHours(8)));
-            var firstDay = NoteDate.SelectedDate == new DateTime(2026, 7, 20);
-            UpdateTime(new DateTimeOffset(2026, 7, 21, 0, 0, 1, TimeSpan.FromHours(8)));
-            var nextDay = NoteDate.SelectedDate == new DateTime(2026, 7, 21);
-
-            NoteText.Text = "跨日保留草稿";
-            NoteDate.SelectedDate = new DateTime(2031, 4, 5);
-            UpdateTime(new DateTimeOffset(2026, 7, 22, 0, 0, 1, TimeSpan.FromHours(8)));
-            var preserved =
-                NoteDate.SelectedDate == new DateTime(2031, 4, 5) &&
-                NoteText.Text == "跨日保留草稿";
-            return (firstDay && nextDay, preserved);
-        }
-        finally
-        {
-            _editingNoteId = originalEditingId;
-            _noteDateDirty = originalDirty;
-            _settingDefaultDate = true;
-            NoteDate.SelectedDate = originalDate;
-            _settingDefaultDate = false;
-            NoteText.Text = originalText;
-        }
-    }
-
-    private bool ProbeWorkspaceDraftRetention()
-    {
-        var originalWorkspace = _workspace;
-        var originalCountdownDraft = CountdownName.Text;
-        var originalNoteDraft = NoteText.Text;
-        try
-        {
-            CountdownName.Text = "未保存倒计时草稿";
-            NoteText.Text = "未保存便签草稿";
-            ShowWorkspace(WorkspaceKind.Countdowns);
-            ShowWorkspace(WorkspaceKind.Notes);
-            ShowWorkspace(WorkspaceKind.Countdowns);
-            return
-                CountdownName.Text == "未保存倒计时草稿" &&
-                NoteText.Text == "未保存便签草稿";
-        }
-        finally
-        {
-            CountdownName.Text = originalCountdownDraft;
-            NoteText.Text = originalNoteDraft;
-            ShowWorkspace(originalWorkspace);
-        }
-    }
-
-    private bool ProbeCrossDayReminderBehavior()
-    {
-        var settingsPath = Path.Combine(
-            Path.GetTempPath(),
-            $"MinminCountdown-cross-day-{Guid.NewGuid():N}.settings.json");
-        try
-        {
-            var nowUtc = new DateTimeOffset(2031, 4, 5, 15, 59, 0, TimeSpan.Zero);
-            var firstDueUtc = new DateTimeOffset(2031, 4, 6, 1, 30, 0, TimeSpan.Zero);
-
-            var clock = new FixedClock(nowUtc);
-            var store = new SettingsStore(clock: clock);
-            var workspace = DesktopWorkspace.Load(settingsPath, store);
-            var savedProbe = workspace.Apply(new SaveNoteChange(
-                null,
-                "跨天提醒探针",
-                new DateTime(2031, 4, 5),
-                false,
-                Array.Empty<string>(),
-                ReminderSchedule.CreateRepeating(firstDueUtc, 30)));
-            var savedQuickProbe = workspace.Apply(new SaveNoteChange(
-                null,
-                "快速跨天提醒探针",
-                new DateTime(2031, 4, 5),
-                false,
-                Array.Empty<string>(),
-                ReminderSchedule.CreateRepeating(firstDueUtc.AddDays(1), 60)));
-            if (!savedProbe.Succeeded || !savedQuickProbe.Succeeded)
-            {
-                return false;
-            }
-
-            var saved = workspace.Snapshot.Settings.Notes.Single(note => note.Text == "跨天提醒探针");
-            var originalStart = saved.ReminderStartUtc;
-            var liveEarly = workspace.GetDueReminders(firstDueUtc.AddSeconds(-1));
-            var liveDue = workspace.GetDueReminders(firstDueUtc);
-            var displayed = workspace.ConfirmReminderDisplayed(saved, firstDueUtc);
-            var acknowledged = workspace.AcknowledgeReminder(
-                saved,
-                saved.ReminderRules.Single().Id,
-                firstDueUtc);
-            if (!displayed.Succeeded ||
-                !acknowledged.Succeeded ||
-                !workspace.Apply(new SaveNoteChange(
-                    saved.Id,
-                    "已编辑的跨天提醒探针",
-                    new DateTime(2031, 4, 5),
-                    false,
-                    Array.Empty<string>(),
-                    saved.Reminder)).Succeeded)
-            {
-                return false;
-            }
-
-            var reloaded = DesktopWorkspace.Load(settingsPath, store);
-            var reloadedSettings = reloaded.Snapshot.Settings;
-            var persistedNote = reloadedSettings.Notes.Single(note => note.Id == saved.Id);
-            var quickNote = reloadedSettings.Notes.Single(note => note.Text == "快速跨天提醒探针");
-            var early = reloaded.GetDueReminders(firstDueUtc.AddSeconds(-1));
-            var due = reloaded.GetDueReminders(firstDueUtc);
-            reloaded.ConfirmReminderDisplayed(persistedNote, firstDueUtc);
-            var duplicate = reloaded.GetDueReminders(firstDueUtc);
-            var nextCycle = reloaded.GetDueReminders(firstDueUtc.AddMinutes(30));
-            var completionPreservedSchedule =
-                reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, true)).Succeeded &&
-                reloaded.Apply(new SetNoteCompletionChange(persistedNote.Id, false)).Succeeded &&
-                reloaded.Snapshot.Settings.Notes
-                    .Single(note => note.Id == persistedNote.Id).ReminderStartUtc == originalStart;
-            return
-                originalStart == new DateTimeOffset(2031, 4, 6, 1, 0, 0, TimeSpan.Zero) &&
-                persistedNote.ReminderStartUtc == originalStart &&
-                quickNote.ReminderStartUtc == new DateTimeOffset(2031, 4, 7, 0, 30, 0, TimeSpan.Zero) &&
-                liveEarly.Count == 0 &&
-                liveDue.Count == 1 &&
-                early.Count == 0 &&
-                due.Count == 0 &&
-                duplicate.Count == 0 &&
-                nextCycle.Count == 1 &&
-                completionPreservedSchedule;
-        }
-        finally
-        {
-            File.Delete(settingsPath);
-            File.Delete(settingsPath + ".tmp");
-            File.Delete(settingsPath + ".backup1");
-            File.Delete(settingsPath + ".backup2");
-            File.Delete(settingsPath + ".backup2.tmp");
-            File.Delete(settingsPath + ".backup2.rollback");
-        }
-    }
-
-    private bool ProbeReminderSummaryAdvancesAfterFirstDue()
-    {
-        var originalWorkspace = _workspace;
-        var firstDueUtc = _desktopWorkspace.Snapshot.UtcNow.AddDays(1);
-        firstDueUtc = new DateTimeOffset(firstDueUtc.Year, firstDueUtc.Month,
-            firstDueUtc.Day, 1, 30, 0, TimeSpan.Zero);
-        string? noteId = null;
-        try
-        {
-            var result = _desktopWorkspace.Apply(new SaveNoteChange(
-                null, "提醒摘要探针", null, false, Array.Empty<string>(),
-                new ReminderRule[]
-                {
-                    new FixedIntervalReminderRule(Guid.NewGuid().ToString("N"), firstDueUtc, new ReminderInterval(30))
-                }));
-            if (!result.Succeeded)
-            {
-                return false;
-            }
-            noteId = _desktopWorkspace.Snapshot.AllNotes.Single(note => note.Text == "提醒摘要探针").Id;
-            ShowWorkspace(WorkspaceKind.Notes);
-            RenderNotes(firstDueUtc.AddSeconds(-1));
-            string Summary() => MainValidationDescendants<TextBlock>(_noteSourceRows[noteId])
-                .Single(text => AutomationProperties.GetAutomationId(text) == NoteCardReminderSummaryAutomationId).Text;
-            var before = Summary();
-            UpdateTime(ChinaStandardTime.ToBeijingTime(firstDueUtc));
-            var after = Summary();
-            return
-                before.Contains("09:30", StringComparison.Ordinal) &&
-                after.Contains("10:00", StringComparison.Ordinal);
-        }
-        finally
-        {
-            if (noteId is not null)
-            {
-                _desktopWorkspace.Apply(new DeleteNoteChange(noteId));
-            }
-            ShowWorkspace(originalWorkspace);
-        }
-    }
 
     internal void ShowWorkspace(WorkspaceKind workspace) => ShowWorkspace(workspace, immediateIndicator: false);
 
@@ -2079,7 +1799,7 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
     // 否则按现有排版与适配算法重建。
     private void UpdateMainCountdownBlocks(MainCountdownBlocksHost host, string remaining, double dpiScale)
     {
-        var pairs = ParseMainRemainingPairs(remaining);
+        var pairs = MainCountdownBlockRenderer.ParseMainRemainingPairs(remaining);
         if (host.DpiScale == dpiScale &&
             pairs is { Count: > 0 } &&
             pairs.Count == host.Values.Count &&
@@ -2094,253 +1814,8 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
             return;
         }
 
-        RenderMainCountdownBlocks(host, remaining);
-    }
-
-    private void RenderMainCountdownBlocks(MainCountdownBlocksHost host, string remaining)
-    {
         CountdownRemainingBlocksBuildCountForValidation++;
-        host.Surface.Children.Clear();
-        var pairs = ParseMainRemainingPairs(remaining);
-        host.ShapeKey = RemainingPair.ShapeKey(pairs, remaining);
-        host.DpiScale = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        if (pairs is null || pairs.Count == 0)
-        {
-            var fallback = new TextBlock
-            {
-                Text = remaining,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                VerticalAlignment = VerticalAlignment.Center,
-                FontSize = CountdownRemainingBaseFontSize,
-                FontWeight = FontWeights.SemiBold,
-                TextAlignment = TextAlignment.Right,
-                TextWrapping = TextWrapping.NoWrap,
-                TextTrimming = TextTrimming.None
-            };
-            fallback.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
-            fallback.SetResourceReference(
-                TextBlock.ForegroundProperty,
-                host.IsPrimary ? "PrimaryCountdownNumberBrush" : "BodyBrush");
-            Typography.SetNumeralAlignment(fallback, FontNumeralAlignment.Tabular);
-            host.Surface.Children.Add(fallback);
-            host.Values = [];
-            host.LastRenderedText = remaining;
-            return;
-        }
-
-        // #148：主窗口分格与悬浮窗同一套竖长口径（约 2:3、单位在块外、间距约块宽三分之一），
-        // 主窗真实 DIP：主项 38x57、次项 34x51，圆角约短边 1/4；数值优先压内边距与间距，
-        // 最后才在辅助下限档之上收缩数值字号；单位字固定在下限档、不得缩小硬塞。
-        const double valueFontPrimary = 20;
-        const double valueFontSecondary = 16;
-        const double blockWidthPrimary = 38;
-        const double blockWidthSecondary = 34;
-        const double blockHeightPrimary = 57;
-        const double blockHeightSecondary = 51;
-        const double minimumValueFontSize = 13;
-        const double blockWidthReserve = 2;
-        const double unitGap = 2;
-        var valueFontSize = host.IsPrimary ? valueFontPrimary : valueFontSecondary;
-        var blockPadding = 3;
-        var pairGap = 10;
-
-        var valueBlocks = pairs
-            .Select(pair => new TextBlock
-            {
-                Text = pair.Value,
-                MinWidth = host.IsPrimary ? 28 : 25,
-                Padding = new Thickness(blockPadding, 0, blockPadding, 0),
-                FontSize = valueFontSize,
-                FontWeight = FontWeights.SemiBold,
-                TextAlignment = TextAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.NoWrap,
-                TextTrimming = TextTrimming.None
-            })
-            .ToArray();
-        foreach (var valueBlock in valueBlocks)
-        {
-            valueBlock.SetResourceReference(TextBlock.FontFamilyProperty, "NumeralFontFamily");
-            Typography.SetNumeralAlignment(valueBlock, FontNumeralAlignment.Tabular);
-        }
-
-        var unitFace = new Typeface(
-            (FontFamily)FindResource("UiFontFamily"),
-            new FontStyle(),
-            FontWeights.Regular,
-            FontStretches.Normal);
-        double ValueBlockWidth(int index, double font, double padding)
-        {
-            valueBlocks[index].FontSize = font;
-            valueBlocks[index].Padding = new Thickness(padding, 0, padding, 0);
-            valueBlocks[index].Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            return valueBlocks[index].DesiredSize.Width;
-        }
-
-        // 分格几何在真实 DIP 中计量，文本测量固定 1.0 pixelsPerDip。
-        double RequiredWidth(double font, double padding, double gap)
-        {
-            var total = 0d;
-            for (var index = 0; index < pairs.Count; index++)
-            {
-                var valueWidth = ValueBlockWidth(index, font, padding);
-                var unitWidth = MeasureMainText(pairs[index].Unit, unitFace, CountdownRemainingUnitFontSize);
-                var blockWidth = Math.Max(
-                    host.IsPrimary ? blockWidthPrimary : blockWidthSecondary,
-                    Math.Ceiling(valueWidth) + blockWidthReserve);
-                total += blockWidth + unitWidth + unitGap;
-                if (index < pairs.Count - 1)
-                {
-                    total += gap;
-                }
-            }
-
-            return total;
-        }
-
-        // The visible block host owns the full column. The left margin belongs
-        // only to the separate fallback text; subtracting it here left less
-        // space than four minimum-width blocks need, even at the font floor.
-        var availableWidth = CountdownRemainingColumnWidth;
-        if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
-        {
-            blockPadding = 2;
-        }
-
-        if (RequiredWidth(valueFontSize, blockPadding, pairGap) > availableWidth)
-        {
-            pairGap = 4;
-        }
-
-        if (host.IsPrimary && RequiredWidth(minimumValueFontSize, blockPadding, pairGap) > availableWidth)
-        {
-            // #247：百万天主项在 13 DIP 下限仍放不进 228 列时，与悬浮窗同口径先把分格内边距与组间距压至零，
-            // 再适配数值字号；色块最小宽度、13 DIP 单位字与 228 列保持不变。
-            blockPadding = 0;
-            pairGap = 0;
-        }
-
-        var required = RequiredWidth(valueFontSize, blockPadding, pairGap);
-        while (required > availableWidth && valueFontSize > minimumValueFontSize)
-        {
-            var fittedFontSize = valueFontSize * (availableWidth / required);
-            var nextFontSize = Math.Max(minimumValueFontSize, Math.Floor(fittedFontSize * 4) / 4);
-            if (nextFontSize >= valueFontSize)
-            {
-                nextFontSize = Math.Max(minimumValueFontSize, valueFontSize - 0.25);
-            }
-
-            valueFontSize = nextFontSize;
-            required = RequiredWidth(valueFontSize, blockPadding, pairGap);
-        }
-
-        var blockHeight = host.IsPrimary ? blockHeightPrimary : blockHeightSecondary;
-        var blockBaseWidth = host.IsPrimary ? blockWidthPrimary : blockWidthSecondary;
-        var blockRadius = Math.Max(4, blockBaseWidth / 4);
-        var values = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        for (var index = 0; index < pairs.Count; index++)
-        {
-            var value = valueBlocks[index];
-            value.FontSize = valueFontSize;
-            value.Padding = new Thickness(blockPadding, 0, blockPadding, 0);
-            value.SetResourceReference(
-                TextBlock.ForegroundProperty,
-                host.IsPrimary ? "PrimaryCountdownNumberBrush" : "InkBrush");
-            value.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var block = new Border
-            {
-                MinWidth = Math.Max(
-                    blockBaseWidth,
-                    Math.Ceiling(value.DesiredSize.Width) + blockWidthReserve),
-                Height = blockHeight,
-                CornerRadius = new CornerRadius(blockRadius)
-            };
-            block.SetResourceReference(
-                Border.BackgroundProperty,
-                host.IsPrimary ? "PinkBlockBrush" : "SecondaryBlockBrush");
-            block.Child = value;
-            var unit = new TextBlock
-            {
-                Text = pairs[index].Unit,
-                Margin = new Thickness(unitGap, 0, 0, 0),
-                FontSize = CountdownRemainingUnitFontSize,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextWrapping = TextWrapping.NoWrap,
-                TextTrimming = TextTrimming.None
-            };
-            unit.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-            var pairPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = index == 0 ? new Thickness(0) : new Thickness(pairGap, 0, 0, 0)
-            };
-            pairPanel.Children.Add(block);
-            pairPanel.Children.Add(unit);
-            values.Children.Add(pairPanel);
-        }
-
-        host.Surface.Children.Add(values);
-        host.Values = valueBlocks;
-        host.LastRenderedText = remaining;
-    }
-
-    private static double MeasureMainText(string text, Typeface typeface, double fontSize)
-    {
-        var formatted = new FormattedText(
-            text,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            typeface,
-            fontSize,
-            Brushes.Black,
-            1);
-        return formatted.WidthIncludingTrailingWhitespace + Math.Max(0, formatted.OverhangTrailing);
-    }
-
-    private static IReadOnlyList<RemainingPair>? ParseMainRemainingPairs(string remaining)
-    {
-        if (string.Equals(remaining, "已到期", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        var tokens = remaining.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length == 0 || tokens.Length % 2 != 0)
-        {
-            return null;
-        }
-
-        var pairs = new List<RemainingPair>(tokens.Length / 2);
-        for (var index = 0; index < tokens.Length; index += 2)
-        {
-            if (!long.TryParse(tokens[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
-            {
-                return null;
-            }
-
-            var unit = tokens[index + 1] switch
-            {
-                "天" => "天",
-                "小时" => "时",
-                "分钟" => "分",
-                "秒" => "秒",
-                _ => null
-            };
-            if (unit is null)
-            {
-                return null;
-            }
-
-            pairs.Add(new RemainingPair(tokens[index], unit));
-        }
-
-        return pairs;
+        MainCountdownBlockRenderer.Render(this, host, remaining);
     }
 
     private void RenderNotes(DateTimeOffset? nowUtc = null, bool skipUnchanged = false)
@@ -5010,16 +4485,6 @@ public sealed partial class MainWindow : Window, IManagerWorkspaceHost
         image.Freeze();
         return image;
     }
-
-    private sealed class FixedClock : IClock
-    {
-        public FixedClock(DateTimeOffset utcNow)
-        {
-            UtcNow = utcNow;
-        }
-
-        public DateTimeOffset UtcNow { get; }
-    }
 }
 
 internal static class MainShortcutInput
@@ -5072,24 +4537,9 @@ internal sealed record MainWindowActivationState(
     string? EditingCountdownId,
     string? EditingNoteId);
 
-internal sealed record NoteExerciseResult(
-    bool DateRequired,
-    bool AddedViaClick,
-    bool DateViaPicker,
-    bool ReminderViaSelector,
-    bool CompletionViaCheckbox);
-
 internal enum CountdownReminderMode
 {
     None,
     AtDeadline,
     Custom
-}
-
-internal sealed record ReminderModeClickResult(
-    bool NoReminder,
-    bool OnceReminder,
-    bool RepeatingReminder)
-{
-    public static ReminderModeClickResult NotRun { get; } = new(false, false, false);
 }

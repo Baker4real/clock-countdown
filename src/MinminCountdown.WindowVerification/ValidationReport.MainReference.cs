@@ -418,7 +418,7 @@ internal static partial class ValidationReport
             : Path.GetFullPath(assetRoot);
         // ValidationReport 按区域拆成 partial 文件，主文件之外的每个分片也绑定进证据。
         var validationReportParts = Directory
-            .EnumerateFiles(Path.Combine(sourceRoot, "src", "MinminCountdown"), "ValidationReport.*.cs")
+            .EnumerateFiles(Path.Combine(sourceRoot, "src", "MinminCountdown.WindowVerification"), "ValidationReport.*.cs")
             .Order(StringComparer.Ordinal)
             .Select(path => (
                 Id: "source-validation-report-" +
@@ -426,7 +426,7 @@ internal static partial class ValidationReport
                 FilePath: path));
         (string Id, string FilePath)[] artifacts =
         [
-            ("app-executable", Path.Combine(runtimeRoot, "MinminCountdown.exe")),
+            ("validation-runner-executable", Path.Combine(runtimeRoot, "MinminCountdown.WindowVerification.exe")),
             ("app-main-countdown-scene", Path.Combine(
                 runtimeRoot,
                 "assets",
@@ -460,9 +460,19 @@ internal static partial class ValidationReport
             ("source-validation-report", Path.Combine(
                 sourceRoot,
                 "src",
-                "MinminCountdown",
+                "MinminCountdown.WindowVerification",
                 "ValidationReport.cs")),
             .. validationReportParts,
+            ("source-window-verification-project", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown.WindowVerification",
+                "MinminCountdown.WindowVerification.csproj")),
+            ("source-main-countdown-block-renderer", Path.Combine(
+                sourceRoot,
+                "src",
+                "MinminCountdown",
+                "MainCountdownBlockRenderer.cs")),
             ("source-application-project", Path.Combine(
                 sourceRoot,
                 "src",

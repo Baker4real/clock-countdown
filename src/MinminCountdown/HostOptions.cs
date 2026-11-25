@@ -1,18 +1,12 @@
 namespace MinminCountdown;
 
 internal sealed record HostOptions(
-    bool ValidateOnly,
-    bool ExerciseNoteAdd,
-    bool ExercisePersistenceFailures,
-    bool ExerciseTagInteractions,
-    bool ExerciseFatalDiagnostic,
     bool ExitAfterReadyForTest,
     int ExitAfterReadyForTestSeconds,
     string? SettingsFile,
     string? DiagnosticLogPath,
     InstanceActivationTestState? ActivationTestState,
-    InstanceActivationListenerBehavior ActivationListenerBehavior,
-    bool NightMigrationOnly)
+    InstanceActivationListenerBehavior ActivationListenerBehavior)
 {
     // 测试自退间隔只是测试参数：生产默认保持 30 秒，套件可传更短值压缩纯等待。
     internal const int DefaultExitAfterReadyForTestSeconds = 30;
@@ -21,42 +15,18 @@ internal sealed record HostOptions(
 
     public static HostOptions Parse(IReadOnlyList<string> arguments)
     {
-        var validateOnly = false;
-        var exerciseNoteAdd = false;
-        var exercisePersistenceFailures = false;
-        var exerciseTagInteractions = false;
-        var exerciseFatalDiagnostic = false;
         var exitAfterReadyForTest = false;
         var exitAfterReadyForTestSeconds = DefaultExitAfterReadyForTestSeconds;
         string? settingsFile = null;
         string? diagnosticLogPath = null;
         InstanceActivationTestState? activationTestState = null;
         var activationListenerBehavior = InstanceActivationListenerBehavior.Normal;
-        var nightMigrationOnly = false;
 
         for (var index = 0; index < arguments.Count; index++)
         {
             var option = NormalizeOption(arguments[index]);
             switch (option)
             {
-                case "validateonly":
-                    validateOnly = true;
-                    break;
-                case "nightmigrationonly":
-                    nightMigrationOnly = true;
-                    break;
-                case "exercisenoteadd":
-                    exerciseNoteAdd = true;
-                    break;
-                case "exercisepersistencefailures":
-                    exercisePersistenceFailures = true;
-                    break;
-                case "exercisetaginteractions":
-                    exerciseTagInteractions = true;
-                    break;
-                case "exercisefataldiagnostic":
-                    exerciseFatalDiagnostic = true;
-                    break;
                 case "exitafterreadyfortest":
                     exitAfterReadyForTest = true;
                     break;
@@ -126,26 +96,8 @@ internal sealed record HostOptions(
                 "--exit-after-ready-seconds 只能与 --exit-after-ready-for-test 一起使用。");
         }
 
-        if (nightMigrationOnly &&
-            (!validateOnly || exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic))
-        {
-            throw new ArgumentException("--night-migration-only 只能单独与 --validate-only 一起使用。");
-        }
-
-        if ((exerciseNoteAdd || exercisePersistenceFailures || exerciseTagInteractions || exerciseFatalDiagnostic) &&
-            !validateOnly)
-        {
-            throw new ArgumentException("exercise 参数只能与 --validate-only 一起使用。");
-        }
-
-        if (validateOnly && string.IsNullOrWhiteSpace(settingsFile))
-        {
-            throw new ArgumentException("--validate-only 必须显式指定 --settings-file。");
-        }
-
         if (activationTestState is not null &&
-            (validateOnly ||
-             !exitAfterReadyForTest ||
+            (!exitAfterReadyForTest ||
              string.IsNullOrWhiteSpace(settingsFile) ||
              string.IsNullOrWhiteSpace(diagnosticLogPath)))
         {
@@ -154,8 +106,7 @@ internal sealed record HostOptions(
         }
 
         if (activationListenerBehavior != InstanceActivationListenerBehavior.Normal &&
-            (validateOnly ||
-             !exitAfterReadyForTest ||
+            (!exitAfterReadyForTest ||
              string.IsNullOrWhiteSpace(settingsFile) ||
              string.IsNullOrWhiteSpace(diagnosticLogPath)))
         {
@@ -164,18 +115,12 @@ internal sealed record HostOptions(
         }
 
         return new HostOptions(
-            validateOnly,
-            exerciseNoteAdd,
-            exercisePersistenceFailures,
-            exerciseTagInteractions,
-            exerciseFatalDiagnostic,
             exitAfterReadyForTest,
             exitAfterReadyForTestSeconds,
             settingsFile,
             diagnosticLogPath,
             activationTestState,
-            activationListenerBehavior,
-            nightMigrationOnly);
+            activationListenerBehavior);
     }
 
     private static string NormalizeOption(string value)

@@ -1210,7 +1210,7 @@ internal static partial class ValidationExercises
             trigger!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WindowValidationInput.Pump(floating.Dispatcher);
             floating.UpdateLayout();
-            var menu = floating.ActiveNoteOverflowMenuForValidation;
+            var menu = floating.FindActiveNoteOverflowMenu();
             Must(menu is { IsOpen: true }, "便签更多操作没有打开。");
             QueueConfirmationDialogResponse(floating, confirm, inspect);
             var menuDelete = menu!.Items.OfType<MenuItem>().FirstOrDefault(candidate =>

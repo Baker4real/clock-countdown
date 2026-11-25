@@ -4,7 +4,7 @@
 把现役视觉基线版本号换成新编号，一次改完源码、测试与验证模块里的全部钉点。
 
 .DESCRIPTION
-现役版本以 src/MinminCountdown/VisualReferenceBaseline.cs 的 Version 常量为准（主窗与悬浮窗共用），脚本经
+现役版本以 src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs 的 Version 常量为准（主窗与悬浮窗共用），脚本经
 Countdown.Validation.psm1 的 Get-CountdownVisualBaseline 读取它。本工具把受 Git 跟踪的 *.ps1、*.psm1、*.cs（assets 除外）
 里的旧版本字符串全部换成新版本，保留原有 BOM 与换行，写回后复核旧版本不再残留；DESIGN.md 等文档的叙述与
 聚合哈希仍需人工更新，工具只列出仍提到旧版本的文件。
@@ -13,7 +13,7 @@ Countdown.Validation.psm1 的 Get-CountdownVisualBaseline 读取它。本工具�
 基线目录和现役版本的编号。作废且没留下目录的编号只记在 DESIGN.md，需人工核对。-WhatIf 只列出将改的文件。
 
 .EXAMPLE
-pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-23-v87 -WhatIf
+pwsh -NoLogo -NoProfile -File ./tools/Set-CountdownBaselineVersion.ps1 -Version 2026-11-25-v90 -WhatIf
 
 -Version 换成重拍当天的日期和下一个未用编号。与现役版本相同或编号不够大时工具拒绝执行，后者会报出下一个可用编号。
 #>

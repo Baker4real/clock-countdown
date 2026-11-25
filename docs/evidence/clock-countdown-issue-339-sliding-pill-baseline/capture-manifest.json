@@ -13,18 +13,18 @@
   "run_artifact_surface_manifest_sha256": "D8E9FB915A0742D5490BCD2D38EDA713BA53235C9ACBF91BA875C0F091E38BC2",
   "current_source_bindings": {
     "main-window": {
-      "manifest": "assets/ui-references/main-window/864x1000/2026-11-23-v87/manifest.json",
-      "manifest_sha256": "3047E26AE172C4179A1C9FB521A92987EE17954D8E77132243223F05C8520203",
-      "aggregate_sha256": "B7B2D6062221D57CA736831026E466AEC698F74E7CC1D02863621874F8728ADC"
+      "manifest": "assets/ui-references/main-window/864x1000/2026-11-25-v90/manifest.json",
+      "manifest_sha256": "AC48D7174BE52B861CE3AF3DA213765989640F7A9E33426E3DCE85D654231493",
+      "aggregate_sha256": "2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273"
     },
     "floating-window": {
-      "manifest": "assets/ui-references/floating-window/520x390/2026-11-23-v87/manifest.json",
-      "manifest_sha256": "74F892614C34EE94A524E3BDD1C033B43980255EEF6F6892CCC280FD9EB32EFF",
-      "aggregate_sha256": "0A99A4A9215B6D4FF1C46A8B0F097FEF4B0EB08275D9AE1BAD9D2EFC5865C783"
+      "manifest": "assets/ui-references/floating-window/520x390/2026-11-25-v90/manifest.json",
+      "manifest_sha256": "551FBFB9EEDEDDFA04EEE5CD2056ADB05386B7A53A12DADE2E1974AC14A88BFC",
+      "aggregate_sha256": "949E3C9B446018628E632AC2017C55EC8DBD0946A9E0144BD3A4A630AEDF28E9"
     }
   },
-  "current_baseline_version": "2026-11-23-v87",
-  "source_scope_note": "baseline_version、build/baseline run、candidate_dll_sha256 与六张复制图均保留 v86 捕获身份；current_source_bindings 按发布证据合同跟随现役 v87，历史 v86 manifest 继续由 HEAD 45f6ddc5bfa48a42c6e1f54e320542fc992ee25e 保存。",
+  "current_baseline_version": "2026-11-25-v90",
+  "source_scope_note": "baseline_version、build/baseline run、candidate_dll_sha256 与六张复制图均保留 v86 捕获身份；current_source_bindings 按发布证据合同跟随现役 v90，历史 v86 manifest 继续由 HEAD 45f6ddc5bfa48a42c6e1f54e320542fc992ee25e 保存。",
   "required_count": 6,
   "copied_and_verified": 6,
   "entries": [

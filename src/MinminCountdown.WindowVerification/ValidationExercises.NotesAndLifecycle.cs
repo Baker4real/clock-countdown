@@ -32,7 +32,7 @@ internal static partial class ValidationExercises
             PrepareOffscreenValidationWindow(main);
             main.Show();
             WindowValidationInput.Pump(main.Dispatcher);
-            var countdown = main.CountdownEditorDisclosureForValidation;
+            var countdown = main.CountdownEditorExpandButton;
             var countdownArrow = VisualDescendants<System.Windows.Shapes.Path>(countdown).Single();
             Exercise(countdown, (RotateTransform)countdownArrow.RenderTransform, 180, "倒计时新增选项");
             main.ShowWorkspace(WorkspaceKind.Notes);
@@ -444,10 +444,10 @@ internal static partial class ValidationExercises
         var isolatedSettingsPath = Path.Combine(applicationRoot, "isolated", "settings.json");
 
         var missingSettingsRejected = ThrowsArgumentException(
-            () => HostOptions.Parse(new[] { "--validate-only" }));
+            () => ValidationHostOptions.Parse(new[] { "--validate-only" }));
         var rootSettingsRejected = ThrowsArgumentException(() =>
             ApplicationValidation.ResolveSettingsPath(
-                HostOptions.Parse(new[]
+                ValidationHostOptions.Parse(new[]
                 {
                     "--validate-only",
                     "--settings-file",
@@ -457,7 +457,7 @@ internal static partial class ValidationExercises
         var isolatedSettingsAccepted = string.Equals(
             isolatedSettingsPath,
             ApplicationValidation.ResolveSettingsPath(
-                HostOptions.Parse(new[]
+                ValidationHostOptions.Parse(new[]
                 {
                     "--validate-only",
                     "--settings-file",
@@ -466,7 +466,7 @@ internal static partial class ValidationExercises
                 applicationRoot),
             StringComparison.OrdinalIgnoreCase);
         var productionDefaultPreserved =
-            HostOptions.Parse(Array.Empty<string>()).SettingsFile is null;
+            ValidationHostOptions.Parse(Array.Empty<string>()).SettingsFile is null;
 
         return missingSettingsRejected &&
                rootSettingsRejected &&
@@ -524,7 +524,7 @@ internal static partial class ValidationExercises
                 ReferenceEquals(created[0], lifecycle.Window) &&
                 created[0].IsVisible &&
                 created[0].WindowState == WindowState.Normal &&
-                created[0].CurrentWorkspace == floating.CurrentWorkspaceForValidation,
+                created[0].CurrentWorkspace == WindowScenarioAccess.CurrentWorkspace(floating),
                 "第一次管理没有创建唯一可见管理窗口或未沿用当前工作区。");
 
             var first = created[0];

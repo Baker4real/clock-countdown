@@ -214,7 +214,7 @@ $constantAcceptanceMembers = @(
 Assert-Equal 0 $constantAcceptanceMembers.Count 'src 不包含返回字面 true 的 internal bool 验收属性'
 
 $validationReportSource = @(
-    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown') -File |
+    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\MinminCountdown.WindowVerification') -File |
         Where-Object { $_.Name -eq 'ValidationReport.cs' -or $_.Name -like 'ValidationReport.*.cs' } |
         ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 }
 ) -join "`n"
@@ -1327,6 +1327,7 @@ function Invoke-ManagedTestRootPurge {
 function Invoke-InstanceActivationProcessTests {
     $dotnet = 'D:\Codex\tools\dotnet\10.0\dotnet.exe'
     $sourceApplication = Join-Path $PSScriptRoot 'src\MinminCountdown\bin\Release\net10.0-windows\MinminCountdown.dll'
+    $sourceValidationRunner = Join-Path $PSScriptRoot 'src\MinminCountdown.WindowVerification\bin\Release\net10.0-windows\win-x64\MinminCountdown.WindowVerification.dll'
     $safeTreeDelete = 'D:\Codex\.codex\scripts\invoke-safe-tree-delete.ps1'
     $testCapabilityRoot = [System.IO.Path]::GetFullPath('D:\agents\run-evidence')
     $testGroupRoot = Join-Path $testCapabilityRoot 'migration-preflight-20260825T013156Z\clock-countdown-instance-activation-tests'
@@ -1446,8 +1447,11 @@ function Invoke-InstanceActivationProcessTests {
             $diagnosticPath
         )
         if ($InstanceActivationClientMode -eq 'ValidateExercise') {
+            if (-not (Test-Path -LiteralPath $sourceValidationRunner -PathType Leaf)) {
+                throw "未找到源码构建窗口验证程序：$sourceValidationRunner。请先构建 WindowVerification.csproj。"
+            }
             $secondaryArguments = @(
-                $sourceApplication,
+                $sourceValidationRunner,
                 '--validate-only',
                 '--exercise-fatal-diagnostic',
                 '--settings-file',
@@ -2266,6 +2270,9 @@ if (-not (Test-Path -LiteralPath $publishedPayloadManifest -PathType Leaf)) {
 }
 $publishedPayload = Get-Content -LiteralPath $publishedPayloadManifest -Raw -Encoding UTF8 | ConvertFrom-Json
 $publishedPayloadPaths = @($publishedPayload.files | ForEach-Object { [string] $_.path })
+Assert-Equal 0 @($publishedPayloadPaths | Where-Object {
+    $_ -match '(^|\\)window-verification(\\|$)|MinminCountdown\.WindowVerification'
+}).Count '产品载荷清单不包含独立窗口验证 runner'
 foreach ($trayDependency in @(
         'app\H.NotifyIcon.Wpf.dll',
         'app\H.NotifyIcon.dll',
@@ -2393,6 +2400,16 @@ $duplicateApplicationErrorPath = Join-Path $testRoot 'duplicate-application.stde
 $retiredStartupOptionOutputPath = Join-Path $testRoot 'retired-startup-option.stdout.txt'
 $retiredStartupOptionErrorPath = Join-Path $testRoot 'retired-startup-option.stderr.txt'
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+function Save-CSharpValidationEvidence {
+    param([Parameter(Mandatory)] [string] $Name, [Parameter(Mandatory)] [string] $Text)
+    $captureDirectory = $env:COUNTDOWN_VALIDATION_EVIDENCE_CAPTURE_DIR
+    if ([string]::IsNullOrWhiteSpace($captureDirectory)) { return }
+    [void][System.IO.Directory]::CreateDirectory($captureDirectory)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $captureDirectory $Name),
+        $Text,
+        [System.Text.UTF8Encoding]::new($false))
+}
 $mutexHolderProcess = $null
 $interactiveLaunchProcess = $null
 $interactiveApplicationProcess = $null
@@ -2608,6 +2625,7 @@ exit 23
         -FilePath $windowVerificationRunner `
         -WorkingDirectory $PSScriptRoot `
         -ArgumentList @('--')
+    Save-CSharpValidationEvidence -Name 'window-verification.json' -Text ([string]$windowVerificationResult.Stdout)
     $windowVerification = $windowVerificationResult.Stdout | ConvertFrom-Json
     Assert-ExactReportFields `
         -Report $windowVerification `
@@ -3573,7 +3591,30 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $populatedFixtureHash (Get-FileHash -LiteralPath $populatedFixturePath -Algorithm SHA256).Hash 'populated C# canonical 输入生成保持来源 fixture 不变'
     Assert-Equal 10 ([int] (Get-Content -LiteralPath $themeExercisePath -Raw -Encoding UTF8 | ConvertFrom-Json).schemaVersion) 'Ui populated fixture 经 C# canonical schema-v10 合同生成'
     $themeExerciseHash = (Get-FileHash -LiteralPath $themeExercisePath -Algorithm SHA256).Hash
-    $applicationValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+    # US34/US38：正常产品 EXE 不再承载验证入口；完整报告只由独立 runner 生成。
+    $productValidationRejection = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
+        '--settings-file',
+        $themeExercisePath,
+        '--diagnostic-log-path',
+        ($applicationValidationDiagnosticPath + '.product')
+    )
+    Assert-Equal $true ($productValidationRejection.ExitCode -ne 0) '正常产品 EXE 拒绝 --validate-only'
+    Assert-Equal $true ($productValidationRejection.Stderr.Contains('不支持的启动参数：--validate-only', [StringComparison]::Ordinal)) '正常产品 EXE 的验证入口拒绝原因明确'
+
+    $productAssembly = [Reflection.Assembly]::LoadFrom((Join-Path $PSScriptRoot 'app\MinminCountdown.dll'))
+    $productValidationTypes = @($productAssembly.GetTypes() | Where-Object {
+        $name = $_.FullName
+        $name -eq 'MinminCountdown.ApplicationValidation' -or
+        $name.StartsWith('MinminCountdown.ValidationReport', [StringComparison]::Ordinal) -or
+        $name.StartsWith('MinminCountdown.ValidationExercises', [StringComparison]::Ordinal) -or
+        $name.StartsWith('MinminCountdown.WindowValidationScenarios', [StringComparison]::Ordinal)
+    })
+    Assert-Equal 0 $productValidationTypes.Count '产品程序集不含 ApplicationValidation、ValidationReport、ValidationExercises 或 WindowValidationScenarios 类型'
+    $productHostOptionNames = @($productAssembly.GetType('MinminCountdown.HostOptions', $true).GetProperties().Name)
+    Assert-Equal 0 @($productHostOptionNames | Where-Object { $_ -in @('ValidateOnly', 'ExerciseNoteAdd', 'ExercisePersistenceFailures', 'ExerciseTagInteractions', 'ExerciseFatalDiagnostic', 'NightMigrationOnly') }).Count '产品 HostOptions 不含验证或 exercise 选项'
+
+    $applicationValidationResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--settings-file',
         $themeExercisePath,
@@ -3582,13 +3623,14 @@ function Get-RejectionMessage([string[]] $Arguments) {
     )
     if ($applicationValidationResult.ExitCode -ne 0) {
         $applicationValidationFailureDetail = @(
-            "直接运行 C# 应用 --validate-only 失败，退出码：$($applicationValidationResult.ExitCode)。",
+            "独立窗口验证 --validate-only 失败，退出码：$($applicationValidationResult.ExitCode)。",
             "标准输出：$([Environment]::NewLine)$($applicationValidationResult.Stdout)",
             "标准错误：$([Environment]::NewLine)$($applicationValidationResult.Stderr)"
         ) -join [Environment]::NewLine
         throw $applicationValidationFailureDetail
     }
     $applicationValidationOutput = [string] $applicationValidationResult.Stdout
+    Save-CSharpValidationEvidence -Name 'application-validation.json' -Text $applicationValidationOutput
     $applicationValidationDocument = [System.Text.Json.JsonDocument]::Parse($applicationValidationOutput)
     try {
         $applicationValidationJsonKinds = [System.Collections.Generic.Dictionary[string, string]]::new(
@@ -3661,7 +3703,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         $utf8NoBom)
     Assert-Equal 'Night' ([string] (Get-Content -LiteralPath $nightMigrationPath -Raw -Encoding UTF8 | ConvertFrom-Json).themePreference) '主题迁移启动用例隔离设置写入旧 Night 偏好'
     $nightMigrationHash = (Get-FileHash -LiteralPath $nightMigrationPath -Algorithm SHA256).Hash
-    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+    $nightMigrationResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--night-migration-only',
         '--settings-file',
@@ -3699,8 +3741,8 @@ function Get-RejectionMessage([string[]] $Arguments) {
     try {
         # WPF 应用是 GUI 子系统：经 & 调用时 PowerShell 不等它退出，必须用显式等待的进程 helper；
         # stderr 照旧转给本测试的 stderr（原先经 adapter 时由继承句柄直接写出）。
-        $failedValidationResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
-            '--validate-only',
+        $failedValidationResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
+        '--validate-only',
             '--exercise-persistence-failures',
             '--settings-file',
             $persistenceExercisePath,
@@ -3766,7 +3808,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         'Valid'
     ) -Name 'PersistenceFailureFixture 只输出被断言字段'
     # #264：迁入 Ui U5 唯一反例。上一轮的阻塞 tmp 目录已在 finally 移除，此运行必须失败闭锁且不产出报告。
-    $unblockedPersistenceResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+    $unblockedPersistenceResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--exercise-persistence-failures',
         '--settings-file',
@@ -4042,23 +4084,10 @@ function Get-RejectionMessage([string[]] $Arguments) {
     Assert-Equal $true (
         $floatingWindowHostSource -match 'args\.Key == Key\.R' -and
         $floatingWindowHostSource -match 'ResetPositionIntoWorkArea\(\);') '悬浮窗 Ctrl+R 是非拖动的窗口复位入口（#156 源码契约）'
-    # #157 源码契约：悬浮视口右缘比较钉在确定性口径上（滚动内容槽 − 设计命中轨），
-    # 不回到随系统滚动条度量/显示缩放漂移的 ViewportWidth 口径（100% 过 0.05 / 125% 红 0.55）。
-    $captureViewportStateBody = [regex]::Match(
-        $validationReportSource,
-        'private static FloatingViewportState CaptureFloatingViewportState\(.*?\r?\n    private static string\[\] CalendarIndexStampTexts',
-        [System.Text.RegularExpressions.RegexOptions]::Singleline).Value
-    Assert-Equal $true ($captureViewportStateBody.Length -gt 0) '悬浮视口状态捕获方法体可定位（#157 源码契约）'
-    Assert-Equal $true (
-        $captureViewportStateBody -match 'bodyScroller\.ActualWidth' -and
-        $captureViewportStateBody -match 'RequiredFloatingScrollBarRailWidth\(verticalScrollBar\)' -and
-        $captureViewportStateBody -match 'verticalScrollBar is \{ IsVisible: true \}' -and
-        $captureViewportStateBody -notmatch 'bodyScroller\.ViewportWidth') '视口右缘以滚动内容槽扣除设计命中轨为确定性基准，不得回到随系统滚动条度量漂移的 ViewportWidth 口径（#157 源码契约）'
-    Assert-Equal $true (
-        $captureViewportStateBody -match 'ValidationExercises\.EvaluateFloatingViewportGeometryGate\(' -and
-        $captureViewportStateBody -match 'ValidationExercises\.FloatingViewportDesignedRight\(' -and
-        $captureViewportStateBody -notmatch '\.Right <= bodyContentRight' -and
-        $captureViewportStateBody -notmatch 'bodyContentRight \+ 0\.25') '现役视口右缘比较走 EvaluateFloatingViewportGeometryGate 单一实现且不保留第二套右缘算术（#157 修复轮 1 源码契约）'
+    # #157：迁移后不再用方法文本证明视口右缘；真实负向夹具必须拒绝 ViewportWidth、
+    # 第二套右缘算术及其它几何漂移，且不误伤无关门禁。
+    Assert-Equal $true ([bool] $applicationValidation.FloatingScrollBarGateIsolationBehavior) `
+        '悬浮视口右缘与滚动条几何由真实负向夹具闭锁（#157 行为契约，替代源码正则）'
     # #137 主窗口便签交互与状态回归：便签卡四列重构后，标签选择弹层按需收起，
     # 已完成便签的删除线 + 弱化语义不得被视觉重构丢弃（AC1 删除线语义）。
     $mainWindowNotesSource = Get-Content -LiteralPath (
@@ -4892,7 +4921,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
     # #264：迁入 Ui FatalDiagnosticExercise；这是预期失败的诊断演练，不产出整份验证报告。
     $fatalDiagnosticPath = Join-Path $testRoot 'fatal-diagnostic-application.jsonl'
     $fatalDiagnosticResult = Invoke-CapturedNativeProcess `
-        -FilePath $application `
+        -FilePath $windowVerificationRunner `
         -WorkingDirectory $PSScriptRoot `
         -ArgumentList @(
             '--validate-only',
@@ -4923,7 +4952,7 @@ function Get-RejectionMessage([string[]] $Arguments) {
         [DateTimeOffset]::UtcNow,
         'China Standard Time'
     ).AddDays(2).ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
-    $noteExerciseResult = Invoke-CapturedNativeProcess -FilePath $application -WorkingDirectory $PSScriptRoot -ArgumentList @(
+    $noteExerciseResult = Invoke-CapturedNativeProcess -FilePath $windowVerificationRunner -WorkingDirectory $PSScriptRoot -ArgumentList @(
         '--validate-only',
         '--exercise-note-add',
         '--exercise-tag-interactions',
@@ -5145,6 +5174,9 @@ function Get-RejectionMessage([string[]] $Arguments) {
         '--migration-utc',
         $interactiveMigrationUtc.ToString('o')
     )
+    if ($interactiveEquivalenceResult.ExitCode -ne 0) {
+        throw "正常启动迁移由产品 EXE 判定为等价失败，退出码：$($interactiveEquivalenceResult.ExitCode)。stdout=$($interactiveEquivalenceResult.Stdout)；stderr=$($interactiveEquivalenceResult.Stderr)"
+    }
     Assert-Equal 0 $interactiveEquivalenceResult.ExitCode '正常启动迁移由产品 EXE 判定为等价'
     Assert-Equal '' $interactiveEquivalenceResult.Stderr '正常启动迁移等价判定不写 stderr'
     $interactiveEquivalence = $interactiveEquivalenceResult.Stdout | ConvertFrom-Json

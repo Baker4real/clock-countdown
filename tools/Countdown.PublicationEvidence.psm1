@@ -67,8 +67,8 @@ function Resolve-PublicationReference {
 
 function Test-PublicationHashReference {
     param([object]$Context,[string]$Document,[string]$Target,[string]$Expected,[bool]$RepositoryRelative)
-    # app、verification 和 logs 是既有未版本化运行产物；这些身份记录不声称属于Git树。
-    if ($Target -match '^(?:[a-z][a-z0-9+.-]*:|//|(?:app|verification|logs)/)' -and -not $Context.Snapshot.Files.ContainsKey($Target)) {
+    # app、verification、window-verification 和 logs 是未版本化运行产物；这些身份记录不声称属于Git树。
+    if ($Target -match '^(?:[a-z][a-z0-9+.-]*:|//|(?:app|verification|window-verification|logs)/)' -and -not $Context.Snapshot.Files.ContainsKey($Target)) {
         $Context.Result.ExternalReferences++
         return
     }

@@ -8,8 +8,8 @@
 - sourceBinding.aggregateSha256 的前后值，以及新增、删除或哈希变化的绑定文件；
 - executable.sha256 的前后值；
 - 逐帧 PNG 是否逐字节一致、状态指纹是否一致，以及其余字段里有哪些变了；PNG 不同的帧再给出差异像素数、差异框与差异行。
--To 默认取现役版本（src/MinminCountdown/VisualReferenceBaseline.cs 的 Version）。旧版从 Git 提交读取，
--FromCommit 默认 HEAD，因此重拍生成新版并移除上一版后仍能比对；回看更早历史时传入包含旧版的固定提交。
+-To 默认取现役版本（src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs 的 Version）。旧版从 Git 提交读取，
+-FromCommit 默认 HEAD，因此重拍生成新版并移除上一版后仍能比对；回看更早历史时传入包含旧版的固定提交。上一版尚未提交但已暂存时，也可传入 `git write-tree` 返回的树对象。
 新版从工作树读取。只读仓库，不写文件。
 
 .EXAMPLE
@@ -66,10 +66,15 @@ function Read-GitBytes {
     }
 }
 
-$fromCommitBytes = Read-GitBytes -Arguments @('rev-parse', '--verify', '--end-of-options', "$FromCommit^{commit}")
+$fromCommitBytes = Read-GitBytes -Arguments @('rev-parse', '--verify', '--end-of-options', "$FromCommit^{object}")
 $resolvedFromCommit = [System.Text.Encoding]::UTF8.GetString($fromCommitBytes).Trim()
 if ($resolvedFromCommit -notmatch '^[0-9a-fA-F]{40}$') {
-    throw "旧版提交解析结果无效：$resolvedFromCommit"
+    throw "旧版提交或树对象解析结果无效：$resolvedFromCommit"
+}
+$fromObjectTypeBytes = Read-GitBytes -Arguments @('cat-file', '-t', $resolvedFromCommit)
+$fromObjectType = [System.Text.Encoding]::UTF8.GetString($fromObjectTypeBytes).Trim()
+if ($fromObjectType -notin @('commit', 'tree')) {
+    throw "旧版来源必须是提交或树对象，实际：$fromObjectType"
 }
 
 function Read-GitBaselineBlob {

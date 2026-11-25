@@ -437,6 +437,22 @@ $windowVerification = Join-Path $windowVerificationOutput 'MinminCountdown.Windo
 if (-not (Test-Path -LiteralPath $windowVerification -PathType Leaf)) {
     throw "发布未生成独立窗口验证程序：$windowVerification"
 }
+# The validation runner is deliberately not an office payload. Its real WPF scenes
+# read the same built assets as the candidate product, without compiling those
+# assets or validation types back into the product assembly.
+$windowVerificationContentRoots = @(
+    $windowVerificationOutput,
+    (Join-Path $PSScriptRoot 'src\MinminCountdown.WindowVerification\bin\Release\net10.0-windows\win-x64')
+)
+foreach ($contentRoot in $windowVerificationContentRoots) {
+    if (-not (Test-Path -LiteralPath $contentRoot -PathType Container)) { continue }
+    foreach ($contentDirectory in @('assets', 'holiday-data')) {
+        Copy-Item -LiteralPath (Join-Path $applicationOutput $contentDirectory) `
+            -Destination $contentRoot -Recurse -Force
+    }
+    Copy-Item -LiteralPath (Join-Path $applicationOutput 'countdown-icon.ico') `
+        -Destination $contentRoot -Force
+}
 Write-BuildSegmentTiming -Name 'WindowVerificationPublish'
 
 Get-Item -LiteralPath $application, $verification, $windowVerification | Select-Object FullName, Length, LastWriteTime

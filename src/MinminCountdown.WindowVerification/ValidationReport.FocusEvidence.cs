@@ -189,7 +189,7 @@ internal static partial class ValidationReport
 
             probe.ShowWorkspace(WorkspaceKind.Countdowns);
             Capture("countdown-rows-top", "七行，纵向滚动条在顶部：普通主项、30 字名称、五枚标签、999 天");
-            probe.CountdownListRegionForValidation.ScrollToEnd();
+            probe.CountdownListRegion.ScrollToEnd();
             Capture("countdown-rows-bottom", "七行滚到底部：北京时区截止行、百万天、已到期次项");
             workspace.ApplyFilter(DesktopWorkspaceFilter.Empty with { SelectedTagIds = [fixture.LongestTagId] });
             Capture("countdown-rows-longest-primary", "「长期」筛选：百万天主项与已到期次项，无滚动条");
@@ -292,7 +292,7 @@ internal static partial class ValidationReport
                 entries.Add(new { captureId, state, path, sha256 });
             }
 
-            var parts = probe.NoteListPartsForValidation;
+            var parts = WindowScenarioAccess.NoteListParts(probe);
             probe.ShowWorkspace(WorkspaceKind.Notes);
             Capture("note-rows-top", "未完成五张，纵向滚动条在顶部：无标签短正文、140 字长正文、五枚标签与两条提醒");
             parts.ListRegion.ScrollToEnd();
@@ -596,7 +596,7 @@ internal static partial class ValidationReport
                 Width = mainWidth,
                 Height = mainHeight
             });
-            var parts = main.SurfaceEvidencePartsForValidation;
+            var parts = WindowScenarioAccess.SurfaceEvidenceParts(main);
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             Capture("main-countdowns-normal", "管理窗口", "倒计时页：三条倒计时、标签芯片、收起的新增区与状态栏", () => MainFrame(main));
             main.ShowWorkspace(WorkspaceKind.Notes);
@@ -715,7 +715,7 @@ internal static partial class ValidationReport
 
             Capture("floating-focus", "悬浮窗", "键盘焦点在快速新增入口", () =>
             {
-                FocusFor(floating, floating.QuickAddToggleForValidation);
+                FocusFor(floating, floating.FloatingAddNoteToggle);
                 return WindowFrame(floating);
             });
             floating.ShowQuickAddTextErrorForValidation();

@@ -2,7 +2,8 @@
 
 [CmdletBinding()]
 param(
-    [string] $AssemblyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'app/MinminCountdown.dll')
+    [string] $AssemblyPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'app/MinminCountdown.dll'),
+    [string] $ValidationAssemblyPath
 )
 
 Set-StrictMode -Version Latest
@@ -22,6 +23,17 @@ if (-not (Test-Path -LiteralPath $AssemblyPath -PathType Leaf)) {
 }
 
 $resolvedAssembly = (Resolve-Path -LiteralPath $AssemblyPath).Path
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($ValidationAssemblyPath)) {
+    $ValidationAssemblyPath = @(
+        (Join-Path $repoRoot 'src/MinminCountdown.WindowVerification/bin/Release/net10.0-windows/win-x64/MinminCountdown.WindowVerification.dll'),
+        (Join-Path $repoRoot 'src/MinminCountdown.WindowVerification/bin/Release/net10.0-windows/MinminCountdown.WindowVerification.dll')
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+}
+if ([string]::IsNullOrWhiteSpace($ValidationAssemblyPath) -or -not (Test-Path -LiteralPath $ValidationAssemblyPath -PathType Leaf)) {
+    throw "未找到独立窗口验证程序集：$ValidationAssemblyPath。请先运行 IncrementalBuild。"
+}
+$resolvedValidationAssembly = (Resolve-Path -LiteralPath $ValidationAssemblyPath).Path
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 $assemblyDirectory = Split-Path -Parent $resolvedAssembly
 # PowerShell does not run the application's deps.json probing for pack URIs.
@@ -32,7 +44,7 @@ $fixtureDependencies = @(
         if (-not (Test-Path -LiteralPath $dependencyPath -PathType Leaf)) {
             throw "未找到夹具所需的生产依赖：$dependencyPath"
         }
-        $dependency = [Reflection.Assembly]::LoadFrom($dependencyPath)
+        $dependency = [Runtime.Loader.AssemblyLoadContext]::Default.LoadFromAssemblyPath($dependencyPath)
         [pscustomobject]@{ Path = $dependency.Location; Identity = $dependency.FullName }
     }
 )
@@ -50,6 +62,7 @@ $references = @(
 # from the currently built application's real ExercisePopup implementation.
 $harnessSourcePath = Join-Path $PSScriptRoot 'PopupValidationContract.cs'
 Add-Type -ReferencedAssemblies $references -TypeDefinition ([IO.File]::ReadAllText($harnessSourcePath))
+[PopupValidationAssemblyResolver]::Initialize($resolvedAssembly, $resolvedValidationAssembly)
 
 $results = @(
     foreach ($scenario in @('real-close', 'real-close-motion', 'handled-without-close', 'close-after-deadline')) {
@@ -120,7 +133,7 @@ foreach ($result in $results) {
 
 $trayMenu = $null
 try {
-    & (Join-Path $PSScriptRoot 'Test-CountdownTrayMenu.ps1') -AssemblyPath $resolvedAssembly |
+    & (Join-Path $PSScriptRoot 'Test-CountdownTrayMenu.ps1') -AssemblyPath $resolvedAssembly -ValidationAssemblyPath $resolvedValidationAssembly |
         ForEach-Object { $trayMenu = $_ }
 }
 catch {
@@ -135,6 +148,8 @@ if ($null -eq $trayMenu) {
     AssemblyPath = $resolvedAssembly
     FixtureDependencies = $fixtureDependencies
     AssemblySHA256 = (Get-FileHash -LiteralPath $resolvedAssembly -Algorithm SHA256).Hash
+    ValidationAssemblyPath = $resolvedValidationAssembly
+    ValidationAssemblySHA256 = (Get-FileHash -LiteralPath $resolvedValidationAssembly -Algorithm SHA256).Hash
     HarnessSHA256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
     HarnessSourceSHA256 = (Get-FileHash -LiteralPath $harnessSourcePath -Algorithm SHA256).Hash
     Results = $results

@@ -16,12 +16,15 @@ internal static partial class ValidationReport
         MainWindow main,
         FloatingWindow floating,
         ApplicationTheme theme,
-        DateTimeOffset restoreUtc)
+        DateTimeOffset restoreUtc,
+        DesktopWorkspace desktopWorkspace)
     {
+        var mainScenarios = new MainWindowValidationScenariosRunner(main, desktopWorkspace);
+        var floatingScenarios = new FloatingWindowValidationScenariosRunner(floating, desktopWorkspace, main);
         var mainThemeExercise = RunMainThemeExercise(theme, main, restoreUtc);
-        var floatingThemeExercise = floating.RunThemeMigrationFixture();
-        var emptyReset = main.RunCountdownEmptyResetFixture();
-        var blocksGeometryMatches = main.RunCountdownBlocksGeometryFixture();
+        var floatingThemeExercise = floatingScenarios.RunThemeMigrationFixture();
+        var emptyReset = mainScenarios.RunCountdownEmptyResetFixture();
+        var blocksGeometryMatches = mainScenarios.RunCountdownBlocksGeometryFixture();
         return new Dictionary<string, object?>
         {
             ["FloatingThemeBoundaryModes"] = floatingThemeExercise.BoundaryModes,
@@ -39,11 +42,13 @@ internal static partial class ValidationReport
         DesktopWorkspace desktopWorkspace,
         bool exerciseTagInteractions)
     {
-        var floatingCrossDayReminderAdded = floating.RunFloatingCrossDayReminderFixture();
-        var floatingReminderModes = floating.RunFloatingReminderModeFixture();
-        var noteExercise = main.RunNoteAddFixture();
-        var reminderModes = main.RunNoteReminderModeFixture();
-        var undatedNoteEdit = main.RunUndatedNoteEditFixture();
+        var mainScenarios = new MainWindowValidationScenariosRunner(main, desktopWorkspace);
+        var floatingScenarios = new FloatingWindowValidationScenariosRunner(floating, desktopWorkspace, main);
+        var floatingCrossDayReminderAdded = floatingScenarios.RunFloatingCrossDayReminderFixture();
+        var floatingReminderModes = floatingScenarios.RunFloatingReminderModeFixture();
+        var noteExercise = mainScenarios.RunNoteAddFixture();
+        var reminderModes = mainScenarios.RunNoteReminderModeFixture();
+        var undatedNoteEdit = mainScenarios.RunUndatedNoteEditFixture();
         var report = new Dictionary<string, object?>
         {
             ["NoteAddViaClick"] = noteExercise.AddedViaClick,
@@ -122,11 +127,14 @@ internal static partial class ValidationReport
         FloatingWindow floating,
         FloatingTrayController floatingTrayController,
         DesktopWorkspace desktopWorkspace,
+        HolidayCalendar calendar,
         ApplicationTheme theme,
-        HostOptions options,
+        ValidationHostOptions options,
         string assetRoot)
     {
-        using var anchorObservation = floating.ObserveAnchoringForValidation();
+        var mainScenarios = new MainWindowValidationScenariosRunner(main, desktopWorkspace);
+        var floatingScenarios = new FloatingWindowValidationScenariosRunner(floating, desktopWorkspace, main, calendar);
+        using var anchorObservation = floatingScenarios.ObserveAnchoringForValidation();
         using var persistenceExercisePath = options.ExercisePersistenceFailures
             ? new PersistenceExercisePathGate(desktopWorkspace.Snapshot.SettingsPath)
             : null;
@@ -159,11 +167,11 @@ internal static partial class ValidationReport
         floating.UpdateLayout();
         floating.Reanchor();
         PumpDispatcher();
-        floating.TraceAnchoringForValidation("initial-reanchor");
+        floatingScenarios.TraceAnchoringForValidation("initial-reanchor");
 
         if (options.NightMigrationOnly)
         {
-            return CreateNightMigrationFixture(main, floating, theme, desktopWorkspace.Snapshot.UtcNow);
+            return CreateNightMigrationFixture(main, floating, theme, desktopWorkspace.Snapshot.UtcNow, desktopWorkspace);
         }
 
         if (options.ExerciseNoteAdd)
@@ -175,18 +183,19 @@ internal static partial class ValidationReport
                 options.ExerciseTagInteractions);
         }
 
-        var floatingWindowScenarios = floating.RunValidationScenarios(options.ExerciseNoteAdd);
-        floating.TraceAnchoringForValidation("after-floating-scenarios");
+        var floatingWindowScenarios = floatingScenarios.RunValidationScenarios(options.ExerciseNoteAdd);
+        floatingScenarios.TraceAnchoringForValidation("after-floating-scenarios");
         var floatingWorkspace = floatingWindowScenarios.Workspace;
         var floatingQuickAddTheme = ValidateFloatingQuickAddLocalTheme(
             theme,
-            floating);
+            floating,
+            desktopWorkspace);
         var floatingQuickAddThemeResourceIsolationBehavior =
             ValidationExercises.RunFloatingQuickAddThemeResourceIsolationBehavior();
         var floatingQuickAddPaletteBindingIsolationBehavior =
             ValidationExercises.RunFloatingQuickAddPaletteBindingIsolationBehavior();
 
-        var mainWindowScenarios = main.RunValidationScenarios(options.ExerciseNoteAdd, theme);
+        var mainWindowScenarios = mainScenarios.RunValidationScenarios(options.ExerciseNoteAdd, theme);
         var countdownReadability = mainWindowScenarios.CountdownReadability;
         var countdownEditing = mainWindowScenarios.CountdownEditing;
         var interactionStates = mainWindowScenarios.InteractionStates;
@@ -444,9 +453,9 @@ internal static partial class ValidationReport
             ValidationExercises.RunMainWorkbenchDensityBehavior(CreateWorkbenchDensityEvidenceWriter());
         var floatingScrollContextHint =
             ValidationExercises.RunFloatingScrollContextHintBehavior(CreateFloatingScrollContextEvidenceWriter());
-        floating.TraceAnchoringForValidation("before-disclosure-probe");
+        floatingScenarios.TraceAnchoringForValidation("before-disclosure-probe");
         var disclosureArrowMotion = ValidationExercises.RunDisclosureArrowMotionBehavior();
-        floating.TraceAnchoringForValidation("after-disclosure-probe");
+        floatingScenarios.TraceAnchoringForValidation("after-disclosure-probe");
         var mainWindowIdentityZoneDrag =
             ValidationExercises.RunMainWindowIdentityZoneDragBehavior();
         var floatingSecondaryMonitor = MonitorGeometryValidation.FloatingWindowStaysOnSecondaryMonitor();
@@ -456,7 +465,7 @@ internal static partial class ValidationReport
         var mixedDpiPhysicalGeometry = MonitorGeometryValidation.MixedDpiUsesPhysicalMonitorGeometry();
         var productManifestPerMonitorV2 = MonitorGeometryValidation.ProductManifestDeclaresPerMonitorV2();
         var runtimeDpiLayout = MonitorGeometryValidation.RuntimeDpiChangeUpdatesWindowLayout();
-        floating.TraceAnchoringForValidation("after-monitor-probes");
+        floatingScenarios.TraceAnchoringForValidation("after-monitor-probes");
         var mainWindowHiddenRefresh =
             ValidationExercises.RunMainWindowHiddenRefreshBehavior();
         var mainWindowNoteMinuteRefresh =
@@ -715,7 +724,7 @@ internal static partial class ValidationReport
         main.ApplyTheme();
         PumpDispatcher();
         main.UpdateLayout();
-        floating.TraceAnchoringForValidation("before-bottom-margin");
+        floatingScenarios.TraceAnchoringForValidation("before-bottom-margin");
         var workArea = MonitorWorkAreaResolver.ResolveForWindow(floating).WorkAreaDip;
         var floatingBottomMargin = Math.Round(workArea.Bottom - (floating.Top + floating.ActualHeight), 2);
         var taskCard = Required<Border>(floating, "TaskCard");
@@ -843,7 +852,7 @@ internal static partial class ValidationReport
             floating.Left >= workArea.Left &&
             floating.Top >= workArea.Top;
         var floatingHeightConstrained = floating.MaxHeight <= workArea.Height;
-        floating.TraceAnchoringForValidation("before-bottom-verdict");
+        floatingScenarios.TraceAnchoringForValidation("before-bottom-verdict");
         var floatingBottomAnchored = floating.IsBottomAnchored;
         floating.ParkOffscreenForValidation();
         PumpDispatcher();

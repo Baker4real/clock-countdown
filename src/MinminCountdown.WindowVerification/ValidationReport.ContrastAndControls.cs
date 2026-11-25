@@ -66,7 +66,7 @@ internal static partial class ValidationReport
         DesktopWorkspace workspace)
     {
         var originalMainWorkspace = main.CurrentWorkspace;
-        var originalFloatingWorkspace = floating.CurrentWorkspaceForValidation;
+        var originalFloatingWorkspace = WindowScenarioAccess.CurrentWorkspace(floating);
         var originalFilter = workspace.Snapshot.Filter;
         var originalTags = workspace.Snapshot.Settings.Tags;
         var settingsTemporaryPath = workspace.Snapshot.SettingsPath + ".tmp";

@@ -12,12 +12,12 @@ $ErrorActionPreference = 'Stop'
 Import-Module -Name (Join-Path $PSScriptRoot 'tools\Countdown.SuiteIsolation.psm1') -Force
 Assert-SuiteIsolatedDesktop
 
-$applicationDll = Join-Path $PSScriptRoot "src\MinminCountdown\bin\$Configuration\net10.0-windows\MinminCountdown.dll"
+$applicationDll = Join-Path $PSScriptRoot "src\MinminCountdown.WindowVerification\bin\$Configuration\net10.0-windows\win-x64\MinminCountdown.WindowVerification.dll"
 if (-not (Test-Path -LiteralPath $DotnetPath -PathType Leaf)) {
     throw "未找到受管 dotnet：$DotnetPath"
 }
 if (-not (Test-Path -LiteralPath $applicationDll -PathType Leaf)) {
-    throw "未找到源码应用 DLL：$applicationDll。请先构建 MinminCountdown.csproj。"
+    throw "未找到源码窗口验证 DLL：$applicationDll。请先构建 MinminCountdown.WindowVerification.csproj。"
 }
 
 $temporaryRoot = 'D:\Codex\.codex\tmp\clock-countdown-source-validation'
@@ -57,8 +57,8 @@ $rootSettingsBefore = Get-RootSettingsSnapshot
 $validationOutput = $null
 $validationExitCode = $null
 try {
-    # #275：源码构建输出不在 app\ 下，应用以工作目录为应用根；显式设为仓库根，
-    # 根下的发布 EXE（PerMonitorV2 清单检查）与设置防护都以它为准，不随调用方位置变化。
+    # 源码 runner 以工作目录为验证应用根；显式设为仓库根，
+    # 发布 EXE 清单检查与设置防护都以它为准，不随调用方位置变化。
     Push-Location -LiteralPath $PSScriptRoot
     try {
         $validationOutput = & $DotnetPath $applicationDll `

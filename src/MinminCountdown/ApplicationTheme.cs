@@ -409,7 +409,6 @@ internal sealed class ApplicationTheme : IDisposable
             throw new InvalidOperationException("动效验证输入只允许 STA 隔离桌面，不能使用非隔离绕过。");
         }
 
-        ApplicationValidation.EnsureIsolatedValidationDesktop();
     }
 
     private sealed class AnimationPreferenceScope(System.Windows.Threading.Dispatcher dispatcher) : IDisposable

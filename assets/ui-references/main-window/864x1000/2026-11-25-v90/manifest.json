@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "baselineVersion": "2026-11-23-v87",
+  "baselineVersion": "2026-11-25-v90",
   "captureKind": "actual-wpf-main-window",
   "canvas": {
     "width": 864,
@@ -17,7 +17,7 @@
   },
   "sourceBinding": {
     "aggregateAlgorithm": "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order",
-    "aggregateSha256": "B7B2D6062221D57CA736831026E466AEC698F74E7CC1D02863621874F8728ADC",
+    "aggregateSha256": "2C6E221BD35FD31B743CAD20DFE0CF930FBF012F550571746295509A98044273",
     "files": [
       {
         "path": "assets/main-decorations/main-countdown-scene-day.png",
@@ -61,7 +61,7 @@
       },
       {
         "path": "src/MinminCountdown/ApplicationTheme.cs",
-        "sha256": "060181C070E25BE5128A08D09048D8AE076DB8D5F068F6E64301AC1F00FECD8E"
+        "sha256": "214205B96476B6AFE8A3F7B16CE3949F04CCBAE45F47EFA61994691B02F2E52A"
       },
       {
         "path": "src/MinminCountdown/DeleteUndoOffer.cs",
@@ -73,11 +73,19 @@
       },
       {
         "path": "src/MinminCountdown/MainWindow.xaml.cs",
-        "sha256": "3137B036DCD52882D6ED8A34AD96474100335CA7BE347946701CE208059BECA9"
+        "sha256": "A753A8DCC789515428F67FF181EB76558095BFD6A1CB172E14AD817813B43628"
+      },
+      {
+        "path": "src/MinminCountdown/MainCountdownBlockRenderer.cs",
+        "sha256": "1D58B2D9918961CB036F293826BE0310E8F26E0F5F3A2C1A94DA9CC9C41ADEB2"
       },
       {
         "path": "src/MinminCountdown/MinminCountdown.csproj",
         "sha256": "57C496354FCC09726E1F64B6A640A39E01643CCFEED69B88C7B8011BFE221F46"
+      },
+      {
+        "path": "src/MinminCountdown.WindowVerification/MinminCountdown.WindowVerification.csproj",
+        "sha256": "1051148500041F762064F04B6398058B21A455B13E727F92DB54B7DD76025C3B"
       },
       {
         "path": "src/MinminCountdown/MotionBehavior.cs",
@@ -114,9 +122,9 @@
     ]
   },
   "executable": {
-    "path": "app/MinminCountdown.exe",
-    "sha256": "B3167E3D257CEB7CDBA57C174A2A22D5954B036C4119F2C97D86DC638F6B4DDD",
-    "generation": "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary"
+    "path": "window-verification/MinminCountdown.WindowVerification.exe",
+    "sha256": "046311F9A58F810DB3A56BCCF266A4983C7AF25239684480B8A8FF1626C80BCD",
+    "generation": "managed isolated dotnet publish; SHA-256 read from the executing WindowVerification runner binary"
   },
   "pixelComparison": {
     "algorithm": "BGRA8 absolute channel delta over 864x1000 pixels",
@@ -131,7 +139,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Empty",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-countdowns-empty.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-countdowns-empty.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -176,7 +184,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Representative",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-countdowns-representative.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-countdowns-representative.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -221,7 +229,7 @@
       "theme": "Day",
       "workspace": "Countdowns",
       "state": "Stress",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-countdowns-stress.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-countdowns-stress.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -266,7 +274,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Empty",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-empty.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-empty.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -311,7 +319,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Representative",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-representative.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-representative.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -356,7 +364,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Stress",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-stress.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-stress.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -401,7 +409,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Edit",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-edit.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-edit.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -446,7 +454,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "FilterOpen",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-filter-open.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-filter-open.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,
@@ -491,7 +499,7 @@
       "theme": "Day",
       "workspace": "Notes",
       "state": "Selected",
-      "path": "assets/ui-references/main-window/864x1000/2026-11-23-v87/main-day-notes-selected.png",
+      "path": "assets/ui-references/main-window/864x1000/2026-11-25-v90/main-day-notes-selected.png",
       "beijingTime": "2032-05-18T10:15:30+08:00",
       "width": 864,
       "height": 1000,

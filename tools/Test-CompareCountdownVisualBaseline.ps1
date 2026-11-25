@@ -41,7 +41,7 @@ function Write-Manifest {
 
 try {
     [void][System.IO.Directory]::CreateDirectory((Join-Path $workRoot 'tools'))
-    [void][System.IO.Directory]::CreateDirectory((Join-Path $workRoot 'src/MinminCountdown'))
+    [void][System.IO.Directory]::CreateDirectory((Join-Path $workRoot 'src/MinminCountdown.WindowVerification'))
     [System.IO.File]::Copy((Join-Path $PSScriptRoot 'Compare-CountdownVisualBaseline.ps1'), (Join-Path $workRoot 'tools/Compare-CountdownVisualBaseline.ps1'))
     $validationStub = @'
 function Get-CountdownVisualBaseline {
@@ -57,7 +57,7 @@ function Get-CountdownVisualBaseline {
 Export-ModuleMember -Function Get-CountdownVisualBaseline
 '@
     [System.IO.File]::WriteAllText((Join-Path $workRoot 'Countdown.Validation.psm1'), $validationStub, $utf8)
-    [System.IO.File]::WriteAllText((Join-Path $workRoot 'src/MinminCountdown/VisualReferenceBaseline.cs'), 'public const string Version = "2026-11-11-v2";', $utf8)
+    [System.IO.File]::WriteAllText((Join-Path $workRoot 'src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs'), 'public const string Version = "2026-11-11-v2";', $utf8)
 
     $oldDirectories = @(
         Write-Manifest -Root $workRoot -Version $oldVersion -RelativeRoot 'assets/ui-references/main-window/864x1000' -CaptureId 'main-frame'

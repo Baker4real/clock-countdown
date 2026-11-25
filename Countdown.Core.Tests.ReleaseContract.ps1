@@ -215,11 +215,14 @@ foreach ($legacyHostModule in @('Countdown.App.psm1', 'Countdown.Core.psm1')) {
     Assert-Equal $false ($legacyHostModule -in @($releaseContract.InstalledFiles)) "Deleted legacy host module is not installed as runtime: $legacyHostModule"
     Assert-Equal $true ($legacyHostModule -in @($releaseContract.RetiredRuntimeFiles)) "Deleted legacy host module remains in the cleanup set: $legacyHostModule"
 }
+Assert-Equal 0 @($releaseContract.PackageFiles + $releaseContract.InstalledFiles | Where-Object {
+    $_ -match '(^|\\)window-verification(\\|$)|MinminCountdown\.WindowVerification'
+}).Count 'Office package and install layout exclude the independent validation runner'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '(^|\\)(bin|obj)(\\|$)' }).Count 'Release package excludes all bin and obj paths'
 Assert-Equal 0 @($releaseContract.PackageFiles | Where-Object { $_ -match '\.(?:cs|csproj|xaml)$' -or $_ -eq 'global.json' }).Count 'Office package carries no C# project, source or SDK pin'
 # 视觉基线版本只在 VisualReferenceBaseline.cs 声明一次；脚本经 Get-CountdownVisualBaseline 取版本与两块 manifest 的位置。
 $visualBaselineFixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) "countdown-visual-baseline-$([guid]::NewGuid().ToString('N'))"
-$visualBaselineFixtureSource = Join-Path $visualBaselineFixtureRoot 'src\MinminCountdown\VisualReferenceBaseline.cs'
+$visualBaselineFixtureSource = Join-Path $visualBaselineFixtureRoot 'src\MinminCountdown.WindowVerification\VisualReferenceBaseline.cs'
 New-Item -ItemType Directory -Path (Split-Path -Parent $visualBaselineFixtureSource) -Force | Out-Null
 try {
     [System.IO.File]::WriteAllText(

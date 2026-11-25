@@ -51,12 +51,12 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `src/MinminCountdown`：C# WPF 应用宿主源码
 - `src/MinminCountdown.Core`：设置 schema、校验、原子写入、跨进程 mutex、部署设置等价规则，以及基于固定 `Ical.Net 5.2.3` 的类型化日历 occurrence 计算
 - `src/MinminCountdown.Verification`：C# 设置契约、独立固定的部署等价快照与无窗口验证程序；只引用 Core，保持无窗口
-- `src/MinminCountdown.WindowVerification`：#273 独立 WPF 窗口验证项目，引用产品程序集并产出第一条迁出的空态事实；仅由低影响 CSharp 阶段在隔离桌面启动，不并入纯 C# runner，也不进入办公室载荷
+- `src/MinminCountdown.WindowVerification`：独立 WPF 窗口验证项目，引用产品程序集，终态承接全部 59 条独立窗口事实、完整 `ValidationReport`、exercise、视觉基线与窗口预检；仅由低影响 CSharp 等官方阶段在隔离桌面启动，不并入纯 C# runner，也不进入办公室载荷。产品 `app/MinminCountdown.exe` 不再接受 `--validate-only`，只保留正常启动、最小安装/测试启动支持和两个设置 CLI
 - `Build-CountdownApplication.ps1`：生成 self-contained 的应用、纯 C# 验证与独立窗口验证 EXE，并复制、校验发布契约声明的 14 个程序目录随包资源：9 个现役图片资产，以及 #275 起的随包节假日数据 `app\holiday-data\` 与图标 `app\countdown-icon.ico`（#231 起三张 floating-plush 派生姿态参考图只留在仓库作视觉基线 sourceBinding 输入，不再装进 `app`）
 - `app/MinminCountdown.exe`：生成的 C# WPF 应用
 - `verification/MinminCountdown.Verification.exe`：生成的设置契约验证程序
 - `window-verification/MinminCountdown.WindowVerification.exe`：生成的独立窗口验证程序；不是生产入口，不提供直跑方式
-- `Countdown.Validation.psm1`：本机 Core、C# 与应用 validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
+- `Countdown.Validation.psm1`：本机 Core、C# 与独立 runner validate-only 验证 module；不进入办公室发布包，安装器不运行测试套件
 - `Countdown.ReleaseContract.psm1`：构建、安装、部署和 Core tests 共用的发布资产分类与派生包/安装清单；应用与全包 SHA-256 分别由 Build 和 Deployer 生成，不保存手工静态钉值
 - `tools/Countdown.BuildPreflight.psm1`：构建前只读解析 SDK、构建目录、safe-tree-delete 能力和载荷清单记录的源码提交标识；`Test-CountdownBuildPreflight.ps1` 用于从任意 cwd 做预检
 - `countdown-icon.ico`：窗口、托盘和桌面启动器图标；构建另复制一份进程序目录 `app\`，应用托盘从那里读取（#275）
@@ -77,7 +77,7 @@ intent: 说明敏敏子倒计时的功能、运行方式和维护入口。
 - `docs/agents/issue-acceptance.md`、`docs/agents/issue-acceptance.json`：按 docs / behavior / visual / release / office / gate 区分检查、证据和明确的 N/A 理由；`tools/Invoke-IssueWriteback.ps1` 默认只生成可回读的评论计划，只有显式 `-Apply` 才写 GitHub
 
 设置格式、迁移和持久化事务见 [设置与持久化](docs/设置与持久化.md)；产品 EXE 的 `--settings-equivalence` 只读判定、`--settings-migration` 无界面迁移，以及两者的 JSON 原因类别和退出码见同文「办公室部署边界」。
-当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
+当前迁移决策、WPF module/seam 划分和 Tauri 闸门边界见 [架构与语言迁移](docs/架构与语言迁移.md)；验证程序集终态、59 条事实去向与同 fixture 对照见 [US34–US41 窗口验证终态抽取](docs/specs/validation-extraction-us34-us41.md)；父级 PRD 为 [GitHub #189](https://github.com/Baker4real/clock-countdown/issues/189)。
 WPF 渐进升级批次、完成门和后置切片方案见 [现代化重构方案](docs/现代化重构方案.md)；现行栈状态与候选闸门范围见 [技术栈决策](docs/stack.md)。Tauri/React/Rust 文档只描述可回滚的候选切片，不代表已批准的目标栈。
 倒计时、便签与共享标签的产品证据、现役边界和后续候选见 [倒计时、便签与标签协同调研](docs/标签与倒计时应用调研.md)。
 悬浮窗参考图复刻的 GitHub 候选、采用路线、数值边界和明确不采用项见 [悬浮窗视觉复刻 GitHub 方案调研](docs/悬浮窗视觉复刻%20GitHub%20方案调研.md)。
@@ -102,7 +102,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 启动器的单实例锁按登录会话共享，别的 worktree 里的启动器也算在内。默认被占即拒绝，并列出疑似持有者 PID；加 `-WaitForLockSeconds <秒>` 则最多排队这么久。阶段失败时，启动器在结尾打印该阶段 err 日志的摘要：取最后一个 PowerShell 错误块，UTF-8 与 936 逐行解码。完整日志仍在 `logs\suite-runs\`。Build 的受管清理遇到删除门锁被别的会话占用（`deployment-mutex-acquire-timeout`，门每次等 2 分钟）时最多尝试 5 次；其余清理失败立即报错。含 Build、Tooling 以外阶段的运行，开跑前先采样三次后台负载：CPU 总占用不低于 80%，或 GPU 最忙的引擎类型不低于 50% 时，列出最忙的进程并拒绝开跑，因为挖矿或游戏吃满资源时参考帧 300ms 超时会被误报成回归。启动器只报告、不结束任何进程，CI 不做这项检查；确认要照跑时加 `-SkipLoadPreflight`。进程起落时（例如上一轮启动器的子进程刚退出），个别实例读不到只丢那几条；缺了 CPU 总量、GPU 引擎或进程整类计数器就隔一秒重取，同一次采样连取五次仍缺才跳过预检，并打印 `Get-Counter` 的错误原文。采样在 `tools/Countdown.SuiteBackgroundLoad.psm1`，启动器只决定哪些阶段要预检、阈值、跳过与报告；采样行为由 Tooling 跑的 `tools/Test-SuiteLoadPreflight.ps1` 守住：它正常导入这个 module，注入假计数器与假等待，不读真实计数器。
 
-源码树模式下改了视觉源码而尚未重拍时，参考基线必然失配。CSharp 不在第一个基线断言处中止：应用把失配项记进套件给的延后记录、照常输出报告，套件跑完其余断言后在 err 日志末尾列出延后项，并以 75 退出。启动器把 75 记为该阶段失败，但不触发红即停，其余阶段照常跑完；整轮仍判失败（“参考基线待重拍：…”），办公室部署要求的同一提交全绿证据不变。安装验证和基线生成后的自检始终严格。视觉源码没改却失配时，先按 [DESIGN.md](DESIGN.md) 视觉基线节核对显示缩放，不为过门禁重拍。
+源码树模式下改了视觉源码而尚未重拍时，参考基线必然失配。CSharp 不在第一个基线断言处中止：独立 runner 把失配项记进套件给的延后记录、照常输出报告，套件跑完其余断言后在 err 日志末尾列出延后项，并以 75 退出。启动器把 75 记为该阶段失败，但不触发红即停，其余阶段照常跑完；整轮仍判失败（“参考基线待重拍：…”），办公室部署要求的同一提交全绿证据不变。安装验证和基线生成后的自检始终严格。视觉源码没改却失配时，先按 [DESIGN.md](DESIGN.md) 视觉基线节核对显示缩放，不为过门禁重拍。
 
 参考帧捕获前会清掉键盘焦点，焦点描边因此不在任何基线里。源码树模式下 validate-only 另开一个一次性主窗口，沿两个工作区的 Tab 路径逐个停靠点截取放大裁图，连同 `focus-evidence.json` 写进本次运行实拍证据目录的 `focus\` 子目录（报告字段 `MainFocusEvidenceManifestPath`，失败原因在 `MainFocusEvidenceError`）。截取时最近输入设备临时设为键盘，裁图含焦点装饰层，和真实按 Tab 时一致。它们不进门禁，只供核对单层描边，结论以裁图为准。`focusVisualAdorner` 表示挂着 FocusVisualStyle 装饰层；`templateDrawsFocus` 保留既有字段名以兼容实拍证据消费者，语义为“模板或宿主负责焦点描边”，取自 `KeyboardFocusPolicy.UsesTemplateOrHostStroke`，包含模板焦点环、勾选框、输入与日历控件、日期框内部的宿主绘制按钮以及金额文字；两项同时为真，说明本应由模板或宿主画焦点的控件又挂了装饰层。`singleFocusStroke` 由同一策略检查当前焦点状态、装饰层资格与实际模板描边。直接 WPF 规则夹具 `KeyboardFocusPolicyBehavior` 补充验证输入来源与重复描边反例，不能替代两窗真实 Tab 遍历和裁图核对。
 
@@ -157,7 +157,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 `ValidationHarness` 的生产动效检查必须在 300 ms 内取得真实的 10%–90% 中间帧，终态或缺帧都不算通过。只有某场景唯一的失败与实测卡顿重合时，才重跑该场景。卡顿指以下任一情况：采样窗口内最长无帧间隔不短于最短 90 ms token 的 10%–90% 区间（约 37 ms）；或反转后的首帧到达时，整段动效时长已经过去。每个场景最多重跑 2 次，每轮最多 4 次。每次因卡顿失败的尝试都记入 `Motion.Results[].StarvedAttempts`；阈值、实际用量、注入卡顿自检和判定对照见 `Motion.StallRetry`。最终判定仍取自一次完整的真实通过。
 
-视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），再构建当前源码并单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `app/MinminCountdown.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
+视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），再构建当前源码并单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `window-verification/MinminCountdown.WindowVerification.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate
@@ -194,9 +194,9 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownInstallValidation.ps1
 
 标注：InstallValidate 独立阶段与 Core 测试内联的安装器验证调用是有意双轨：两者都经 `tools/Invoke-CountdownInstallValidation.ps1` 由真实 Deployer 生成并解压测试包，再运行包内安装器 `CheckOnly`，不把源码树当发布包；前者是阶段级红即停门禁，后者带合同断言与负控制，重复成本约 10 秒，不合并。
 
-标注：`Countdown.Core.Tests.ps1` 的 Validation 分段调用 `Invoke-CountdownValidationSuite`；新安装器只负责安装，不运行测试套件。Core 逻辑不隔离；C# 回归与应用 `--validate-only` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateApp`，后者直接启动 `app\MinminCountdown.exe` 并显式传入临时设置与诊断日志路径。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。
+标注：`Countdown.Core.Tests.ps1` 的 Validation 分段调用 `Invoke-CountdownValidationSuite`；新安装器只负责安装，不运行测试套件。Core 逻辑不隔离；C# 回归与应用 `--validate-only` 分别进 `MinminSuiteIso-ValidateCSharp` / `MinminSuiteIso-ValidateApp`，后者直接启动 `window-verification\MinminCountdown.WindowVerification.exe` 并显式传入临时设置与诊断日志路径；正常产品启动探针仍使用 `app\MinminCountdown.exe`。`windows-latest` 与本机 Default 桌面一样会触发内层 fail-closed，不要在 Default 上关隔离直跑窗口步骤。
 
-标注：应用 `--validate-only` 失败时，验证套件先把它的诊断日志（`*.application.jsonl` 及轮转文件）复制进该阶段的证据目录，再照常清理临时文件。CI 任一步失败时上传 `crash-evidence-<run_id>-<attempt>`，内容是 Application 日志里的崩溃事件（Application Error、Windows Error Reporting、.NET Runtime）、`MinminCountdown.exe` 的 WER 小型转储，以及 `D:\agents\run-evidence\clock-countdown-validation` 下的阶段证据。仓库公开，artifact 任何人都能下载，所以只收小型转储。
+标注：独立 runner 的 `--validate-only` 失败时，验证套件先把它的诊断日志（`*.application.jsonl` 及轮转文件）复制进该阶段的证据目录，再照常清理临时文件。CI 任一步失败时上传 `crash-evidence-<run_id>-<attempt>`，内容是 Application 日志里的崩溃事件（Application Error、Windows Error Reporting、.NET Runtime）、`MinminCountdown.exe` 的 WER 小型转储，以及 `D:\agents\run-evidence\clock-countdown-validation` 下的阶段证据。仓库公开，artifact 任何人都能下载，所以只收小型转储。
 
 `-InstanceActivationMatrix` 的 38900ms 共享截止按真实矩阵 8×100 强制滚动写标定：2026-08-24 五次 Wait 完成 [1035, 1037, 1101, 1160, 1248]；2026-08-23 超时证据 run `20260823T1510260920479Z` 最慢写手 21/100 @ 6800ms，线性外推 32381ms，取最差 +20% 取整。样本只用于归因，不汇入门槛样本池。2026-08-23 连续三轮完整本机验证组合中诊断并发 probe 曾在 6800ms 内只完成约 43–86/100；不能把隔离绿灯当成矩阵或连续全套件绿灯。
 以上命令只证明当前机器上的源码行为、发布包与安装合同，不构成办公室部署或现场验收。正式部署只使用 `Deploy-CountdownProgram.ps1`，只读实时状态使用同一入口的 `-StatusOnly`。部署预检接受干净、已推送且与 `origin/main` 一致的 `main` 当前提交，并要求本 checkout 有同一提交、套件起止工作树都干净且整轮通过的五阶段记录；Build 必须是 `CleanR2R`，当前构建输出的聚合哈希必须等于回执，实际随包节假日数据还须通过年度覆盖守卫。部署预检还逐文件核对 Git 来源包文件与提交 blob 原始字节；部署直接打包这套件测过的程序目录、载荷清单和新安装器，在真实 ZIP 内生成覆盖其余全部包文件的 `package-manifest.json`，逐文件核对 SHA-256，不重新导出、不重建。传输核对整包 ZIP SHA-256，远端解包后另核对部署端注入的清单 SHA-256，安装器再验证全包精确闭包；安装后以一次实时状态读取判定成功。历史证据边界、结果未知时的处理，以及放弃的保护与三项替代见 [办公室部署](docs/办公室部署.md)。

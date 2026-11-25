@@ -252,7 +252,7 @@ public static class SuiteEvidenceDesktopProbe
             [string] $fixture.Value,
             $utf8NoBom)
     }
-    $validationApplicationProject = Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'
+    $validationApplicationProject = Join-Path $validationTestRoot 'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj'
     New-Item -ItemType Directory -Path (Split-Path -Parent $validationApplicationProject) -Force | Out-Null
     [System.IO.File]::WriteAllText(
         $validationApplicationProject,
@@ -330,7 +330,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <AssemblyName>MinminCountdown</AssemblyName>
+    <AssemblyName>MinminCountdown.WindowVerification</AssemblyName>
   </PropertyGroup>
 </Project>
 "@,
@@ -341,11 +341,11 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         -r win-x64 `
         --self-contained true `
         --nologo `
-        -o (Join-Path $validationTestRoot 'app') 2>&1 | Out-String
+        -o (Join-Path $validationTestRoot 'window-verification') 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         throw "Fake application fixture compilation failed: exit=$LASTEXITCODE$([Environment]::NewLine)$fakeApplicationCompilerOutput"
     }
-    $fakeApplication = Join-Path $validationTestRoot 'app\MinminCountdown.exe'
+    $fakeApplication = Join-Path $validationTestRoot 'window-verification\MinminCountdown.WindowVerification.exe'
     $fakeApplicationRecord = Join-Path $validationTestRoot 'fake-application-record.jsonl'
     $env:COUNTDOWN_FAKE_APPLICATION_RECORD = $fakeApplicationRecord
     $env:COUNTDOWN_FAKE_APPLICATION_REPORT = $fakeApplicationReport
@@ -406,7 +406,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
         'Validation interface keeps the windowed C# child on its isolated desktop'
     $fixtureInvocation = ([System.IO.File]::ReadAllLines($fixtureDotnetRecord, [System.Text.Encoding]::UTF8)[0] | ConvertFrom-Json)
     $dotnetParameter = (Get-Command Invoke-CountdownValidationSuite).Parameters['DotnetPath']
-    $expectedApplicationProject = [System.IO.Path]::GetFullPath((Join-Path $validationTestRoot 'src\MinminCountdown\MinminCountdown.csproj'))
+    $expectedApplicationProject = [System.IO.Path]::GetFullPath((Join-Path $validationTestRoot 'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj'))
     $buildArguments = @($fixtureInvocation.Arguments)
     Assert-Equal $true `
         ([bool] $dotnetParameter.Attributes.Mandatory -and
@@ -440,7 +440,7 @@ return Environment.GetEnvironmentVariable("COUNTDOWN_FAKE_DOTNET_FAIL") == "1" ?
     }
     catch {
         $buildFailureIsolated =
-            $_.Exception.Message -match '源码应用 Release 构建 失败，退出码：73' -and
+            $_.Exception.Message -match '源码窗口验证 Release 构建 失败，退出码：73' -and
             (([System.IO.File]::ReadAllLines($validationOrderPath, [System.Text.Encoding]::UTF8)) -join ',') -eq 'build'
     }
     finally {

@@ -812,7 +812,7 @@ internal static class FloatingNoteOverflowMenuScenario
             .Single(card => VisualDescendants<CheckBox>(card)
                 .Any(box => string.Equals(box.Tag as string, noteId, StringComparison.Ordinal)));
 
-    private static ContextMenu? FindOpenContextMenu()
+    internal static ContextMenu? FindOpenContextMenu()
     {
         foreach (PresentationSource source in PresentationSource.CurrentSources)
         {

@@ -1083,7 +1083,7 @@ internal static partial class ValidationExercises
                     string.Equals(checkBox.Tag as string, probeNoteId, StringComparison.Ordinal)))
                 .ToArray();
             var clippedCard = cards.FirstOrDefault();
-            var stamp = clippedCard is null ? null : FloatingWindow.FindNoteCardDateStamp(clippedCard);
+            var stamp = clippedCard is null ? null : FloatingWindowValidationScenariosRunner.FindNoteCardDateStamp(clippedCard);
             var label = stamp?.Child as TextBlock;
             if (clippedCard is null || stamp is null || label is null)
             {
@@ -1179,7 +1179,7 @@ internal static partial class ValidationExercises
 
             var lastCardBottom = lastCard.TransformToVisual(scroller)
                 .Transform(new Point(0, lastCard.ActualHeight)).Y;
-            var income = floating.IncomeForValidation;
+            var income = WindowScenarioAccess.ActiveBottomStatus(floating);
             var incomeTop = income.TransformToVisual(scroller).Transform(new Point(0, 0)).Y;
             var stableGapAboveCommandArea = incomeTop - lastCardBottom >= 20;
             return trailingPaddingMatches && stableGapAboveCommandArea;
@@ -1866,16 +1866,16 @@ internal static partial class ValidationExercises
             var samples = new List<SurfaceRadiusSample>();
             main.ShowWorkspace(WorkspaceKind.Countdowns);
             WindowValidationInput.Pump(main.Dispatcher);
-            samples.AddRange(main.SharedSurfaceRadiiForValidation().Where(sample => sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
+            samples.AddRange(new MainWindowValidationScenariosRunner(main, workspace).SharedSurfaceRadiiForValidation().Where(sample => sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
             main.ShowWorkspace(WorkspaceKind.Notes);
             WindowValidationInput.Pump(main.Dispatcher);
-            samples.AddRange(main.SharedSurfaceRadiiForValidation().Where(sample => !sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
+            samples.AddRange(new MainWindowValidationScenariosRunner(main, workspace).SharedSurfaceRadiiForValidation().Where(sample => !sample.Element.StartsWith("CountdownRows", StringComparison.Ordinal)));
 
             floating = new FloatingWindow(workspace, calendar, main, AppContext.BaseDirectory);
             PrepareOffscreenValidationWindow(floating);
             floating.Show();
             WindowValidationInput.Pump(floating.Dispatcher);
-            samples.AddRange(floating.SharedSurfaceRadiiForValidation());
+            samples.AddRange(new FloatingWindowValidationScenariosRunner(floating).SharedSurfaceRadiiForValidation());
 
             var dueUtc = new DateTimeOffset(2031, 4, 5, 1, 0, 0, TimeSpan.Zero);
             center = new ReminderCenterWindow();

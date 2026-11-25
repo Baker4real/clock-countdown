@@ -27,7 +27,7 @@ internal static partial class ValidationExercises
         var measured = 0;
         foreach (var windowCase in DensityWindowCases)
         {
-            WithDensityMainWindow(windowCase, (main, injection) =>
+            WithDensityMainWindow(windowCase, (main, workspace, injection) =>
             {
                 var label = windowCase.Label;
                 if (windowCase.RaiseDpi)
@@ -44,7 +44,7 @@ internal static partial class ValidationExercises
                 Action<string>? revealed = captureEvidence is not null && (windowCase.Capture || windowCase.RaiseDpi)
                     ? state => captureEvidence(main, state)
                     : null;
-                var measurement = main.MeasureWorkbenchDensityForValidation(label, revealed);
+                var measurement = new MainWindowValidationScenariosRunner(main, workspace).MeasureWorkbenchDensityForValidation(label, revealed);
                 measured++;
                 details.Add($"{label}：{measurement.Describe()}");
                 failures.AddRange(measurement.Failures(
@@ -67,7 +67,7 @@ internal static partial class ValidationExercises
     // #274：原空态文件里的共享宿主留在唯一仍消费它的密度区域，保持窗口尺寸与 DPI 行为不变。
     private static void WithDensityMainWindow(
         DensityWindowCase windowCase,
-        Action<MainWindow, DpiChangeInjection?> probe)
+        Action<MainWindow, DesktopWorkspace, DpiChangeInjection?> probe)
     {
         var settingsPath = Path.Combine(
             Path.GetTempPath(),
@@ -113,7 +113,7 @@ internal static partial class ValidationExercises
                 : null;
             WindowValidationInput.Pump(main.Dispatcher);
             main.UpdateLayout();
-            probe(main, injection);
+            probe(main, workspace, injection);
         }
         finally
         {
@@ -154,7 +154,7 @@ internal static partial class ValidationExercises
             fixture.ShowWindows();
             var today = workspace.Snapshot.BeijingNow.Date;
             var window = fixture.Floating;
-            var scroller = window.BodyScrollerForValidation;
+            var scroller = window.FloatingBodyScroller;
 
             void Expect(string state, bool above, bool below, System.Windows.Controls.ContextMenu? menu = null)
             {
@@ -212,7 +212,7 @@ internal static partial class ValidationExercises
             Must(wheel.Handled && scroller.VerticalOffset > 0.5, $"#251：滚轮未滚动悬浮列表；偏移 {scroller.VerticalOffset:0.##}。");
             Expect("notes-long-after-wheel", true, true);
             window.ScrollBodyForValidation(0);
-            var thumb = window.BodyScrollThumbForValidation;
+            var thumb = new FloatingWindowValidationScenariosRunner(window).BodyScrollThumbForValidation;
             Must(thumb is not null, "#251：悬浮列表滚动条缺少 thumb。");
             thumb!.RaiseEvent(new System.Windows.Controls.Primitives.DragStartedEventArgs(0, 0)
             {
@@ -292,7 +292,7 @@ internal static partial class ValidationExercises
             Expect("countdowns-overflow-top", false, true);
             window.ScrollBodyForValidation(scroller.ScrollableHeight);
             Expect("countdowns-overflow-bottom", true, false);
-            var income = window.IncomeForValidation;
+            var income = WindowScenarioAccess.ActiveBottomStatus(window);
             if (income.IsVisible && income.ActualHeight > 0)
             {
                 var incomeBounds = income.TransformToAncestor(scroller)

@@ -13,14 +13,14 @@ namespace MinminCountdown;
 internal static class VisualReferenceBaseline
 {
     // 主窗与悬浮窗共用一个版本号；编号跨分支全局分配，换号用 tools/Set-CountdownBaselineVersion.ps1。
-    public const string Version = "2026-11-23-v87";
+    public const string Version = "2026-11-25-v90";
 
     private const string SourceRootVariable = "MINMIN_COUNTDOWN_VISUAL_SOURCE_ROOT";
     private const string SourceAggregateAlgorithm =
         "SHA-256 of UTF-8(path + NUL + uppercase file SHA-256 + LF), ordinal path order";
-    private const string ExecutableLogicalPath = "app/MinminCountdown.exe";
+    private const string ExecutableLogicalPath = "window-verification/MinminCountdown.WindowVerification.exe";
     private const string ExecutableGeneration =
-        "managed isolated dotnet publish; SHA-256 read from the executing equivalent app binary";
+        "managed isolated dotnet publish; SHA-256 read from the executing WindowVerification runner binary";
 
     internal static class Main
     {
@@ -67,7 +67,9 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown/DeleteUndoOffer.cs",
             "src/MinminCountdown/MainWindow.xaml",
             "src/MinminCountdown/MainWindow.xaml.cs",
+            "src/MinminCountdown/MainCountdownBlockRenderer.cs",
             "src/MinminCountdown/MinminCountdown.csproj",
+            "src/MinminCountdown.WindowVerification/MinminCountdown.WindowVerification.csproj",
             "src/MinminCountdown/MotionBehavior.cs",
             "src/MinminCountdown/NoteCompletionExit.cs",
             "src/MinminCountdown/SegmentIndicator.cs",
@@ -934,6 +936,7 @@ internal static class VisualReferenceBaseline
             "src/MinminCountdown/FloatingWindow.xaml.cs",
             "src/MinminCountdown/HolidayCalendar.cs",
             "src/MinminCountdown/MinminCountdown.csproj",
+            "src/MinminCountdown.WindowVerification/MinminCountdown.WindowVerification.csproj",
             "src/MinminCountdown/MotionBehavior.cs",
             "src/MinminCountdown/NoteCompletionExit.cs",
             "src/MinminCountdown/KeyboardFocusPolicy.cs",

@@ -414,7 +414,7 @@ function Get-CountdownVisualBaseline {
     # 视觉基线版本只在 VisualReferenceBaseline.cs 声明一次；脚本由此取版本与两块 manifest 的位置。
     param([Parameter(Mandatory)] [string] $RepositoryRoot)
 
-    $sourcePath = Join-Path $RepositoryRoot 'src\MinminCountdown\VisualReferenceBaseline.cs'
+    $sourcePath = Join-Path $RepositoryRoot 'src\MinminCountdown.WindowVerification\VisualReferenceBaseline.cs'
     $match = [regex]::Match(
         [IO.File]::ReadAllText($sourcePath),
         'public const string Version = "(?<version>[0-9]{4}-[0-9]{2}-[0-9]{2}-v[0-9]+)";')
@@ -512,11 +512,11 @@ function Invoke-CountdownValidationSuite {
 
     [void] (Invoke-CountdownProcess `
             -FilePath $resolvedDotnet `
-            -Operation '源码应用 Release 构建' `
+            -Operation '源码窗口验证 Release 构建' `
             -EvidenceDirectory $EvidenceDirectory `
             -ArgumentList @(
                 'build',
-                (Join-Path $resolvedRoot 'src\MinminCountdown\MinminCountdown.csproj'),
+                (Join-Path $resolvedRoot 'src\MinminCountdown.WindowVerification\MinminCountdown.WindowVerification.csproj'),
                 '--configuration',
                 'Release'
             ) `
@@ -544,7 +544,7 @@ function Invoke-CountdownValidationSuite {
     # 夹具根不带视觉源码，也就没有可要求的基线，与 manifest 缺席同样处理。
     $floatingBaselineRequired = $false
     $mainBaselineRequired = $false
-    if (Test-Path -LiteralPath (Join-Path $resolvedRoot 'src\MinminCountdown\VisualReferenceBaseline.cs') -PathType Leaf) {
+    if (Test-Path -LiteralPath (Join-Path $resolvedRoot 'src\MinminCountdown.WindowVerification\VisualReferenceBaseline.cs') -PathType Leaf) {
         $visualBaseline = Get-CountdownVisualBaseline -RepositoryRoot $resolvedRoot
         $floatingBaselineRequired = Test-Path -LiteralPath $visualBaseline.Floating.ManifestPath -PathType Leaf
         $mainBaselineRequired = Test-Path -LiteralPath $visualBaseline.Main.ManifestPath -PathType Leaf
@@ -557,8 +557,8 @@ function Invoke-CountdownValidationSuite {
         # 安装验证永远严格：不继承窗口套件的参考基线延后。
         MINMIN_COUNTDOWN_REFERENCE_BASELINE_DEFERRAL_LOG = $null
     }
-    # 直接启动验证根里的应用 EXE，设置与诊断日志都显式指向本次的临时路径，不经 adapter、也不依赖应用根推断。
-    $applicationPath = Join-Path $resolvedRoot 'app\MinminCountdown.exe'
+    # 直接启动验证根里的独立窗口验证 EXE；设置与诊断仍指向本次临时路径。
+    $applicationPath = Join-Path $resolvedRoot 'window-verification\MinminCountdown.WindowVerification.exe'
     if (-not (Test-Path -LiteralPath $applicationPath -PathType Leaf)) {
         throw "验证所需的 C# 应用宿主不存在：$applicationPath"
     }

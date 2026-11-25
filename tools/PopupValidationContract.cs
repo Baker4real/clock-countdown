@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.Loader;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -13,6 +15,66 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+
+public static class PopupValidationAssemblyResolver
+{
+    private static string _productPath;
+    private static string _validationRoot;
+    private static Assembly _validation;
+    private static bool _initialized;
+
+    public static void Initialize(string assemblyPath, string validationAssemblyPath)
+    {
+        var productPath = Path.GetFullPath(assemblyPath);
+        var validationPath = Path.GetFullPath(validationAssemblyPath);
+        if (_initialized)
+        {
+            if (string.Equals(_productPath, productPath, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(_validation.Location, validationPath, StringComparison.OrdinalIgnoreCase))
+                return;
+            throw new InvalidOperationException("Popup validation assemblies cannot be replaced during one harness process.");
+        }
+
+        _validationRoot = Path.GetDirectoryName(validationPath);
+        _productPath = productPath;
+        var context = AssemblyLoadContext.Default;
+        context.Resolving += Resolve;
+        var product = context.LoadFromAssemblyPath(productPath);
+        _validation = context.LoadFromAssemblyPath(validationPath);
+        var scenarioField = _validation.GetType("MinminCountdown.MainWindowValidationScenariosRunner", true)
+            .GetField("window", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (scenarioField == null || scenarioField.FieldType.Assembly != product)
+            throw new InvalidOperationException("The popup runner resolved MainWindow from a different product assembly.");
+        _productPath = productPath;
+        _initialized = true;
+    }
+
+    public static Assembly LoadProduct(string assemblyPath)
+    {
+        if (!_initialized || !string.Equals(_productPath, Path.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Initialize the candidate product and validation assemblies first.");
+        return AssemblyLoadContext.Default.LoadFromAssemblyPath(_productPath);
+    }
+
+    public static Type Type(Assembly product, string name)
+    {
+        var rootName = name.Split('+')[0];
+        if (rootName is "WindowValidationInput" or "ValidationReport" or "ApplicationValidation" or
+            "ValidationExercises" or "MonitorGeometryValidation" or "VisualReferenceBaseline")
+            return _validation.GetType("MinminCountdown." + name, true);
+        return product.GetType("MinminCountdown." + name, true);
+    }
+
+    private static Assembly Resolve(AssemblyLoadContext context, AssemblyName assemblyName)
+    {
+        foreach (var root in new[] { Path.GetDirectoryName(_productPath), _validationRoot })
+        {
+            var candidate = Path.Combine(root, assemblyName.Name + ".dll");
+            if (File.Exists(candidate)) return context.LoadFromAssemblyPath(candidate);
+        }
+        return null;
+    }
+}
 
 public sealed class PopupValidationContractResult
 {
@@ -51,7 +113,7 @@ public static class PopupValidationContractHarness
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference[] MakePopupReferences(string assemblyPath, bool attach, bool clip)
     {
-        var application = Assembly.LoadFrom(assemblyPath);
+        var application = PopupValidationAssemblyResolver.LoadProduct(assemblyPath);
         var lifecycle = application.GetType("MinminCountdown.PopupFocusLifecycle", true);
         var trigger = new Button();
         var canvas = new Grid();
@@ -140,11 +202,11 @@ public static class PopupValidationContractHarness
     public static object CheckFloatingNoteWorkspaceCollectibility(string assemblyPath)
     {
         MotionValidationContractHarness.InitializeApplication(assemblyPath);
-        var application = Assembly.LoadFrom(assemblyPath);
+        var application = PopupValidationAssemblyResolver.LoadProduct(assemblyPath);
         var root = System.IO.Path.GetDirectoryName(assemblyPath);
         var core = Assembly.LoadFrom(System.IO.Path.Combine(root, "MinminCountdown.Core.dll"));
         Type CoreType(string name) => core.GetType("MinminCountdown.Core." + name, true);
-        Type AppType(string name) => application.GetType("MinminCountdown." + name, true);
+        Type AppType(string name) => PopupValidationAssemblyResolver.Type(application, name);
         var settingsType = CoreType("CountdownSettings");
         var empty = settingsType.GetProperty("Empty").GetValue(null);
         var notes = Array.CreateInstance(CoreType("NoteRecord"), 2);
@@ -228,7 +290,7 @@ public static class PopupValidationContractHarness
     {
         var tooltip = new ToolTip { Content = "Dynamic tooltip", PlacementTarget = new Button() };
         if (enableMotion)
-            Assembly.LoadFrom(assemblyPath).GetType("MinminCountdown.PopupMotionBehavior", true)
+            PopupValidationAssemblyResolver.LoadProduct(assemblyPath).GetType("MinminCountdown.PopupMotionBehavior", true)
                 .GetMethod("SetIsToolTipEnabled", BindingFlags.Public | BindingFlags.Static)
                 .Invoke(null, new object[] { tooltip, true });
         return new WeakReference(tooltip);
@@ -249,8 +311,8 @@ public static class PopupValidationContractHarness
 
     public static object CheckClosedPopupClose(string assemblyPath, bool previouslyOpened, bool escape)
     {
-        var application = Assembly.LoadFrom(assemblyPath);
-        var input = application.GetType("MinminCountdown.WindowValidationInput", true);
+        var application = PopupValidationAssemblyResolver.LoadProduct(assemblyPath);
+        var input = PopupValidationAssemblyResolver.Type(application, "WindowValidationInput");
         var motion = application.GetType("MinminCountdown.PopupMotionBehavior", true);
         var lifecycle = application.GetType("MinminCountdown.PopupFocusLifecycle", true);
         var pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
@@ -303,7 +365,7 @@ public static class PopupValidationContractHarness
 
     public static object CheckCaptureComposite(string assemblyPath)
     {
-        var method = Assembly.LoadFrom(assemblyPath).GetType("MinminCountdown.ValidationReport", true)
+        var method = PopupValidationAssemblyResolver.Type(PopupValidationAssemblyResolver.LoadProduct(assemblyPath), "ValidationReport")
             .GetMethod("CompositeOverOpaqueBackground", BindingFlags.NonPublic | BindingFlags.Static);
         byte[] Composite(byte[] pixel, PixelFormat format, Color backdrop)
         {
@@ -344,8 +406,8 @@ public static class PopupValidationContractHarness
         RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         AppContext.SetSwitch("Switch.System.Windows.Media.ShouldRenderEvenWhenNoDisplayDevicesAreAvailable", true);
         MotionValidationContractHarness.InitializeApplication(assemblyPath);
-        Assembly application = Assembly.LoadFrom(assemblyPath);
-        Type input = application.GetType("MinminCountdown.WindowValidationInput", true);
+        Assembly application = PopupValidationAssemblyResolver.LoadProduct(assemblyPath);
+        Type input = PopupValidationAssemblyResolver.Type(application, "WindowValidationInput");
         MethodInfo exercise = input.GetMethod("ExercisePopup", BindingFlags.Public | BindingFlags.Static);
         MethodInfo pump = input.GetMethod("Pump", BindingFlags.Public | BindingFlags.Static);
         Type lifecycle = application.GetType("MinminCountdown.PopupFocusLifecycle", true);
@@ -589,7 +651,7 @@ public static class MotionValidationContractHarness
     private static object _theme;
     private static bool _applicationExitObserved;
 
-    private static Type AppType(string name) => _assembly.GetType("MinminCountdown." + name, true);
+    private static Type AppType(string name) => PopupValidationAssemblyResolver.Type(_assembly, name);
 
     private static bool ArgumentsMatch(ParameterInfo[] parameters, object[] args)
     {
@@ -653,7 +715,7 @@ public static class MotionValidationContractHarness
         }
 
         Require(Application.Current == null, "不能把动效夹具接到已有的非夹具 Application。");
-        _assembly = Assembly.LoadFrom(assemblyPath);
+        _assembly = PopupValidationAssemblyResolver.LoadProduct(assemblyPath);
         var appType = AppType("App");
         var startup = appType.GetMethod("OnStartup", BindingFlags.NonPublic | BindingFlags.Instance |
             BindingFlags.DeclaredOnly, null, new[] { typeof(object), typeof(StartupEventArgs) }, null);

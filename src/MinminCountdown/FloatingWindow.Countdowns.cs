@@ -491,7 +491,7 @@ public sealed partial class FloatingWindow
         return new RenderedRemainingBlocks(cluster, valueBlocks, shapeKey, dpiScale, remaining);
     }
 
-    // ValidationReport uses the same rendering seam for the expired fallback,
+    // WindowVerification uses the same rendering seam for the expired fallback,
     // which is normally filtered out of the live countdown list.
     internal FrameworkElement BuildRemainingBlocksForValidation(
         string remaining,

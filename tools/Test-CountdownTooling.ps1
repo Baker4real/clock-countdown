@@ -128,6 +128,7 @@ foreach ($requiredPath in @(
         'tools/Test-CountdownIdleMeasurementChild.ps1',
         'tools/Test-CountdownIdleMeasurementChildFixture.ps1',
         'tools/Test-CountdownWindowPreflight.ps1',
+        'tools/Test-CountdownValidationExtraction.ps1',
         'tools/PopupValidationContract.cs'
     )) { Test-RequiredPath -RelativePath $requiredPath }
 
@@ -155,6 +156,8 @@ $validationDiagnostics = Invoke-ToolingValidationDiagnostics
 Add-ToolingCheck -Name 'deployment:Test-CountdownValidationDiagnostics.ps1' -Passed $validationDiagnostics.Passed -Detail $validationDiagnostics.Detail
 $windowPreflightContract = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownWindowPreflightContract.ps1') -Json | ConvertFrom-Json -Depth 12 -ErrorAction Stop
 Add-ToolingCheck -Name 'deployment:Test-CountdownWindowPreflightContract.ps1' -Passed ($LASTEXITCODE -eq 0 -and [bool]$windowPreflightContract.Valid) -Detail ($windowPreflightContract | ConvertTo-Json -Compress -Depth 12)
+$validationExtraction = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownValidationExtraction.ps1') | ConvertFrom-Json -Depth 8 -ErrorAction Stop
+Add-ToolingCheck -Name 'validation:extraction-source-ownership' -Passed ($LASTEXITCODE -eq 0 -and [int]$validationExtraction.FailureCount -eq 0) -Detail ($validationExtraction | ConvertTo-Json -Compress -Depth 8)
 
 # CI 用 -File 或 & 跑的每个脚本，本机都要有启动器阶段跑到：启动器的阶段脚本，加上本脚本用 Join-Path 跑的脚本。
 function Get-JoinPathScriptLeaves {
@@ -426,8 +429,8 @@ foreach ($anchor in $designAnchors.GetEnumerator()) {
 $designAnchorDetail = if ($designAnchorFailures.Count -eq 0) { "DESIGN.md $($designAnchors.Count) 处锚点指向 $($visualBaseline.Version)，留存规则不依赖旧目录" } else { $designAnchorFailures -join ' | ' }
 Add-ToolingCheck -Name 'visual-baseline:design-anchors' -Passed ($designAnchorFailures.Count -eq 0) -Detail $designAnchorDetail
 
-# 窗口探针只走 RunValidationScenarios：控件名、模板部件和窗口字段留在各窗口的场景 partial 里。
-# 验证代码里按字符串名取控件的存量只减不增；迁走一块区域后把上限改成实际数。每个类按它的全部 partial 文件合计。
+# 全部验证代码归独立 runner；按名取控件的存量继续只减不增，不能因文件迁出产品而清零漏检。
+# 每个类按它的全部 partial 文件合计。
 $controlNameLookupPattern = [regex]'Required<[^>]+>\(\s*[A-Za-z_][\w\.]*\s*,\s*"|\.FindName\(\s*"'
 $controlNameLookupCeilings = [ordered]@{
     'ValidationReport' = 341
@@ -436,7 +439,7 @@ $controlNameLookupCeilings = [ordered]@{
 $controlNameLookupFailures = [System.Collections.Generic.List[string]]::new()
 $controlNameLookupCounts = foreach ($entry in $controlNameLookupCeilings.GetEnumerator()) {
     $count = 0
-    foreach ($part in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown') -File |
+    foreach ($part in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src/MinminCountdown.WindowVerification') -File |
             Where-Object { $_.Name -eq "$($entry.Key).cs" -or $_.Name -like "$($entry.Key).*.cs" }) {
         $count += $controlNameLookupPattern.Matches([System.IO.File]::ReadAllText($part.FullName)).Count
     }

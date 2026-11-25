@@ -17,13 +17,13 @@ adapter 指仓库根的 `敏敏子倒计时.ps1`。“经 adapter 启动应用�
 - #292 已删除启动验收协议与回执旧路径身份；`runtime-status.json` schema v5 不含启动令牌或 adapter 路径；
 - #275 结束按 adapter 文件推断应用根：已完成，下表不再有它的行（规则见文末接口说明）。
 
-Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用。行号会随并行票漂移，下文按文件与符号、分段或断言名定位。
+Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用。#258 US34–US41 后，下表所有 `--validate-only` 与 exercise 都启动独立 `MinminCountdown.WindowVerification.exe`；正常启动、单实例、快捷方式和两个设置 CLI 仍启动产品 `MinminCountdown.exe`。行号会随并行票漂移，下文按文件与符号、分段或断言名定位。
 
 ## #277 改为直接启动 EXE 的调用点
 
 | 位置 | 现在的启动方式 |
 | --- | --- |
-| `Countdown.Validation.psm1` `Invoke-CountdownValidationSuite` 的“应用 validate-only”步骤 | `<Root>\app\MinminCountdown.exe --validate-only --settings-file <临时设置> --diagnostic-log-path <临时日志>`，仍进 `MinminSuiteIso-ValidateApp` 隔离桌面；EXE 缺失时明确失败 |
+| `Countdown.Validation.psm1` `Invoke-CountdownValidationSuite` 的 validate-only 步骤 | #258 终态：`<Root>\window-verification\MinminCountdown.WindowVerification.exe --validate-only --settings-file <临时设置> --diagnostic-log-path <临时日志>`，仍进 `MinminSuiteIso-ValidateApp` 隔离桌面；runner 缺失时明确失败 |
 | `Countdown.CSharp.Tests.ps1` `ApplicationValidationRun`（`$applicationValidationResult`） | `--validate-only`，设置 `$themeExercisePath`，日志 `$applicationValidationDiagnosticPath` |
 | `Countdown.CSharp.Tests.ps1` 旧 Night 主题（`$nightMigrationResult`） | `--validate-only --night-migration-only` |
 | `Countdown.CSharp.Tests.ps1` `PersistenceFailureFixture`（`$failedValidationResult`、`$unblockedPersistenceResult`） | `--validate-only --exercise-persistence-failures`；未阻塞反例原先未传日志路径（会写仓库 `logs\application.jsonl`），现显式写进测试根 |
@@ -34,7 +34,7 @@ Ui 阶段及 `Countdown.Ui.Tests.ps1` 已在 #265 退役删除，不再有引用
 
 配套改动：
 
-- **验证套件夹具**：`Countdown.Core.Tests.Validation.ps1` 与 `tools/Test-CountdownValidationDiagnostics.ps1` 的假 adapter 换成编译出的同名假 `MinminCountdown.exe`。Core 夹具新增一条断言，钉住被启动的进程路径与五个参数。
+- **验证套件夹具**：`Countdown.Core.Tests.Validation.ps1` 与 `tools/Test-CountdownValidationDiagnostics.ps1` 的 validate-only 假宿主为编译出的 `window-verification\MinminCountdown.WindowVerification.exe`。Core 夹具断言被启动的 runner 路径与五个参数；产品正常启动假宿主另按被测 CLI 保留。
 - **删除的 C# 测试 helper**：`Write-AdapterFailureDiagnosticEvidence`、`Protect-CountdownDiagnosticText`、`Get-FalseValidationGateNames`。它们只服务于“adapter 失败时再直跑 EXE 对照”，直接启动后没有对照对象。失败时 stdout 中的完整报告和 stderr 仍随异常抛出。
 
 ## 剩余引用与删除票

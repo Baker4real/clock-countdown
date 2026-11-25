@@ -69,7 +69,7 @@ public sealed partial class App : Application
                 return;
             }
 
-            // App.xaml 不写色值：在任何窗口（含验证、激活失败与设置恢复提示）之前先写入日间色板。
+            // App.xaml 不写色值：在任何产品窗口（含激活失败与设置恢复提示）之前先写入日间色板。
             ApplicationTheme.WriteDayPalette(Resources);
             _options = HostOptions.Parse(eventArgs.Args);
             _applicationRoot = ApplicationPaths.ResolveApplicationRoot();
@@ -77,54 +77,6 @@ public sealed partial class App : Application
                                  Path.Combine(_applicationRoot, "logs", "application.jsonl");
             _logger = new DiagnosticLogger(diagnosticPath);
             _logger.Info("ProcessStarted");
-
-            if (_options.ExerciseFatalDiagnostic)
-            {
-                throw new InvalidOperationException("Synthetic fatal diagnostic probe.");
-            }
-
-            if (_options.ValidateOnly)
-            {
-                var validationSettingsPath = _options.SettingsFile ??
-                                             Path.Combine(_applicationRoot, "settings.json");
-                var validationSettingsExisted = File.Exists(validationSettingsPath);
-                var validationSettingsBytes = validationSettingsExisted
-                    ? File.ReadAllBytes(validationSettingsPath)
-                    : null;
-                var validationSettingsMigrated = false;
-                try
-                {
-                    var validationReport = ApplicationValidation.Run(
-                        _options,
-                        _applicationRoot,
-                        _logger,
-                        Resources);
-                    validationSettingsMigrated =
-                        validationReport.TryGetValue("SettingsWereMigrated", out var migratedValue) &&
-                        migratedValue is true;
-                    CliOutput.WriteJson(validationReport);
-                    _logger.Info("ValidationCompleted");
-                    Shutdown(0);
-                    return;
-                }
-                finally
-                {
-                    // Validation probes are read-only by default, but the explicit
-                    // note/tag exercises are also persistence contracts: their
-                    // caller reads the isolated settings file after the process
-                    // exits. Preserve those exercise writes while keeping the
-                    // ordinary validate-only report byte-stable. A migrated source
-                    // must keep its rewritten canonical copy instead of the legacy
-                    // bytes.
-                    if (validationSettingsBytes is not null &&
-                        !_options.ExerciseNoteAdd &&
-                        !_options.ExerciseTagInteractions &&
-                        !validationSettingsMigrated)
-                    {
-                        File.WriteAllBytes(validationSettingsPath, validationSettingsBytes);
-                    }
-                }
-            }
 
             var settingsPath = _options.SettingsFile ??
                                Path.Combine(_applicationRoot, "settings.json");

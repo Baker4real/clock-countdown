@@ -11,13 +11,31 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 function Write-ChildReport {
-    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] $Report)
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [Parameter(Mandatory)] $Report,
+        [ValidateRange(1, 100)] [int] $RetryAttempts = 20,
+        [ValidateRange(0, 1000)] [int] $RetryDelayMilliseconds = 25,
+        [scriptblock] $RetryProbe = $null
+    )
     $Report.ReportedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
     $Report.ReportSequence++
     $json = $Report | ConvertTo-Json -Depth 16
     $temporary = $Path + '.tmp-' + [guid]::NewGuid().ToString('N')
     [IO.File]::WriteAllText($temporary, $json, [Text.UTF8Encoding]::new($false))
-    [IO.File]::Move($temporary, $Path, $true)
+    for ($attempt = 1; $attempt -le $RetryAttempts; $attempt++) {
+        try {
+            [IO.File]::Move($temporary, $Path, $true)
+            return
+        } catch {
+            $rootException = $_.Exception
+            while ($null -ne $rootException.InnerException) { $rootException = $rootException.InnerException }
+            $sharingConflict = $rootException -is [IO.IOException] -or $rootException -is [UnauthorizedAccessException]
+            if (-not $sharingConflict -or $attempt -eq $RetryAttempts) { throw }
+            if ($null -ne $RetryProbe) { [void](& $RetryProbe $attempt) }
+            Start-Sleep -Milliseconds $RetryDelayMilliseconds
+        }
+    }
 }
 function Get-TextSha256 {
     param([Parameter(Mandatory)] [string] $Value)

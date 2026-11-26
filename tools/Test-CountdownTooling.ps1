@@ -149,6 +149,9 @@ $designTokenDrift = & pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $
 Add-ToolingCheck -Name 'design-token:drift' -Passed ($LASTEXITCODE -eq 0 -and [bool] $designTokenDrift.Valid) -Detail ($designTokenDrift | ConvertTo-Json -Compress -Depth 10)
 $coreSegmentSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownCoreSegment.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'core-segment:self-test' -Passed ($LASTEXITCODE -eq 0) -Detail (($coreSegmentSelfTest -join ' ') -replace '\s+', ' ')
+$idleReportWrite = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleReportWrite.ps1')) -join [Environment]::NewLine
+$idleReportWriteReport = $idleReportWrite | ConvertFrom-Json -Depth 8
+Add-ToolingCheck -Name 'idle-processor:report-write-sharing-retry' -Passed ($LASTEXITCODE -eq 0 -and [bool] $idleReportWriteReport.Valid) -Detail $idleReportWrite
 $idleProcessorSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleProcessorMeasurement.ps1')) -join [Environment]::NewLine
 $idleProcessorReport = $idleProcessorSelfTest | ConvertFrom-Json -Depth 8
 $idleChildReportPath = [string] $idleProcessorReport.ChildIntegrationReportPath
@@ -208,6 +211,8 @@ $ciParityProblems = @($ciParitySelfTestFailures) + @($ciScripts | Where-Object {
     })
 $ciParityDetail = if ($ciParityProblems.Count -eq 0) { "CI 的 $($ciScripts.Count) 个脚本都有本机阶段跑到；自检 4 例通过" } else { $ciParityProblems -join ' | ' }
 Add-ToolingCheck -Name 'ci:local-parity' -Passed ($ciParityProblems.Count -eq 0) -Detail $ciParityDetail
+$idleChildArtifactIncluded = [IO.File]::ReadAllText((Join-Path $repoRoot '.github/workflows/ci.yml')).Contains('logs/idle-processor-selftest-child.json', [StringComparison]::Ordinal)
+Add-ToolingCheck -Name 'ci:idle-child-report-artifact' -Passed $idleChildArtifactIncluded -Detail 'suite-evidence 必须包含 logs/idle-processor-selftest-child.json'
 
 $parseErrors = [System.Collections.Generic.List[string]]::new()
 $scriptPaths = @(@(

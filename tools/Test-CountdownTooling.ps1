@@ -151,7 +151,10 @@ $coreSegmentSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-P
 Add-ToolingCheck -Name 'core-segment:self-test' -Passed ($LASTEXITCODE -eq 0) -Detail (($coreSegmentSelfTest -join ' ') -replace '\s+', ' ')
 $idleProcessorSelfTest = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleProcessorMeasurement.ps1')) -join [Environment]::NewLine
 $idleProcessorReport = $idleProcessorSelfTest | ConvertFrom-Json -Depth 8
-Add-ToolingCheck -Name 'idle-processor:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $idleProcessorReport.Valid) -Detail (($idleProcessorReport.Failures -join '; '))
+$idleChildReportPath = [string] $idleProcessorReport.ChildIntegrationReportPath
+$idleChildReportPersisted = -not [string]::IsNullOrWhiteSpace($idleChildReportPath) -and [IO.File]::Exists($idleChildReportPath)
+Add-ToolingCheck -Name 'idle-processor:self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $idleProcessorReport.Valid) -Detail (($idleProcessorReport.Failures -join '; ') + "; childReport=$idleChildReportPath")
+Add-ToolingCheck -Name 'idle-processor:child-report-persisted' -Passed $idleChildReportPersisted -Detail "childReport=$idleChildReportPath"
 
 $validationDiagnostics = Invoke-ToolingValidationDiagnostics
 Add-ToolingCheck -Name 'deployment:Test-CountdownValidationDiagnostics.ps1' -Passed $validationDiagnostics.Passed -Detail $validationDiagnostics.Detail
@@ -343,6 +346,9 @@ $suiteLoadPreflight = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Pa
 Add-ToolingCheck -Name 'suite-run:load-preflight' -Passed ($LASTEXITCODE -eq 0) -Detail (($suiteLoadPreflight -join ' ') -replace '\s+', ' ')
 
 # 视觉基线留存与历史比对只在独立临时 fixture 中执行；不读真实 assets 做删除反例，不开窗口。
+$visualBaselineDpi = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownVisualBaselineDpi.ps1')) -join [Environment]::NewLine
+$visualBaselineDpiReport = $visualBaselineDpi | ConvertFrom-Json -Depth 8
+Add-ToolingCheck -Name 'visual-baseline:dpi-preflight-self-test' -Passed ($LASTEXITCODE -eq 0 -and [bool] $visualBaselineDpiReport.Valid) -Detail $visualBaselineDpi
 $visualBaselineRetention = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-VisualBaselineRetention.ps1') 2>&1 | ForEach-Object { "$_" })
 Add-ToolingCheck -Name 'visual-baseline:previous-version-retention' -Passed ($LASTEXITCODE -eq 0) -Detail (($visualBaselineRetention -join ' ') -replace '\s+', ' ')
 $visualBaselineCompare = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CompareCountdownVisualBaseline.ps1') 2>&1 | ForEach-Object { "$_" })

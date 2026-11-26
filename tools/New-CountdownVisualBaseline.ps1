@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Countdown.SuiteIsolation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.PublicationEvidence.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Countdown.VisualBaselineRetention.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Countdown.VisualBaselineDpi.psm1') -Force
 Assert-SuiteIsolatedDesktop
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -24,6 +25,9 @@ $manifestPaths = foreach ($surface in @($visualBaseline.Main, $visualBaseline.Fl
     }
     $surface.ManifestPath
 }
+
+$dpiGuard = Assert-CountdownVisualBaselineDpi -ExpectedDpi 144
+Write-Host "[baseline] DPI=$($dpiGuard.ActualDpi)，符合现役 150% 生成口径。"
 
 function Get-RootSettingsFingerprint {
     $path = Join-Path $repoRoot 'settings.json'

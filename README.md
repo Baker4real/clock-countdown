@@ -132,7 +132,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 每档先预热 5 秒，再用 `\Process(*)\ID Process` 将 owned PID 唯一解析到一个计数器实例，随后以 1 秒间隔只取该实例的 63 组 `\Process(<绑定实例>)\% Processor Time`；丢弃首组后必须仍有至少 60 个样本且首末样本相隔至少 60 秒，应用中途退出也使该档失败，避免接受实例复用。处理器时间占单核比例直接使用匹配实例的 `% Processor Time`：100 表示占满一个逻辑处理器，不除以逻辑处理器数。原始样本、汇总、环境、源码与构建哈希、临时设置前后哈希、owner token 的 SHA-256、wrapper 与应用的 PID/启动时刻/EXE 路径和哈希、父子关系、readiness、可见状态及收尾记录写入证据根的 `run-*` 目录。工具侧 managed wrapper 实际计算并回报 token 哈希，协调器独立核验；失败时先由 wrapper 做有界 graceful stop，再复核身份后升级。所有进程由隔离桌面的 owned Job 包含，BelowNormal，使用拒绝联网的 loopback 代理和测试自动退出；不按进程名启动或结束任何既有进程。构建 manifest 基点与当前 HEAD 不一致时拒绝测量，避免使用陈旧构建。
 
-`-MeasurementSecondsPerTier <60..570>` 可延长每档窗口。无窗口的采样汇总与反例自测：
+`-MeasurementSecondsPerTier <60..570>` 可延长每档窗口。无窗口的采样汇总与反例自测会把 managed-wrapper 子报告保存到 `logs/idle-processor-selftest-child.json`，Tooling 摘要同时给出该路径，失败时可直接读取具体错误：
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Test-CountdownIdleProcessorMeasurement.ps1
@@ -157,7 +157,7 @@ pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -St
 
 `ValidationHarness` 的生产动效检查必须在 300 ms 内取得真实的 10%–90% 中间帧，终态或缺帧都不算通过。只有某场景唯一的失败与实测卡顿重合时，才重跑该场景。卡顿指以下任一情况：采样窗口内最长无帧间隔不短于最短 90 ms token 的 10%–90% 区间（约 37 ms）；或反转后的首帧到达时，整段动效时长已经过去。每个场景最多重跑 2 次，每轮最多 4 次。每次因卡顿失败的尝试都记入 `Motion.Results[].StarvedAttempts`；阈值、实际用量、注入卡顿自检和判定对照见 `Motion.StallRetry`。最终判定仍取自一次完整的真实通过。
 
-视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），再构建当前源码并单独运行生成阶段。该阶段在同一隔离桌面与泄漏监测下执行 `window-verification/MinminCountdown.WindowVerification.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
+视觉改动需要新基线时，先用 `tools/Set-CountdownBaselineVersion.ps1 -Version <yyyy-MM-dd-vNN>` 更新现役版本（版本只在 `src/MinminCountdown.WindowVerification/VisualReferenceBaseline.cs` 的 `Version` 常量声明一次，主窗与悬浮窗共用，脚本经 `Countdown.Validation.psm1` 的 `Get-CountdownVisualBaseline` 读取；编号跨分支全局分配，工具拒绝不大于已用最大编号的值，并列出仍需人工更新的文档；`-WhatIf` 只预览），再构建当前源码并单独运行生成阶段。生成器会先核对系统 DPI=144（150%）；96 DPI（100%）在创建运行目录和启动 runner 前直接拒绝，不会留下新版本目录。该阶段在同一隔离桌面与泄漏监测下执行 `window-verification/MinminCountdown.WindowVerification.exe`，将 9 张主窗口与 5 张悬浮窗实拍绑定到实际 EXE（#235 新增便签多选及批量操作条，#236 新增下班收尾）；已有基线目录拒绝覆盖；失败时把本次新建的版本目录移进 `logs/visual-baseline-generation/<guid>/partial/`，和诊断放在一起，重跑不用先清理。新版双 manifest 生成并验证通过后，生成器移除主窗与悬浮窗共同的上一版；更早既有存量不随生成自动清理，须按单独确认后的清单处理。生成完成后还须另行运行 CSharp 复验，生成过程本身不替代回归。生成后用 `tools/Compare-CountdownVisualBaseline.ps1 -From <上一版>` 比对两版的绑定文件、EXE、逐帧 PNG 与状态指纹；旧版默认从 `HEAD` 的 Git blob 读取，不要求旧目录仍在工作树，回看其他历史时加 `-FromCommit <固定提交>`。把结果与聚合哈希记进 DESIGN.md，并把其中指向现役基线的锚点改到新版本。从改版本号到写完 DESIGN.md，Tooling 的 `visual-baseline:fixture-shape` 与 `visual-baseline:design-anchors` 必然失败，这段时间的工具自检放到这两步之后。
 
 ```powershell
 pwsh.exe -NoLogo -NoProfile -File ./tools/Invoke-CountdownSuiteLowImpact.ps1 -Stage BaselineGenerate

@@ -159,6 +159,10 @@ try {
 
 $childIntegrationOutput = @(& pwsh -NoLogo -NoProfile -NonInteractive -File (Join-Path $PSScriptRoot 'Test-CountdownIdleMeasurementChild.ps1')) -join [Environment]::NewLine
 $childIntegrationExit = $LASTEXITCODE
+$childIntegrationReportDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) 'logs'
+[void][IO.Directory]::CreateDirectory($childIntegrationReportDirectory)
+$childIntegrationReportPath = Join-Path $childIntegrationReportDirectory 'idle-processor-selftest-child.json'
+[IO.File]::WriteAllText($childIntegrationReportPath, $childIntegrationOutput, [Text.UTF8Encoding]::new($false))
 try {
     $childIntegration = $childIntegrationOutput | ConvertFrom-Json -Depth 8 -ErrorAction Stop
     Add-MeasurementCheck -Name 'child-report:managed-wrapper-integration' -Passed ($childIntegrationExit -eq 0 -and [bool] $childIntegration.Valid) -Detail "checks=$($childIntegration.Checks.Count); root=$($childIntegration.Root); failures=$($childIntegration.Failures -join ';')"
@@ -177,6 +181,7 @@ $report = [pscustomobject]@{
     Valid = $failures.Count -eq 0
     Checks = @($checks)
     Failures = @($failures)
+    ChildIntegrationReportPath = $childIntegrationReportPath
 }
 [Console]::Out.WriteLine(($report | ConvertTo-Json -Depth 8 -Compress))
 exit $(if ($report.Valid) { 0 } else { 1 })
